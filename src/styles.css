@@ -78,6 +78,14 @@ textarea {
   color: var(--text);
 }
 
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background: #eef3f6;
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
 textarea {
   min-height: 100px;
   resize: vertical;
@@ -206,6 +214,59 @@ tr:focus-visible {
 .data-table td,
 .metric-card small {
   color: var(--muted);
+}
+
+.status-toolbar-expanded {
+  align-items: flex-start;
+}
+
+.status-stepper {
+  display: grid;
+  gap: 8px;
+  min-width: 260px;
+}
+
+.status-stepper > span {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.status-stepper-row,
+.todo-risk-inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.status-step {
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--muted);
+}
+
+.status-step.is-active,
+.compact-button.is-selected {
+  border-color: rgba(42, 109, 178, 0.36);
+  background: rgba(42, 109, 178, 0.12);
+  color: var(--blue);
+}
+
+.todo-risk-layout,
+.todo-risk-summary-card,
+.todo-risk-agenda-head {
+  display: grid;
+  gap: 16px;
+}
+
+.compact-button {
+  min-height: 36px;
+  padding: 0 12px;
 }
 
 .sidebar .muted,
@@ -720,6 +781,10 @@ h3 {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.third-party-repair-tabs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .form-grid.two-columns {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -735,6 +800,10 @@ h3 {
 
 .form-grid.five-columns {
   grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.form-grid.six-columns {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .budget-line {
@@ -773,6 +842,10 @@ h3 {
   gap: 6px;
   min-height: 92px;
   align-content: center;
+}
+
+.summary-span-two {
+  grid-column: 1 / -1;
 }
 
 .summary-chip strong,
@@ -895,6 +968,10 @@ h3 {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.consolidated-meta-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .vehicle-meta-grid div {
   padding: 10px 12px;
   border-radius: var(--radius-sm);
@@ -921,6 +998,10 @@ h3 {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.compact-media-gallery {
+  margin-top: 4px;
 }
 
 .media-card {
@@ -1157,6 +1238,30 @@ h3 {
 
 .parts-total-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.table-piece-cell {
+  display: grid;
+  gap: 4px;
+  min-width: 220px;
+}
+
+.third-party-admin-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.third-party-quote-table td .field,
+.third-party-quote-table td .field input,
+.third-party-quote-table td .field select {
+  min-width: 116px;
+}
+
+.third-party-quote-table td:nth-child(6) {
+  white-space: nowrap;
 }
 
 .repair-line-meta {
@@ -1600,6 +1705,33 @@ h3 {
   font-weight: 600;
 }
 
+.blocking-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(24, 37, 47, 0.56);
+  backdrop-filter: blur(10px);
+}
+
+.blocking-modal {
+  width: min(520px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: 24px;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(157, 177, 188, 0.42);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 248, 250, 0.96));
+  box-shadow: var(--shadow);
+}
+
+.blocking-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .danger-banner {
   color: var(--red);
   background: var(--red-soft);
@@ -1697,14 +1829,15 @@ h3 {
   .totals-grid,
   .filters-grid,
   .grouped-tramites,
-  .budget-services-grid,
-  .payments-months,
-  .panel-main-grid,
-  .payments-grid,
-  .pending-board-grid,
-   .month-summary-grid,
-   .parts-total-grid,
-   .vehicle-summary-head {
+   .budget-services-grid,
+   .payments-months,
+   .panel-main-grid,
+   .payments-grid,
+   .pending-board-grid,
+    .month-summary-grid,
+    .parts-total-grid,
+    .vehicle-summary-head,
+    .consolidated-meta-grid {
     grid-template-columns: 1fr 1fr;
   }
 
@@ -1739,6 +1872,7 @@ h3 {
   .form-grid.four-columns,
   .form-grid.three-columns,
   .form-grid.five-columns,
+  .form-grid.six-columns,
   .budget-line,
   .filters-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1786,6 +1920,7 @@ h3 {
   .form-grid.four-columns,
   .form-grid.three-columns,
   .form-grid.five-columns,
+  .form-grid.six-columns,
   .budget-line,
   .tab-strip,
   .subtabs-row,
@@ -1800,9 +1935,10 @@ h3 {
   .payments-grid,
   .budget-totals-grid,
   .pending-board-grid,
-  .month-summary-grid {
-    grid-template-columns: 1fr;
-  }
+    .month-summary-grid,
+    .consolidated-meta-grid {
+     grid-template-columns: 1fr;
+   }
 
   .budget-main-grid {
     grid-template-columns: 1fr;

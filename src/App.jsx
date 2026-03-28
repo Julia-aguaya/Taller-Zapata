@@ -12,8 +12,11 @@ const BRANCHES = [
 ];
 
 const VEHICLE_TYPES = ['Sedan', 'Hatch', 'SUV', 'Pick-up', 'Utilitario'];
+const VEHICLE_BRAND_OPTIONS = ['Chevrolet', 'Peugeot', 'Volkswagen', 'Fiat', 'Ford', 'Renault', 'Toyota', 'Citroen', 'Jeep', 'Nissan'];
 const VEHICLE_USES = ['Particular', 'Comercial', 'Aplicacion'];
 const PAINT_TYPES = ['Monocapa', 'Bicapa', 'Tricapa', 'Perlado'];
+const TRANSMISSION_OPTIONS = ['Manual', 'Automatica', 'CVT', 'Secuencial'];
+const CIVIL_STATUS_OPTIONS = ['Soltero/a', 'Casado/a', 'Divorciado/a', 'Viudo/a', 'Otro'];
 const WORKSHOPS = [
   {
     id: 'zapata',
@@ -71,7 +74,7 @@ const BUDGET_PART_DECISION_OPTIONS = ['Debe reemplazarse', 'Puede repararse', 'A
 const REPORT_STATUS_OPTIONS = ['Informe cerrado', 'Informe abierto'];
 const AUTHORIZER_OPTIONS = ['PABLO ZAPATA', 'ENRIQUE ZAPATA', 'MELINA ZAPATA', 'DAMIAN ZAPATA'];
 const YES_NO_AV_OPTIONS = ['SI', 'NO', 'A/V'];
-const REPAIR_PART_STATE_OPTIONS = ['Pendiente', 'Pedido', 'Recibido', 'Devuelto'];
+const REPAIR_PART_STATE_OPTIONS = ['Pendiente', 'Pedido', 'Encargado', 'Recibido', 'Devuelto', 'Devolver'];
 const REPAIR_PART_BUYER_OPTIONS = ['Taller', 'Cliente'];
 const REPAIR_PART_PAYMENT_OPTIONS = ['Pendiente', 'Cancelado'];
 const TURNO_STATE_OPTIONS = ['Pendiente programar', 'Probable a confirmar', 'A confirmar cliente', 'Confirmado', 'Reprogramar'];
@@ -80,12 +83,28 @@ const TRAMITE_STATUS_OPTIONS = ['Ingresado', 'Sin presentar', 'En trámite', 'Pr
 const REPAIR_STATUS_OPTIONS = ['Reparado', 'Con Turno', 'Dar Turno', 'Faltan repuestos', 'En trámite', 'No debe repararse', 'Debe reingresar', 'Rechazado / Desistido'];
 const PAYMENT_MODES = ['Transferencia', 'Efectivo', 'Debito', 'Credito', 'Otro'];
 const COMPROBANTES = ['A', 'C', 'R'];
-const TRAMITE_TYPES = ['Particular', 'Todo Riesgo', 'CLEAS / Terceros / Franquicia'];
+const TRAMITE_TYPES = ['Particular', 'Todo Riesgo', 'CLEAS / Terceros / Franquicia', 'Reclamo de Tercero - Taller'];
 const PANEL_PAYMENT_FILTERS = ['Todos', 'Por cobrar', 'Ya cobrado'];
 const PANEL_TASK_FILTERS = ['Todos', 'Con pendientes', 'Sin pendientes'];
 const PANEL_DATE_FILTERS = ['Creación', 'Fecha estimada', 'Fecha de cobro', 'Fecha de cierre'];
-const CASE_TABS = ['ficha', 'presupuesto', 'gestion', 'pagos'];
+const CASE_TABS = ['ficha', 'tramite', 'presupuesto', 'documentacion', 'gestion', 'pagos'];
 const REPAIR_TABS = ['repuestos', 'turno', 'ingreso', 'egreso'];
+const TODO_RIESGO_INSURANCE_OPTIONS = ['La Segunda', 'Sancor Seguros', 'Federación Patronal', 'Mercantil Andina', 'Rivadavia'];
+const TODO_RIESGO_ASSIGNABLE_USERS = ['Melina Z', 'Pablo Z', 'Romina G', 'Damian Z'];
+const TODO_RIESGO_FRANCHISE_STATUS_OPTIONS = ['Sin Franquicia', 'Pendiente', 'Cobrada', 'Bonificada'];
+const TODO_RIESGO_RECOVERY_OPTIONS = ['Cía. del 3ero', 'Abona cliente', '3ero particular', 'Propia Cía.'];
+const TODO_RIESGO_DICTAMEN_OPTIONS = ['Pendiente', 'A favor', 'Rechazado'];
+const TODO_RIESGO_DOC_CATEGORY_OPTIONS = ['Personal', 'Vehículo', 'Seguro', '3ero', 'Otro'];
+const TODO_RIESGO_MODALITY_OPTIONS = ['Presencial', 'Por fotos'];
+const TODO_RIESGO_QUOTE_STATUS_OPTIONS = ['Pendiente', 'Acordada', 'Observada'];
+const CLEAS_SCOPE_OPTIONS = ['Sobre franquicia', 'Sobre daño total'];
+const CLEAS_DICTAMEN_OPTIONS = ['A favor', 'En contra', 'Culpa compartida', 'Pendiente'];
+const CLEAS_PAYMENT_STATUS_OPTIONS = ['Pendiente', 'Cancelado'];
+const OWNERSHIP_PERCENTAGE_OPTIONS = ['100%', '50%'];
+const THIRD_PARTY_PARTS_PROVIDER_OPTIONS = ['Provee Cía.', 'Provee Taller', 'Provee cliente'];
+const THIRD_PARTY_ORDER_STATE_OPTIONS = ['Pendiente', 'Encargado', 'Recibido', 'Devolver'];
+const THIRD_PARTY_BILLING_OPTIONS = ['A', 'C', 'Sin F'];
+const THIRD_PARTY_PAYMENT_OPTIONS = ['Tarjeta 1 pago', 'Tarjetas cuotas', 'Contado'];
 
 function createBudgetService(label, overrides = {}) {
   return {
@@ -128,6 +147,9 @@ function createBudgetDefaults(overrides = {}) {
     observations: '',
     estimatedWorkDays: '',
     minimumLaborClose: '',
+    accessoryWorkEnabled: 'NO',
+    accessoryWorks: overrides.accessoryWorks ?? [createAccessoryWork()],
+    accessoryNotes: '',
     ...overrides,
   };
 }
@@ -157,6 +179,21 @@ function createRepairPart(overrides = {}) {
     source: 'manual',
     budgetAmount: '',
     sourceLineId: '',
+    authorized: '',
+    receivedDate: '',
+    partCode: '',
+    ...overrides,
+  };
+}
+
+function createAccessoryWork(overrides = {}) {
+  return {
+    id: crypto.randomUUID(),
+    detail: '',
+    amount: '',
+    includesReplacement: 'NO',
+    replacementPiece: '',
+    replacementAmount: '',
     ...overrides,
   };
 }
@@ -231,6 +268,14 @@ function buildCustomerMockData(items) {
       lastName: item.customer.lastName,
       phone: item.customer.phone,
       document: item.customer.document,
+      birthDate: item.customer.birthDate,
+      street: item.customer.street,
+      streetNumber: item.customer.streetNumber,
+      addressExtra: item.customer.addressExtra,
+      occupation: item.customer.occupation,
+      civilStatus: item.customer.civilStatus,
+      locality: item.customer.locality,
+      email: item.customer.email,
       referenced: item.customer.referenced,
       referencedName: item.customer.referencedName,
     });
@@ -253,6 +298,13 @@ function buildVehicleMockData(items) {
       vehicleType: item.vehicle.type,
       vehicleUse: item.vehicle.usage,
       paint: item.vehicle.paint,
+      color: item.vehicle.color,
+      year: item.vehicle.year,
+      engine: item.vehicle.engine,
+      chassis: item.vehicle.chassis,
+      transmission: item.vehicle.transmission,
+      mileage: item.vehicle.mileage,
+      observations: item.vehicle.observations,
     });
   });
 
@@ -264,7 +316,199 @@ function getWorkshopInfo(label) {
 }
 
 function hasVehicleCoreData(vehicle) {
-  return Boolean(vehicle.brand && vehicle.model && vehicle.plate && vehicle.type && vehicle.usage && vehicle.paint && vehicle.year && vehicle.color);
+  return Boolean(
+    vehicle.brand
+      && vehicle.model
+      && vehicle.plate
+      && vehicle.type
+      && vehicle.usage
+      && vehicle.paint
+      && vehicle.year
+      && vehicle.color
+      && vehicle.chassis
+      && vehicle.engine
+      && vehicle.transmission
+      && vehicle.mileage,
+  );
+}
+
+function createTodoRiskDocument(overrides = {}) {
+  return {
+    id: crypto.randomUUID(),
+    category: 'Personal',
+    name: '',
+    uploadedAt: '',
+    notes: '',
+    ...overrides,
+  };
+}
+
+function createTodoRiskTask(overrides = {}) {
+  return {
+    id: crypto.randomUUID(),
+    title: '',
+    scheduledAt: '',
+    assignee: TODO_RIESGO_ASSIGNABLE_USERS[0],
+    resolved: false,
+    ...overrides,
+  };
+}
+
+function createTodoRiskInvoice(overrides = {}) {
+  return {
+    id: crypto.randomUUID(),
+    invoiceNumber: '',
+    amount: '',
+    issuedAt: '',
+    notes: '',
+    ...overrides,
+  };
+}
+
+function createRegistryOwner(overrides = {}) {
+  return {
+    id: crypto.randomUUID(),
+    firstName: '',
+    lastName: '',
+    phone: '',
+    document: '',
+    birthDate: '',
+    locality: '',
+    email: '',
+    street: '',
+    streetNumber: '',
+    addressExtra: '',
+    occupation: '',
+    civilStatus: '',
+    ...overrides,
+  };
+}
+
+function createThirdPartyParticipant(overrides = {}) {
+  return {
+    id: crypto.randomUUID(),
+    driverName: '',
+    driverDocument: '',
+    driverPhone: '',
+    plate: '',
+    brand: '',
+    model: '',
+    address: '',
+    isOwner: 'SI',
+    ownershipPercentage: '100%',
+    owners: overrides.owners ?? [createRegistryOwner(), createRegistryOwner()],
+    ...overrides,
+  };
+}
+
+function createRepairQuoteRow(overrides = {}) {
+  return {
+    id: crypto.randomUUID(),
+    piece: '',
+    provider1: '',
+    provider2: '',
+    provider3: '',
+    provider4: '',
+    billing: 'A',
+    paymentMethod: 'Contado',
+    source: 'manual',
+    sourceLineId: '',
+    ...overrides,
+  };
+}
+
+function getThirdPartyInventoryCode(folderCode, index) {
+  return `${folderCode}-${String(index + 1).padStart(2, '0')}`;
+}
+
+function createThirdPartyDefaults(overrides = {}) {
+  return {
+    clientRegistry: {
+      isOwner: 'SI',
+      ownershipPercentage: '100%',
+      owners: overrides.clientRegistry?.owners ?? [createRegistryOwner(), createRegistryOwner()],
+      ...overrides.clientRegistry,
+    },
+    claim: {
+      presentedDate: '',
+      claimReference: '',
+      thirdCompany: '',
+      thirdParties: overrides.claim?.thirdParties ?? [createThirdPartyParticipant()],
+      documentationStatus: 'Incompleta',
+      documentationAccepted: false,
+      documents: overrides.claim?.documents ?? [createTodoRiskDocument()],
+      partsProviderMode: 'Provee Cía.',
+      ...overrides.claim,
+    },
+    payments: {
+      clientPayments: overrides.payments?.clientPayments ?? [],
+      ...overrides.payments,
+    },
+    ...overrides,
+  };
+}
+
+function createTodoRiskDefaults(overrides = {}) {
+  return {
+    insurance: {
+      company: '',
+      thirdCompany: '',
+      cleasNumber: '',
+      handlerName: '',
+      handlerEmail: '',
+      handlerPhone: '',
+      inspectorName: '',
+      inspectorEmail: '',
+      inspectorPhone: '',
+      coverageDetail: '',
+      ...overrides.insurance,
+    },
+    incident: {
+      date: '',
+      location: '',
+      time: '',
+      dynamics: '',
+      thirdPartyPlate: '',
+      observations: '',
+      ...overrides.incident,
+    },
+    franchise: {
+      status: 'Pendiente',
+      amount: '',
+      recoveryType: '',
+      associatedCase: '',
+      dictamen: '',
+      exceedsFranchise: 'SI',
+      recoveryAmount: '',
+      notes: '',
+      ...overrides.franchise,
+    },
+    documentation: {
+      items: overrides.documentation?.items ?? [],
+    },
+    processing: {
+      presentedDate: '',
+      derivedToInspectionDate: '',
+      modality: 'Presencial',
+      quoteStatus: 'Pendiente',
+      quoteDate: '',
+      agreedAmount: '',
+      cleasScope: '',
+      dictamen: 'Pendiente',
+      franchiseAmount: '',
+      clientChargeAmount: '',
+      clientChargeStatus: 'Pendiente',
+      clientChargeDate: '',
+      companyFranchisePaymentAmount: '',
+      companyFranchisePaymentStatus: 'Pendiente',
+      companyFranchisePaymentDate: '',
+      agenda: overrides.processing?.agenda ?? [],
+      adminTurnOverride: false,
+      noRepairNeeded: false,
+      ...overrides.processing,
+    },
+    ...overrides,
+  };
 }
 
 function getVehicleFieldMissing(vehicle) {
@@ -278,6 +522,10 @@ function getVehicleFieldMissing(vehicle) {
   if (!vehicle.paint) missing.push('pintura');
   if (!vehicle.year) missing.push('año');
   if (!vehicle.color) missing.push('color');
+  if (!vehicle.chassis) missing.push('chasis');
+  if (!vehicle.engine) missing.push('motor');
+  if (!vehicle.transmission) missing.push('caja');
+  if (!vehicle.mileage) missing.push('kilometraje');
 
   return missing;
 }
@@ -297,8 +545,14 @@ function initialCases() {
         lastName: 'Perez',
         phone: '3413505050',
         document: '16325547',
+        birthDate: '1979-05-21',
         locality: 'Rosario',
         email: 'jperez@email.com',
+        street: 'Bv. Oroño',
+        streetNumber: '1054',
+        addressExtra: 'P4 D B',
+        occupation: 'Jubilado',
+        civilStatus: 'Casado/a',
         referenced: 'NO',
         referencedName: '',
       },
@@ -311,6 +565,11 @@ function initialCases() {
         paint: 'Bicapa',
         year: '2012',
         color: 'Negro',
+        chassis: 'DJ541A451A55',
+        engine: 'UD541AADD541',
+        transmission: 'Manual',
+        mileage: '120025',
+        observations: 'Es un vehículo de colección, tiene modificada la suspensión.',
       },
       vehicleMedia: [
         createMediaItem({
@@ -387,6 +646,20 @@ function initialCases() {
           reentryNotes: '',
           definitiveExit: true,
           repairedPhotos: true,
+          repairedMedia: [
+            createMediaItem({
+              label: 'Frente reparado',
+              description: 'Vista final con paragolpe y guardabarro montados.',
+              url: 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=1280&q=80',
+              thumbnail: 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=400&q=60',
+            }),
+            createMediaItem({
+              label: 'Detalle óptica reparada',
+              description: 'Control visual posterior al pulido y alineación final.',
+              url: 'https://images.unsplash.com/photo-1489824904134-891ab64532f1?auto=format&fit=crop&w=1280&q=80',
+              thumbnail: 'https://images.unsplash.com/photo-1489824904134-891ab64532f1?auto=format&fit=crop&w=400&q=60',
+            }),
+          ],
         },
       },
       payments: {
@@ -418,8 +691,14 @@ function initialCases() {
         lastName: 'Costa',
         phone: '3414020088',
         document: '27111444',
+        birthDate: '1985-11-02',
         locality: 'Rosario',
         email: 'lcosta@email.com',
+        street: 'Mendoza',
+        streetNumber: '3321',
+        addressExtra: '',
+        occupation: 'Diseñadora',
+        civilStatus: 'Soltero/a',
         referenced: 'SI',
         referencedName: 'Marcelo Varela',
       },
@@ -432,6 +711,11 @@ function initialCases() {
         paint: 'Perlado',
         year: '2020',
         color: 'Blanco nacarado',
+        chassis: 'PEU208TR2020',
+        engine: 'EB2FA99882',
+        transmission: 'Manual',
+        mileage: '45210',
+        observations: 'Golpe lateral con roce sobre zócalo.',
       },
       vehicleMedia: [
         createMediaItem({
@@ -496,6 +780,7 @@ function initialCases() {
           reentryNotes: '',
           definitiveExit: false,
           repairedPhotos: false,
+          repairedMedia: [],
         },
       },
       payments: {
@@ -524,8 +809,14 @@ function initialCases() {
         lastName: 'Ruiz',
         phone: '3416203344',
         document: '30111888',
+        birthDate: '1990-09-15',
         locality: 'Funes',
         email: 'nruiz@email.com',
+        street: 'San José',
+        streetNumber: '741',
+        addressExtra: '',
+        occupation: 'Contador',
+        civilStatus: 'Casado/a',
         referenced: 'NO',
         referencedName: '',
       },
@@ -538,6 +829,11 @@ function initialCases() {
         paint: 'Tricapa',
         year: '2023',
         color: 'Gris grafito',
+        chassis: '',
+        engine: '',
+        transmission: '',
+        mileage: '',
+        observations: '',
       },
       vehicleMedia: [],
       budget: createBudgetDefaults({
@@ -574,6 +870,7 @@ function initialCases() {
           reentryNotes: '',
           definitiveExit: false,
           repairedPhotos: false,
+          repairedMedia: [],
         },
       },
       payments: {
@@ -587,6 +884,330 @@ function initialCases() {
         invoice: 'NO',
         businessName: '',
         invoiceNumber: '',
+      },
+    },
+    {
+      id: crypto.randomUUID(),
+      code: '0004TZ',
+      counter: 4,
+      tramiteType: 'Todo Riesgo',
+      claimNumber: '4-2541587',
+      branch: 'Zapata',
+      createdAt: '2026-03-21',
+      folderCreated: true,
+      customer: {
+        firstName: 'Juan',
+        lastName: 'Sánchez',
+        phone: '3413505050',
+        document: '16325547',
+        birthDate: '1979-05-21',
+        locality: 'Rosario',
+        email: 'perezjuan@gmail.com',
+        street: 'Bv. Oroño',
+        streetNumber: '1054',
+        addressExtra: 'P 4 D B',
+        occupation: 'Jubilado',
+        civilStatus: 'Casado/a',
+        referenced: 'NO',
+        referencedName: '',
+      },
+      vehicle: {
+        brand: 'Volkswagen',
+        model: 'Gol',
+        plate: 'AB412DE',
+        type: 'Sedan',
+        usage: 'Particular',
+        paint: 'Bicapa',
+        year: '2019',
+        color: 'Negro',
+        chassis: 'VWGOLAB412DE99',
+        engine: 'EA111AB412DE',
+        transmission: 'Manual',
+        mileage: '87500',
+        observations: 'Unidad asegurada con daño trasero y reposición parcial de repuestos.',
+      },
+      vehicleMedia: [
+        createMediaItem({
+          label: 'Golpe lateral',
+          description: 'Vista del lateral y zócalo comprometido.',
+          url: 'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?auto=format&fit=crop&w=1280&q=80',
+          thumbnail: 'https://images.unsplash.com/photo-1494976388531-d1058494cdd8?auto=format&fit=crop&w=400&q=60',
+        }),
+      ],
+      budget: createBudgetDefaults({
+        workshop: 'Taller Zapata',
+        reportStatus: 'Informe cerrado',
+        authorizer: 'PABLO ZAPATA',
+        laborWithoutVat: 980000,
+        generated: true,
+        lines: [
+          createBudgetLine({ piece: 'Faro trasero derecho', task: 'REEMPLAZAR', damageLevel: 'Daño medio (8 a 25%)', replacementDecision: 'Debe reemplazarse', action: 'Reemplazar', partPrice: '50000' }),
+          createBudgetLine({ piece: 'Luz de patente', task: 'REEMPLAZAR', damageLevel: 'Daño leve (0 a 8%)', replacementDecision: 'Debe reemplazarse', action: 'Reemplazar', partPrice: '20000' }),
+          createBudgetLine({ piece: 'Paragolpe trasero', task: 'REEMPLAZAR Y PINTAR', damageLevel: 'Daño fuerte (+ 25%)', replacementDecision: 'Debe reemplazarse', action: 'Reemplazar', partPrice: '360000' }),
+        ],
+        partsQuotedDate: '2026-03-22',
+        partsProvider: 'SEPRIO Automotores',
+        estimatedWorkDays: '5',
+        minimumLaborClose: '1250000',
+      }),
+      todoRisk: createTodoRiskDefaults({
+        insurance: {
+          company: 'La Segunda',
+          handlerName: 'Vergallo, Osvaldo',
+          handlerEmail: 'overgallo@lasegunda.com',
+          handlerPhone: '3415205421',
+          inspectorName: 'Caballero, Fernando',
+          inspectorEmail: 'fcaballero@lasegunda.com',
+          inspectorPhone: '3415401254',
+          coverageDetail: 'Cobertura para luneta y equipo de GNC hasta $500 mil',
+        },
+        incident: {
+          date: '2025-07-24',
+          location: 'Mitre 400, Rosario',
+          time: '15:30',
+          dynamics: 'Impacto trasero en semáforo; el tercero reconoce responsabilidad y se activa recupero.',
+        },
+        franchise: {
+          status: 'Pendiente',
+          amount: '500000',
+          recoveryType: 'Cía. del 3ero',
+          associatedCase: '003FC',
+          dictamen: '',
+          exceedsFranchise: 'SI',
+          recoveryAmount: '',
+          notes: 'Esperando aceptación final del recupero por la aseguradora del tercero.',
+        },
+        documentation: {
+          items: [
+            createTodoRiskDocument({ category: 'Personal', name: 'Licencia conducir frente', uploadedAt: '2025-06-10', notes: 'Vencida el 09/05/25' }),
+            createTodoRiskDocument({ category: 'Personal', name: 'Licencia conducir dorso', uploadedAt: '2025-06-10', notes: '' }),
+            createTodoRiskDocument({ category: 'Seguro', name: 'Denuncia administrativa', uploadedAt: '2025-06-17', notes: '' }),
+          ],
+        },
+        processing: {
+          presentedDate: '2025-09-14',
+          derivedToInspectionDate: '2025-09-20',
+          modality: 'Presencial',
+          quoteStatus: 'Acordada',
+          quoteDate: '2025-10-15',
+          agreedAmount: '1400000',
+          agenda: [
+            createTodoRiskTask({ title: 'El cliente debe definir si acepta repuestos alternativos.', scheduledAt: '2025-10-13', assignee: 'Melina Z', resolved: true }),
+            createTodoRiskTask({ title: 'Último ofrecimiento de $1.300.000; definir si se acepta.', scheduledAt: '2025-10-14', assignee: 'Pablo Z', resolved: true }),
+          ],
+        },
+      }),
+      repair: {
+        parts: [
+          createRepairPart({ name: 'Faro trasero derecho', provider: 'La Casa del Repuesto', amount: '50000', state: 'Pendiente', purchaseBy: 'Taller', paymentStatus: 'Pendiente', source: 'budget', authorized: 'SI' }),
+          createRepairPart({ name: 'Luz de patente', provider: 'Grillo', amount: '20000', state: 'Devuelto', purchaseBy: 'Taller', paymentStatus: 'Cancelado', source: 'budget', authorized: 'SI' }),
+          createRepairPart({ name: 'Paragolpe trasero', provider: 'Marseille', amount: '360000', state: 'Recibido', purchaseBy: 'Cliente', paymentStatus: 'Cancelado', source: 'budget', authorized: 'NO' }),
+        ],
+        turno: {
+          date: '',
+          estimatedDays: '5',
+          state: 'Pendiente programar',
+          notes: '',
+        },
+        ingreso: {
+          realDate: '',
+          hasObservation: 'NO',
+          observation: '',
+          items: [],
+        },
+        egreso: {
+          date: '',
+          notes: '',
+          shouldReenter: 'NO',
+          reentryDate: '',
+          reentryEstimatedDays: '',
+          reentryState: 'Pendiente programar',
+          reentryNotes: '',
+          definitiveExit: false,
+          repairedPhotos: false,
+          repairedMedia: [],
+        },
+      },
+      payments: {
+        comprobante: 'A',
+        hasSena: 'NO',
+        senaAmount: '',
+        senaDate: '',
+        senaMode: 'Transferencia',
+        senaModeDetail: '',
+        settlements: [],
+        invoice: 'SI',
+        businessName: 'Talleres Zapata SRL',
+        invoiceNumber: '0002-0002541',
+        invoices: [createTodoRiskInvoice({ invoiceNumber: '0002-0002541', amount: '900000', issuedAt: '2025-11-20', notes: 'Factura principal aseguradora' })],
+        signedAgreementDate: '2025-11-01',
+        passedToPaymentsDate: '2025-11-20',
+        estimatedPaymentDate: '2025-11-20',
+        paymentDate: '2025-11-22',
+        depositedAmount: '850000',
+        hasRetentions: 'SI',
+        retentions: {
+          iva: '50000',
+          gains: '30000',
+          employerContribution: '20000',
+          iibb: '25000',
+          drei: '25000',
+          other: '0',
+        },
+      },
+    },
+    {
+      id: crypto.randomUUID(),
+      code: '0005RZ',
+      counter: 5,
+      tramiteType: 'Reclamo de Tercero - Taller',
+      claimNumber: '26-4512154',
+      branch: 'Zapata',
+      createdAt: '2026-03-24',
+      folderCreated: true,
+      customer: {
+        firstName: 'María',
+        lastName: 'Vargas',
+        phone: '3413505050',
+        document: '20254125',
+        birthDate: '1979-05-21',
+        locality: 'Rosario',
+        email: 'mvargas@email.com',
+        street: 'Bv. Oroño',
+        streetNumber: '1054',
+        addressExtra: 'P 4 D B',
+        occupation: 'Jubilada',
+        civilStatus: 'Casado/a',
+        referenced: 'NO',
+        referencedName: '',
+      },
+      vehicle: {
+        brand: 'Toyota',
+        model: 'Etios',
+        plate: 'AD259HG',
+        type: 'Sedan',
+        usage: 'Particular',
+        paint: 'Bicapa',
+        year: '2021',
+        color: 'Gris plata',
+        chassis: 'TOYETIOSAD259HG',
+        engine: '2NR1234567',
+        transmission: 'Manual',
+        mileage: '68210',
+        observations: 'Cliente maneja la carpeta pero el titular registral es un familiar.',
+      },
+      vehicleMedia: [],
+      budget: createBudgetDefaults({
+        workshop: 'Taller Zapata',
+        reportStatus: 'Informe cerrado',
+        authorizer: 'PABLO ZAPATA',
+        laborWithoutVat: 1100000,
+        generated: true,
+        lines: [
+          createBudgetLine({ id: 'third-party-line-door', piece: 'Puerta delantera derecha', task: 'REEMPLAZAR Y PINTAR', damageLevel: 'Daño fuerte (+ 25%)', replacementDecision: 'Debe reemplazarse', action: 'Reemplazar', partPrice: '540000' }),
+          createBudgetLine({ id: 'third-party-line-fender', piece: 'Guardabarro delantero derecho', task: 'REEMPLAZAR Y PINTAR', damageLevel: 'Daño medio (8 a 25%)', replacementDecision: 'Debe reemplazarse', action: 'Reemplazar', partPrice: '320000' }),
+          createBudgetLine({ piece: 'Paragolpe delantero', task: 'REPARAR Y PINTAR', damageLevel: 'Daño fuerte (+ 25%)', replacementDecision: '', action: 'Reparar', partPrice: '' }),
+        ],
+        partsQuotedDate: '2026-03-24',
+        partsProvider: 'Grillo',
+        estimatedWorkDays: '4',
+        minimumLaborClose: '900000',
+        accessoryWorkEnabled: 'SI',
+        accessoryWorks: [createAccessoryWork({ id: 'third-party-accessory-moulding', detail: 'Trabajo extra de moldura lateral', amount: '180000', includesReplacement: 'SI', replacementPiece: 'Moldura puerta delantera derecha', replacementAmount: '65000' })],
+      }),
+      thirdParty: createThirdPartyDefaults({
+        clientRegistry: {
+          isOwner: 'NO',
+          ownershipPercentage: '50%',
+          owners: [
+            createRegistryOwner({ firstName: 'Ricardo', lastName: 'Perez', document: '20254254', birthDate: '1968-04-11', locality: 'Rosario', phone: '3415551020', street: 'Pje. 2154', streetNumber: '2354', occupation: 'Comerciante', civilStatus: 'Casado/a' }),
+            createRegistryOwner({ firstName: 'Juan', lastName: 'Perez', document: '40215214', birthDate: '1988-06-10', locality: 'Rosario', phone: '3415551021', street: 'Pje. 2154', streetNumber: '2354', occupation: 'Empleado', civilStatus: 'Casado/a' }),
+          ],
+        },
+        claim: {
+          presentedDate: '2026-03-25',
+          claimReference: 'AB2154JB',
+          thirdCompany: 'San Cristóbal',
+          documentationStatus: 'Incompleta',
+          documents: [
+            createTodoRiskDocument({ category: 'Personal', name: 'Licencia conducir frente', uploadedAt: '2026-03-24', notes: 'Falta cédula verde' }),
+            createTodoRiskDocument({ category: 'Seguro', name: 'Denuncia administrativa', uploadedAt: '2026-03-25', notes: '' }),
+          ],
+          partsProviderMode: 'Provee Taller',
+          thirdParties: [
+            createThirdPartyParticipant({
+              driverName: 'Patricia Acevedo',
+              driverDocument: '25124215',
+              driverPhone: '3415401254',
+              plate: 'AD845AS',
+              brand: 'Fiat',
+              model: 'Punto 1.4 Active',
+              address: 'Pje. 2154 N° 2354, Rosario',
+              isOwner: 'NO',
+              ownershipPercentage: '100%',
+              owners: [createRegistryOwner({ firstName: 'Ricardo', lastName: 'Perez', document: '20254254', locality: 'Rosario', street: 'Pje. 2154', streetNumber: '2354' }), createRegistryOwner()],
+            }),
+          ],
+        },
+        payments: {
+          clientPayments: [createSettlement({ kind: 'Parcial', amount: '90000', date: '2026-03-26', mode: 'Efectivo' })],
+        },
+      }),
+      repair: {
+        quoteRows: [
+          createRepairQuoteRow({ piece: 'Puerta delantera derecha', provider1: '540000', provider2: '680000', provider3: '450000', provider4: '0', billing: 'A', paymentMethod: 'Tarjeta 1 pago', source: 'budget', sourceLineId: 'third-party-line-door' }),
+          createRepairQuoteRow({ piece: 'Guardabarro delantero derecho', provider1: '300500', provider2: '400200', provider3: '290000', provider4: '0', billing: 'C', paymentMethod: 'Contado', source: 'budget', sourceLineId: 'third-party-line-fender' }),
+          createRepairQuoteRow({ piece: 'Moldura puerta delantera derecha', provider1: '40000', provider2: '0', provider3: '75000', provider4: '67000', billing: 'Sin F', paymentMethod: 'Tarjetas cuotas', source: 'budget', sourceLineId: 'third-party-accessory-moulding' }),
+        ],
+        parts: [
+          createRepairPart({ name: 'Puerta delantera derecha', provider: 'Grillo', amount: '540000', state: 'Pendiente', purchaseBy: 'Taller', paymentStatus: 'Pendiente', source: 'budget', sourceLineId: 'third-party-line-door', receivedDate: '', partCode: 'PTA-001' }),
+          createRepairPart({ name: 'Guardabarro delantero derecho', provider: 'Rosario Renault', amount: '290000', state: 'Encargado', purchaseBy: 'Taller', paymentStatus: 'Pendiente', source: 'budget', sourceLineId: 'third-party-line-fender', receivedDate: '', partCode: 'GB-002' }),
+          createRepairPart({ name: 'Moldura puerta delantera derecha', provider: 'Mercado Libre', amount: '67000', state: 'Recibido', purchaseBy: 'Taller', paymentStatus: 'Cancelado', source: 'manual', receivedDate: '2026-03-26', partCode: 'ML-003' }),
+        ],
+        turno: {
+          date: '',
+          estimatedDays: '4',
+          state: 'Pendiente programar',
+          notes: 'Espera completar documentación y confirmar pago de extras.',
+        },
+        ingreso: {
+          realDate: '',
+          hasObservation: 'NO',
+          observation: '',
+          items: [],
+        },
+        egreso: {
+          date: '',
+          notes: '',
+          shouldReenter: 'SI',
+          reentryDate: '',
+          reentryEstimatedDays: '',
+          reentryState: 'Pendiente programar',
+          reentryNotes: '',
+          definitiveExit: false,
+          repairedPhotos: false,
+          repairedMedia: [],
+        },
+      },
+      payments: {
+        comprobante: 'A',
+        hasSena: 'NO',
+        senaAmount: '',
+        senaDate: '',
+        senaMode: 'Transferencia',
+        senaModeDetail: '',
+        settlements: [],
+        invoice: 'SI',
+        businessName: 'Talleres Zapata SRL',
+        invoiceNumber: '0002-0002788',
+        invoices: [createTodoRiskInvoice({ invoiceNumber: '0002-0002788', amount: '3000000', issuedAt: '2026-03-25', notes: 'Factura principal a compañía' })],
+        signedAgreementDate: '2026-03-25',
+        passedToPaymentsDate: '2026-03-26',
+        estimatedPaymentDate: '2026-04-01',
+        paymentDate: '',
+        depositedAmount: '',
+        hasRetentions: 'NO',
+        retentions: { iva: '', gains: '', employerContribution: '', iibb: '', drei: '', other: '' },
       },
     },
   ];
@@ -633,6 +1254,32 @@ function addBusinessDays(date, days) {
   return next.toISOString().slice(0, 10);
 }
 
+function addYears(date, years) {
+  if (!date || !years) {
+    return '';
+  }
+
+  const next = new Date(`${date}T12:00:00`);
+  next.setFullYear(next.getFullYear() + Number(years));
+  return next.toISOString().slice(0, 10);
+}
+
+function diffDaysFromToday(date) {
+  if (!date) {
+    return '';
+  }
+
+  const today = new Date();
+  const base = new Date(`${date}T12:00:00`);
+  const utcToday = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  const utcBase = Date.UTC(base.getFullYear(), base.getMonth(), base.getDate());
+  return Math.max(Math.floor((utcToday - utcBase) / 86400000), 0);
+}
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function maxDate(a, b) {
   if (!a) {
     return b;
@@ -666,8 +1313,135 @@ function getBudgetServiceStatus(item, label) {
   return item.budget.services?.find((service) => service.label === label)?.status ?? 'NO';
 }
 
+function isTodoRiesgoCase(item) {
+  return (item.tramiteType ?? 'Particular') === 'Todo Riesgo';
+}
+
+function isCleasCase(item) {
+  return (item.tramiteType ?? 'Particular') === 'CLEAS / Terceros / Franquicia';
+}
+
+function isThirdPartyWorkshopCase(item) {
+  return (item.tramiteType ?? 'Particular') === 'Reclamo de Tercero - Taller';
+}
+
+function isInsuranceWorkflowCase(item) {
+  return isTodoRiesgoCase(item) || isCleasCase(item) || isThirdPartyWorkshopCase(item);
+}
+
+function getPrimaryFolderPerson(item) {
+  if (isThirdPartyWorkshopCase(item) && item.thirdParty?.clientRegistry?.isOwner === 'NO') {
+    return item.thirdParty.clientRegistry.owners?.find((owner) => owner.firstName || owner.lastName) || item.customer;
+  }
+
+  return item.customer;
+}
+
+function getFolderDisplayName(item) {
+  const person = getPrimaryFolderPerson(item);
+  return `${person.lastName || ''}, ${person.firstName || ''}`.replace(/^,\s*/, '').trim() || 'Sin titular';
+}
+
+function hasRegistryOwnerIdentity(owner) {
+  return Boolean(owner?.firstName || owner?.lastName || owner?.document);
+}
+
+function isThirdPartyDocumentationIncomplete(item) {
+  return isThirdPartyWorkshopCase(item) && item.thirdParty?.claim?.documentationStatus === 'Incompleta';
+}
+
+function hasResolvedTodoRiskAgenda(item) {
+  return (item.todoRisk?.processing?.agenda ?? []).every((task) => task.resolved);
+}
+
+function hasPendingTodoRiskAgenda(item) {
+  return (item.todoRisk?.processing?.agenda ?? []).some((task) => !task.resolved);
+}
+
+function isTodoRiskDocumentReady(document) {
+  return Boolean(document?.name && document?.uploadedAt);
+}
+
+function isTodoRiskDocumentationComplete(items) {
+  return Boolean(items.length) && items.every(isTodoRiskDocumentReady);
+}
+
+function getTodoRiskPartsAuthorization(parts) {
+  if (!parts.length) return 'Sin repuestos';
+  if (parts.every((part) => part.authorized === 'NO')) return 'Sin repuestos autorizados';
+  const authorizedParts = parts.filter((part) => part.authorized === 'SI');
+
+  if (!authorizedParts.length) return 'Pendiente';
+  if (authorizedParts.length === parts.length) return 'Autorización total';
+  return 'Autorización parcial';
+}
+
+function getTramiteStepperConfig(item) {
+  if (isInsuranceWorkflowCase(item)) {
+    return {
+      items: ['Sin presentar', 'Presentado (PD) o En trámite', 'Acordado', 'Pasado a pagos', 'Pagado', 'Rechazado / Desistido'],
+      activeValue: ['Presentado (PD)', 'En trámite'].includes(item.computed.tramiteStatus)
+        ? 'Presentado (PD) o En trámite'
+        : item.computed.tramiteStatus,
+    };
+  }
+
+  return {
+    items: ['Ingresado', 'Pasado a pagos', 'Pagado'],
+    activeValue: item.computed.tramiteStatus,
+  };
+}
+
+function getRepairStepperConfig(item) {
+  if (isInsuranceWorkflowCase(item)) {
+    return {
+      items: ['En trámite', 'Faltan repuestos / Dar Turno', 'Con Turno', 'Debe reingresar', 'Reparado'],
+      activeValue: ['Faltan repuestos', 'Dar Turno'].includes(item.computed.repairStatus)
+        ? 'Faltan repuestos / Dar Turno'
+        : item.computed.repairStatus,
+    };
+  }
+
+  return {
+    items: ['En trámite', 'Faltan repuestos', 'Dar Turno', 'Con Turno', 'Debe reingresar', 'Reparado'],
+    activeValue: item.computed.repairStatus,
+  };
+}
+
+function getTodoRiskPaymentStatus(expectedDate, paymentDate) {
+  if (!paymentDate) {
+    if (expectedDate && new Date(`${expectedDate}T23:59:59`) < new Date()) {
+      return 'Atrasado';
+    }
+    return 'Pendiente';
+  }
+
+  if (!expectedDate) {
+    return 'Pagado a término';
+  }
+
+  return new Date(`${paymentDate}T12:00:00`) <= new Date(`${expectedDate}T23:59:59`)
+    ? 'Pagado a término'
+    : 'Pagado con mora';
+}
+
+function hasTodoRiskRetentionsDefined(payments) {
+  if (payments.hasRetentions !== 'SI') {
+    return true;
+  }
+
+  return ['iva', 'gains', 'employerContribution', 'iibb', 'drei', 'other'].every((field) => payments.retentions?.[field] !== '');
+}
+
 function getBranchCode(branch) {
   return BRANCHES.find((item) => item.label === branch)?.code ?? 'Z';
+}
+
+function getTramiteCode(type) {
+  if (type === 'Todo Riesgo') return 'T';
+  if (type === 'CLEAS / Terceros / Franquicia') return 'C';
+  if (type === 'Reclamo de Tercero - Taller') return 'R';
+  return 'P';
 }
 
 function getFolderMissing(form) {
@@ -731,6 +1505,55 @@ function buildBudgetParts(lines) {
       replacementDecision: line.replacementDecision,
       amount: line.partPrice || '0',
     }));
+}
+
+function buildThirdPartyBudgetParts(lines, accessoryWorks = []) {
+  const baseParts = buildBudgetParts(lines);
+  const accessoryParts = (accessoryWorks || [])
+    .filter((work) => work.includesReplacement === 'SI' && work.replacementPiece)
+    .map((work) => ({
+      lineId: work.id,
+      name: work.replacementPiece,
+      task: 'REEMPLAZAR',
+      damageLevel: 'Trabajo extra',
+      replacementDecision: 'Debe reemplazarse',
+      amount: work.replacementAmount || work.amount || '0',
+    }));
+
+  return [...baseParts, ...accessoryParts];
+}
+
+function getBestQuoteValue(row) {
+  const values = ['provider1', 'provider2', 'provider3', 'provider4']
+    .map((field) => numberValue(row?.[field]))
+    .filter((value) => value > 0);
+
+  return values.length ? Math.min(...values) : 0;
+}
+
+function getThirdPartyMinimumAmount({ minimumLabor = 0, minimumParts = 0, providerMode = '', hasReplacementParts = false }) {
+  if (providerMode === 'Provee Taller' && hasReplacementParts) {
+    return minimumLabor + minimumParts;
+  }
+
+  return minimumLabor;
+}
+
+function syncThirdPartyQuoteRowsWithBudget(draft) {
+  if (!draft.repair.quoteRows) {
+    draft.repair.quoteRows = [];
+  }
+
+  const budgetParts = buildThirdPartyBudgetParts(draft.budget.lines, draft.budget.accessoryWorks);
+  const existingRows = new Map(draft.repair.quoteRows.map((row) => [row.sourceLineId, row]));
+
+  draft.repair.quoteRows = budgetParts.map((part) => ({
+    ...createRepairQuoteRow({ piece: part.name, source: 'budget', sourceLineId: part.lineId }),
+    ...existingRows.get(part.lineId),
+    piece: part.name,
+    source: 'budget',
+    sourceLineId: part.lineId,
+  }));
 }
 
 function syncRepairPartsWithBudget(draft) {
@@ -833,45 +1656,575 @@ function getComputedCase(item) {
   const turnoEstimatedExit = addBusinessDays(item.repair.turno.date, item.repair.turno.estimatedDays);
   const turnoReady = Boolean(item.repair.turno.date && item.repair.turno.estimatedDays && item.repair.turno.state && turnoEstimatedExit);
   const reentryEstimatedExit = addBusinessDays(item.repair.egreso.reentryDate, item.repair.egreso.reentryEstimatedDays);
-  const repairResolved = item.folderCreated && (item.repair.egreso.shouldReenter === 'NO' || item.repair.egreso.definitiveExit);
+  const hasRepairExitDate = Boolean(item.repair.egreso.date);
+  const repairResolved = item.folderCreated && hasRepairExitDate && (item.repair.egreso.shouldReenter === 'NO' || item.repair.egreso.definitiveExit);
   const estimatedReferenceDate = item.repair.egreso.reentryDate || turnoEstimatedExit || item.repair.egreso.date || item.createdAt;
   const paymentState = balance === 0 ? 'Total' : paidAmount > 0 ? 'Parcial' : 'Pendiente';
+  const settlementMissingCoreData = item.payments.settlements.some(
+    (settlement) => !settlement.amount || !settlement.date || (settlement.kind !== 'Bonificacion' && !settlement.mode),
+  );
+  const isTodoRiesgo = isTodoRiesgoCase(item);
+  const isCleas = isCleasCase(item);
+  const isThirdPartyWorkshop = isThirdPartyWorkshopCase(item);
+  const isInsuranceWorkflow = isTodoRiesgo || isCleas || isThirdPartyWorkshop;
+  const todoRisk = isInsuranceWorkflow ? createTodoRiskDefaults(item.todoRisk || {}) : null;
+  const thirdParty = isThirdPartyWorkshop ? createThirdPartyDefaults(item.thirdParty || {}) : null;
 
-  let tramiteStatus = 'Ingresado';
-  if (item.folderCreated) {
-    tramiteStatus = 'Ingresado';
-  }
-  if (budgetReady && hasReplacementParts && allPartsReceived && !item.repair.turno.date) {
-    tramiteStatus = 'Acordado';
-  }
-  if (budgetReady && !repairResolved && (item.repair.turno.date || item.repair.ingreso.realDate)) {
-    tramiteStatus = 'En trámite';
-  }
-  if (repairResolved && balance > 0) {
-    tramiteStatus = 'Pasado a pagos';
-  }
-  if (repairResolved && balance === 0) {
-    tramiteStatus = 'Pagado';
+  if (isThirdPartyWorkshop) {
+    const incidentDate = todoRisk?.incident?.date || '';
+    const prescriptionDate = addYears(incidentDate, 3);
+    const presentedDate = thirdParty.claim.presentedDate;
+    const daysProcessing = diffDaysFromToday(presentedDate);
+    const quoteRows = item.repair.quoteRows || [];
+    const subtotalBestQuote = quoteRows.reduce((sum, row) => sum + getBestQuoteValue(row), 0);
+    const replacementSources = buildThirdPartyBudgetParts(item.budget.lines, item.budget.accessoryWorks);
+    const hasReplacementPartsForClaim = replacementSources.length > 0;
+    const totalFinalParts = item.repair.parts.reduce((sum, part) => sum + numberValue(part.amount), 0);
+    const providerMode = thirdParty.claim.partsProviderMode;
+    const documentationComplete = thirdParty.claim.documentationStatus === 'Completa';
+    const invoiceAmount = numberValue(item.payments.invoices?.[0]?.amount || 0);
+    const agreedAmount = numberValue(todoRisk?.processing?.agreedAmount || 0);
+    const minimumLabor = numberValue(item.budget.minimumLaborClose);
+    const minimumParts = subtotalBestQuote;
+    const applicableMinimum = getThirdPartyMinimumAmount({
+      minimumLabor,
+      minimumParts,
+      providerMode,
+      hasReplacementParts: hasReplacementPartsForClaim,
+    });
+    const amountToInvoice = numberValue(item.payments.depositedAmount || invoiceAmount || agreedAmount || 0);
+    const amountMeetsMinimum = !applicableMinimum || amountToInvoice >= applicableMinimum;
+    const finalInFavorTaller = providerMode === 'Provee Taller' && hasReplacementPartsForClaim
+      ? amountToInvoice - totalFinalParts
+      : amountToInvoice;
+    const extraWorksTotal = (item.budget.accessoryWorks || []).reduce((sum, work) => sum + numberValue(work.amount), 0);
+    const clientPaymentsTotal = (thirdParty.payments.clientPayments || []).reduce((sum, payment) => sum + numberValue(payment.amount), 0);
+    const clientExtrasBalance = Math.max(extraWorksTotal - clientPaymentsTotal, 0);
+    const companyPaymentReady = Boolean(item.payments.paymentDate && numberValue(item.payments.depositedAmount) > 0);
+    const paymentsReady = companyPaymentReady;
+    const paymentStatus = paymentsReady ? 'Pagado' : companyPaymentReady || clientPaymentsTotal > 0 ? 'Parcial' : 'Pendiente';
+    const primaryRegistryOwner = thirdParty.clientRegistry.owners?.[0];
+    const hasPrimaryRegistryOwner = thirdParty.clientRegistry.isOwner === 'SI' || hasRegistryOwnerIdentity(primaryRegistryOwner);
+    const hasThirdParties = thirdParty.claim.thirdParties.length > 0;
+    const managementAdvanced = Boolean(incidentDate && presentedDate && hasThirdParties);
+    const latestPaymentDate = maxDate(item.payments.paymentDate, (thirdParty.payments.clientPayments || []).reduce((latest, payment) => maxDate(latest, payment.date), ''));
+    const allPartsReceived = item.repair.parts.every((part) => part.state === 'Recibido');
+
+    let repairStatus = 'En trámite';
+    if (repairResolved) {
+      repairStatus = 'Reparado';
+    } else if (item.repair.egreso.shouldReenter === 'SI' && item.repair.egreso.date) {
+      repairStatus = 'Debe reingresar';
+    } else if (item.repair.turno.date) {
+      repairStatus = 'Con Turno';
+    }
+
+    let tramiteStatus = 'Sin presentar';
+    if (presentedDate) {
+      tramiteStatus = documentationComplete ? 'En trámite' : 'Presentado (PD)';
+    }
+    if (item.payments.passedToPaymentsDate && !paymentsReady) {
+      tramiteStatus = 'Pasado a pagos';
+    }
+    if (paymentsReady) {
+      tramiteStatus = 'Pagado';
+    }
+
+    const closeReady = repairResolved && paymentsReady;
+    const closeDate = closeReady ? maxDate(item.repair.egreso.date || item.repair.egreso.reentryDate, latestPaymentDate) : '';
+    const adminAlerts = [];
+    if (amountToInvoice > 0 && !amountMeetsMinimum) {
+      adminAlerts.push(`Aviso demo admin: la cotización acordada ${money(amountToInvoice)} quedó por debajo del mínimo ${money(applicableMinimum)}.`);
+    }
+    const blockers = [];
+    if (!item.folderCreated) blockers.push('No hay carpeta generada para iniciar el reclamo de tercero.');
+    if (!incidentDate) blockers.push('Falta fecha del siniestro para calcular la prescripción a 3 años.');
+    if (!hasThirdParties) blockers.push('Cargá al menos un tercero en Datos del siniestro.');
+    if (!hasPrimaryRegistryOwner) blockers.push('Si el cliente no es titular, falta cargar el titular registral principal.');
+    if (!documentationComplete) blockers.push('La documentación sigue incompleta y dispara aviso bloqueante al entrar.');
+    if (!presentedDate) blockers.push('Falta fecha de presentación básica del trámite.');
+    if (!amountMeetsMinimum && amountToInvoice > 0) blockers.push('La cotización acordada quedó por debajo del mínimo correspondiente y requiere aviso al admin.');
+
+    return {
+      ...item,
+      thirdParty,
+      todoRisk: createTodoRiskDefaults(item.todoRisk || {}),
+      computed: {
+        budgetParts: replacementSources,
+        partsTotal,
+        repairPartsTotal: totalFinalParts,
+        laborWithoutVat,
+        laborVat,
+        laborWithVat,
+        budgetTotalWithVat,
+        totalQuoted,
+        paidAmount: numberValue(item.payments.depositedAmount),
+        balance: Math.max(amountToInvoice - numberValue(item.payments.depositedAmount), 0),
+        totalRetentions: Object.values(item.payments.retentions || {}).reduce((sum, value) => sum + numberValue(value), 0),
+        paymentState: paymentStatus,
+        canGenerateBudget,
+        budgetReady,
+        hasReplacementParts: hasReplacementPartsForClaim,
+        allPartsReceived,
+        partsStatus: item.repair.parts.length ? (allPartsReceived ? 'Recibido' : 'Pendiente') : 'Sin repuestos',
+        budgetServices,
+        ingresoItems,
+        turnoEstimatedExit,
+        turnoReady,
+        reentryEstimatedExit,
+        estimatedReferenceDate: item.payments.estimatedPaymentDate || item.repair.turno.date || item.createdAt,
+        repairResolved,
+        closeReady,
+        closeDate,
+        tramiteStatus,
+        repairStatus,
+        blockers,
+        pendingTasksCount: blockers.length,
+        urgency: blockers.length,
+        reportClosed,
+        hasVehicleData,
+        vehicleMissingFields,
+        pendingReplacementDecision,
+        todoRisk: {
+          prescriptionDate,
+          daysProcessing,
+          quoteAgreed: amountToInvoice > 0,
+          minimumClosingAmount: applicableMinimum,
+          amountMeetsMinimum,
+          documentationComplete,
+          amountToInvoice,
+          paymentStatus,
+          managementAdvanced,
+          hasPendingAgenda: false,
+          canProgressFromPresentation: Boolean(presentedDate),
+          canCompleteProcessingCore: Boolean(incidentDate),
+          paymentsReady,
+          noRepairNeeded: false,
+          pendingPartsAuthorization: false,
+        },
+        thirdParty: {
+          subtotalBestQuote,
+          minimumLabor,
+          minimumParts,
+          applicableMinimum,
+          amountMeetsMinimum,
+          providerMode,
+          totalFinalParts,
+          finalInFavorTaller,
+          amountToInvoice,
+          extraWorksTotal,
+          clientPaymentsTotal,
+          clientExtrasBalance,
+          clientExtrasReady: extraWorksTotal === 0 || clientExtrasBalance === 0,
+          adminAlerts,
+        },
+        tabs: {
+          ficha: hasPrimaryRegistryOwner ? 'resolved' : item.folderCreated ? 'advanced' : 'pending',
+          tramite: managementAdvanced ? 'resolved' : 'advanced',
+          presupuesto: budgetReady ? 'resolved' : reportClosed || canGenerateBudget ? 'advanced' : 'pending',
+          documentacion: documentationComplete ? 'resolved' : thirdParty.claim.documents.length ? 'advanced' : 'pending',
+          gestion: repairResolved ? 'resolved' : item.repair.turno.date || item.repair.parts.length ? 'advanced' : 'pending',
+          pagos: paymentsReady ? 'resolved' : item.payments.invoiceNumber || item.payments.paymentDate ? 'advanced' : 'pending',
+        },
+      },
+    };
   }
 
-  let repairStatus = item.folderCreated ? 'En trámite' : 'En trámite';
-  if (item.folderCreated && item.payments.comprobante) {
-    repairStatus = 'Dar Turno';
+  if (isInsuranceWorkflow) {
+    if (isCleas) {
+      const incidentDate = todoRisk.incident.date;
+      const prescriptionDate = addYears(incidentDate, 1);
+      const presentedDate = todoRisk.processing.presentedDate;
+      const daysProcessing = diffDaysFromToday(presentedDate);
+      const cleasScope = todoRisk.processing.cleasScope;
+      const dictamen = todoRisk.processing.dictamen || 'Pendiente';
+      const quoteStatus = todoRisk.processing.quoteStatus;
+      const quoteAgreed = quoteStatus === 'Acordada' && todoRisk.processing.quoteDate && numberValue(todoRisk.processing.agreedAmount) > 0;
+      const minimumClosingAmount = numberValue(item.budget.minimumLaborClose);
+      const agreedAmount = numberValue(todoRisk.processing.agreedAmount);
+      const amountMeetsMinimum = !minimumClosingAmount || agreedAmount >= minimumClosingAmount;
+      const documentationComplete = isTodoRiskDocumentationComplete(todoRisk.documentation.items);
+      const todoRiskBudgetParts = item.repair.parts.filter((part) => part.source === 'budget');
+      const allBudgetPartsReceived = todoRiskBudgetParts.length
+        ? todoRiskBudgetParts.every((part) => part.state === 'Recibido')
+        : true;
+      const hasScheduledTurn = Boolean(item.repair.turno.date);
+      const isDamageTotal = cleasScope === 'Sobre daño total';
+      const isFranchiseFlow = cleasScope === 'Sobre franquicia';
+      const dictamenPending = dictamen === 'Pendiente';
+      const dictamenAgainst = dictamen === 'En contra';
+      const dictamenFavorable = dictamen === 'A favor';
+      const dictamenShared = dictamen === 'Culpa compartida';
+      const noRepairNeeded = Boolean(isDamageTotal && dictamenAgainst);
+      const franchiseAmount = numberValue(todoRisk.processing.franchiseAmount || todoRisk.franchise.amount);
+      const clientChargeDefined = todoRisk.processing.clientChargeAmount !== '';
+      const clientChargeSeed = numberValue(todoRisk.processing.clientChargeAmount);
+      const clientChargeAmount = isFranchiseFlow && dictamenAgainst && clientChargeDefined
+        ? Math.min(clientChargeSeed, agreedAmount)
+        : 0;
+      const companyFranchisePaymentAmount = isFranchiseFlow && dictamenAgainst && clientChargeDefined
+        ? Math.max(franchiseAmount - clientChargeAmount, 0)
+        : 0;
+      const amountToInvoice = dictamenFavorable
+        ? agreedAmount
+        : dictamenShared
+          ? Math.round(agreedAmount * 0.5)
+          : isFranchiseFlow && dictamenAgainst
+            ? (clientChargeDefined ? Math.max(agreedAmount - clientChargeAmount, 0) : 0)
+            : 0;
+      const clientPaymentReady = !isFranchiseFlow || !dictamenAgainst
+        ? true
+        : Boolean(clientChargeDefined && (!clientChargeAmount || (todoRisk.processing.clientChargeDate && todoRisk.processing.clientChargeStatus === 'Cancelado')));
+      const retentionsReady = hasTodoRiskRetentionsDefined(item.payments);
+      const paymentStatus = getTodoRiskPaymentStatus(item.payments.estimatedPaymentDate, item.payments.paymentDate);
+      const paymentsReady = noRepairNeeded
+        ? true
+        : Boolean(item.payments.paymentDate && numberValue(item.payments.depositedAmount) > 0 && retentionsReady && clientPaymentReady);
+      const managementAdvanced = noRepairNeeded
+        ? true
+        : Boolean(!dictamenPending && quoteAgreed && amountMeetsMinimum && documentationComplete);
+      const canCompleteProcessingCore = Boolean(incidentDate && cleasScope);
+      const canProgressFromPresentation = Boolean(presentedDate && !dictamenPending);
+      const latestPaymentDate = item.payments.paymentDate || item.payments.passedToPaymentsDate || item.payments.estimatedPaymentDate;
+
+      let repairStatus = 'En trámite';
+      if (noRepairNeeded) {
+        repairStatus = 'No debe repararse';
+      } else if (repairResolved) {
+        repairStatus = 'Reparado';
+      } else if (item.repair.egreso.shouldReenter === 'SI' && item.repair.egreso.date) {
+        repairStatus = 'Debe reingresar';
+      } else if (hasScheduledTurn) {
+        repairStatus = 'Con Turno';
+      } else if (quoteAgreed && hasReplacementParts && !allBudgetPartsReceived) {
+        repairStatus = 'Faltan repuestos';
+      } else if (quoteAgreed) {
+        repairStatus = 'Dar Turno';
+      }
+
+      let tramiteStatus = 'Sin presentar';
+      if (presentedDate) {
+        tramiteStatus = documentationComplete ? 'En trámite' : 'Presentado (PD)';
+      }
+      if (noRepairNeeded) {
+        tramiteStatus = 'Rechazado / Desistido';
+      } else if (quoteAgreed) {
+        tramiteStatus = 'Acordado';
+      }
+      if (!noRepairNeeded && item.payments.passedToPaymentsDate && !item.payments.paymentDate) {
+        tramiteStatus = 'Pasado a pagos';
+      }
+      if (!noRepairNeeded && item.payments.paymentDate) {
+        tramiteStatus = 'Pagado';
+      }
+
+      const closeReady = noRepairNeeded || (repairResolved && paymentsReady);
+      const closeDate = closeReady
+        ? maxDate(item.repair.egreso.date || item.repair.egreso.reentryDate || presentedDate, latestPaymentDate)
+        : '';
+      const blockers = [];
+
+      if (!item.folderCreated) blockers.push('No hay carpeta generada para iniciar el flujo CLEAS.');
+      if (!incidentDate) blockers.push('Falta fecha del siniestro para calcular prescripción y abrir la secuencia CLEAS.');
+      if (!cleasScope) blockers.push('Definí CLEAS sobre franquicia o sobre daño total antes de avanzar.');
+      if (!presentedDate && (todoRisk.processing.derivedToInspectionDate || todoRisk.processing.quoteDate || todoRisk.processing.agreedAmount)) blockers.push('La fecha de presentación sigue siendo obligatoria para inspección, cotización y pagos.');
+      if (!documentationComplete) blockers.push('Completá la documentación base antes de cerrar Gestión del trámite.');
+      if (dictamenPending) blockers.push('Con dictamen pendiente se muestra el flujo, pero no se habilita avance operativo.');
+      if (!budgetReady) blockers.push(reportClosed ? 'Presupuesto listo pero falta generar el documento final antes de reparación.' : 'Presupuesto incompleto o en rojo: Gestión reparación permanece bloqueada.');
+      if (item.budget.lines.length && incompleteBudgetLine) blockers.push('Hay líneas de presupuesto incompletas y eso frena el flujo operativo.');
+      if (pendingReplacementDecision) blockers.push('Cada línea REEMPLAZAR debe cerrar su decisión interna antes de seguir.');
+      if (!canGenerateBudget) blockers.push('No se puede generar presupuesto hasta cerrar informe, vehículo y mano de obra.');
+      if (!item.budget.authorizer) blockers.push('Falta autorizante del presupuesto.');
+      if (!amountMeetsMinimum && quoteAgreed) blockers.push('El monto acordado no alcanza el mínimo para cierre definido en Presupuesto.');
+      if (isFranchiseFlow && !franchiseAmount) blockers.push('CLEAS sobre franquicia necesita monto de franquicia para facturación y pagos.');
+      if (isFranchiseFlow && dictamenAgainst && !clientChargeDefined) blockers.push('CLEAS sobre franquicia con dictamen en contra exige definir manualmente el monto a cargo del cliente antes de derivar facturación.');
+      if (isDamageTotal && dictamenAgainst) blockers.push('Caso especial CLEAS: en daño total con dictamen en contra no sigue reparación normal y se cierra directo.');
+      if (!noRepairNeeded && !managementAdvanced) blockers.push('Gestión del trámite sigue abierta hasta cerrar documentación, dictamen y cotización.');
+      if (isFranchiseFlow && dictamenAgainst && clientChargeAmount && !clientPaymentReady) blockers.push('Falta registrar el pago a cargo del cliente para cerrar el camino mixto de CLEAS.');
+      if (!closeReady) blockers.push('El caso CLEAS cierra cuando termina la reparación y pagos, salvo daño total en contra que se corta directo.');
+
+      let urgency = 0;
+      if (!incidentDate) urgency += 5;
+      if (!cleasScope) urgency += 4;
+      if (dictamenPending) urgency += 4;
+      if (!budgetReady) urgency += 4;
+      if (!managementAdvanced) urgency += 3;
+      if (!paymentsReady && !noRepairNeeded) urgency += 2;
+
+      return {
+        ...item,
+        todoRisk,
+        computed: {
+          budgetParts,
+          partsTotal,
+          repairPartsTotal,
+          laborWithoutVat,
+          laborVat,
+          laborWithVat,
+          budgetTotalWithVat,
+          totalQuoted,
+          paidAmount: numberValue(item.payments.depositedAmount),
+          balance: Math.max(amountToInvoice - numberValue(item.payments.depositedAmount), 0),
+          totalRetentions: Object.values(item.payments.retentions || {}).reduce((sum, value) => sum + numberValue(value), 0),
+          paymentState: paymentsReady ? 'Pagado' : numberValue(item.payments.depositedAmount) > 0 ? 'Parcial' : 'Pendiente',
+          canGenerateBudget,
+          budgetReady,
+          hasReplacementParts,
+          allPartsReceived: allBudgetPartsReceived,
+          partsStatus: hasReplacementParts ? (allBudgetPartsReceived ? 'Recibido' : 'Pendiente') : 'Sin repuestos',
+          budgetServices,
+          ingresoItems,
+          turnoEstimatedExit,
+          turnoReady,
+          reentryEstimatedExit,
+          estimatedReferenceDate: item.payments.estimatedPaymentDate || item.repair.turno.date || item.createdAt,
+          repairResolved,
+          closeReady,
+          closeDate,
+          tramiteStatus,
+          repairStatus,
+          blockers,
+          pendingTasksCount: blockers.length,
+          urgency,
+          reportClosed,
+          hasVehicleData,
+          vehicleMissingFields,
+          pendingReplacementDecision,
+          todoRisk: {
+            isCleas: true,
+            prescriptionDate,
+            daysProcessing,
+            quoteAgreed,
+            minimumClosingAmount,
+            amountMeetsMinimum,
+            documentationComplete,
+            amountToInvoice,
+            paymentStatus,
+            managementAdvanced,
+            hasPendingAgenda: false,
+            canProgressFromPresentation,
+            canCompleteProcessingCore,
+            paymentsReady,
+            noRepairNeeded,
+            pendingPartsAuthorization: false,
+            cleasScope,
+            dictamen,
+            franchiseAmount,
+            clientChargeDefined,
+            clientChargeAmount,
+            companyFranchisePaymentAmount,
+            clientPaymentReady,
+          },
+          tabs: {
+            ficha: item.folderCreated ? 'advanced' : 'pending',
+            tramite: managementAdvanced || noRepairNeeded ? 'advanced' : 'pending',
+            presupuesto: budgetReady ? 'resolved' : reportClosed || canGenerateBudget ? 'advanced' : 'pending',
+            gestion: repairResolved || noRepairNeeded ? 'resolved' : budgetReady ? 'advanced' : 'pending',
+            pagos: paymentsReady ? 'resolved' : amountToInvoice > 0 || clientChargeAmount > 0 ? 'advanced' : 'pending',
+          },
+        },
+      };
+    }
+
+    const incidentDate = todoRisk.incident.date;
+    const prescriptionDate = addYears(incidentDate, 1);
+    const presentedDate = todoRisk.processing.presentedDate;
+    const daysProcessing = diffDaysFromToday(presentedDate);
+    const hasRecoveryType = Boolean(todoRisk.franchise.recoveryType);
+    const quoteStatus = todoRisk.processing.quoteStatus;
+    const quoteAgreed = quoteStatus === 'Acordada' && todoRisk.processing.quoteDate && numberValue(todoRisk.processing.agreedAmount) > 0;
+    const minimumClosingAmount = numberValue(item.budget.minimumLaborClose);
+    const agreedAmount = numberValue(todoRisk.processing.agreedAmount);
+    const amountMeetsMinimum = !minimumClosingAmount || agreedAmount >= minimumClosingAmount;
+    const hasPendingAgenda = hasPendingTodoRiskAgenda({ todoRisk });
+    const resolvedAgenda = hasResolvedTodoRiskAgenda({ todoRisk });
+    const documentationComplete = isTodoRiskDocumentationComplete(todoRisk.documentation.items);
+    const todoRiskBudgetParts = item.repair.parts.filter((part) => part.source === 'budget');
+    const authorizedParts = todoRiskBudgetParts.filter((part) => part.authorized === 'SI');
+    const hasAuthorizedPendingParts = authorizedParts.some((part) => part.state !== 'Recibido');
+    const hasAuthorizedParts = authorizedParts.length > 0;
+    const hasPartsAuthorizationDefined = todoRiskBudgetParts.every((part) => part.authorized === 'SI' || part.authorized === 'NO');
+    const allAuthorizedPartsReceived = authorizedParts.length ? authorizedParts.every((part) => part.state === 'Recibido') : false;
+    const noPartsNeeded = !budgetParts.length;
+    const allPartsDenied = todoRiskBudgetParts.length > 0 && todoRiskBudgetParts.every((part) => part.authorized === 'NO');
+    const pendingPartsAuthorization = todoRiskBudgetParts.some((part) => !part.authorized);
+    const operativePartsReady = noPartsNeeded || allPartsDenied || allAuthorizedPartsReceived;
+    const partsAuthorization = getTodoRiskPartsAuthorization(todoRiskBudgetParts);
+    const shouldInvoiceFullAmount = todoRisk.franchise.recoveryType === 'Propia Cía.';
+    const franchiseAmount = numberValue(todoRisk.franchise.amount);
+    const amountToInvoice = Math.max(shouldInvoiceFullAmount ? agreedAmount : agreedAmount - franchiseAmount, 0);
+    const paymentStatus = getTodoRiskPaymentStatus(item.payments.estimatedPaymentDate, item.payments.paymentDate);
+    const retentionsReady = hasTodoRiskRetentionsDefined(item.payments);
+    const franchiseReadyForPayments = todoRisk.franchise.status !== 'Pendiente';
+    const paymentsReady = Boolean(item.payments.paymentDate && numberValue(item.payments.depositedAmount) > 0 && retentionsReady && franchiseReadyForPayments);
+    const managementAdvanced = Boolean(operativePartsReady && quoteAgreed && amountMeetsMinimum && resolvedAgenda);
+    const canProgressFromPresentation = Boolean(presentedDate);
+    const canCompleteProcessingCore = Boolean(incidentDate && hasRecoveryType);
+    const latestPaymentDate = item.payments.paymentDate || item.payments.passedToPaymentsDate || item.payments.estimatedPaymentDate;
+    const noRepairNeeded = todoRisk.processing.noRepairNeeded;
+
+    const hasScheduledTurn = Boolean(item.repair.turno.date);
+
+    // Prioridad Todo Riesgo: No debe repararse > Reparado > Debe reingresar > Con Turno > Faltan repuestos > Dar Turno > En trámite.
+    let repairStatus = 'En trámite';
+    if (noRepairNeeded) {
+      repairStatus = 'No debe repararse';
+    } else if (repairResolved) {
+      repairStatus = 'Reparado';
+    } else if (item.repair.egreso.shouldReenter === 'SI' && item.repair.egreso.date) {
+      repairStatus = 'Debe reingresar';
+    } else if (hasScheduledTurn) {
+      repairStatus = 'Con Turno';
+    } else if (quoteAgreed && hasAuthorizedPendingParts) {
+      repairStatus = 'Faltan repuestos';
+    } else if (quoteAgreed && (!hasAuthorizedParts || !hasAuthorizedPendingParts) && (noPartsNeeded || allPartsDenied || hasPartsAuthorizationDefined)) {
+      repairStatus = 'Dar Turno';
+    }
+
+    // Prioridad Todo Riesgo: Pagado > Pasado a pagos > Acordado > En trámite > Presentado (PD) > Sin presentar.
+    let tramiteStatus = 'Sin presentar';
+    if (presentedDate) {
+      tramiteStatus = documentationComplete ? 'En trámite' : 'Presentado (PD)';
+    }
+    if (quoteAgreed) {
+      tramiteStatus = 'Acordado';
+    }
+    if (item.payments.passedToPaymentsDate && !item.payments.paymentDate) {
+      tramiteStatus = 'Pasado a pagos';
+    }
+    if (item.payments.paymentDate) {
+      tramiteStatus = 'Pagado';
+    }
+
+    const closeReady = noRepairNeeded || (repairResolved && paymentsReady);
+    const closeDate = closeReady ? maxDate(item.repair.egreso.date || item.repair.egreso.reentryDate, latestPaymentDate) : '';
+    const blockers = [];
+
+    if (!item.folderCreated) blockers.push('No hay carpeta generada para iniciar el flujo de Todo Riesgo.');
+    if (!incidentDate) blockers.push('Falta fecha del siniestro: sin ese dato no corre la prescripción ni se habilitan avances.');
+    if (!hasRecoveryType) blockers.push('Completá recupero en Franquicia antes de cargar fecha de presentación o avanzar en tramitación.');
+    if (!presentedDate && (todoRisk.processing.derivedToInspectionDate || todoRisk.processing.quoteDate || todoRisk.processing.agreedAmount)) blockers.push('La fecha de presentación es obligatoria para derivación, cotización y montos acordados.');
+    if (!amountMeetsMinimum && quoteAgreed) blockers.push('El monto acordado no alcanza el mínimo para cierre definido en Presupuesto.');
+    if (!budgetReady) blockers.push(reportClosed ? 'Presupuesto listo pero falta generar el documento final antes de reparación.' : 'Presupuesto incompleto o en rojo: Gestión reparación permanece bloqueada.');
+    if (item.budget.lines.length && incompleteBudgetLine) blockers.push('Hay líneas de presupuesto incompletas y eso frena el flujo operativo.');
+    if (pendingReplacementDecision) blockers.push('Cada línea REEMPLAZAR debe cerrar su decisión interna antes de seguir.');
+    if (!canGenerateBudget) blockers.push('No se puede generar presupuesto hasta cerrar informe, vehículo y mano de obra.');
+    if (!item.budget.authorizer) blockers.push('Falta autorizante del presupuesto.');
+    if (todoRisk.franchise.recoveryType === 'Cía. del 3ero' && !todoRisk.franchise.associatedCase) blockers.push('Recupero por Cía. del 3ero exige Caso asociado.');
+    if (todoRisk.franchise.recoveryType === 'Propia Cía.' && !todoRisk.franchise.dictamen) blockers.push('Recupero por Propia Cía. exige Dictamen.');
+    if (todoRisk.franchise.exceedsFranchise === 'NO' && !todoRisk.franchise.recoveryAmount) blockers.push('Si la cotización no supera franquicia, cargá el monto a recuperar.');
+    if (pendingPartsAuthorization && canProgressFromPresentation) blockers.push('Definí autorización SI/NO de cada repuesto antes de cerrar Gestión del trámite.');
+    if (!managementAdvanced) blockers.push('Gestión del trámite sigue en rojo hasta acordar cotización, resolver agenda y recibir repuestos requeridos o marcar que no aplican.');
+    if (!noRepairNeeded && !quoteAgreed) blockers.push('No podés dar turno sin cotización acordada con fecha y monto.');
+    if (item.payments.invoice === 'SI' && (!item.payments.businessName || !item.payments.invoiceNumber)) blockers.push('Facturación en SI exige razón social y número principal.');
+    if (item.payments.hasRetentions === 'SI' && !retentionsReady) blockers.push('Si hay retenciones, deben quedar todas definidas antes de cerrar Pagos.');
+    if (!franchiseReadyForPayments) blockers.push('Pagos no cierra mientras la franquicia siga pendiente.');
+    if (!closeReady) blockers.push('El caso Todo Riesgo cierra con pago listo y reparación resuelta, salvo No debe repararse.');
+
+    let urgency = 0;
+    if (!incidentDate) urgency += 5;
+    if (!hasRecoveryType) urgency += 4;
+    if (!budgetReady) urgency += 4;
+    if (!managementAdvanced) urgency += 3;
+    if (!paymentsReady) urgency += 2;
+
+    return {
+      ...item,
+      todoRisk,
+      computed: {
+        budgetParts,
+        partsTotal,
+        repairPartsTotal,
+        laborWithoutVat,
+        laborVat,
+        laborWithVat,
+        budgetTotalWithVat,
+        totalQuoted,
+        paidAmount: numberValue(item.payments.depositedAmount),
+        balance: Math.max(amountToInvoice - numberValue(item.payments.depositedAmount), 0),
+        totalRetentions: Object.values(item.payments.retentions || {}).reduce((sum, value) => sum + numberValue(value), 0),
+        paymentState: paymentStatus,
+        canGenerateBudget,
+        budgetReady,
+        hasReplacementParts,
+        allPartsReceived: operativePartsReady,
+        partsStatus: noPartsNeeded || allPartsDenied ? 'Sin repuestos' : allAuthorizedPartsReceived ? 'Recibido' : 'Pendiente',
+        budgetServices,
+        ingresoItems,
+        turnoEstimatedExit,
+        turnoReady,
+        reentryEstimatedExit,
+        estimatedReferenceDate: item.payments.estimatedPaymentDate || item.repair.turno.date || item.createdAt,
+        repairResolved,
+        closeReady,
+        closeDate,
+        tramiteStatus,
+        repairStatus,
+        blockers,
+        pendingTasksCount: blockers.length,
+        urgency,
+        reportClosed,
+        hasVehicleData,
+        vehicleMissingFields,
+        pendingReplacementDecision,
+        todoRisk: {
+          prescriptionDate,
+          daysProcessing,
+          quoteAgreed,
+          minimumClosingAmount,
+          amountMeetsMinimum,
+          documentationComplete,
+          partsAuthorization,
+          amountToInvoice,
+          paymentStatus,
+          managementAdvanced,
+          hasPendingAgenda,
+          canProgressFromPresentation,
+          canCompleteProcessingCore,
+          paymentsReady,
+          noRepairNeeded,
+          pendingPartsAuthorization,
+        },
+        tabs: {
+          ficha: item.folderCreated ? 'advanced' : 'pending',
+          tramite: managementAdvanced ? 'advanced' : 'pending',
+          presupuesto: budgetReady ? 'resolved' : reportClosed || canGenerateBudget ? 'advanced' : 'pending',
+          gestion: repairResolved || noRepairNeeded ? 'resolved' : 'pending',
+          pagos: paymentsReady ? 'resolved' : item.payments.passedToPaymentsDate || item.payments.invoice === 'SI' ? 'advanced' : 'pending',
+        },
+      },
+    };
   }
-  if (budgetReady && hasReplacementParts && !allPartsReceived) {
-    repairStatus = 'Faltan repuestos';
-  }
-  if (budgetReady && !hasReplacementParts) {
-    repairStatus = 'No debe repararse';
-  }
-  if (budgetReady && item.repair.turno.date) {
+
+  // Prioridad Particular: Reparado > Debe reingresar > Con Turno > Faltan repuestos > Dar Turno > En trámite.
+  let repairStatus = 'En trámite';
+  const hasSelectedComprobante = Boolean(item.payments.comprobante);
+  const hasTotalSettlement = item.payments.settlements.some((settlement) => settlement.kind === 'Total');
+
+  if (budgetReady && turnoReady) {
     repairStatus = 'Con Turno';
+  } else if (budgetReady && hasReplacementParts && !allPartsReceived) {
+    repairStatus = 'Faltan repuestos';
+  } else if (budgetReady && hasSelectedComprobante) {
+    repairStatus = 'Dar Turno';
   }
   if (item.repair.egreso.shouldReenter === 'SI' && item.repair.egreso.date) {
     repairStatus = 'Debe reingresar';
   }
   if (repairResolved) {
     repairStatus = 'Reparado';
+  }
+
+  // Prioridad Particular: Pagado > Pasado a pagos > Ingresado.
+  let tramiteStatus = 'Ingresado';
+  if (item.folderCreated) {
+    tramiteStatus = 'Ingresado';
+  }
+  if (repairStatus === 'Reparado' && balance > 0) {
+    tramiteStatus = 'Pasado a pagos';
+  }
+  if (hasTotalSettlement && balance === 0) {
+    tramiteStatus = 'Pagado';
   }
 
   const closeReady = repairResolved && balance === 0;
@@ -915,6 +2268,9 @@ function getComputedCase(item) {
   if (item.payments.hasSena === 'SI' && (!item.payments.senaAmount || !item.payments.senaDate || !item.payments.senaMode)) {
     blockers.push('Seña en SI exige monto, fecha y modo de pago.');
   }
+  if (settlementMissingCoreData) {
+    blockers.push('Cada cancelación exige monto y fecha; además modo de pago salvo que sea bonificación.');
+  }
   if (item.payments.senaMode === 'Otro' && !item.payments.senaModeDetail) {
     blockers.push('Modo de pago Otro exige detalle.');
   }
@@ -939,7 +2295,7 @@ function getComputedCase(item) {
   if (hasReplacementParts && !allPartsReceived) urgency += 2;
 
   const presupuestoTabState = budgetReady ? 'resolved' : reportClosed || canGenerateBudget ? 'advanced' : 'pending';
-  const gestionTabState = repairResolved ? 'resolved' : reportClosed ? 'advanced' : 'pending';
+  const gestionTabState = repairResolved ? 'resolved' : budgetReady ? 'advanced' : 'pending';
 
   return {
     ...item,
@@ -1001,6 +2357,42 @@ function TabButton({ active, state, children, onClick }) {
   );
 }
 
+function StatusStepper({ label, items, activeValue }) {
+  return (
+    <div className="status-stepper">
+      <span>{label}</span>
+      <div className="status-stepper-row">
+        {items.map((entry) => (
+          <button className={`status-step ${activeValue === entry ? 'is-active' : ''}`} disabled key={entry} type="button">
+            {entry}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StatusActionBar({ label, actions, onSelect }) {
+  return (
+    <div className="status-stepper">
+      <span>{label}</span>
+      <div className="status-stepper-row">
+        {actions.map((action) => (
+          <button
+            className={`status-step ${action.active ? 'is-active' : ''}`}
+            disabled={action.disabled}
+            key={action.label}
+            onClick={() => onSelect(action)}
+            type="button"
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function FieldLabel({ label, required = false }) {
   return (
     <span>
@@ -1010,16 +2402,16 @@ function FieldLabel({ label, required = false }) {
   );
 }
 
-function DataField({ label, value, onChange, type = 'text', placeholder = '', required = false, invalid = false, readOnly = false, inputMode, highlighted = false }) {
+function DataField({ label, value, onChange, type = 'text', placeholder = '', required = false, invalid = false, readOnly = false, disabled = false, inputMode, highlighted = false }) {
   return (
     <label className={`field ${invalid ? 'is-invalid' : ''} ${highlighted ? 'is-autofilled' : ''}`}>
       <FieldLabel label={label} required={required} />
-      <input inputMode={inputMode} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} readOnly={readOnly} type={type} value={value} />
+      <input disabled={disabled} inputMode={inputMode} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} readOnly={readOnly} type={type} value={value} />
     </label>
   );
 }
 
-function SelectField({ label, value, onChange, options, required = false, invalid = false, highlighted = false, placeholder = '' }) {
+function SelectField({ label, value, onChange, options, required = false, invalid = false, highlighted = false, placeholder = '', disabled = false }) {
   const normalizedOptions = options
     .map((option) => (typeof option === 'string' ? { value: option, label: option || '—' } : option))
     .filter((option) => !(placeholder && (option.value ?? option.label) === ''));
@@ -1028,7 +2420,7 @@ function SelectField({ label, value, onChange, options, required = false, invali
   return (
     <label className={`field ${invalid ? 'is-invalid' : ''} ${highlighted ? 'is-autofilled' : ''}`}>
       <FieldLabel label={label} required={required} />
-      <select onChange={(event) => onChange(event.target.value)} value={resolvedValue}>
+      <select disabled={disabled} onChange={(event) => onChange(event.target.value)} value={resolvedValue}>
         {placeholder ? (
           <option value="">
             {placeholder}
@@ -1052,8 +2444,8 @@ function ToggleField(props) {
 }
 
 function getStatusTone(status) {
-  if (['Pagado', 'Reparado'].includes(status)) return 'success';
-  if (['Pasado a pagos', 'Con Turno', 'En trámite', 'Acordado', 'Recibido', 'Parcial'].includes(status)) return 'info';
+  if (['Pagado', 'Reparado', 'Pagado a término', 'Autorización total'].includes(status)) return 'success';
+  if (['Pasado a pagos', 'Con Turno', 'En trámite', 'Acordado', 'Recibido', 'Parcial', 'Presentado (PD)', 'Autorización parcial'].includes(status)) return 'info';
   return 'danger';
 }
 
@@ -1247,6 +2639,52 @@ function getCaseRouteFromHash(hash) {
   };
 }
 
+function resolveGestionAccess(item, target = {}) {
+  const requestedTab = CASE_TABS.includes(target.tab) ? target.tab : 'ficha';
+  const todoRiesgo = isInsuranceWorkflowCase(item);
+  const thirdPartyWorkshop = isThirdPartyWorkshopCase(item);
+
+  if ((requestedTab === 'tramite' || requestedTab === 'documentacion') && !todoRiesgo) {
+    return {
+      tab: 'ficha',
+      subtab: '',
+    };
+  }
+
+  if (requestedTab === 'tramite') {
+    return {
+      tab: 'tramite',
+      subtab: '',
+    };
+  }
+
+  if (requestedTab === 'documentacion') {
+    return {
+      tab: thirdPartyWorkshop ? 'documentacion' : 'tramite',
+      subtab: '',
+    };
+  }
+
+  if (requestedTab !== 'gestion') {
+    return {
+      tab: requestedTab,
+      subtab: '',
+    };
+  }
+
+  if (!item?.computed?.budgetReady) {
+    return {
+      tab: item?.computed?.reportClosed ? 'presupuesto' : 'ficha',
+      subtab: '',
+    };
+  }
+
+  return {
+    tab: 'gestion',
+    subtab: REPAIR_TABS.includes(target.subtab) ? target.subtab : 'repuestos',
+  };
+}
+
 function collectPaymentEvents(items) {
   return items.flatMap((item) => {
     const events = [];
@@ -1326,7 +2764,7 @@ function buildPanelExportRows(items) {
   return items.map((item) => ({
     carpeta: item.code,
     siniestro: item.claimNumber || '',
-    cliente: `${item.customer.lastName}, ${item.customer.firstName}`,
+    cliente: getFolderDisplayName(item),
     vehiculo: `${item.vehicle.brand} ${item.vehicle.model}`,
     dominio: item.vehicle.plate,
     tramite: item.computed.tramiteStatus,
@@ -1433,7 +2871,7 @@ function PanelGeneral({ items, onOpenCase }) {
                 </div>
                 <div className="priority-identity">
                   <strong>{item.code}</strong>
-                  <span>{item.customer.lastName}, {item.customer.firstName}</span>
+                  <span>{getFolderDisplayName(item)}</span>
                   <span>{item.vehicle.brand} {item.vehicle.model} - {item.vehicle.plate}</span>
                 </div>
                 <div className="priority-detail-grid">
@@ -1487,7 +2925,7 @@ function PanelGeneral({ items, onOpenCase }) {
               {prioritizedOpenItems.map((item) => (
                 <tr className={item.computed.pendingTasksCount ? 'row-danger' : ''} key={item.id} onClick={() => handleOpenCase(item.id)} onKeyDown={(event) => handleRowKeyDown(event, item.id)} tabIndex={0}>
                   <td><strong>{item.code}</strong></td>
-                  <td>{item.customer.lastName}, {item.customer.firstName}</td>
+                  <td>{getFolderDisplayName(item)}</td>
                   <td>{item.vehicle.plate}</td>
                   <td><StatusBadge tone={getStatusTone(item.computed.tramiteStatus)}>{item.computed.tramiteStatus}</StatusBadge></td>
                   <td><StatusBadge tone={getStatusTone(item.computed.repairStatus)}>{item.computed.repairStatus}</StatusBadge></td>
@@ -1572,7 +3010,7 @@ function PanelGeneral({ items, onOpenCase }) {
                   {selectedTypeItems.map((item) => (
                     <tr className={item.computed.pendingTasksCount ? 'row-danger' : ''} key={item.id} onClick={() => handleOpenCase(item.id)} onKeyDown={(event) => handleRowKeyDown(event, item.id)} tabIndex={0}>
                       <td><strong>{item.code}</strong></td>
-                      <td>{item.customer.lastName}, {item.customer.firstName}</td>
+                      <td>{getFolderDisplayName(item)}</td>
                       <td>{item.vehicle.plate}</td>
                       <td><StatusBadge tone={getStatusTone(item.computed.tramiteStatus)}>{item.computed.tramiteStatus}</StatusBadge></td>
                       <td><StatusBadge tone={getStatusTone(item.computed.repairStatus)}>{item.computed.repairStatus}</StatusBadge></td>
@@ -1618,7 +3056,7 @@ function PanelGeneral({ items, onOpenCase }) {
               {closedItems.map((item) => (
                 <tr key={item.id} onClick={() => handleOpenCase(item.id)} onKeyDown={(event) => handleRowKeyDown(event, item.id)} tabIndex={0}>
                   <td><strong>{item.code}</strong></td>
-                  <td>{item.customer.lastName}, {item.customer.firstName}</td>
+                  <td>{getFolderDisplayName(item)}</td>
                   <td>{formatDate(item.computed.closeDate)}</td>
                   <td>{item.computed.repairStatus}</td>
                 </tr>
@@ -1732,7 +3170,7 @@ function NuevoCaso({
           </div>
 
           <div className="form-grid three-columns nuevo-caso-form">
-            <SelectField invalid={fieldHasError('tipo de tramite')} label="Tipo de tramite" onChange={(value) => onChange('type', value)} options={['Particular']} required value={form.type} />
+            <SelectField invalid={fieldHasError('tipo de tramite')} label="Tipo de tramite" onChange={(value) => onChange('type', value)} options={['Particular', 'Todo Riesgo', 'CLEAS / Terceros / Franquicia', 'Reclamo de Tercero - Taller']} required value={form.type} />
             <SelectField label="Sucursal" onChange={(value) => onChange('branch', value)} options={BRANCHES.map((branch) => branch.label)} value={form.branch} />
             <DataField label="N° siniestro" onChange={(value) => onChange('claimNumber', value)} value={form.claimNumber} />
             <DataField highlighted={fieldWasAutofilled('firstName')} invalid={fieldHasError('nombre')} label="Nombre" onChange={(value) => onChange('firstName', value)} required value={form.firstName} />
@@ -1750,7 +3188,7 @@ function NuevoCaso({
           </div>
 
           <button className="primary-button" onClick={onCreate} type="button">
-            Generar carpeta Particular
+            Generar carpeta {form.type || 'Particular'}
           </button>
         </article>
       </section>
@@ -1759,7 +3197,19 @@ function NuevoCaso({
 }
 
 function FichaTecnicaTab({ item, updateCase }) {
+  const isThirdParty = isThirdPartyWorkshopCase(item);
+  const clientRegistry = isThirdParty ? item.thirdParty.clientRegistry : null;
+  const visibleOwners = isThirdParty && clientRegistry.isOwner === 'NO'
+    ? clientRegistry.owners.slice(0, clientRegistry.ownershipPercentage === '50%' ? 2 : 1)
+    : [];
   const laborSummary = item.payments.comprobante === 'A' ? item.computed.laborWithVat : item.computed.laborWithoutVat;
+  const latestSettlement = item.payments.settlements.reduce((latest, settlement) => maxDate(latest, settlement.date), '');
+  const ingresoSummary = item.repair.ingreso.realDate
+    ? `${formatDate(item.repair.ingreso.realDate)}${item.repair.ingreso.hasObservation === 'SI' ? ' · con observaciones' : ''}`
+    : 'Pendiente';
+  const egresoSummary = item.repair.egreso.date
+    ? `${formatDate(item.repair.egreso.date)}${item.repair.egreso.shouldReenter === 'SI' ? ' · requiere reingreso' : item.repair.egreso.definitiveExit ? ' · definitivo' : ''}`
+    : 'Pendiente';
 
   return (
     <div className="tab-layout">
@@ -1776,14 +3226,56 @@ function FichaTecnicaTab({ item, updateCase }) {
             <DataField label="Apellido" onChange={(value) => updateCase((draft) => { draft.customer.lastName = value; })} value={item.customer.lastName} />
             <DataField label="Documento" onChange={(value) => updateCase((draft) => { draft.customer.document = value; })} value={item.customer.document} />
             <DataField label="N° siniestro" onChange={(value) => updateCase((draft) => { draft.claimNumber = value; })} value={item.claimNumber || ''} />
+            <DataField label="Fecha nacimiento" onChange={(value) => updateCase((draft) => { draft.customer.birthDate = value; })} type="date" value={item.customer.birthDate || ''} />
+            <SelectField label="Estado civil" onChange={(value) => updateCase((draft) => { draft.customer.civilStatus = value; })} options={CIVIL_STATUS_OPTIONS} placeholder="Seleccioná" value={item.customer.civilStatus || ''} />
             <DataField label="Telefono" onChange={(value) => updateCase((draft) => { draft.customer.phone = value; })} value={item.customer.phone} />
             <DataField label="Localidad" onChange={(value) => updateCase((draft) => { draft.customer.locality = value; })} value={item.customer.locality} />
             <DataField label="Email" onChange={(value) => updateCase((draft) => { draft.customer.email = value; })} value={item.customer.email} />
+            <DataField label="Ocupación" onChange={(value) => updateCase((draft) => { draft.customer.occupation = value; })} value={item.customer.occupation || ''} />
+            <DataField label="Calle" onChange={(value) => updateCase((draft) => { draft.customer.street = value; })} value={item.customer.street || ''} />
+            <DataField label="Número" onChange={(value) => updateCase((draft) => { draft.customer.streetNumber = value; })} value={item.customer.streetNumber || ''} />
+            <DataField label="Piso / Depto" onChange={(value) => updateCase((draft) => { draft.customer.addressExtra = value; })} value={item.customer.addressExtra || ''} />
             <ToggleField label="Referenciado" onChange={(value) => updateCase((draft) => { draft.customer.referenced = value; if (value !== 'SI') draft.customer.referencedName = ''; })} value={item.customer.referenced} />
             {item.customer.referenced === 'SI' ? (
               <DataField label="Nombre referenciado" onChange={(value) => updateCase((draft) => { draft.customer.referencedName = value; })} value={item.customer.referencedName} />
             ) : null}
           </div>
+          {isThirdParty ? (
+            <>
+              <div className="budget-ready-panel budget-ready-panel-compact">
+                <StatusBadge tone={clientRegistry.isOwner === 'SI' ? 'success' : 'info'}>{clientRegistry.isOwner === 'SI' ? 'Cliente titular registral' : 'Titular registral externo'}</StatusBadge>
+                <small>Si el cliente no es titular, la demo toma el primer titular registral para nombrar la carpeta.</small>
+              </div>
+              <div className="form-grid three-columns compact-grid">
+                <ToggleField label="Titular registral" onChange={(value) => updateCase((draft) => {
+                  draft.thirdParty.clientRegistry.isOwner = value;
+                  if (value !== 'NO') {
+                    draft.thirdParty.clientRegistry.ownershipPercentage = '100%';
+                  }
+                })} value={clientRegistry.isOwner} />
+                <SelectField disabled={clientRegistry.isOwner !== 'NO'} label="Porcentaje titularidad" onChange={(value) => updateCase((draft) => {
+                  draft.thirdParty.clientRegistry.ownershipPercentage = value;
+                })} options={OWNERSHIP_PERCENTAGE_OPTIONS} value={clientRegistry.ownershipPercentage} />
+                <DataField label="Identificación carpeta" onChange={() => {}} readOnly value={getFolderDisplayName(item)} />
+              </div>
+              {visibleOwners.map((owner, index) => (
+                <div className="nested-card" key={owner.id}>
+                  <div className="section-head small-gap">
+                    <h4>{index === 0 ? 'Titular registral principal' : 'Otro titular registral'}</h4>
+                    <StatusBadge tone={owner.firstName || owner.lastName ? 'info' : 'danger'}>{owner.firstName || owner.lastName ? 'Cargado' : 'Pendiente'}</StatusBadge>
+                  </div>
+                  <div className="form-grid two-columns compact-grid">
+                    <DataField label="Nombre" onChange={(value) => updateCase((draft) => { draft.thirdParty.clientRegistry.owners[index].firstName = value; })} value={owner.firstName} />
+                    <DataField label="Apellido" onChange={(value) => updateCase((draft) => { draft.thirdParty.clientRegistry.owners[index].lastName = value; })} value={owner.lastName} />
+                    <DataField label="Documento" onChange={(value) => updateCase((draft) => { draft.thirdParty.clientRegistry.owners[index].document = value; })} value={owner.document} />
+                    <DataField label="Fecha nacimiento" onChange={(value) => updateCase((draft) => { draft.thirdParty.clientRegistry.owners[index].birthDate = value; })} type="date" value={owner.birthDate || ''} />
+                    <DataField label="Telefono" onChange={(value) => updateCase((draft) => { draft.thirdParty.clientRegistry.owners[index].phone = value; })} value={owner.phone || ''} />
+                    <DataField label="Localidad" onChange={(value) => updateCase((draft) => { draft.thirdParty.clientRegistry.owners[index].locality = value; })} value={owner.locality || ''} />
+                  </div>
+                </div>
+              ))}
+            </>
+          ) : null}
         </article>
 
         <article className="card inner-card">
@@ -1792,7 +3284,7 @@ function FichaTecnicaTab({ item, updateCase }) {
             <StatusBadge tone="info">{item.vehicle.plate}</StatusBadge>
           </div>
           <div className="form-grid two-columns compact-grid">
-            <DataField label="Marca" onChange={(value) => updateCase((draft) => { draft.vehicle.brand = value; })} value={item.vehicle.brand} />
+            <SelectField label="Marca" onChange={(value) => updateCase((draft) => { draft.vehicle.brand = value; })} options={VEHICLE_BRAND_OPTIONS} placeholder="Seleccioná" value={item.vehicle.brand} />
             <DataField label="Modelo" onChange={(value) => updateCase((draft) => { draft.vehicle.model = value; })} value={item.vehicle.model} />
             <DataField label="Dominio" onChange={(value) => updateCase((draft) => { draft.vehicle.plate = value.toUpperCase(); })} value={item.vehicle.plate} />
             <DataField label="Ano" onChange={(value) => updateCase((draft) => { draft.vehicle.year = value; })} value={item.vehicle.year} />
@@ -1800,11 +3292,19 @@ function FichaTecnicaTab({ item, updateCase }) {
             <SelectField label="Uso" onChange={(value) => updateCase((draft) => { draft.vehicle.usage = value; })} options={VEHICLE_USES} value={item.vehicle.usage} />
             <SelectField label="Pintura" onChange={(value) => updateCase((draft) => { draft.vehicle.paint = value; })} options={PAINT_TYPES} value={item.vehicle.paint} />
             <DataField label="Color" onChange={(value) => updateCase((draft) => { draft.vehicle.color = value; })} value={item.vehicle.color} />
+            <DataField label="Motor" onChange={(value) => updateCase((draft) => { draft.vehicle.engine = value; })} value={item.vehicle.engine || ''} />
+            <DataField label="Chasis" onChange={(value) => updateCase((draft) => { draft.vehicle.chassis = value; })} value={item.vehicle.chassis || ''} />
+            <SelectField label="Caja" onChange={(value) => updateCase((draft) => { draft.vehicle.transmission = value; })} options={TRANSMISSION_OPTIONS} placeholder="Seleccioná" value={item.vehicle.transmission || ''} />
+            <DataField label="Kilometraje" onChange={(value) => updateCase((draft) => { draft.vehicle.mileage = value; })} inputMode="numeric" value={item.vehicle.mileage || ''} />
           </div>
+          <label className="field">
+            <span>Observaciones del vehículo</span>
+            <textarea onChange={(event) => updateCase((draft) => { draft.vehicle.observations = event.target.value; })} value={item.vehicle.observations || ''} />
+          </label>
         </article>
       </div>
 
-      <div className="form-grid two-columns">
+      <div className="form-grid two-columns ficha-summary-grid">
         <article className="card inner-card">
           <div className="section-head small-gap">
             <h3>Resumen Reparacion</h3>
@@ -1812,9 +3312,12 @@ function FichaTecnicaTab({ item, updateCase }) {
           </div>
           <div className="summary-stack">
             <div className="summary-row"><span>Taller</span><strong>{item.budget.workshop}</strong></div>
+            <div className="summary-row"><span>Presupuestó</span><strong>{item.budget.authorizer || 'Pendiente'} · {item.budget.partsQuotedDate ? formatDate(item.budget.partsQuotedDate) : 'sin fecha'}</strong></div>
             <div className="summary-row"><span>Turno</span><strong>{item.repair.turno.date ? `${formatDate(item.repair.turno.date)} · ${item.repair.turno.state}` : 'Sin agendar'}</strong></div>
             <div className="summary-row"><span>Anotaciones turno</span><strong>{item.repair.turno.notes || 'Sin notas de turno'}</strong></div>
             <div className="summary-row"><span>Mano de obra resumen</span><strong>{money(laborSummary)} · comprobante {item.payments.comprobante}</strong></div>
+            <div className="summary-row"><span>Ingreso</span><strong>{ingresoSummary}</strong></div>
+            <div className="summary-row"><span>Egreso</span><strong>{egresoSummary}</strong></div>
             <div className="summary-row"><span>Salida estimada</span><strong>{item.computed.turnoEstimatedExit ? formatDate(item.computed.turnoEstimatedExit) : 'Pendiente'}</strong></div>
           </div>
         </article>
@@ -1829,10 +3332,572 @@ function FichaTecnicaTab({ item, updateCase }) {
             <div className="summary-row"><span>Senia</span><strong>{item.payments.hasSena === 'SI' ? money(item.payments.senaAmount) : 'No'}</strong></div>
             <div className="summary-row"><span>Cobrado</span><strong>{money(item.computed.paidAmount)}</strong></div>
             <div className="summary-row"><span>Saldo deudor</span><strong>{money(item.computed.balance)}</strong></div>
+            <div className="summary-row"><span>Último cobro</span><strong>{latestSettlement ? formatDate(latestSettlement) : 'Sin cobros'}</strong></div>
             <div className="summary-row"><span>Factura</span><strong>{item.payments.invoice === 'SI' ? `${item.payments.businessName} · ${item.payments.invoiceNumber}` : 'No'}</strong></div>
           </div>
         </article>
+
+        <article className="card inner-card summary-span-two">
+          <div className="section-head small-gap">
+            <h3>Lectura consolidada</h3>
+            <StatusBadge tone={item.computed.closeReady ? 'success' : 'info'}>{item.computed.closeReady ? 'Caso cerrable' : 'Caso abierto'}</StatusBadge>
+          </div>
+          <div className="vehicle-meta-grid consolidated-meta-grid">
+            <div>
+              <span>Vehículo completo</span>
+              <strong>{item.computed.hasVehicleData ? 'OK' : `Falta ${item.computed.vehicleMissingFields.join(', ')}`}</strong>
+            </div>
+            <div>
+              <span>Estado repuestos</span>
+              <strong>{item.computed.partsStatus}</strong>
+            </div>
+            <div>
+              <span>Reingreso</span>
+              <strong>{item.repair.egreso.shouldReenter === 'SI' ? (item.repair.egreso.reentryDate ? formatDate(item.repair.egreso.reentryDate) : 'Pendiente agendar') : 'No'}</strong>
+            </div>
+            <div>
+              <span>Fotos reparado</span>
+              <strong>{item.repair.egreso.repairedPhotos ? 'Cargadas' : 'Pendientes'}</strong>
+            </div>
+          </div>
+        </article>
       </div>
+    </div>
+  );
+}
+
+function GestionTramiteTab({ item, updateCase, flash }) {
+  const todoRisk = item.todoRisk;
+  const thirdParty = item.thirdParty;
+  const isThirdParty = isThirdPartyWorkshopCase(item);
+  const isCleas = isCleasCase(item);
+  const canProgressFromPresentation = item.computed.todoRisk.canProgressFromPresentation;
+  const canCompleteProcessingCore = item.computed.todoRisk.canCompleteProcessingCore;
+  const agendaPendingCount = todoRisk.processing.agenda.filter((task) => !task.resolved).length;
+  const processingLocked = isCleas
+    ? !canProgressFromPresentation || item.computed.todoRisk.noRepairNeeded
+    : !canProgressFromPresentation;
+  const isFranchiseFlow = todoRisk.processing.cleasScope === 'Sobre franquicia';
+  const isDamageTotal = todoRisk.processing.cleasScope === 'Sobre daño total';
+  const dictamen = todoRisk.processing.dictamen || 'Pendiente';
+
+  const addDocument = () => {
+    updateCase((draft) => {
+      draft.todoRisk.documentation.items.push(createTodoRiskDocument());
+    });
+  };
+
+  const addAgendaTask = () => {
+    updateCase((draft) => {
+      draft.todoRisk.processing.agenda.push(createTodoRiskTask());
+    });
+  };
+
+  if (isThirdParty) {
+    const participants = thirdParty.claim.thirdParties;
+    const amountBelowMinimum = !item.computed.thirdParty.amountMeetsMinimum && item.computed.thirdParty.amountToInvoice > 0;
+
+    const addParticipant = () => {
+      updateCase((draft) => {
+        draft.thirdParty.claim.thirdParties.push(createThirdPartyParticipant());
+      });
+    };
+
+    return (
+      <div className="tab-layout todo-risk-layout">
+        <article className="card inner-card todo-risk-summary-card">
+          <div className="section-head small-gap">
+            <div>
+              <p className="eyebrow">Gestión del trámite</p>
+              <h3>Base operativa Fase 2</h3>
+            </div>
+            <StatusBadge tone={item.computed.todoRisk.managementAdvanced ? 'info' : 'danger'}>
+              {item.computed.todoRisk.managementAdvanced ? 'Base completa' : 'Faltan datos base'}
+            </StatusBadge>
+          </div>
+          <div className="form-grid five-columns compact-grid">
+            <DataField label="Fecha del siniestro" onChange={(value) => updateCase((draft) => { draft.todoRisk.incident.date = value; })} type="date" value={todoRisk.incident.date} />
+            <DataField label="Prescripción del trámite" onChange={() => {}} readOnly type="date" value={item.computed.todoRisk.prescriptionDate} />
+            <DataField label="Fecha presentado" onChange={(value) => updateCase((draft) => { draft.thirdParty.claim.presentedDate = value; })} type="date" value={thirdParty.claim.presentedDate} />
+            <DataField label="Días tramitando" onChange={() => {}} readOnly value={item.computed.todoRisk.daysProcessing} />
+            <DataField label="Referencia / reclamo" onChange={(value) => updateCase((draft) => { draft.thirdParty.claim.claimReference = value; })} value={thirdParty.claim.claimReference} />
+          </div>
+          {!todoRisk.incident.date ? <div className="inline-alert danger-banner">Sin fecha del siniestro no se puede calcular la prescripción a 3 años.</div> : null}
+          <div className="budget-ready-panel budget-ready-panel-compact">
+            <StatusBadge tone={participants.length ? 'info' : 'danger'}>{participants.length} tercero(s) cargado(s)</StatusBadge>
+            <small>Se mantiene la base de Fase 1 y ahora Tramitación toma mínimos, repuestos y saldo final desde Presupuesto y Gestión reparación.</small>
+          </div>
+        </article>
+
+        <article className="card inner-card">
+          <div className="section-head small-gap">
+            <h3>Datos del siniestro</h3>
+            <StatusBadge tone={participants.length ? 'info' : 'danger'}>{participants.length} tercero(s)</StatusBadge>
+          </div>
+          <div className="form-grid three-columns compact-grid">
+            <DataField label="Cía. del 3ero" onChange={(value) => updateCase((draft) => { draft.thirdParty.claim.thirdCompany = value; })} value={thirdParty.claim.thirdCompany} />
+            <DataField label="Lugar de ocurrencia" onChange={(value) => updateCase((draft) => { draft.todoRisk.incident.location = value; })} value={todoRisk.incident.location} />
+            <DataField label="Hora" onChange={(value) => updateCase((draft) => { draft.todoRisk.incident.time = value; })} value={todoRisk.incident.time} />
+          </div>
+          <label className="field">
+            <span>Dinámica del siniestro</span>
+            <textarea onChange={(event) => updateCase((draft) => { draft.todoRisk.incident.dynamics = event.target.value; })} value={todoRisk.incident.dynamics} />
+          </label>
+          <div className="budget-lines">
+            {participants.map((participant, index) => {
+              const visibleOwners = participant.isOwner === 'NO'
+                ? participant.owners.slice(0, participant.ownershipPercentage === '50%' ? 2 : 1)
+                : [];
+
+              return (
+                <div className="budget-line budget-line-extended" key={participant.id}>
+                  <div className="budget-line-header">
+                    <strong>{index === 0 ? 'Tercero principal' : `Tercero ${index + 1}`}</strong>
+                    <small>{participant.isOwner === 'SI' ? 'Conductor titular' : 'Conductor distinto del titular'}</small>
+                  </div>
+                  <DataField label="Conductor 3ero" onChange={(value) => updateCase((draft) => { draft.thirdParty.claim.thirdParties[index].driverName = value; })} value={participant.driverName} />
+                  <DataField label="DNI conductor" onChange={(value) => updateCase((draft) => { draft.thirdParty.claim.thirdParties[index].driverDocument = value; })} value={participant.driverDocument} />
+                  <DataField label="Dominio" onChange={(value) => updateCase((draft) => { draft.thirdParty.claim.thirdParties[index].plate = value.toUpperCase(); })} value={participant.plate} />
+                  <DataField label="Marca" onChange={(value) => updateCase((draft) => { draft.thirdParty.claim.thirdParties[index].brand = value; })} value={participant.brand} />
+                  <DataField label="Modelo" onChange={(value) => updateCase((draft) => { draft.thirdParty.claim.thirdParties[index].model = value; })} value={participant.model} />
+                  <ToggleField label="Conductor es titular" onChange={(value) => updateCase((draft) => {
+                    draft.thirdParty.claim.thirdParties[index].isOwner = value;
+                    if (value !== 'NO') {
+                      draft.thirdParty.claim.thirdParties[index].ownershipPercentage = '100%';
+                    }
+                  })} value={participant.isOwner} />
+                  <SelectField disabled={participant.isOwner !== 'NO'} label="Porcentaje titularidad" onChange={(value) => updateCase((draft) => { draft.thirdParty.claim.thirdParties[index].ownershipPercentage = value; })} options={OWNERSHIP_PERCENTAGE_OPTIONS} value={participant.ownershipPercentage} />
+                  <DataField label="Domicilio" onChange={(value) => updateCase((draft) => { draft.thirdParty.claim.thirdParties[index].address = value; })} value={participant.address} />
+                  {visibleOwners.map((owner, ownerIndex) => (
+                    <div className="nested-card summary-span-two" key={owner.id}>
+                      <div className="section-head small-gap">
+                        <h4>{ownerIndex === 0 ? 'Titular 3ero principal' : 'Otro titular 3ero'}</h4>
+                      </div>
+                      <div className="form-grid two-columns compact-grid">
+                        <DataField label="Nombre" onChange={(value) => updateCase((draft) => { draft.thirdParty.claim.thirdParties[index].owners[ownerIndex].firstName = value; })} value={owner.firstName} />
+                        <DataField label="Apellido" onChange={(value) => updateCase((draft) => { draft.thirdParty.claim.thirdParties[index].owners[ownerIndex].lastName = value; })} value={owner.lastName} />
+                        <DataField label="Documento" onChange={(value) => updateCase((draft) => { draft.thirdParty.claim.thirdParties[index].owners[ownerIndex].document = value; })} value={owner.document} />
+                        <DataField label="Localidad" onChange={(value) => updateCase((draft) => { draft.thirdParty.claim.thirdParties[index].owners[ownerIndex].locality = value; })} value={owner.locality || ''} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+          <button className="secondary-button" onClick={addParticipant} type="button">+ Agregar otro 3ero</button>
+        </article>
+
+        <article className="card inner-card">
+          <div className="section-head small-gap">
+            <div>
+              <h3>Tramitación</h3>
+              <p className="muted">Mínimos automáticos, proveedor de repuestos y saldo final del taller.</p>
+            </div>
+            <StatusBadge tone={amountBelowMinimum ? 'danger' : 'info'}>
+              {amountBelowMinimum ? 'Aviso admin pendiente' : 'Automático desde Presupuesto'}
+            </StatusBadge>
+          </div>
+
+          <div className="form-grid four-columns compact-grid">
+            <DataField highlighted label="Mínimo MO" onChange={() => {}} readOnly value={item.computed.thirdParty.minimumLabor} />
+            <DataField highlighted label="Lleva repuestos" onChange={() => {}} readOnly value={item.computed.hasReplacementParts ? 'SI' : 'NO'} />
+            <DataField highlighted label="Mínimo repuestos" onChange={() => {}} readOnly value={item.computed.thirdParty.minimumParts} />
+            <DataField highlighted label="Subtotal mejor cotización" onChange={() => {}} readOnly value={item.computed.thirdParty.subtotalBestQuote} />
+            <SelectField
+              label="Provee repuestos"
+              onChange={(value) => updateCase((draft) => {
+                draft.thirdParty.claim.partsProviderMode = value;
+              })}
+              options={THIRD_PARTY_PARTS_PROVIDER_OPTIONS}
+              value={thirdParty.claim.partsProviderMode}
+            />
+            <DataField
+              disabled={thirdParty.claim.partsProviderMode !== 'Provee Taller'}
+              highlighted={thirdParty.claim.partsProviderMode === 'Provee Taller'}
+              label="Total final repuestos"
+              onChange={() => {}}
+              readOnly
+              value={item.computed.thirdParty.totalFinalParts}
+            />
+            <DataField highlighted invalid={amountBelowMinimum} label="A facturar Cía." onChange={() => {}} readOnly value={item.computed.thirdParty.amountToInvoice} />
+            <DataField highlighted invalid={amountBelowMinimum || item.computed.thirdParty.finalInFavorTaller < 0} label="Final a favor Taller" onChange={() => {}} readOnly value={item.computed.thirdParty.finalInFavorTaller} />
+          </div>
+
+          {thirdParty.claim.partsProviderMode !== 'Provee Taller' ? (
+            <div className="inline-alert info-banner">Total final repuestos queda solo de referencia: impacta en el saldo del taller únicamente cuando los repuestos los provee el taller.</div>
+          ) : null}
+
+          {amountBelowMinimum ? (
+            <div className="inline-alert danger-banner third-party-admin-alert">
+              <span>La cotización acordada / a facturar Cía. quedó por debajo del mínimo correspondiente ({money(item.computed.thirdParty.applicableMinimum)}). Se genera aviso demo al administrador.</span>
+              <button className="secondary-button compact-button" onClick={() => flash(item.computed.thirdParty.adminAlerts[0] || 'Aviso demo al admin: revisar cotización acordada por debajo del mínimo.')} type="button">Avisar admin demo</button>
+            </div>
+          ) : null}
+        </article>
+
+      </div>
+    );
+  }
+
+  return (
+    <div className="tab-layout todo-risk-layout">
+      <article className="card inner-card todo-risk-summary-card">
+        <div className="section-head small-gap">
+          <div>
+            <p className="eyebrow">Gestión del trámite</p>
+            <h3>{isCleas ? 'Secuencia CLEAS' : 'Secuencia Todo Riesgo'}</h3>
+          </div>
+          <StatusBadge tone={item.computed.todoRisk.managementAdvanced ? 'info' : 'danger'}>
+            {item.computed.todoRisk.managementAdvanced ? 'Azul operativo' : 'Rojo con pendientes'}
+          </StatusBadge>
+        </div>
+
+        <div className={`form-grid ${isCleas ? 'six-columns' : 'four-columns'} compact-grid`}>
+          <DataField label="Fecha del siniestro" onChange={(value) => updateCase((draft) => { draft.todoRisk.incident.date = value; })} type="date" value={todoRisk.incident.date} />
+          <DataField label="Prescripción del trámite" onChange={() => {}} readOnly type="date" value={item.computed.todoRisk.prescriptionDate} />
+          <DataField disabled={!canCompleteProcessingCore} label="Fecha presentado" onChange={(value) => updateCase((draft) => {
+            draft.todoRisk.processing.presentedDate = value;
+            if (!value) {
+              draft.todoRisk.processing.derivedToInspectionDate = '';
+              draft.todoRisk.processing.modality = TODO_RIESGO_MODALITY_OPTIONS[0];
+              draft.todoRisk.processing.quoteStatus = 'Pendiente';
+              draft.todoRisk.processing.quoteDate = '';
+              draft.todoRisk.processing.agreedAmount = '';
+            }
+          })} type="date" value={todoRisk.processing.presentedDate} />
+          <DataField label="Días tramitando" onChange={() => {}} readOnly value={item.computed.todoRisk.daysProcessing} />
+          {isCleas ? (
+            <>
+              <SelectField label="Cleas sobre" onChange={(value) => updateCase((draft) => {
+                draft.todoRisk.processing.cleasScope = value;
+                if (value !== 'Sobre franquicia') {
+                  draft.todoRisk.processing.franchiseAmount = '';
+                  draft.todoRisk.processing.clientChargeAmount = '';
+                  draft.todoRisk.processing.clientChargeStatus = 'Pendiente';
+                  draft.todoRisk.processing.clientChargeDate = '';
+                  draft.todoRisk.processing.companyFranchisePaymentAmount = '';
+                  draft.todoRisk.processing.companyFranchisePaymentStatus = 'Pendiente';
+                  draft.todoRisk.processing.companyFranchisePaymentDate = '';
+                }
+              })} options={CLEAS_SCOPE_OPTIONS} placeholder="Seleccioná" value={todoRisk.processing.cleasScope} />
+              <SelectField label="Dictamen" onChange={(value) => updateCase((draft) => {
+                draft.todoRisk.processing.dictamen = value;
+                if (value !== 'En contra') {
+                  draft.todoRisk.processing.clientChargeStatus = 'Pendiente';
+                  draft.todoRisk.processing.clientChargeDate = '';
+                  draft.todoRisk.processing.companyFranchisePaymentStatus = 'Pendiente';
+                  draft.todoRisk.processing.companyFranchisePaymentDate = '';
+                }
+              })} options={CLEAS_DICTAMEN_OPTIONS} value={dictamen} />
+            </>
+          ) : null}
+        </div>
+
+        {!todoRisk.incident.date ? <div className="inline-alert danger-banner">Sin fecha del siniestro no se habilita el avance operativo del trámite.</div> : null}
+        {isCleas
+          ? !todoRisk.processing.cleasScope
+            ? <div className="inline-alert danger-banner">Primero definí si CLEAS va sobre franquicia o sobre daño total.</div>
+            : null
+          : !todoRisk.franchise.recoveryType
+            ? <div className="inline-alert danger-banner">Primero definí Recupero en Franquicia; recién ahí se habilita la fecha de presentación.</div>
+            : null}
+        {isCleas && dictamen === 'Pendiente' ? <div className="inline-alert danger-banner">Con dictamen pendiente la demo muestra la carpeta, pero bloquea inspección, cotización y avance operativo.</div> : null}
+        {isCleas && item.computed.todoRisk.noRepairNeeded ? <div className="inline-alert info-banner">CLEAS sobre daño total con dictamen en contra: el caso se corta acá y no sigue reparación normal.</div> : null}
+      </article>
+
+      <article className="card inner-card">
+        <div className="section-head small-gap">
+          <h3>Datos del seguro</h3>
+          <StatusBadge tone={todoRisk.insurance.company ? 'info' : 'danger'}>{todoRisk.insurance.company || 'Base pendiente'}</StatusBadge>
+        </div>
+        <div className="form-grid three-columns compact-grid">
+          <SelectField label="Compañía" onChange={(value) => updateCase((draft) => { draft.todoRisk.insurance.company = value; })} options={TODO_RIESGO_INSURANCE_OPTIONS} placeholder="Seleccioná" value={todoRisk.insurance.company} />
+          {isCleas ? <DataField label="Cía. del 3ero" onChange={(value) => updateCase((draft) => { draft.todoRisk.insurance.thirdCompany = value; })} value={todoRisk.insurance.thirdCompany || ''} /> : null}
+          {isCleas ? <DataField label="N° de CLEAS" onChange={(value) => updateCase((draft) => { draft.todoRisk.insurance.cleasNumber = value; })} value={todoRisk.insurance.cleasNumber || ''} /> : null}
+          <DataField label="Tramitador/a" onChange={(value) => updateCase((draft) => { draft.todoRisk.insurance.handlerName = value; })} value={todoRisk.insurance.handlerName} />
+          <DataField label="Mail tramitador/a" onChange={(value) => updateCase((draft) => { draft.todoRisk.insurance.handlerEmail = value; })} value={todoRisk.insurance.handlerEmail} />
+          <DataField label="Tel. tramitador/a" onChange={(value) => updateCase((draft) => { draft.todoRisk.insurance.handlerPhone = value; })} value={todoRisk.insurance.handlerPhone} />
+          <DataField label="Inspector/a" onChange={(value) => updateCase((draft) => { draft.todoRisk.insurance.inspectorName = value; })} value={todoRisk.insurance.inspectorName} />
+          <DataField label="Mail inspector/a" onChange={(value) => updateCase((draft) => { draft.todoRisk.insurance.inspectorEmail = value; })} value={todoRisk.insurance.inspectorEmail} />
+          <DataField label="Tel. inspector/a" onChange={(value) => updateCase((draft) => { draft.todoRisk.insurance.inspectorPhone = value; })} value={todoRisk.insurance.inspectorPhone} />
+          <DataField label="N° de siniestro" onChange={(value) => updateCase((draft) => { draft.claimNumber = value; })} value={item.claimNumber || ''} />
+        </div>
+        {!isCleas ? (
+          <label className="field">
+            <span>Detalle de cobertura</span>
+            <textarea onChange={(event) => updateCase((draft) => { draft.todoRisk.insurance.coverageDetail = event.target.value; })} value={todoRisk.insurance.coverageDetail} />
+          </label>
+        ) : null}
+      </article>
+
+      <article className="card inner-card">
+        <div className="section-head small-gap">
+          <h3>Datos del siniestro</h3>
+          <StatusBadge tone="info">No bloquea cierre total</StatusBadge>
+        </div>
+        <div className={`form-grid ${isCleas ? 'four-columns' : 'three-columns'} compact-grid`}>
+          <DataField label="Lugar de ocurrencia" onChange={(value) => updateCase((draft) => { draft.todoRisk.incident.location = value; })} value={todoRisk.incident.location} />
+          <DataField label="Hora" onChange={(value) => updateCase((draft) => { draft.todoRisk.incident.time = value; })} value={todoRisk.incident.time} />
+          {isCleas ? <DataField label="Dominio del 3ero" onChange={(value) => updateCase((draft) => { draft.todoRisk.incident.thirdPartyPlate = value.toUpperCase(); })} value={todoRisk.incident.thirdPartyPlate || ''} /> : null}
+        </div>
+        <label className="field">
+          <span>Dinámica del siniestro</span>
+          <textarea onChange={(event) => updateCase((draft) => { draft.todoRisk.incident.dynamics = event.target.value; })} value={todoRisk.incident.dynamics} />
+        </label>
+        {isCleas ? (
+          <label className="field">
+            <span>Observaciones</span>
+            <textarea onChange={(event) => updateCase((draft) => { draft.todoRisk.incident.observations = event.target.value; })} value={todoRisk.incident.observations || ''} />
+          </label>
+        ) : null}
+      </article>
+
+      {!isCleas ? (
+        <article className="card inner-card">
+          <div className="section-head small-gap">
+            <h3>Franquicia</h3>
+            <StatusBadge tone={getStatusTone(todoRisk.franchise.status)}>{todoRisk.franchise.status}</StatusBadge>
+          </div>
+          <div className="form-grid four-columns compact-grid">
+            <SelectField label="Estado" onChange={(value) => updateCase((draft) => { draft.todoRisk.franchise.status = value; })} options={TODO_RIESGO_FRANCHISE_STATUS_OPTIONS} value={todoRisk.franchise.status} />
+            <DataField label="Monto" onChange={(value) => updateCase((draft) => { draft.todoRisk.franchise.amount = value; })} value={todoRisk.franchise.amount} />
+            <SelectField label="Recupero" onChange={(value) => updateCase((draft) => {
+              draft.todoRisk.franchise.recoveryType = value;
+              if (value !== 'Cía. del 3ero') draft.todoRisk.franchise.associatedCase = '';
+              if (value !== 'Propia Cía.') draft.todoRisk.franchise.dictamen = '';
+              if (!value) {
+                draft.todoRisk.processing.presentedDate = '';
+                draft.todoRisk.processing.derivedToInspectionDate = '';
+                draft.todoRisk.processing.quoteStatus = 'Pendiente';
+                draft.todoRisk.processing.quoteDate = '';
+                draft.todoRisk.processing.agreedAmount = '';
+              }
+            })} options={TODO_RIESGO_RECOVERY_OPTIONS} placeholder="Seleccioná" value={todoRisk.franchise.recoveryType} />
+            <DataField disabled={todoRisk.franchise.recoveryType !== 'Cía. del 3ero'} label="Caso asociado" onChange={(value) => updateCase((draft) => { draft.todoRisk.franchise.associatedCase = value; })} value={todoRisk.franchise.associatedCase} />
+            <SelectField disabled={todoRisk.franchise.recoveryType !== 'Propia Cía.'} label="Dictamen" onChange={(value) => updateCase((draft) => { draft.todoRisk.franchise.dictamen = value; })} options={TODO_RIESGO_DICTAMEN_OPTIONS} placeholder="Seleccioná" value={todoRisk.franchise.dictamen} />
+            <ToggleField label="Cotización supera Franquicia" onChange={(value) => updateCase((draft) => {
+              draft.todoRisk.franchise.exceedsFranchise = value;
+              if (value !== 'NO') draft.todoRisk.franchise.recoveryAmount = '';
+            })} value={todoRisk.franchise.exceedsFranchise} />
+            <DataField disabled={todoRisk.franchise.exceedsFranchise !== 'NO'} label="Monto a recuperar" onChange={(value) => updateCase((draft) => { draft.todoRisk.franchise.recoveryAmount = value; })} value={todoRisk.franchise.recoveryAmount} />
+          </div>
+          <label className="field">
+            <span>Anotaciones</span>
+            <textarea onChange={(event) => updateCase((draft) => { draft.todoRisk.franchise.notes = event.target.value; })} value={todoRisk.franchise.notes} />
+          </label>
+        </article>
+      ) : null}
+
+      <article className="card inner-card">
+        <div className="section-head">
+          <div>
+            <h3>Documentación</h3>
+            <p className="muted">Categorías y carga demo del trámite.</p>
+          </div>
+          <div className="tag-row">
+            <button className="secondary-button" onClick={addDocument} type="button">Agregar ítem</button>
+            <button className="secondary-button" onClick={() => flash('Descargar todo demo: se agruparían los adjuntos del trámite en un zip.') } type="button">Descargar todo</button>
+          </div>
+        </div>
+        <div className="table-wrap">
+          <table className="data-table compact-table">
+            <thead>
+              <tr>
+                <th>Categoría</th>
+                <th>Tipo archivo / nombre</th>
+                <th>Fecha de carga</th>
+                <th>Observaciones</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {todoRisk.documentation.items.map((doc) => (
+                <tr key={doc.id}>
+                  <td><SelectField label="Categoría" onChange={(value) => updateCase((draft) => { const target = draft.todoRisk.documentation.items.find((entry) => entry.id === doc.id); target.category = value; })} options={TODO_RIESGO_DOC_CATEGORY_OPTIONS} value={doc.category} /></td>
+                  <td><DataField label="Nombre" onChange={(value) => updateCase((draft) => { const target = draft.todoRisk.documentation.items.find((entry) => entry.id === doc.id); target.name = value; })} value={doc.name} /></td>
+                  <td><DataField label="Fecha" onChange={(value) => updateCase((draft) => { const target = draft.todoRisk.documentation.items.find((entry) => entry.id === doc.id); target.uploadedAt = value; })} type="date" value={doc.uploadedAt} /></td>
+                  <td><DataField label="Notas" onChange={(value) => updateCase((draft) => { const target = draft.todoRisk.documentation.items.find((entry) => entry.id === doc.id); target.notes = value; })} value={doc.notes} /></td>
+                  <td><button className="ghost-button" onClick={() => updateCase((draft) => { draft.todoRisk.documentation.items = draft.todoRisk.documentation.items.filter((entry) => entry.id !== doc.id); })} type="button">Quitar</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article className="card inner-card">
+        <div className="section-head small-gap">
+          <div>
+            <h3>Tramitación</h3>
+            <p className="muted">Cotización, autorización de repuestos y agenda simple.</p>
+          </div>
+          <StatusBadge tone={getStatusTone(item.computed.tramiteStatus)}>{item.computed.tramiteStatus}</StatusBadge>
+        </div>
+
+        <div className={`form-grid ${isCleas ? 'five-columns' : 'four-columns'} compact-grid`}>
+          <DataField disabled={!canCompleteProcessingCore} label="Fecha presentado" onChange={(value) => updateCase((draft) => {
+            draft.todoRisk.processing.presentedDate = value;
+            if (!value) {
+              draft.todoRisk.processing.derivedToInspectionDate = '';
+              draft.todoRisk.processing.modality = TODO_RIESGO_MODALITY_OPTIONS[0];
+              draft.todoRisk.processing.quoteStatus = 'Pendiente';
+              draft.todoRisk.processing.quoteDate = '';
+              draft.todoRisk.processing.agreedAmount = '';
+            }
+          })} type="date" value={todoRisk.processing.presentedDate} />
+          <DataField disabled={processingLocked} label="Derivado a inspección" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.derivedToInspectionDate = value; })} type="date" value={todoRisk.processing.derivedToInspectionDate} />
+          <SelectField disabled={processingLocked} label="Modalidad" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.modality = value; })} options={TODO_RIESGO_MODALITY_OPTIONS} value={todoRisk.processing.modality} />
+          <DataField label="Mínimo para cierre" onChange={() => {}} readOnly value={item.computed.todoRisk.minimumClosingAmount} />
+          <DataField label="Lleva repuestos" onChange={() => {}} readOnly value={item.computed.hasReplacementParts ? 'SI' : 'NO'} />
+          {isCleas ? <DataField label="Dictamen actual" onChange={() => {}} readOnly value={dictamen} /> : null}
+          <SelectField disabled={processingLocked} label="Cotización" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.quoteStatus = value; })} options={TODO_RIESGO_QUOTE_STATUS_OPTIONS} value={todoRisk.processing.quoteStatus} />
+          <DataField disabled={processingLocked} label="Fecha cotización" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.quoteDate = value; })} type="date" value={todoRisk.processing.quoteDate} />
+          <DataField disabled={processingLocked} invalid={todoRisk.processing.quoteStatus === 'Acordada' && !item.computed.todoRisk.amountMeetsMinimum} label="Monto acordado" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.agreedAmount = value; })} value={todoRisk.processing.agreedAmount} />
+          {!isCleas ? <DataField label="Repuestos" onChange={() => {}} readOnly value={item.computed.todoRisk.partsAuthorization} /> : null}
+          {isCleas && isFranchiseFlow ? <DataField disabled={processingLocked && dictamen !== 'En contra'} label="Monto de franquicia" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.franchiseAmount = value; })} value={todoRisk.processing.franchiseAmount || ''} /> : null}
+          {isCleas && isFranchiseFlow && dictamen === 'En contra' ? <DataField label="A cargo del cliente" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.clientChargeAmount = value; })} placeholder="Definí monto manual" value={todoRisk.processing.clientChargeAmount || ''} /> : null}
+          {isCleas && isFranchiseFlow && dictamen === 'En contra' ? <DataField label="Pago franquicia Cía." onChange={() => {}} readOnly value={item.computed.todoRisk.companyFranchisePaymentAmount} /> : null}
+          <DataField label="Provee repuestos" onChange={() => {}} readOnly value={item.budget.partsProvider || 'Sin proveedor'} />
+          <DataField label="A facturar Cía." onChange={() => {}} readOnly value={item.computed.todoRisk.amountToInvoice} />
+          {isCleas && isFranchiseFlow && dictamen === 'En contra' ? <SelectField label="Estado pago cliente" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.clientChargeStatus = value; })} options={CLEAS_PAYMENT_STATUS_OPTIONS} value={todoRisk.processing.clientChargeStatus} /> : null}
+          {isCleas && isFranchiseFlow && dictamen === 'En contra' ? <DataField label="Fecha pago cliente" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.clientChargeDate = value; })} type="date" value={todoRisk.processing.clientChargeDate || ''} /> : null}
+        </div>
+
+        {!canProgressFromPresentation ? (
+          <div className="inline-alert danger-banner">Hasta definir fecha de presentación y dictamen no se habilitan inspección, cotización ni acciones operativas ligadas al trámite.</div>
+        ) : null}
+
+        {todoRisk.processing.quoteStatus === 'Acordada' && !item.computed.todoRisk.amountMeetsMinimum ? (
+          <div className="inline-alert danger-banner">El monto acordado debe ser igual o mayor al mínimo para cierre traído desde Presupuesto.</div>
+        ) : null}
+        {isCleas && isFranchiseFlow && dictamen === 'En contra' && !item.computed.todoRisk.clientChargeDefined ? (
+          <div className="inline-alert danger-banner">El PDF de referencia muestra este monto cargado de forma explícita: hasta definir "A cargo del cliente" no se deriva cuánto factura la compañía ni cuánto queda en pagos.</div>
+        ) : null}
+        {isCleas && isDamageTotal && dictamen === 'En contra' ? <div className="inline-alert info-banner">Este camino se considera cierre directo: no genera reparación normal ni campos de franquicia.</div> : null}
+      </article>
+
+      <article className="card inner-card">
+        <div className="section-head small-gap todo-risk-agenda-head">
+          <div>
+            <h3>Agenda de tareas</h3>
+            <p className="muted">Pendientes internos que impactan la completitud de Gestión del trámite.</p>
+          </div>
+          <div className="tag-row">
+            <StatusBadge tone={agendaPendingCount ? 'danger' : 'success'}>
+              {agendaPendingCount ? `${agendaPendingCount} pendiente(s)` : 'Sin pendientes'}
+            </StatusBadge>
+            <button className="secondary-button" onClick={addAgendaTask} type="button">Agregar tarea</button>
+          </div>
+        </div>
+        <div className="table-wrap">
+          <table className="data-table compact-table">
+            <thead>
+              <tr>
+                <th>Pendiente</th>
+                <th>Agendado</th>
+                <th>Debe resolver</th>
+                <th>Hecho</th>
+              </tr>
+            </thead>
+            <tbody>
+              {todoRisk.processing.agenda.map((task) => (
+                <tr key={task.id}>
+                  <td><DataField label="Pendiente" onChange={(value) => updateCase((draft) => { const target = draft.todoRisk.processing.agenda.find((entry) => entry.id === task.id); target.title = value; })} value={task.title} /></td>
+                  <td><DataField label="Agendado" onChange={(value) => updateCase((draft) => { const target = draft.todoRisk.processing.agenda.find((entry) => entry.id === task.id); target.scheduledAt = value; })} type="date" value={task.scheduledAt} /></td>
+                  <td><SelectField label="Responsable" onChange={(value) => updateCase((draft) => { const target = draft.todoRisk.processing.agenda.find((entry) => entry.id === task.id); target.assignee = value; })} options={TODO_RIESGO_ASSIGNABLE_USERS} value={task.assignee} /></td>
+                  <td><input checked={task.resolved} onChange={(event) => updateCase((draft) => { const target = draft.todoRisk.processing.agenda.find((entry) => entry.id === task.id); target.resolved = event.target.checked; })} type="checkbox" /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </article>
+    </div>
+  );
+}
+
+function DocumentacionTab({ item, updateCase, flash }) {
+  if (!isThirdPartyWorkshopCase(item)) {
+    return null;
+  }
+
+  const thirdParty = item.thirdParty;
+
+  const addDocumentItem = () => {
+    updateCase((draft) => {
+      draft.thirdParty.claim.documents.push(createTodoRiskDocument());
+    });
+  };
+
+  return (
+    <div className="tab-layout">
+      <article className="card inner-card todo-risk-summary-card">
+        <div className="section-head small-gap">
+          <div>
+            <p className="eyebrow">Documentación</p>
+            <h3>Carpeta base del reclamo</h3>
+          </div>
+          <StatusBadge tone={thirdParty.claim.documentationStatus === 'Completa' ? 'success' : 'danger'}>
+            {thirdParty.claim.documentationStatus}
+          </StatusBadge>
+        </div>
+        <div className="form-grid three-columns compact-grid">
+          <SelectField
+            label="Estado manual"
+            onChange={(value) => updateCase((draft) => {
+              draft.thirdParty.claim.documentationStatus = value;
+              draft.thirdParty.claim.documentationAccepted = value === 'Completa';
+            })}
+            options={['Completa', 'Incompleta']}
+            value={thirdParty.claim.documentationStatus}
+          />
+          <DataField label="Items cargados" onChange={() => {}} readOnly value={thirdParty.claim.documents.length} />
+          <DataField label="Última carga" onChange={() => {}} readOnly value={thirdParty.claim.documents.reduce((latest, doc) => maxDate(latest, doc.uploadedAt), '')} type="date" />
+        </div>
+        {thirdParty.claim.documentationStatus === 'Incompleta' ? (
+          <div className="inline-alert danger-banner">Carpeta con documentación pendiente. Cada vez que entrás a la carpeta aparece el aviso bloqueante hasta aceptar.</div>
+        ) : (
+          <div className="inline-alert info-banner">La documentación queda marcada como completa y no dispara el bloqueo de ingreso.</div>
+        )}
+      </article>
+
+      <article className="card inner-card">
+        <div className="section-head">
+          <div>
+            <h3>Documentos cargados</h3>
+            <p className="muted">Demo manual con descarga masiva y edición simple por fila.</p>
+          </div>
+          <div className="tag-row">
+            <button className="secondary-button" onClick={addDocumentItem} type="button">Agregar ítem</button>
+            <button className="secondary-button" onClick={() => flash('Descargar todo demo: se prepararía un paquete único con toda la documentación del reclamo.')} type="button">Descargar todo</button>
+          </div>
+        </div>
+        <div className="table-wrap">
+          <table className="data-table compact-table">
+            <thead>
+              <tr>
+                <th>Categoría</th>
+                <th>Tipo archivo / nombre</th>
+                <th>Fecha de carga</th>
+                <th>Observaciones</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {thirdParty.claim.documents.map((doc) => (
+                <tr key={doc.id}>
+                  <td><SelectField label="Categoría" onChange={(value) => updateCase((draft) => { const target = draft.thirdParty.claim.documents.find((entry) => entry.id === doc.id); target.category = value; })} options={TODO_RIESGO_DOC_CATEGORY_OPTIONS} value={doc.category} /></td>
+                  <td><DataField label="Nombre" onChange={(value) => updateCase((draft) => { const target = draft.thirdParty.claim.documents.find((entry) => entry.id === doc.id); target.name = value; })} value={doc.name} /></td>
+                  <td><DataField label="Fecha" onChange={(value) => updateCase((draft) => { const target = draft.thirdParty.claim.documents.find((entry) => entry.id === doc.id); target.uploadedAt = value; })} type="date" value={doc.uploadedAt} /></td>
+                  <td><DataField label="Notas" onChange={(value) => updateCase((draft) => { const target = draft.thirdParty.claim.documents.find((entry) => entry.id === doc.id); target.notes = value; })} value={doc.notes} /></td>
+                  <td><button className="ghost-button" onClick={() => updateCase((draft) => { draft.thirdParty.claim.documents = draft.thirdParty.claim.documents.filter((entry) => entry.id !== doc.id); })} type="button">Quitar</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </article>
     </div>
   );
 }
@@ -1930,6 +3995,10 @@ function PresupuestoTab({ item, updateCase, flash }) {
     { label: 'Uso', value: item.vehicle.usage || 'Pendiente' },
     { label: 'Pintura', value: item.vehicle.paint || 'Pendiente' },
     { label: 'Color', value: item.vehicle.color || 'Pendiente' },
+    { label: 'Motor', value: item.vehicle.engine || 'Pendiente' },
+    { label: 'Chasis', value: item.vehicle.chassis || 'Pendiente' },
+    { label: 'Caja', value: item.vehicle.transmission || 'Pendiente' },
+    { label: 'Kilometraje', value: item.vehicle.mileage || 'Pendiente' },
   ];
   const customerDisplayName = `${item.customer.firstName || ''} ${item.customer.lastName || ''}`.trim() || 'Pendiente';
   const budgetStatusTone = item.computed.budgetReady ? 'success' : item.computed.canGenerateBudget ? 'info' : 'danger';
@@ -1953,6 +4022,25 @@ function PresupuestoTab({ item, updateCase, flash }) {
   };
 
   const currentPreviewBroken = previewMedia ? brokenPreviewIds.includes(previewMedia.id) : false;
+  const showAccessoryBlock = item.tramiteType !== 'Particular';
+  const accessoryTotal = (item.budget.accessoryWorks || []).reduce((sum, entry) => sum + numberValue(entry.amount), 0);
+
+  const addAccessoryWork = () => {
+    updateBudget((draft) => {
+      draft.budget.accessoryWorkEnabled = 'SI';
+      draft.budget.accessoryWorks = [...(draft.budget.accessoryWorks || []), createAccessoryWork()];
+    });
+  };
+
+  const removeAccessoryWork = (workId) => {
+    updateBudget((draft) => {
+      draft.budget.accessoryWorks = (draft.budget.accessoryWorks || []).filter((entry) => entry.id !== workId);
+      if (!draft.budget.accessoryWorks.length) {
+        draft.budget.accessoryWorks = [createAccessoryWork()];
+        draft.budget.accessoryWorkEnabled = 'NO';
+      }
+    });
+  };
 
   return (
     <div className="tab-layout budget-layout">
@@ -1960,7 +4048,7 @@ function PresupuestoTab({ item, updateCase, flash }) {
         <article className="card inner-card workshop-shell">
           <div className="section-head">
             <div>
-              <p className="eyebrow">Presupuesto Particular</p>
+              <p className="eyebrow">Presupuesto {item.tramiteType ?? 'Particular'}</p>
               <h3>{item.budget.workshop || 'Seleccioná el taller'}</h3>
             </div>
             <div className="form-grid three-columns compact-grid inline-fields">
@@ -2233,6 +4321,50 @@ function PresupuestoTab({ item, updateCase, flash }) {
         </div>
       </article>
 
+      {showAccessoryBlock ? (
+        <article className="card inner-card">
+          <div className="section-head">
+            <div>
+              <p className="eyebrow">Trabajos accesorios</p>
+              <h3>Bloque demo fuera del reclamo a la compañía</h3>
+            </div>
+            <div className="tag-row">
+              <StatusBadge tone={item.budget.accessoryWorkEnabled === 'SI' ? 'info' : 'danger'}>
+                {item.budget.accessoryWorkEnabled === 'SI' ? 'Activo' : 'Sin extras'}
+              </StatusBadge>
+              <button className="secondary-button" onClick={addAccessoryWork} type="button">Agregar trabajo accesorio</button>
+            </div>
+          </div>
+
+          <div className="form-grid three-columns compact-grid">
+            <ToggleField label="Hay trabajos accesorios" onChange={(value) => updateBudget((draft) => { draft.budget.accessoryWorkEnabled = value; })} value={item.budget.accessoryWorkEnabled || 'NO'} />
+            <DataField label="Total accesorio demo" onChange={() => {}} readOnly value={accessoryTotal} />
+            <DataField label="Impacta compañía" onChange={() => {}} readOnly value="No, queda separado" />
+          </div>
+
+          {item.budget.accessoryWorkEnabled === 'SI' ? (
+            <div className="budget-lines">
+              {(item.budget.accessoryWorks || []).map((work) => (
+                <div className="budget-line" key={work.id}>
+                  <DataField label="Detalle" onChange={(value) => updateBudget((draft) => { const target = draft.budget.accessoryWorks.find((entry) => entry.id === work.id); target.detail = value; })} value={work.detail} />
+                  <DataField label="Monto" onChange={(value) => updateBudget((draft) => { const target = draft.budget.accessoryWorks.find((entry) => entry.id === work.id); target.amount = value; })} value={work.amount} />
+                  {item.tramiteType === 'Reclamo de Tercero - Taller' ? <ToggleField label="Incluye reemplazo" onChange={(value) => updateBudget((draft) => { const target = draft.budget.accessoryWorks.find((entry) => entry.id === work.id); target.includesReplacement = value; if (value !== 'SI') { target.replacementPiece = ''; target.replacementAmount = ''; } })} value={work.includesReplacement || 'NO'} /> : <DataField label="Cobro" onChange={() => {}} readOnly value="Cliente / demo" />}
+                  {item.tramiteType === 'Reclamo de Tercero - Taller' && work.includesReplacement === 'SI' ? <DataField label="Pieza reemplazo" onChange={(value) => updateBudget((draft) => { const target = draft.budget.accessoryWorks.find((entry) => entry.id === work.id); target.replacementPiece = value; })} value={work.replacementPiece || ''} /> : null}
+                  {item.tramiteType === 'Reclamo de Tercero - Taller' && work.includesReplacement === 'SI' ? <DataField label="Monto reemplazo" onChange={(value) => updateBudget((draft) => { const target = draft.budget.accessoryWorks.find((entry) => entry.id === work.id); target.replacementAmount = value; })} value={work.replacementAmount || ''} /> : null}
+                  {item.tramiteType === 'Reclamo de Tercero - Taller' ? <DataField label="Cobro" onChange={() => {}} readOnly value="Cliente / tramo particular" /> : null}
+                  <button className="ghost-button" onClick={() => removeAccessoryWork(work.id)} type="button">Quitar</button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <label className="field">
+            <span>Anotaciones accesorios</span>
+            <textarea onChange={(event) => updateBudget((draft) => { draft.budget.accessoryNotes = event.target.value; })} value={item.budget.accessoryNotes || ''} />
+          </label>
+        </article>
+      ) : null}
+
       <article className="card inner-card">
         <div className="section-head">
           <div>
@@ -2331,6 +4463,10 @@ function PresupuestoTab({ item, updateCase, flash }) {
 }
 
 function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepairTab, flash }) {
+  const [previewMedia, setPreviewMedia] = useState(null);
+  const [failedMediaIds, setFailedMediaIds] = useState([]);
+  const [brokenPreviewIds, setBrokenPreviewIds] = useState([]);
+
   const syncBudgetParts = (resetRemoved = false) => {
     updateCase((draft) => {
       if (resetRemoved) {
@@ -2343,7 +4479,7 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
   const removeRepairPart = (partId) => {
     updateCase((draft) => {
       const target = draft.repair.parts.find((entry) => entry.id === partId);
-      if (target?.source === 'budget' && target.sourceLineId) {
+      if (!isThirdPartyWorkshopCase(draft) && target?.source === 'budget' && target.sourceLineId) {
         draft.repair.removedBudgetLineIds = [...new Set([...(draft.repair.removedBudgetLineIds || []), target.sourceLineId])];
       }
       draft.repair.parts = draft.repair.parts.filter((entry) => entry.id !== partId);
@@ -2356,9 +4492,33 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
       return;
     }
 
+    if (isInsuranceWorkflowCase(item) && !item.computed.todoRisk.quoteAgreed && !item.todoRisk.processing.adminTurnOverride) {
+      flash('Bloqueado: para Todo Riesgo necesitás cotización acordada con fecha y monto. Solo admin mock puede forzar la excepción visual.');
+      return;
+    }
+
     if (!item.computed.turnoReady) {
       flash('No se puede agendar turno si faltan fecha, dias estimados, salida estimada y estado.');
       return;
+    }
+
+    if (isInsuranceWorkflowCase(item)) {
+      const pendingParts = item.repair.parts.filter((part) => part.authorized === 'SI' && part.state !== 'Recibido');
+      if (pendingParts.length) {
+        const confirmed = window.confirm('Hay repuestos autorizados pendientes. ¿Querés agendar igual y registrar recordatorio en la agenda del trámite?');
+        if (!confirmed) {
+          return;
+        }
+
+        updateCase((draft) => {
+          draft.todoRisk.processing.agenda.push(createTodoRiskTask({
+            title: `Recordar seguimiento por ${pendingParts.length} repuesto(s) pendiente(s) antes del ingreso.`,
+            scheduledAt: draft.repair.turno.date || '',
+            assignee: TODO_RIESGO_ASSIGNABLE_USERS[0],
+            resolved: false,
+          }));
+        });
+      }
     }
 
     flash('Turno demo agendado. La salida estimada excluye fines de semana.');
@@ -2379,6 +4539,14 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
     });
   };
 
+  const markMediaThumbFailed = (mediaId) => {
+    setFailedMediaIds((current) => (current.includes(mediaId) ? current : [...current, mediaId]));
+  };
+
+  const markPreviewFailed = (mediaId) => {
+    setBrokenPreviewIds((current) => (current.includes(mediaId) ? current : [...current, mediaId]));
+  };
+
   const repairTabs = [
     { id: 'repuestos', label: 'Repuestos' },
     { id: 'turno', label: 'Turno' },
@@ -2397,16 +4565,361 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
     .filter((part) => part.source === 'budget')
     .map((part) => `${part.sourceLineId}:${part.name}:${part.budgetAmount || part.amount}`)
     .join('|');
+  const expectedQuoteSignature = buildThirdPartyBudgetParts(item.budget.lines, item.budget.accessoryWorks)
+    .map((part) => `${part.lineId}:${part.name}:${part.amount}`)
+    .join('|');
+  const currentQuoteSignature = (item.repair.quoteRows || [])
+    .map((row) => `${row.sourceLineId}:${row.piece}`)
+    .join('|');
+  const repairedMediaItems = item.repair.egreso.repairedMedia || [];
+  const currentPreviewBroken = previewMedia ? brokenPreviewIds.includes(previewMedia.id) : false;
+  const thirdPartyRepairTab = ['repuestos', 'turno'].includes(activeRepairTab) ? activeRepairTab : 'repuestos';
 
   useEffect(() => {
     if (activeRepairTab !== 'repuestos') {
       return;
     }
 
+    if (isThirdPartyWorkshopCase(item)) {
+      if (expectedQuoteSignature !== currentQuoteSignature) {
+        updateCase((draft) => {
+          syncThirdPartyQuoteRowsWithBudget(draft);
+        });
+      }
+      return;
+    }
+
     if (expectedBudgetPartsSignature !== currentBudgetPartsSignature) {
       syncBudgetParts();
     }
-  }, [activeRepairTab, currentBudgetPartsSignature, expectedBudgetPartsSignature]);
+  }, [activeRepairTab, currentBudgetPartsSignature, currentQuoteSignature, expectedBudgetPartsSignature, expectedQuoteSignature, item, updateCase]);
+
+  if (isThirdPartyWorkshopCase(item)) {
+    const bestQuoteSubtotal = item.computed.thirdParty.subtotalBestQuote;
+    const receivedPartsCount = item.repair.parts.filter((part) => part.state === 'Recibido').length;
+
+    return (
+      <div className="tab-layout">
+        <article className="card inner-card todo-risk-summary-card">
+          <div className="section-head small-gap">
+            <h3>Gestión reparación - Reclamo de Tercero</h3>
+            <StatusBadge tone={getStatusTone(item.computed.repairStatus)}>{item.computed.repairStatus}</StatusBadge>
+          </div>
+          <div className="form-grid five-columns compact-grid">
+            <DataField label="N° de siniestro" onChange={() => {}} readOnly value={item.claimNumber || ''} />
+            <DataField label="Taller" onChange={() => {}} readOnly value={item.budget.workshop || 'Pendiente'} />
+            <DataField label="Piezas a cotizar" onChange={() => {}} readOnly value={item.repair.quoteRows?.length || 0} />
+            <DataField label="Subtotal mejor cotización" onChange={() => {}} readOnly value={bestQuoteSubtotal} />
+            <DataField label="Total final repuestos" onChange={() => {}} readOnly value={item.computed.thirdParty.totalFinalParts} />
+          </div>
+        </article>
+
+        <div className="subtabs-row third-party-repair-tabs">
+          {[
+            { id: 'repuestos', label: 'Planilla de cotizaciones' },
+            { id: 'turno', label: 'Gestión de pedidos' },
+          ].map((tab) => (
+            <button className={`subtab-button ${thirdPartyRepairTab === tab.id ? 'is-active' : ''}`} key={tab.id} onClick={() => onChangeRepairTab(tab.id)} type="button">
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {thirdPartyRepairTab === 'repuestos' ? (
+          <article className="card inner-card">
+            <div className="section-head">
+              <div>
+                <p className="eyebrow">Planilla de cotizaciones</p>
+                <h3>Piezas traídas desde Presupuesto</h3>
+              </div>
+              <div className="tag-row">
+                <StatusBadge tone={item.repair.quoteRows?.length ? 'info' : 'danger'}>{item.repair.quoteRows?.length || 0} pieza(s)</StatusBadge>
+                <button className="secondary-button" onClick={() => updateCase((draft) => { syncThirdPartyQuoteRowsWithBudget(draft); })} type="button">Actualizar desde Presupuesto</button>
+              </div>
+            </div>
+
+            <div className="inline-alert info-banner">Se incluyen automáticamente las piezas a reemplazar del Presupuesto y también los trabajos extras que tengan repuestos asociados. La pieza se cotiza aunque internamente después se decida reparar.</div>
+
+            <div className="parts-total-grid third-party-summary-grid">
+              <article className="summary-chip">
+                <span>Subtotal mejor cotización</span>
+                <strong>{money(bestQuoteSubtotal)}</strong>
+              </article>
+              <article className="summary-chip">
+                <span>Mínimo repuestos</span>
+                <strong>{money(item.computed.thirdParty.minimumParts)}</strong>
+              </article>
+              <article className="summary-chip">
+                <span>Piezas sincronizadas</span>
+                <strong>{item.repair.quoteRows?.length || 0}</strong>
+              </article>
+            </div>
+
+            <div className="table-wrap">
+              <table className="data-table compact-table third-party-quote-table">
+                <thead>
+                  <tr>
+                    <th>Pieza</th>
+                    <th>Cotización 1</th>
+                    <th>Cotización 2</th>
+                    <th>Cotización 3</th>
+                    <th>Cotización 4</th>
+                    <th>Mejor</th>
+                    <th>Facturación</th>
+                    <th>Pago</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(item.repair.quoteRows || []).map((row) => (
+                    <tr key={row.id}>
+                      <td>
+                        <div className="table-piece-cell">
+                          <strong>{row.piece}</strong>
+                          <small>{row.source === 'budget' ? 'Sincronizado desde Presupuesto' : 'Carga manual'}</small>
+                        </div>
+                      </td>
+                      <td><DataField label="Cotización 1" onChange={(value) => updateCase((draft) => { const target = draft.repair.quoteRows.find((entry) => entry.id === row.id); target.provider1 = value; })} value={row.provider1} /></td>
+                      <td><DataField label="Cotización 2" onChange={(value) => updateCase((draft) => { const target = draft.repair.quoteRows.find((entry) => entry.id === row.id); target.provider2 = value; })} value={row.provider2} /></td>
+                      <td><DataField label="Cotización 3" onChange={(value) => updateCase((draft) => { const target = draft.repair.quoteRows.find((entry) => entry.id === row.id); target.provider3 = value; })} value={row.provider3} /></td>
+                      <td><DataField label="Cotización 4" onChange={(value) => updateCase((draft) => { const target = draft.repair.quoteRows.find((entry) => entry.id === row.id); target.provider4 = value; })} value={row.provider4} /></td>
+                      <td><strong>{money(getBestQuoteValue(row))}</strong></td>
+                      <td><SelectField label="Facturación" onChange={(value) => updateCase((draft) => { const target = draft.repair.quoteRows.find((entry) => entry.id === row.id); target.billing = value; })} options={THIRD_PARTY_BILLING_OPTIONS} value={row.billing} /></td>
+                      <td><SelectField label="Pago" onChange={(value) => updateCase((draft) => { const target = draft.repair.quoteRows.find((entry) => entry.id === row.id); target.paymentMethod = value; })} options={THIRD_PARTY_PAYMENT_OPTIONS} value={row.paymentMethod} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </article>
+        ) : null}
+
+        {thirdPartyRepairTab === 'turno' ? (
+          <article className="card inner-card">
+            <div className="section-head">
+              <div>
+                <p className="eyebrow">Gestión de pedidos</p>
+                <h3>Carga manual y etiquetas demo</h3>
+              </div>
+              <div className="tag-row">
+                <StatusBadge tone={item.repair.parts.length ? 'info' : 'danger'}>{item.repair.parts.length} repuesto(s)</StatusBadge>
+                <button className="secondary-button" onClick={() => flash('Imprimir etiquetas demo: se generarían las etiquetas con carpeta, inventario y código de pieza.')} type="button">Imprimir etiquetas</button>
+                <button className="secondary-button" onClick={addRepairPart} type="button">Agregar repuesto</button>
+              </div>
+            </div>
+
+            <div className="parts-total-grid third-party-summary-grid">
+              <article className="summary-chip">
+                <span>Total final repuestos</span>
+                <strong>{money(item.computed.thirdParty.totalFinalParts)}</strong>
+              </article>
+              <article className="summary-chip">
+                <span>Recibidos</span>
+                <strong>{receivedPartsCount}</strong>
+              </article>
+              <article className="summary-chip">
+                <span>Pendientes / gestión</span>
+                <strong>{Math.max(item.repair.parts.length - receivedPartsCount, 0)}</strong>
+              </article>
+            </div>
+
+            <div className="budget-lines">
+              {item.repair.parts.length ? (
+                item.repair.parts.map((part, index) => (
+                  <div className="budget-line repair-part-line third-party-order-line" key={part.id}>
+                    <div className="budget-line-header">
+                      <strong>{part.name || 'Nuevo repuesto'}</strong>
+                      <small>N° inventario {getThirdPartyInventoryCode(item.code, index)}</small>
+                    </div>
+                    <DataField label="Repuesto" onChange={(value) => updateCase((draft) => {
+                      const target = draft.repair.parts.find((entry) => entry.id === part.id);
+                      target.name = value;
+                    })} value={part.name} />
+                    <DataField label="Importe" onChange={(value) => updateCase((draft) => {
+                      const target = draft.repair.parts.find((entry) => entry.id === part.id);
+                      target.amount = value;
+                    })} value={part.amount} />
+                    <DataField label="Proveedor" onChange={(value) => updateCase((draft) => {
+                      const target = draft.repair.parts.find((entry) => entry.id === part.id);
+                      target.provider = value;
+                    })} value={part.provider} />
+                    <SelectField label="Estado" onChange={(value) => updateCase((draft) => {
+                      const target = draft.repair.parts.find((entry) => entry.id === part.id);
+                      target.state = value;
+                      if (value !== 'Recibido') {
+                        target.receivedDate = '';
+                      }
+                    })} options={THIRD_PARTY_ORDER_STATE_OPTIONS} value={part.state} />
+                    <DataField label="Fecha recibido" onChange={(value) => updateCase((draft) => {
+                      const target = draft.repair.parts.find((entry) => entry.id === part.id);
+                      target.receivedDate = value;
+                      if (value) {
+                        target.state = 'Recibido';
+                      }
+                    })} type="date" value={part.receivedDate} />
+                    <DataField label="Código pieza" onChange={(value) => updateCase((draft) => {
+                      const target = draft.repair.parts.find((entry) => entry.id === part.id);
+                      target.partCode = value;
+                    })} value={part.partCode} />
+                    <DataField label="N° inventario" onChange={() => {}} readOnly value={getThirdPartyInventoryCode(item.code, index)} />
+                    <div className="budget-line-footer">
+                      <div className="budget-line-meta repair-line-meta">
+                        <StatusBadge tone={part.state === 'Recibido' ? 'success' : 'info'}>{part.state}</StatusBadge>
+                        {part.source === 'budget' ? <small>Originado en Presupuesto</small> : <small>Carga manual</small>}
+                      </div>
+                      <button className="ghost-button" onClick={() => removeRepairPart(part.id)} type="button">Eliminar</button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="empty-media" role="status">Todavía no cargaste repuestos para gestionar pedidos.</div>
+              )}
+            </div>
+          </article>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (isInsuranceWorkflowCase(item)) {
+    const todoRiskParts = item.repair.parts.filter((part) => part.source === 'budget');
+    const authorizedParts = todoRiskParts.filter((part) => part.authorized === 'SI');
+    const turnoBlockedForTodoRisk = !item.computed.todoRisk.quoteAgreed && !item.todoRisk.processing.adminTurnOverride;
+    const authorizationBlocked = !item.computed.todoRisk.canProgressFromPresentation;
+
+    return (
+      <div className="tab-layout">
+        {!item.computed.budgetReady ? <div className="alert-banner danger-banner">Presupuesto en rojo: completá y generá el informe para habilitar Gestión reparación.</div> : null}
+
+        <article className="card inner-card todo-risk-summary-card">
+          <div className="section-head small-gap">
+            <h3>Gestión reparación - Todo Riesgo</h3>
+            <StatusBadge tone={getStatusTone(item.computed.repairStatus)}>{item.computed.repairStatus}</StatusBadge>
+          </div>
+          <div className="form-grid four-columns compact-grid">
+            <DataField label="N° de siniestro" onChange={() => {}} readOnly value={item.claimNumber || ''} />
+            <DataField label="Días tramitando" onChange={() => {}} readOnly value={item.computed.todoRisk.daysProcessing} />
+            <DataField label="Repuestos autorizados" onChange={() => {}} readOnly value={authorizedParts.length} />
+            <DataField label="Estado actual" onChange={() => {}} readOnly value={item.computed.repairStatus} />
+          </div>
+        </article>
+
+        <div className="subtabs-row">
+          {repairTabs.map((tab) => (
+            <button className={`subtab-button ${activeRepairTab === tab.id ? 'is-active' : ''}`} key={tab.id} onClick={() => onChangeRepairTab(tab.id)} type="button">
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {activeRepairTab === 'repuestos' ? (
+          <article className="card inner-card">
+            <div className="section-head">
+              <div>
+                <p className="eyebrow">Repuestos</p>
+                <h3>Automáticos desde Presupuesto</h3>
+              </div>
+              <button className="secondary-button" onClick={() => flash('Imprimir etiqueta demo: se prepararía la etiqueta individual del repuesto.') } type="button">Imprimir etiqueta</button>
+            </div>
+            <div className="table-wrap">
+              <table className="data-table compact-table">
+                <thead>
+                  <tr>
+                    <th>Repuesto</th>
+                    <th>Autorizado</th>
+                    <th>Proveedor</th>
+                    <th>Estado</th>
+                    <th>Recibido</th>
+                    <th>N° inventario</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {todoRiskParts.map((part, index) => {
+                    const inventoryIndex = authorizedParts.findIndex((entry) => entry.id === part.id) + 1;
+                    const inventoryCode = part.authorized === 'SI' ? `${item.code}-${String(inventoryIndex).padStart(2, '0')}` : 'Pendiente';
+                    return (
+                      <tr key={part.id}>
+                        <td>{part.name}</td>
+                        <td>
+                          <div className="todo-risk-inline-actions">
+                            <button className={`secondary-button compact-button ${part.authorized === 'SI' ? 'is-selected' : ''}`} disabled={authorizationBlocked} onClick={() => updateCase((draft) => { const target = draft.repair.parts.find((entry) => entry.id === part.id); target.authorized = 'SI'; })} type="button">Sí</button>
+                            <button className={`secondary-button compact-button ${part.authorized === 'NO' ? 'is-selected' : ''}`} disabled={authorizationBlocked} onClick={() => updateCase((draft) => { const target = draft.repair.parts.find((entry) => entry.id === part.id); target.authorized = 'NO'; })} type="button">No</button>
+                          </div>
+                        </td>
+                        <td><DataField label="Proveedor" onChange={(value) => updateCase((draft) => { const target = draft.repair.parts.find((entry) => entry.id === part.id); target.provider = value; })} value={part.provider} /></td>
+                        <td><SelectField disabled={authorizationBlocked} label="Estado" onChange={(value) => updateCase((draft) => { const target = draft.repair.parts.find((entry) => entry.id === part.id); target.state = value; })} options={REPAIR_PART_STATE_OPTIONS} value={part.state} /></td>
+                        <td>{part.state === 'Recibido' ? 'Sí' : 'No'}</td>
+                        <td>{inventoryCode}</td>
+                        <td><button className="ghost-button" onClick={() => flash(`Etiqueta demo para ${part.name}: ${inventoryCode}.`)} type="button">Etiqueta</button></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {authorizationBlocked ? <div className="inline-alert danger-banner">Sin fecha de presentación no se habilitan autorizaciones ni seguimiento operativo de repuestos.</div> : null}
+          </article>
+        ) : null}
+
+        {activeRepairTab === 'turno' ? (
+          <article className="card inner-card">
+            <div className="section-head">
+              <div>
+                <p className="eyebrow">Turno</p>
+                <h3>Guard con excepción admin mock</h3>
+              </div>
+              <button className="primary-button" onClick={assignTurn} type="button">Agendar turno</button>
+            </div>
+            {turnoBlockedForTodoRisk ? <div className="inline-alert danger-banner">Sin cotización acordada no se da turno, salvo la excepción visual de admin mock.</div> : null}
+            <div className="form-grid four-columns compact-grid">
+              <DataField label="Fecha" onChange={(value) => updateCase((draft) => { draft.repair.turno.date = value; })} type="date" value={item.repair.turno.date} />
+              <DataField label="Días estimados" onChange={(value) => updateCase((draft) => { draft.repair.turno.estimatedDays = value; })} type="number" value={item.repair.turno.estimatedDays} />
+              <DataField label="Salida estimada" onChange={() => {}} readOnly type="date" value={item.computed.turnoEstimatedExit} />
+              <SelectField label="Estado" onChange={(value) => updateCase((draft) => { draft.repair.turno.state = value; })} options={TURNO_STATE_OPTIONS} value={item.repair.turno.state} />
+            </div>
+            <button className={`toggle-button ${item.todoRisk.processing.adminTurnOverride ? 'is-on' : ''}`} onClick={() => updateCase((draft) => { draft.todoRisk.processing.adminTurnOverride = !draft.todoRisk.processing.adminTurnOverride; })} type="button">Excepción visual admin mock</button>
+            <label className="field">
+              <span>Anotaciones de turno</span>
+              <textarea onChange={(event) => updateCase((draft) => { draft.repair.turno.notes = event.target.value; })} value={item.repair.turno.notes} />
+            </label>
+          </article>
+        ) : null}
+      
+        {activeRepairTab === 'ingreso' ? (
+          <article className="card inner-card">
+            <div className="section-head small-gap">
+              <h3>Ingreso</h3>
+              <StatusBadge tone={item.repair.ingreso.realDate ? 'success' : 'danger'}>{item.repair.ingreso.realDate ? 'Ingreso registrado' : 'Pendiente'}</StatusBadge>
+            </div>
+            <div className="form-grid three-columns compact-grid">
+              <DataField label="Ingreso real" onChange={(value) => updateCase((draft) => { draft.repair.ingreso.realDate = value; })} type="date" value={item.repair.ingreso.realDate} />
+              <DataField label="Salida estimada" onChange={() => {}} readOnly type="date" value={item.computed.turnoEstimatedExit} />
+              <ToggleField label="Observación en ingreso" onChange={(value) => updateCase((draft) => { draft.repair.ingreso.hasObservation = value; })} value={item.repair.ingreso.hasObservation} />
+            </div>
+          </article>
+        ) : null}
+
+        {activeRepairTab === 'egreso' ? (
+          <article className="card inner-card">
+            <div className="section-head small-gap">
+              <h3>Egreso</h3>
+              <StatusBadge tone={item.computed.repairResolved || item.todoRisk.processing.noRepairNeeded ? 'success' : 'danger'}>{item.computed.repairStatus}</StatusBadge>
+            </div>
+            <div className="form-grid four-columns compact-grid">
+              <DataField label="Fecha egreso" onChange={(value) => updateCase((draft) => { draft.repair.egreso.date = value; })} type="date" value={item.repair.egreso.date} />
+              <ToggleField label="Debe reingresar" onChange={(value) => updateCase((draft) => { draft.repair.egreso.shouldReenter = value; })} value={item.repair.egreso.shouldReenter} />
+              <button className={`toggle-button ${item.repair.egreso.definitiveExit ? 'is-on' : ''}`} onClick={() => updateCase((draft) => { draft.repair.egreso.definitiveExit = !draft.repair.egreso.definitiveExit; })} type="button">Cierre operativo</button>
+              <button className={`toggle-button ${item.todoRisk.processing.noRepairNeeded ? 'is-on' : ''}`} disabled={!item.todoRisk.processing.adminTurnOverride && !item.todoRisk.processing.noRepairNeeded} onClick={() => updateCase((draft) => { draft.todoRisk.processing.noRepairNeeded = !draft.todoRisk.processing.noRepairNeeded; })} type="button">No debe repararse</button>
+            </div>
+            <label className="field">
+              <span>Anotaciones de egreso</span>
+              <textarea onChange={(event) => updateCase((draft) => { draft.repair.egreso.notes = event.target.value; })} value={item.repair.egreso.notes} />
+            </label>
+          </article>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div className="tab-layout">
@@ -2571,6 +5084,11 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
             <button className="primary-button" onClick={assignTurn} type="button">Agendar turno</button>
           </div>
 
+          <div className="budget-ready-panel budget-ready-panel-compact">
+            <StatusBadge tone={item.computed.turnoReady ? 'success' : 'danger'}>{item.computed.turnoReady ? 'Turno consistente' : 'Turno incompleto'}</StatusBadge>
+            <small>La salida estimada se calcula en días hábiles desde la fecha elegida.</small>
+          </div>
+
           <div className="form-grid four-columns compact-grid">
             <DataField label="Fecha" onChange={(value) => updateCase((draft) => { draft.repair.turno.date = value; })} type="date" value={item.repair.turno.date} />
             <DataField label="Dias estimados" onChange={(value) => updateCase((draft) => { draft.repair.turno.estimatedDays = value; })} type="number" value={item.repair.turno.estimatedDays} />
@@ -2594,6 +5112,11 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
             <StatusBadge tone={item.repair.ingreso.realDate ? 'success' : 'danger'}>{item.repair.ingreso.realDate ? 'Ingreso registrado' : 'Pendiente'}</StatusBadge>
           </div>
 
+          <div className="budget-ready-panel budget-ready-panel-compact">
+            <StatusBadge tone={item.repair.ingreso.hasObservation === 'SI' ? 'info' : 'success'}>{item.repair.ingreso.hasObservation === 'SI' ? 'Ingreso observado' : 'Sin observaciones'}</StatusBadge>
+            <small>La fecha real de ingreso puede ser distinta al turno programado.</small>
+          </div>
+
           <div className="form-grid three-columns compact-grid">
             <DataField label="Ingreso real" onChange={(value) => updateCase((draft) => { draft.repair.ingreso.realDate = value; })} type="date" value={item.repair.ingreso.realDate} />
             <DataField label="Salida estimada" onChange={() => {}} type="date" value={item.computed.turnoEstimatedExit} />
@@ -2608,6 +5131,10 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
 
           {item.repair.ingreso.hasObservation === 'SI' ? (
             <>
+              <div className="inline-alert info-banner">
+                Fecha visible de la observación: {item.repair.ingreso.realDate ? formatDate(item.repair.ingreso.realDate) : 'pendiente de cargar en Ingreso real'}.
+              </div>
+
               <label className="field">
                 <span>Resumen general</span>
                 <textarea onChange={(event) => updateCase((draft) => { draft.repair.ingreso.observation = event.target.value; })} value={item.repair.ingreso.observation} />
@@ -2656,7 +5183,15 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
 
           <div className="form-grid four-columns compact-grid">
             <DataField label="Fecha egreso" onChange={(value) => updateCase((draft) => { draft.repair.egreso.date = value; })} type="date" value={item.repair.egreso.date} />
-            <ToggleField label="Debe reingresar" onChange={(value) => updateCase((draft) => { draft.repair.egreso.shouldReenter = value; })} value={item.repair.egreso.shouldReenter} />
+            <ToggleField label="Debe reingresar" onChange={(value) => updateCase((draft) => {
+              draft.repair.egreso.shouldReenter = value;
+              if (value !== 'SI') {
+                draft.repair.egreso.reentryDate = '';
+                draft.repair.egreso.reentryEstimatedDays = '';
+                draft.repair.egreso.reentryState = 'Pendiente programar';
+                draft.repair.egreso.reentryNotes = '';
+              }
+            })} value={item.repair.egreso.shouldReenter} />
             <button className={`toggle-button ${item.repair.egreso.definitiveExit ? 'is-on' : ''}`} onClick={() => updateCase((draft) => { draft.repair.egreso.definitiveExit = !draft.repair.egreso.definitiveExit; })} type="button">
               Egreso definitivo
             </button>
@@ -2685,13 +5220,231 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
               </label>
             </div>
           ) : null}
+
+          <div className="budget-ready-panel budget-ready-panel-compact">
+            <StatusBadge tone={item.repair.egreso.repairedPhotos ? 'success' : 'danger'}>{item.repair.egreso.repairedPhotos ? 'Fotos finales visibles' : 'Sin fotos finales'}</StatusBadge>
+            <small>La solapa Gestión reparación recién cierra en verde cuando no reingresa o se marca egreso definitivo.</small>
+          </div>
+
+          {item.repair.egreso.repairedPhotos ? (
+            repairedMediaItems.length ? (
+              <div className="media-gallery compact-media-gallery">
+                {repairedMediaItems.map((media) => (
+                  <button
+                    aria-label={`Abrir evidencia final ${media.label}`}
+                    className="media-card"
+                    key={media.id}
+                    onClick={() => setPreviewMedia(media)}
+                    type="button"
+                  >
+                    {media.thumbnail && !failedMediaIds.includes(media.id) ? (
+                      <img alt="" className="media-card-image" onError={() => markMediaThumbFailed(media.id)} src={media.thumbnail} />
+                    ) : (
+                      <div className="media-card-fallback" aria-hidden="true">
+                        <strong>EGRESO</strong>
+                        <small>Preview no disponible</small>
+                      </div>
+                    )}
+                    <span className="media-card-scrim" aria-hidden="true" />
+                    <span>{media.label}</span>
+                    <small>{media.description || 'Foto final de entrega'}</small>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-media" role="status">La bandera de fotos finales está activa, pero todavía no hay adjuntos de egreso para revisar.</div>
+            )
+          ) : null}
         </article>
+      ) : null}
+
+      {previewMedia ? (
+        <div className="media-overlay" onClick={() => setPreviewMedia(null)} role="presentation">
+          <div aria-label={`Vista ampliada de ${previewMedia.label}`} aria-modal="true" className="media-modal" onClick={(event) => event.stopPropagation()} role="dialog">
+            <div className="media-modal-head">
+              <div>
+                <strong>{previewMedia.label}</strong>
+                <p>{previewMedia.description || 'Adjunto operativo del caso.'}</p>
+              </div>
+              <button className="ghost-button" onClick={() => setPreviewMedia(null)} type="button">Cerrar</button>
+            </div>
+
+            {previewMedia.type === 'video' ? (
+              currentPreviewBroken ? (
+                <div className="empty-media" role="status">El video no pudo previsualizarse. Abrilo en una pestaña nueva para revisar el original.</div>
+              ) : (
+                <video controls onError={() => markPreviewFailed(previewMedia.id)} src={previewMedia.url} />
+              )
+            ) : currentPreviewBroken ? (
+              <div className="empty-media" role="status">La imagen no cargó en la previsualización. Usá "Abrir archivo" para validarla igual.</div>
+            ) : (
+              <img alt={previewMedia.label} onError={() => markPreviewFailed(previewMedia.id)} src={previewMedia.url} />
+            )}
+
+            <div className="media-preview-actions">
+              <a className="secondary-button button-link" href={previewMedia.url} rel="noreferrer" target="_blank">Abrir archivo</a>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );
 }
 
-function PagosTab({ item, updateCase }) {
+function PagosTab({ item, updateCase, flash }) {
+  const [activePaymentTab, setActivePaymentTab] = useState('facturacion');
+
+  if (isThirdPartyWorkshopCase(item)) {
+    return (
+      <div className="tab-layout">
+        <article className="card inner-card todo-risk-summary-card">
+          <div className="section-head small-gap">
+            <div>
+              <p className="eyebrow">Pagos</p>
+              <h3>Vista mínima de resguardo</h3>
+            </div>
+            <StatusBadge tone={getStatusTone(item.computed.paymentState)}>{item.computed.paymentState}</StatusBadge>
+          </div>
+          <div className="phase-placeholder-grid">
+            <article className="summary-chip">
+              <span>Cía. del 3ero</span>
+              <strong>{item.thirdParty.claim.thirdCompany || 'Pendiente'}</strong>
+            </article>
+            <article className="summary-chip">
+              <span>Monto depositado</span>
+              <strong>{money(item.payments.depositedAmount || 0)}</strong>
+            </article>
+            <article className="summary-chip">
+              <span>Fecha de pago</span>
+              <strong>{item.payments.paymentDate ? formatDate(item.payments.paymentDate) : 'Pendiente'}</strong>
+            </article>
+          </div>
+          <div className="inline-alert info-banner">
+            Pagos detallados de compañía, retenciones y cobros mixtos quedan fuera de Fase 1. Dejamos esta vista mínima para que la carpeta no se rompa y siga mostrando el estado ya cargado.
+          </div>
+          <div className="form-grid three-columns compact-grid">
+            <DataField label="N° factura" onChange={() => {}} readOnly value={item.payments.invoiceNumber || '-'} />
+            <DataField label="Razón social" onChange={() => {}} readOnly value={item.payments.businessName || '-'} />
+            <DataField label="Trabajos extras" onChange={() => {}} readOnly value={item.computed.thirdParty.extraWorksTotal} />
+          </div>
+          <button className="secondary-button" onClick={() => flash('Pagos de Reclamo de Tercero queda recortado en Fase 1. La operatoria completa sigue en Fase 2.')} type="button">Ver alcance Fase 1</button>
+        </article>
+      </div>
+    );
+  }
+
+  if (isInsuranceWorkflowCase(item)) {
+    const isCleas = isCleasCase(item);
+    const cleasClientChargeFlow = isCleas && item.computed.todoRisk.cleasScope === 'Sobre franquicia' && item.computed.todoRisk.dictamen === 'En contra';
+
+    const addInvoice = () => {
+      updateCase((draft) => {
+        draft.payments.invoice = 'SI';
+        draft.payments.invoices = [
+          ...(draft.payments.invoices || []),
+          createTodoRiskInvoice({
+            amount: String(item.computed.todoRisk.amountToInvoice || ''),
+            issuedAt: draft.payments.passedToPaymentsDate || draft.todoRisk.processing.quoteDate || '',
+          }),
+        ];
+      });
+    };
+
+    return (
+      <div className="tab-layout todo-risk-layout">
+        <div className="subtabs-row">
+          {[
+            { id: 'facturacion', label: 'Facturación' },
+            { id: 'pagos', label: 'Pagos' },
+          ].map((tab) => (
+            <button className={`subtab-button ${activePaymentTab === tab.id ? 'is-active' : ''}`} key={tab.id} onClick={() => setActivePaymentTab(tab.id)} type="button">
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {activePaymentTab === 'facturacion' ? <article className="card inner-card">
+          <div className="section-head">
+            <div>
+              <p className="eyebrow">Facturación</p>
+              <h3>Datos traídos desde Tramitación</h3>
+            </div>
+            <div className="tag-row">
+              <StatusBadge tone={item.computed.todoRisk.paymentsReady ? 'success' : 'info'}>{item.computed.todoRisk.paymentStatus}</StatusBadge>
+              <button className="secondary-button" onClick={addInvoice} type="button">Agregar factura</button>
+            </div>
+          </div>
+
+          <div className="form-grid four-columns compact-grid">
+            <DataField label="Cía. aseguradora" onChange={() => {}} readOnly value={item.todoRisk.insurance.company} />
+            <DataField label="N° de siniestro" onChange={() => {}} readOnly value={item.claimNumber || ''} />
+            <DataField label="A facturar Cía." onChange={() => {}} readOnly value={item.computed.todoRisk.amountToInvoice} />
+            <DataField label="Fecha de acuerdo" onChange={() => {}} readOnly type="date" value={item.todoRisk.processing.quoteDate} />
+            {isCleas ? <DataField label="Monto franquicia" onChange={() => {}} readOnly value={item.computed.todoRisk.franchiseAmount || '0'} /> : null}
+            {cleasClientChargeFlow ? <DataField label="Pago franquicia Cía." onChange={() => {}} readOnly value={item.computed.todoRisk.companyFranchisePaymentAmount} /> : null}
+            {cleasClientChargeFlow ? <DataField label="A cargo del cliente" onChange={() => {}} readOnly value={item.computed.todoRisk.clientChargeAmount} /> : null}
+            <DataField label="Cliente firma conforme" onChange={(value) => updateCase((draft) => { draft.payments.signedAgreementDate = value; })} type="date" value={item.payments.signedAgreementDate || ''} />
+            <DataField label="Pasado a pagos" onChange={(value) => updateCase((draft) => { draft.payments.passedToPaymentsDate = value; })} type="date" value={item.payments.passedToPaymentsDate || ''} />
+            <DataField label="Fecha estimada pago" onChange={(value) => updateCase((draft) => { draft.payments.estimatedPaymentDate = value; })} type="date" value={item.payments.estimatedPaymentDate || ''} />
+            <DataField label="Razón social" onChange={(value) => updateCase((draft) => { draft.payments.businessName = value; })} value={item.payments.businessName || ''} />
+          </div>
+
+          <div className="budget-lines">
+            {(item.payments.invoices || []).map((invoice) => (
+              <div className="budget-line" key={invoice.id}>
+                <DataField label="N° factura" onChange={(value) => updateCase((draft) => { const target = draft.payments.invoices.find((entry) => entry.id === invoice.id); target.invoiceNumber = value; if (!draft.payments.invoiceNumber) draft.payments.invoiceNumber = value; })} value={invoice.invoiceNumber} />
+                <DataField label="Importe total" onChange={(value) => updateCase((draft) => { const target = draft.payments.invoices.find((entry) => entry.id === invoice.id); target.amount = value; })} value={invoice.amount} />
+                <DataField label="Fecha factura" onChange={(value) => updateCase((draft) => { const target = draft.payments.invoices.find((entry) => entry.id === invoice.id); target.issuedAt = value; })} type="date" value={invoice.issuedAt} />
+                <DataField label="Notas" onChange={(value) => updateCase((draft) => { const target = draft.payments.invoices.find((entry) => entry.id === invoice.id); target.notes = value; })} value={invoice.notes} />
+              </div>
+            ))}
+          </div>
+        </article> : null}
+
+        {activePaymentTab === 'pagos' ? <article className="card inner-card">
+          <div className="section-head small-gap">
+            <div>
+              <p className="eyebrow">Pagos</p>
+              <h3>Fecha manual y estado automático</h3>
+            </div>
+            <StatusBadge tone={getStatusTone(item.computed.todoRisk.paymentStatus)}>{item.computed.todoRisk.paymentStatus}</StatusBadge>
+          </div>
+
+          <div className="form-grid four-columns compact-grid">
+            <DataField label="Fecha de pago" onChange={(value) => updateCase((draft) => { draft.payments.paymentDate = value; })} type="date" value={item.payments.paymentDate || ''} />
+            <DataField label="Monto depositado" onChange={(value) => updateCase((draft) => { draft.payments.depositedAmount = value; })} value={item.payments.depositedAmount || ''} />
+            <ToggleField label="Retenciones" onChange={(value) => updateCase((draft) => { draft.payments.hasRetentions = value; })} value={item.payments.hasRetentions || 'NO'} />
+            {isCleas ? <DataField label="CLEAS sobre" onChange={() => {}} readOnly value={item.computed.todoRisk.cleasScope || '-'} /> : <DataField label="Estado franquicia" onChange={() => {}} readOnly value={item.todoRisk.franchise.status} />}
+            {isCleas ? <DataField label="Monto franquicia" onChange={() => {}} readOnly value={item.computed.todoRisk.franchiseAmount || '0'} /> : <DataField label="Monto franquicia" onChange={() => {}} readOnly value={item.todoRisk.franchise.amount || '0'} />}
+            {isCleas ? <DataField label="Dictamen" onChange={() => {}} readOnly value={item.computed.todoRisk.dictamen} /> : <DataField label="Recupero" onChange={() => {}} readOnly value={item.todoRisk.franchise.recoveryType || 'Pendiente'} />}
+            {isCleas ? <DataField label="N° de CLEAS" onChange={() => {}} readOnly value={item.todoRisk.insurance.cleasNumber || '-'} /> : <DataField label="Caso asociado" onChange={() => {}} readOnly value={item.todoRisk.franchise.associatedCase || '-'} />}
+            {cleasClientChargeFlow ? <DataField label="Pago franquicia Cía." onChange={() => {}} readOnly value={item.computed.todoRisk.companyFranchisePaymentAmount} /> : null}
+            {cleasClientChargeFlow ? <DataField label="A cargo del cliente" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.clientChargeAmount = value; })} value={item.todoRisk.processing.clientChargeAmount || ''} /> : null}
+            {cleasClientChargeFlow ? <SelectField label="Estado pago cliente" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.clientChargeStatus = value; })} options={CLEAS_PAYMENT_STATUS_OPTIONS} value={item.todoRisk.processing.clientChargeStatus} /> : null}
+            {cleasClientChargeFlow ? <DataField label="Fecha pago cliente" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.clientChargeDate = value; })} type="date" value={item.todoRisk.processing.clientChargeDate || ''} /> : null}
+          </div>
+
+          {item.payments.hasRetentions === 'SI' ? (
+            <div className="form-grid six-columns compact-grid retention-grid">
+              <DataField label="IVA" onChange={(value) => updateCase((draft) => { draft.payments.retentions.iva = value; })} value={item.payments.retentions?.iva || ''} />
+              <DataField label="Ganancias" onChange={(value) => updateCase((draft) => { draft.payments.retentions.gains = value; })} value={item.payments.retentions?.gains || ''} />
+              <DataField label="Contr. Patr." onChange={(value) => updateCase((draft) => { draft.payments.retentions.employerContribution = value; })} value={item.payments.retentions?.employerContribution || ''} />
+              <DataField label="IIBB" onChange={(value) => updateCase((draft) => { draft.payments.retentions.iibb = value; })} value={item.payments.retentions?.iibb || ''} />
+              <DataField label="DREI" onChange={(value) => updateCase((draft) => { draft.payments.retentions.drei = value; })} value={item.payments.retentions?.drei || ''} />
+              <DataField label="Otra" onChange={(value) => updateCase((draft) => { draft.payments.retentions.other = value; })} value={item.payments.retentions?.other || ''} />
+            </div>
+          ) : null}
+
+          <div className="budget-ready-panel budget-ready-panel-compact">
+            <StatusBadge tone={item.computed.todoRisk.paymentsReady ? 'success' : 'danger'}>{item.computed.todoRisk.paymentsReady ? 'Pagos en azul/verde operativo' : 'Pagos todavía no cierra'}</StatusBadge>
+            <small>{cleasClientChargeFlow ? 'Condición: fecha de pago + monto + retenciones definidas si corresponde + pago cliente cancelado cuando aplica CLEAS sobre franquicia.' : 'Condición: fecha de pago + monto + retenciones definidas si corresponde + franquicia no pendiente.'}</small>
+          </div>
+          <button className="secondary-button" onClick={() => flash('Documentación de pagos demo: acá abrirías la carpeta o adjuntos contables.') } type="button">Documentación pagos</button>
+        </article> : null}
+      </div>
+    );
+  }
+
   const addSettlement = () => {
     updateCase((draft) => {
       draft.payments.settlements.push(createSettlement());
@@ -2699,6 +5452,68 @@ function PagosTab({ item, updateCase }) {
   };
 
   const paymentEvents = collectPaymentEvents([item]);
+
+  const openReceiptDemo = () => {
+    const printable = window.open('', '_blank', 'noopener,noreferrer,width=980,height=860');
+
+    if (!printable) {
+      return;
+    }
+
+    printable.document.write(`<!doctype html>
+      <html lang="es">
+        <head>
+          <meta charset="utf-8" />
+          <title>Recibo demo ${escapeHtml(item.code)}</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 28px; color: #18252f; }
+            h1, h2, p { margin: 0; }
+            .stack { display: grid; gap: 12px; }
+            .card { border: 1px solid #c9d5dc; border-radius: 12px; padding: 16px; margin-top: 16px; }
+            .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+            .row { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid #eef2f4; padding: 8px 0; }
+            small { color: #5f7481; }
+          </style>
+        </head>
+        <body>
+          <div class="stack">
+            <div>
+              <h1>Recibo demo Particular</h1>
+              <p>${escapeHtml(item.code)} - ${escapeHtml(`${item.customer.lastName}, ${item.customer.firstName}`)}</p>
+            </div>
+            <div class="card grid">
+              <div>
+                <small>Vehículo</small>
+                <p>${escapeHtml(`${item.vehicle.brand} ${item.vehicle.model} - ${item.vehicle.plate}`)}</p>
+              </div>
+              <div>
+                <small>Comprobante</small>
+                <p>${escapeHtml(item.payments.comprobante)}</p>
+              </div>
+              <div>
+                <small>Total cotizado</small>
+                <p>${escapeHtml(money(item.computed.totalQuoted))}</p>
+              </div>
+              <div>
+                <small>Saldo deudor</small>
+                <p>${escapeHtml(money(item.computed.balance))}</p>
+              </div>
+            </div>
+            <div class="card">
+              <h2>Movimientos</h2>
+              ${paymentEvents.map((event) => `
+                <div class="row">
+                  <span>${escapeHtml(event.type)} - ${escapeHtml(formatDate(event.date))}</span>
+                  <strong>${escapeHtml(money(event.amount))}</strong>
+                </div>`).join('') || '<p>Sin movimientos registrados.</p>'}
+            </div>
+          </div>
+        </body>
+      </html>`);
+    printable.document.close();
+    printable.focus();
+    printable.print();
+  };
 
   return (
     <div className="tab-layout">
@@ -2713,7 +5528,7 @@ function PagosTab({ item, updateCase }) {
 
         <div className="receipt-grid">
           <div className="summary-stack">
-            <div className="summary-row"><span>Cliente</span><strong>{item.customer.lastName}, {item.customer.firstName}</strong></div>
+            <div className="summary-row"><span>Cliente</span><strong>{getFolderDisplayName(item)}</strong></div>
             <div className="summary-row"><span>Vehiculo</span><strong>{item.vehicle.brand} {item.vehicle.model} - {item.vehicle.plate}</strong></div>
             <div className="summary-row"><span>Repuestos</span><strong>{money(item.computed.partsTotal)}</strong></div>
             <div className="summary-row"><span>Mano de obra</span><strong>{money(item.payments.comprobante === 'A' ? item.computed.laborWithVat : item.computed.laborWithoutVat)}</strong></div>
@@ -2753,17 +5568,33 @@ function PagosTab({ item, updateCase }) {
             <p className="eyebrow">Cancelaciones</p>
             <h3>Parcial, total o bonificacion</h3>
           </div>
-          <button className="secondary-button" onClick={addSettlement} type="button">Agregar cobro</button>
+          <div className="tag-row">
+            <button className="secondary-button" onClick={openReceiptDemo} type="button">Recibo / PDF demo</button>
+            <button className="secondary-button" onClick={addSettlement} type="button">+ Agregar pago</button>
+          </div>
         </div>
 
         <div className="budget-lines">
           {item.payments.settlements.map((settlement) => (
             <div className="settlement-card" key={settlement.id}>
-              <div className="form-grid four-columns compact-grid">
+              <div className={`form-grid compact-grid ${settlement.kind === 'Bonificacion' ? 'three-columns' : 'four-columns'}`}>
                 <SelectField label="Cancela saldo" onChange={(value) => updateCase((draft) => {
                   const target = draft.payments.settlements.find((entry) => entry.id === settlement.id);
                   target.kind = value;
-                  if (value !== 'Bonificacion') target.reason = '';
+                  if (value === 'Bonificacion') {
+                    target.mode = '';
+                    target.modeDetail = '';
+                    target.gainsRetention = '';
+                    target.ivaRetention = '';
+                    target.dreiRetention = '';
+                    target.employerContributionRetention = '';
+                    target.iibbRetention = '';
+                    return;
+                  }
+                  target.reason = '';
+                  if (!target.mode) {
+                    target.mode = PAYMENT_MODES[0];
+                  }
                 })} options={['Parcial', 'Total', 'Bonificacion']} value={settlement.kind} />
                 <DataField label="Monto" onChange={(value) => updateCase((draft) => {
                   const target = draft.payments.settlements.find((entry) => entry.id === settlement.id);
@@ -2773,14 +5604,16 @@ function PagosTab({ item, updateCase }) {
                   const target = draft.payments.settlements.find((entry) => entry.id === settlement.id);
                   target.date = value;
                 })} type="date" value={settlement.date} />
-                <SelectField label="Modo" onChange={(value) => updateCase((draft) => {
-                  const target = draft.payments.settlements.find((entry) => entry.id === settlement.id);
-                  target.mode = value;
-                  if (value !== 'Otro') target.modeDetail = '';
-                })} options={PAYMENT_MODES} value={settlement.mode} />
+                {settlement.kind !== 'Bonificacion' ? (
+                  <SelectField label="Modo" onChange={(value) => updateCase((draft) => {
+                    const target = draft.payments.settlements.find((entry) => entry.id === settlement.id);
+                    target.mode = value;
+                    if (value !== 'Otro') target.modeDetail = '';
+                  })} options={PAYMENT_MODES} value={settlement.mode} />
+                ) : null}
               </div>
 
-              {settlement.mode === 'Otro' ? (
+              {settlement.kind !== 'Bonificacion' && settlement.mode === 'Otro' ? (
                 <DataField label="Detalle modo otro" onChange={(value) => updateCase((draft) => {
                   const target = draft.payments.settlements.find((entry) => entry.id === settlement.id);
                   target.modeDetail = value;
@@ -2794,28 +5627,30 @@ function PagosTab({ item, updateCase }) {
                 })} value={settlement.reason} />
               ) : null}
 
-              <div className="form-grid five-columns compact-grid retention-grid">
-                <DataField label="Ganancias" onChange={(value) => updateCase((draft) => {
-                  const target = draft.payments.settlements.find((entry) => entry.id === settlement.id);
-                  target.gainsRetention = value;
-                })} value={settlement.gainsRetention} />
-                <DataField label="IVA" onChange={(value) => updateCase((draft) => {
-                  const target = draft.payments.settlements.find((entry) => entry.id === settlement.id);
-                  target.ivaRetention = value;
-                })} value={settlement.ivaRetention} />
-                <DataField label="DREI" onChange={(value) => updateCase((draft) => {
-                  const target = draft.payments.settlements.find((entry) => entry.id === settlement.id);
-                  target.dreiRetention = value;
-                })} value={settlement.dreiRetention} />
-                <DataField label="Contr. Pat." onChange={(value) => updateCase((draft) => {
-                  const target = draft.payments.settlements.find((entry) => entry.id === settlement.id);
-                  target.employerContributionRetention = value;
-                })} value={settlement.employerContributionRetention} />
-                <DataField label="IIBB" onChange={(value) => updateCase((draft) => {
-                  const target = draft.payments.settlements.find((entry) => entry.id === settlement.id);
-                  target.iibbRetention = value;
-                })} value={settlement.iibbRetention} />
-              </div>
+              {settlement.kind !== 'Bonificacion' ? (
+                <div className="form-grid five-columns compact-grid retention-grid">
+                  <DataField label="Ganancias" onChange={(value) => updateCase((draft) => {
+                    const target = draft.payments.settlements.find((entry) => entry.id === settlement.id);
+                    target.gainsRetention = value;
+                  })} value={settlement.gainsRetention} />
+                  <DataField label="IVA" onChange={(value) => updateCase((draft) => {
+                    const target = draft.payments.settlements.find((entry) => entry.id === settlement.id);
+                    target.ivaRetention = value;
+                  })} value={settlement.ivaRetention} />
+                  <DataField label="DREI" onChange={(value) => updateCase((draft) => {
+                    const target = draft.payments.settlements.find((entry) => entry.id === settlement.id);
+                    target.dreiRetention = value;
+                  })} value={settlement.dreiRetention} />
+                  <DataField label="Contr. Pat." onChange={(value) => updateCase((draft) => {
+                    const target = draft.payments.settlements.find((entry) => entry.id === settlement.id);
+                    target.employerContributionRetention = value;
+                  })} value={settlement.employerContributionRetention} />
+                  <DataField label="IIBB" onChange={(value) => updateCase((draft) => {
+                    const target = draft.payments.settlements.find((entry) => entry.id === settlement.id);
+                    target.iibbRetention = value;
+                  })} value={settlement.iibbRetention} />
+                </div>
+              ) : null}
 
               <div className="actions-row compact-actions">
                 <StatusBadge tone={settlement.kind === 'Bonificacion' ? 'info' : settlement.kind === 'Total' ? 'success' : 'danger'}>
@@ -2904,39 +5739,258 @@ function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRe
     );
   }
 
-  const tabs = [
-    { id: 'ficha', label: 'Ficha Tecnica' },
-    { id: 'presupuesto', label: 'Presupuesto' },
-    { id: 'gestion', label: 'Gestion reparacion' },
-    { id: 'pagos', label: 'Pagos' },
-  ];
+  const tabs = isThirdPartyWorkshopCase(item)
+    ? [
+      { id: 'ficha', label: 'Ficha Tecnica' },
+      { id: 'tramite', label: 'Gestion del trámite' },
+      { id: 'presupuesto', label: 'Presupuesto' },
+      { id: 'documentacion', label: 'Documentación' },
+      { id: 'gestion', label: 'Gestion reparacion' },
+    ]
+    : isInsuranceWorkflowCase(item)
+    ? [
+      { id: 'ficha', label: 'Ficha Tecnica' },
+      { id: 'tramite', label: 'Gestion del trámite' },
+      { id: 'presupuesto', label: 'Presupuesto' },
+      { id: 'gestion', label: 'Gestion reparacion' },
+      { id: 'pagos', label: 'Pagos' },
+    ]
+    : [
+      { id: 'ficha', label: 'Ficha Tecnica' },
+      { id: 'presupuesto', label: 'Presupuesto' },
+      { id: 'gestion', label: 'Gestion reparacion' },
+      { id: 'pagos', label: 'Pagos' },
+    ];
+
+  const hasInteractiveInsuranceControls = isTodoRiesgoCase(item) || isCleasCase(item);
+  const tramiteStepper = getTramiteStepperConfig(item);
+  const repairStepper = getRepairStepperConfig(item);
+  const tramiteActions = hasInteractiveInsuranceControls
+    ? [
+      { label: 'Sin presentar', active: item.computed.tramiteStatus === 'Sin presentar', disabled: false },
+      {
+        label: 'Presentado (PD) o En trámite',
+        active: ['Presentado (PD)', 'En trámite'].includes(item.computed.tramiteStatus),
+        disabled: !item.computed.todoRisk.canCompleteProcessingCore,
+      },
+      { label: 'Acordado', active: item.computed.tramiteStatus === 'Acordado', disabled: !item.todoRisk.processing.presentedDate },
+      { label: 'Pasado a pagos', active: item.computed.tramiteStatus === 'Pasado a pagos', disabled: !item.computed.todoRisk.quoteAgreed },
+      { label: 'Pagado', active: item.computed.tramiteStatus === 'Pagado', disabled: !item.payments.passedToPaymentsDate },
+    ]
+    : [];
+  const repairActions = hasInteractiveInsuranceControls
+    ? [
+      { label: 'En trámite', active: item.computed.repairStatus === 'En trámite', disabled: false },
+      {
+        label: 'Faltan repuestos / Dar Turno',
+        active: ['Faltan repuestos', 'Dar Turno'].includes(item.computed.repairStatus),
+        disabled: !item.computed.todoRisk.quoteAgreed,
+      },
+      { label: 'Con Turno', active: item.computed.repairStatus === 'Con Turno', disabled: !item.computed.todoRisk.quoteAgreed },
+      { label: 'Debe reingresar', active: item.computed.repairStatus === 'Debe reingresar', disabled: false },
+      { label: 'Reparado', active: item.computed.repairStatus === 'Reparado', disabled: false },
+      {
+        label: 'No debe repararse',
+        active: item.computed.repairStatus === 'No debe repararse',
+        disabled: !item.todoRisk.processing.adminTurnOverride && item.computed.repairStatus !== 'No debe repararse',
+      },
+    ]
+    : [];
+
+  const handleTramiteAction = ({ label }) => {
+    const today = todayIso();
+
+    if (label === 'Sin presentar') {
+      updateCase((draft) => {
+        draft.todoRisk.processing.presentedDate = '';
+        draft.todoRisk.processing.derivedToInspectionDate = '';
+        draft.todoRisk.processing.quoteStatus = 'Pendiente';
+        draft.todoRisk.processing.quoteDate = '';
+        draft.todoRisk.processing.agreedAmount = '';
+        draft.payments.passedToPaymentsDate = '';
+        draft.payments.paymentDate = '';
+        draft.payments.depositedAmount = '';
+      });
+      return;
+    }
+
+    if (!item.computed.todoRisk.canCompleteProcessingCore) {
+      flash('Primero cargá fecha del siniestro y definí recupero en Franquicia.');
+      return;
+    }
+
+    if (label === 'Presentado (PD) o En trámite') {
+      updateCase((draft) => {
+        draft.todoRisk.processing.presentedDate = draft.todoRisk.processing.presentedDate || today;
+      });
+      return;
+    }
+
+    if (!item.todoRisk.processing.presentedDate) {
+      flash('No podés avanzar sin fecha de presentación.');
+      return;
+    }
+
+    if (label === 'Acordado') {
+      updateCase((draft) => {
+        draft.todoRisk.processing.quoteStatus = 'Acordada';
+        draft.todoRisk.processing.quoteDate = draft.todoRisk.processing.quoteDate || today;
+        draft.todoRisk.processing.agreedAmount = draft.todoRisk.processing.agreedAmount || String(Math.max(numberValue(draft.budget.minimumLaborClose), numberValue(item.computed.totalQuoted)));
+      });
+      return;
+    }
+
+    if (!item.computed.todoRisk.quoteAgreed) {
+      flash('Para pasar a pagos necesitás cotización acordada con fecha y monto.');
+      return;
+    }
+
+    if (label === 'Pasado a pagos') {
+      updateCase((draft) => {
+        draft.payments.passedToPaymentsDate = draft.payments.passedToPaymentsDate || today;
+      });
+      return;
+    }
+
+    updateCase((draft) => {
+      draft.payments.passedToPaymentsDate = draft.payments.passedToPaymentsDate || today;
+      draft.payments.paymentDate = draft.payments.paymentDate || today;
+      draft.payments.depositedAmount = draft.payments.depositedAmount || String(item.computed.todoRisk.amountToInvoice || 0);
+      if (draft.payments.hasRetentions === 'SI') {
+        draft.payments.retentions = {
+          iva: draft.payments.retentions?.iva || '0',
+          gains: draft.payments.retentions?.gains || '0',
+          employerContribution: draft.payments.retentions?.employerContribution || '0',
+          iibb: draft.payments.retentions?.iibb || '0',
+          drei: draft.payments.retentions?.drei || '0',
+          other: draft.payments.retentions?.other || '0',
+        };
+      }
+    });
+  };
+
+  const handleRepairAction = ({ label }) => {
+    const today = todayIso();
+
+    if (label === 'En trámite') {
+      updateCase((draft) => {
+        draft.todoRisk.processing.noRepairNeeded = false;
+        draft.repair.turno.date = '';
+        draft.repair.egreso.date = '';
+        draft.repair.egreso.definitiveExit = false;
+      });
+      return;
+    }
+
+    if (label === 'No debe repararse') {
+      if (!item.todoRisk.processing.adminTurnOverride && item.computed.repairStatus !== 'No debe repararse') {
+        flash('No debe repararse queda reservado como excepción demo controlada desde admin mock.');
+        return;
+      }
+
+      updateCase((draft) => {
+        draft.todoRisk.processing.noRepairNeeded = true;
+      });
+      return;
+    }
+
+    if (label === 'Reparado') {
+      updateCase((draft) => {
+        draft.todoRisk.processing.noRepairNeeded = false;
+        draft.repair.egreso.date = draft.repair.egreso.date || today;
+        draft.repair.egreso.shouldReenter = 'NO';
+        draft.repair.egreso.definitiveExit = true;
+      });
+      return;
+    }
+
+    if (label === 'Debe reingresar') {
+      updateCase((draft) => {
+        draft.todoRisk.processing.noRepairNeeded = false;
+        draft.repair.egreso.date = draft.repair.egreso.date || today;
+        draft.repair.egreso.shouldReenter = 'SI';
+        draft.repair.egreso.definitiveExit = false;
+      });
+      return;
+    }
+
+    if (!item.computed.todoRisk.quoteAgreed) {
+      flash('Primero necesitás cotización acordada con fecha y monto.');
+      return;
+    }
+
+    if (label === 'Faltan repuestos / Dar Turno') {
+      updateCase((draft) => {
+        draft.todoRisk.processing.noRepairNeeded = false;
+        const hasPendingAuthorizedPart = draft.repair.parts.some(
+          (part) => part.source === 'budget' && part.authorized === 'SI' && part.state !== 'Recibido',
+        );
+
+        draft.repair.parts.forEach((part) => {
+          if (part.source !== 'budget') return;
+
+          if (!part.authorized) {
+            part.authorized = 'SI';
+          }
+
+          if (part.authorized === 'SI') {
+            part.state = hasPendingAuthorizedPart ? (part.state === 'Recibido' ? 'Pendiente' : part.state) : 'Recibido';
+          }
+        });
+
+        draft.repair.turno.date = '';
+        draft.repair.turno.state = 'Pendiente programar';
+      });
+      return;
+    }
+
+    updateCase((draft) => {
+      draft.todoRisk.processing.noRepairNeeded = false;
+      draft.repair.parts.forEach((part) => {
+        if (part.source === 'budget' && part.authorized === 'SI') {
+          part.state = 'Recibido';
+        }
+      });
+      draft.repair.turno.date = draft.repair.turno.date || today;
+      draft.repair.turno.estimatedDays = draft.repair.turno.estimatedDays || draft.budget.estimatedWorkDays || '3';
+      draft.repair.turno.state = 'Confirmado';
+    });
+  };
 
   return (
     <div className="page-stack">
       <section className="hero-panel compact-hero detail-hero">
         <div>
           <p className="eyebrow">Gestion</p>
-          <h1>{item.code} - {item.customer.lastName}, {item.customer.firstName}</h1>
+          <h1>{item.code} - {getFolderDisplayName(item)}</h1>
           <p className="muted">{item.vehicle.brand} {item.vehicle.model} - {item.vehicle.plate} · cierre {item.computed.closeReady ? formatDate(item.computed.closeDate) : 'pendiente'}</p>
           <p className="muted">Siniestro {item.claimNumber || 'sin informar'}.</p>
         </div>
 
-        <div className="status-toolbar">
-          <div className="status-group">
-            <span>Tramite</span>
-            <StatusBadge tone={item.computed.tramiteStatus === 'Pagado' ? 'success' : item.computed.tramiteStatus === 'Pasado a pagos' ? 'info' : 'danger'}>
-              {item.computed.tramiteStatus}
-            </StatusBadge>
-          </div>
-          <div className="status-group">
-            <span>Reparacion</span>
-            <StatusBadge tone={item.computed.repairStatus === 'Reparado' ? 'success' : item.computed.repairStatus === 'Con Turno' ? 'info' : 'danger'}>
-              {item.computed.repairStatus}
-            </StatusBadge>
-          </div>
+        <div className="status-toolbar status-toolbar-expanded">
+          {hasInteractiveInsuranceControls ? (
+            <>
+              <StatusActionBar label="Trámite" actions={tramiteActions} onSelect={handleTramiteAction} />
+              <StatusActionBar label="Reparación" actions={repairActions} onSelect={handleRepairAction} />
+            </>
+          ) : (
+            <>
+              <StatusStepper
+                activeValue={tramiteStepper.activeValue}
+                items={tramiteStepper.items}
+                label="Trámite"
+              />
+              <StatusStepper
+                activeValue={repairStepper.activeValue}
+                items={repairStepper.items}
+                label="Reparación"
+              />
+            </>
+          )}
           <div className="status-group muted-restricted">
             <span>Admin mock</span>
             <button className="ghost-button" disabled type="button">Rechazado / Desistido</button>
+            {item.computed.repairStatus === 'No debe repararse' ? <StatusBadge tone="info">No debe repararse</StatusBadge> : null}
           </div>
         </div>
       </section>
@@ -2947,8 +6001,14 @@ function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRe
             active={activeTab === tab.id}
             key={tab.id}
             onClick={() => {
-              if (tab.id === 'gestion' && !item.computed.reportClosed) {
-                flash('Bloqueado: cerrá el informe del presupuesto para habilitar Gestión reparación.');
+              if ((tab.id === 'tramite' || tab.id === 'documentacion') && !isInsuranceWorkflowCase(item)) {
+                return;
+              }
+              if (tab.id === 'documentacion' && !isThirdPartyWorkshopCase(item)) {
+                return;
+              }
+              if (tab.id === 'gestion' && !item.computed.budgetReady) {
+                flash('Bloqueado: Presupuesto sigue en rojo. Cerralo, completalo y generá el presupuesto para habilitar Gestión reparación.');
                 return;
               }
               onChangeTab(tab.id);
@@ -2963,6 +6023,8 @@ function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRe
       <div className="form-grid aside-layout">
         <div>
           {activeTab === 'ficha' ? <FichaTecnicaTab item={item} updateCase={updateCase} /> : null}
+          {activeTab === 'tramite' ? <GestionTramiteTab flash={flash} item={item} updateCase={updateCase} /> : null}
+          {activeTab === 'documentacion' ? <DocumentacionTab flash={flash} item={item} updateCase={updateCase} /> : null}
           {activeTab === 'presupuesto' ? <PresupuestoTab flash={flash} item={item} updateCase={updateCase} /> : null}
           {activeTab === 'gestion' ? (
             <GestionReparacionTab
@@ -2973,7 +6035,7 @@ function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRe
               updateCase={updateCase}
             />
           ) : null}
-          {activeTab === 'pagos' ? <PagosTab item={item} updateCase={updateCase} /> : null}
+          {activeTab === 'pagos' ? <PagosTab flash={flash} item={item} updateCase={updateCase} /> : null}
         </div>
 
         <aside className="side-panel">
@@ -3014,6 +6076,7 @@ function App() {
   const [selectedCaseId, setSelectedCaseId] = useState('');
   const [activeTab, setActiveTab] = useState('ficha');
   const [activeRepairTab, setActiveRepairTab] = useState('repuestos');
+  const [docGateAcceptedCaseId, setDocGateAcceptedCaseId] = useState('');
   const [notice, setNotice] = useState(null);
   const [newCaseForm, setNewCaseForm] = useState(createEmptyForm);
   const [showNewCaseValidation, setShowNewCaseValidation] = useState(false);
@@ -3025,7 +6088,7 @@ function App() {
 
   const selectedCase = computedCases.find((item) => item.id === selectedCaseId) || computedCases[0];
   const nextCounter = computedCases.reduce((max, item) => Math.max(max, item.counter), 0) + 1;
-  const nextCode = `${String(nextCounter).padStart(4, '0')}P${getBranchCode(newCaseForm.branch)}`;
+  const nextCode = `${String(nextCounter).padStart(4, '0')}${getTramiteCode(newCaseForm.type)}${getBranchCode(newCaseForm.branch)}`;
   const folderMissing = getFolderMissing(newCaseForm);
   const customerMocks = useMemo(() => buildCustomerMockData(cases), [cases]);
   const vehicleMocks = useMemo(() => buildVehicleMockData(cases), [cases]);
@@ -3044,10 +6107,13 @@ function App() {
         return;
       }
 
+      const selectedFromHash = computedCases.find((item) => item.id === caseId);
+      const resolvedRoute = resolveGestionAccess(selectedFromHash, route);
+
       setSelectedCaseId(caseId);
       setActiveView('gestion');
-      setActiveTab(route.tab || 'ficha');
-      setActiveRepairTab(route.tab === 'gestion' && route.subtab ? route.subtab : 'repuestos');
+      setActiveTab(resolvedRoute.tab);
+      setActiveRepairTab(resolvedRoute.subtab || 'repuestos');
     };
 
     syncCaseFromHash();
@@ -3070,6 +6136,27 @@ function App() {
       window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`);
     }
   }, [activeView, selectedCaseId, activeTab, activeRepairTab]);
+
+  useEffect(() => {
+    if (activeView !== 'gestion' || activeTab !== 'gestion' || !selectedCase) {
+      return;
+    }
+
+    if (!selectedCase.computed.budgetReady) {
+      setActiveTab(selectedCase.computed.reportClosed ? 'presupuesto' : 'ficha');
+      setActiveRepairTab('repuestos');
+    }
+  }, [activeView, activeTab, selectedCase]);
+
+  useEffect(() => {
+    if (activeView === 'gestion') {
+      return;
+    }
+
+    if (docGateAcceptedCaseId) {
+      setDocGateAcceptedCaseId('');
+    }
+  }, [activeView, docGateAcceptedCaseId]);
 
   useEffect(() => {
     if (!autofilledFields.length) {
@@ -3149,6 +6236,8 @@ function App() {
       lastName: customer.lastName,
       phone: customer.phone,
       document: customer.document,
+      locality: customer.locality,
+      email: customer.email,
       referenced: customer.referenced,
       referencedName: customer.referencedName,
     }));
@@ -3292,8 +6381,10 @@ function App() {
   };
 
   const openCase = (id, target = {}) => {
-    const nextTab = CASE_TABS.includes(target.tab) ? target.tab : 'ficha';
-    const nextRepairTab = nextTab === 'gestion' && REPAIR_TABS.includes(target.subtab) ? target.subtab : 'repuestos';
+    const targetCase = computedCases.find((item) => item.id === id);
+    const resolvedTarget = resolveGestionAccess(targetCase, target);
+    const nextTab = resolvedTarget.tab;
+    const nextRepairTab = resolvedTarget.subtab || 'repuestos';
 
     setSelectedCaseId(id);
     setActiveView('gestion');
@@ -3310,14 +6401,16 @@ function App() {
       return;
     }
 
-    const code = `${String(nextCounter).padStart(4, '0')}P${getBranchCode(newCaseForm.branch)}`;
-      const newCase = {
-        id: crypto.randomUUID(),
-        code,
-        counter: nextCounter,
-        tramiteType: newCaseForm.type,
-        claimNumber: newCaseForm.claimNumber,
-        branch: newCaseForm.branch,
+    const code = `${String(nextCounter).padStart(4, '0')}${getTramiteCode(newCaseForm.type)}${getBranchCode(newCaseForm.branch)}`;
+    const isInsuranceCase = ['Todo Riesgo', 'CLEAS / Terceros / Franquicia', 'Reclamo de Tercero - Taller'].includes(newCaseForm.type);
+    const isThirdPartyWorkshop = newCaseForm.type === 'Reclamo de Tercero - Taller';
+    const newCase = {
+      id: crypto.randomUUID(),
+      code,
+      counter: nextCounter,
+      tramiteType: newCaseForm.type,
+      claimNumber: newCaseForm.claimNumber,
+      branch: newCaseForm.branch,
       createdAt: new Date().toISOString().slice(0, 10),
       folderCreated: true,
       customer: {
@@ -3325,8 +6418,14 @@ function App() {
         lastName: newCaseForm.lastName,
         phone: newCaseForm.phone,
         document: newCaseForm.document,
+        birthDate: '',
         locality: 'Rosario',
         email: '',
+        street: '',
+        streetNumber: '',
+        addressExtra: '',
+        occupation: '',
+        civilStatus: '',
         referenced: newCaseForm.referenced,
         referencedName: newCaseForm.referencedName,
       },
@@ -3339,12 +6438,31 @@ function App() {
         paint: newCaseForm.paint,
         year: '',
         color: '',
+        chassis: '',
+        engine: '',
+        transmission: '',
+        mileage: '',
+        observations: '',
       },
       vehicleMedia: [],
       budget: createBudgetDefaults({
         workshop: '',
         authorizer: AUTHORIZER_OPTIONS[0],
       }),
+      todoRisk: isInsuranceCase
+        ? createTodoRiskDefaults({
+          insurance: { company: newCaseForm.type === 'Todo Riesgo' ? TODO_RIESGO_INSURANCE_OPTIONS[0] : '' },
+          documentation: { items: newCaseForm.type === 'Todo Riesgo' ? [createTodoRiskDocument()] : [] },
+          processing: { agenda: [] },
+        })
+        : undefined,
+      thirdParty: isThirdPartyWorkshop
+        ? createThirdPartyDefaults({
+          claim: {
+            documents: [createTodoRiskDocument()],
+          },
+        })
+        : undefined,
       repair: {
         parts: [],
         turno: { date: '', estimatedDays: '', state: 'Pendiente programar', notes: '' },
@@ -3359,6 +6477,7 @@ function App() {
           reentryNotes: '',
           definitiveExit: false,
           repairedPhotos: false,
+          repairedMedia: [],
         },
       },
       payments: {
@@ -3372,6 +6491,21 @@ function App() {
         invoice: 'NO',
         businessName: '',
         invoiceNumber: '',
+        invoices: newCaseForm.type === 'Todo Riesgo' ? [createTodoRiskInvoice()] : [],
+        signedAgreementDate: '',
+        passedToPaymentsDate: '',
+        estimatedPaymentDate: '',
+        paymentDate: '',
+        depositedAmount: '',
+        hasRetentions: 'NO',
+        retentions: {
+          iva: '',
+          gains: '',
+          employerContribution: '',
+          iibb: '',
+          drei: '',
+          other: '',
+        },
       },
     };
 
@@ -3392,7 +6526,7 @@ function App() {
           <span className="brand-mark">DT</span>
           <div>
             <strong>Delta Taller</strong>
-            <small>Particulares</small>
+            <small>Particular + Todo Riesgo</small>
           </div>
         </div>
 
@@ -3406,8 +6540,8 @@ function App() {
 
         <div className="sidebar-card">
           <p className="eyebrow">Logica fija</p>
-          <h2>Solo Particular</h2>
-          <p className="muted">Menu sin listados de otros tramites. El tipo se elige al crear el caso y la landing abre en Panel General.</p>
+          <h2>Flujos demo</h2>
+          <p className="muted">Particular mantiene su lógica actual y Todo Riesgo agrega Gestión del trámite sin romper reparación ni pagos existentes.</p>
         </div>
       </aside>
 
@@ -3415,7 +6549,7 @@ function App() {
         <header className="topbar">
           <div>
             <p className="eyebrow">Demo React</p>
-            <h2>{activeView === 'panel' ? 'Panel General' : activeView === 'nuevo' ? 'Nuevo Caso' : 'Gestion Particular'}</h2>
+            <h2>{activeView === 'panel' ? 'Panel General' : activeView === 'nuevo' ? 'Nuevo Caso' : 'Gestión de trámites'}</h2>
           </div>
 
           <div className="topbar-right">
@@ -3429,6 +6563,19 @@ function App() {
           <div className={`floating-notice ${notice.tone || 'info'}`} role="status" aria-live="polite">
             <strong>{notice.title}</strong>
             <span>{notice.message}</span>
+          </div>
+        ) : null}
+
+        {activeView === 'gestion' && selectedCase && isThirdPartyDocumentationIncomplete(selectedCase) && docGateAcceptedCaseId !== selectedCase.id ? (
+          <div className="blocking-modal-overlay" role="presentation">
+            <div aria-labelledby="doc-gate-title" aria-modal="true" className="blocking-modal" role="dialog">
+              <p className="eyebrow">Aviso bloqueante</p>
+              <h3 id="doc-gate-title">Carpeta con documentación pendiente</h3>
+              <p className="muted">La carpeta sigue marcada como incompleta. Aceptá para seguir navegando esta demo y revisá la solapa Documentación.</p>
+              <div className="blocking-modal-actions">
+                <button className="primary-button" onClick={() => setDocGateAcceptedCaseId(selectedCase.id)} type="button">Aceptar</button>
+              </div>
+            </div>
           </div>
         ) : null}
 
