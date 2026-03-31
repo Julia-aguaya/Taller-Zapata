@@ -19,6 +19,8 @@
   --green-soft: rgba(31, 143, 85, 0.12);
   --blue: #2a6db2;
   --blue-soft: rgba(42, 109, 178, 0.12);
+  --amber: #b46d12;
+  --amber-soft: rgba(180, 109, 18, 0.14);
   --shadow: 0 28px 60px rgba(30, 52, 66, 0.12);
   --radius-xl: 28px;
   --radius-lg: 20px;
@@ -395,6 +397,67 @@ h3 {
   max-width: none;
 }
 
+.detail-heading-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.tramite-identity-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid rgba(157, 177, 188, 0.38);
+  background: rgba(255, 255, 255, 0.78);
+  color: var(--text);
+}
+
+.tramite-identity-badge.is-franchise {
+  border-color: rgba(184, 104, 25, 0.24);
+  background: linear-gradient(135deg, rgba(210, 132, 31, 0.14), rgba(255, 244, 224, 0.94));
+  color: #9f5b16;
+}
+
+.franchise-hero {
+  background:
+    radial-gradient(circle at top right, rgba(210, 132, 31, 0.18), transparent 30%),
+    linear-gradient(180deg, rgba(255, 251, 245, 0.96), rgba(247, 250, 252, 0.88));
+}
+
+.franchise-management-card,
+.franchise-link-card {
+  border-color: rgba(184, 104, 25, 0.18);
+}
+
+.franchise-link-card {
+  background: linear-gradient(180deg, rgba(255, 251, 245, 0.98), rgba(247, 249, 252, 0.94));
+}
+
+.franchise-data-grid .field input {
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.franchise-flow-banner {
+  justify-content: flex-start;
+}
+
+.franchise-client-recovery-block {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid rgba(184, 104, 25, 0.18);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, rgba(255, 251, 245, 0.96), rgba(247, 249, 252, 0.92));
+}
+
 .search-box,
 .field {
   display: grid;
@@ -706,6 +769,12 @@ h3 {
   color: var(--blue);
   background: var(--blue-soft);
   border-color: rgba(42, 109, 178, 0.18);
+}
+
+.status-badge.warning {
+  color: var(--amber);
+  background: var(--amber-soft);
+  border-color: rgba(180, 109, 18, 0.22);
 }
 
 .primary-button {
@@ -1738,6 +1807,12 @@ h3 {
   border: 1px solid rgba(215, 70, 70, 0.18);
 }
 
+.success-banner {
+  color: var(--green);
+  background: var(--green-soft);
+  border: 1px solid rgba(31, 143, 85, 0.18);
+}
+
 .info-banner {
   color: var(--blue);
   background: var(--blue-soft);
@@ -1794,6 +1869,136 @@ h3 {
   align-items: start;
 }
 
+.collapsible-card {
+  display: grid;
+  gap: 16px;
+}
+
+.collapsible-card[open] {
+  padding-top: 18px;
+}
+
+.collapsible-summary {
+  list-style: none;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+}
+
+.collapsible-summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsible-summary::marker {
+  display: none;
+}
+
+.collapsible-summary::after {
+  content: '+';
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(42, 109, 178, 0.18);
+  background: rgba(42, 109, 178, 0.08);
+  color: var(--blue);
+  font-family: var(--mono);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.collapsible-card[open] .collapsible-summary::after {
+  content: '-';
+}
+
+.collapsible-summary-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.collapsible-summary-copy small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.collapsible-summary-meta {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(157, 177, 188, 0.4);
+  background: var(--surface-muted);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.table-wrap-framed {
+  border: 1px solid rgba(157, 177, 188, 0.32);
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(244, 247, 249, 0.92));
+}
+
+.table-wrap-framed .data-table th:first-child,
+.table-wrap-framed .data-table td:first-child {
+  padding-left: 16px;
+}
+
+.table-wrap-framed .data-table th:last-child,
+.table-wrap-framed .data-table td:last-child {
+  padding-right: 16px;
+}
+
+.lawyer-instance-banner,
+.lawyer-total-row {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.lawyer-instance-banner {
+  margin-top: 4px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(42, 109, 178, 0.16);
+  background: linear-gradient(135deg, rgba(42, 109, 178, 0.08), rgba(255, 255, 255, 0.92));
+}
+
+.lawyer-instance-banner.is-administrative {
+  border-color: rgba(31, 143, 85, 0.18);
+  background: linear-gradient(135deg, rgba(31, 143, 85, 0.08), rgba(255, 255, 255, 0.92));
+}
+
+.lawyer-instance-banner h4 {
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.lawyer-section-card {
+  gap: 18px;
+}
+
+.lawyer-total-row {
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  background: var(--surface-muted);
+  border: 1px solid rgba(157, 177, 188, 0.28);
+}
+
+.lawyer-total-row strong {
+  font-family: var(--mono);
+  font-size: 1rem;
+}
+
 .empty-state {
   text-align: center;
 }
@@ -1820,6 +2025,150 @@ h3 {
   margin-top: 12px;
 }
 
+.agenda-layout,
+.agenda-content-grid,
+.agenda-view-tabs,
+.agenda-hero-actions,
+.agenda-action-group,
+.agenda-calendar-grid,
+.agenda-calendar-weekdays,
+.agenda-calendar-items,
+.agenda-task-copy,
+.agenda-task-linkage,
+.agenda-task-due {
+  display: grid;
+  gap: 14px;
+}
+
+.agenda-content-grid {
+  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
+  align-items: start;
+}
+
+.agenda-view-tabs {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.agenda-tab-button {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.65);
+  color: var(--muted);
+}
+
+.agenda-filter-select {
+  min-width: min(100%, 260px);
+}
+
+.agenda-filter-select .field {
+  min-width: min(100%, 240px);
+}
+
+.agenda-row.is-danger {
+  background: rgba(215, 70, 70, 0.06);
+}
+
+.agenda-row.is-warning {
+  background: rgba(180, 109, 18, 0.08);
+}
+
+.agenda-row.is-success {
+  background: rgba(31, 143, 85, 0.05);
+}
+
+.agenda-task-copy strong,
+.agenda-task-linkage strong,
+.agenda-task-due strong {
+  color: var(--text);
+}
+
+.agenda-task-copy small,
+.agenda-task-linkage small,
+.agenda-task-due small,
+.agenda-calendar-items small {
+  color: var(--muted);
+}
+
+.agenda-action-group {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.agenda-calendar-card {
+  overflow: hidden;
+}
+
+.agenda-calendar-weekdays {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  margin-bottom: 8px;
+}
+
+.agenda-calendar-weekdays span {
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.agenda-calendar-grid {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.agenda-calendar-cell {
+  min-height: 148px;
+  padding: 12px;
+  border: 1px solid rgba(157, 177, 188, 0.28);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.agenda-calendar-cell.is-muted {
+  opacity: 0.54;
+}
+
+.agenda-calendar-cell.is-today {
+  border-color: rgba(42, 109, 178, 0.32);
+  box-shadow: inset 0 0 0 1px rgba(42, 109, 178, 0.08);
+}
+
+.agenda-calendar-head,
+.agenda-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.agenda-calendar-task {
+  padding: 8px 10px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  background: rgba(42, 109, 178, 0.08);
+  color: var(--text);
+  text-align: left;
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.agenda-calendar-task.is-danger {
+  background: rgba(215, 70, 70, 0.12);
+  border-color: rgba(215, 70, 70, 0.18);
+}
+
+.agenda-calendar-task.is-warning {
+  background: rgba(180, 109, 18, 0.14);
+  border-color: rgba(180, 109, 18, 0.2);
+}
+
+.agenda-calendar-task.is-success,
+.agenda-calendar-task.is-info {
+  border-color: rgba(42, 109, 178, 0.14);
+}
+
+.agenda-empty-state {
+  min-height: 140px;
+  display: grid;
+  place-items: center;
+}
+
 @media (max-width: 1280px) {
   .metrics-grid,
   .content-grid,
@@ -1842,10 +2191,15 @@ h3 {
   }
 
   .priority-grid,
+  .agenda-content-grid,
   .simple-filter-grid,
   .lookup-grid,
   .lookup-form {
     grid-template-columns: 1fr;
+  }
+
+  .detail-heading-row {
+    align-items: flex-start;
   }
 
   .priority-detail-grid {
@@ -1906,7 +2260,10 @@ h3 {
   .hero-panel,
   .status-toolbar,
   .section-head,
-   .workshop-banner {
+   .workshop-banner,
+   .collapsible-summary,
+   .lawyer-instance-banner,
+   .lawyer-total-row {
     flex-direction: column;
     align-items: stretch;
   }
@@ -1916,6 +2273,7 @@ h3 {
   }
 
   .metrics-grid,
+  .agenda-content-grid,
   .form-grid.two-columns,
   .form-grid.four-columns,
   .form-grid.three-columns,
@@ -1942,6 +2300,17 @@ h3 {
 
   .budget-main-grid {
     grid-template-columns: 1fr;
+  }
+
+  .agenda-view-tabs,
+  .agenda-action-group,
+  .agenda-calendar-grid,
+  .agenda-calendar-weekdays {
+    grid-template-columns: 1fr;
+  }
+
+  .agenda-calendar-cell {
+    min-height: auto;
   }
 
    .priority-grid,
