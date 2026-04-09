@@ -4,6 +4,8 @@
 
 Este documento propone una estructura relacional MySQL integral para `tallerDemo`, pensada como base de diseno del producto completo y no solo del MVP. El objetivo es soportar el nucleo operativo del taller, los distintos tramites, la trazabilidad de estados, la operacion documental, la administracion de usuarios/permisos y un log de auditoria persistente.
 
+Este es el documento principal y vigente del modelo de base de datos. `docs/09-bbdd.md` queda solo como referencia minima para redirigir aca y evitar duplicacion o deriva documental.
+
 Criterios principales del modelo:
 
 - `casos` es el agregado raiz del negocio y concentra la referencia operativa principal.
@@ -17,7 +19,13 @@ Criterios principales del modelo:
 - permisos y visibilidad se resuelven con RBAC scopeado por rol, organizacion y sucursal.
 - toda accion relevante debe dejar evidencia visible y persistente en auditoria.
 
-Como antecedente util, este diseno consolida y corrige ideas que ya aparecen en `docs/08-schema-inicial-base-de-datos.md` y `docs/09-bbdd.md`.
+Como antecedente util, este diseno consolida y corrige ideas que ya aparecen en `docs/08-schema-inicial-base-de-datos.md` y en versiones previas resumidas del diccionario de datos.
+
+## Estado de consolidacion documental
+
+- la fuente principal de modelado es `docs/09-estructura-base-de-datos.md`.
+- `docs/09-bbdd.md` ya no define estructura propia: solo apunta a este documento para evitar contradicciones.
+- el DER textual derivado del modelo consolidado vive en `docs/10-der-base-de-datos.md`.
 
 ## Como leer este modelo
 
