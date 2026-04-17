@@ -1,0 +1,162 @@
+{
+  "info": {
+    "name": "Taller Zapata Backend",
+    "_postman_id": "b1ce8d4b-5af4-4acd-9d5a-a63fa904f59f",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "GET Ping",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/ping", "host": ["{{baseUrl}}"], "path": ["ping"] }
+          }
+        },
+        {
+          "name": "GET Actuator Health",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/actuator/health", "host": ["{{baseUrl}}"], "path": ["actuator", "health"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "POST Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  pm.environment.set('accessToken', json.accessToken);",
+                  "  pm.environment.set('refreshToken', json.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@tallerzapata.local\",\n  \"password\": \"password\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "login"] }
+          }
+        },
+        {
+          "name": "POST Refresh",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  pm.environment.set('accessToken', json.accessToken);",
+                  "  pm.environment.set('refreshToken', json.refreshToken);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/refresh", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "refresh"] }
+          }
+        },
+        {
+          "name": "GET Me",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/me", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "me"] }
+          }
+        },
+        {
+          "name": "POST Logout",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/auth/logout", "host": ["{{baseUrl}}"], "path": ["api", "v1", "auth", "logout"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Identity Admin",
+      "item": [
+        {
+          "name": "GET Permissions",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/permissions", "host": ["{{baseUrl}}"], "path": ["api", "v1", "permissions"] }
+          }
+        },
+        {
+          "name": "GET User Roles",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": { "raw": "{{baseUrl}}/api/v1/users/{{testUserId}}/roles", "host": ["{{baseUrl}}"], "path": ["api", "v1", "users", "{{testUserId}}", "roles"] }
+          }
+        },
+        {
+          "name": "PUT User Roles",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assignments\": [\n    {\n      \"roleId\": 2,\n      \"organizationId\": 1,\n      \"branchId\": 1,\n      \"active\": true\n    }\n  ]\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/v1/users/{{testUserId}}/roles", "host": ["{{baseUrl}}"], "path": ["api", "v1", "users", "{{testUserId}}", "roles"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Cases",
+      "item": [
+        {
+          "name": "GET Cases (paged+filters)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/cases?page=0&size=20&organizationId=1&branchId=1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "cases"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "20" },
+                { "key": "organizationId", "value": "1" },
+                { "key": "branchId", "value": "1" }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
