@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.application.security;
 
 import com.tallerzapata.backend.application.common.UnauthorizedException;
+import com.tallerzapata.backend.infrastructure.observability.AuthMetricsService;
 import com.tallerzapata.backend.infrastructure.persistence.security.RefreshTokenEntity;
 import com.tallerzapata.backend.infrastructure.persistence.security.RefreshTokenRepository;
 import org.springframework.beans.factory.annotation.Value;
@@ -18,13 +19,16 @@ import java.util.UUID;
 public class RefreshTokenService {
 
     private final RefreshTokenRepository refreshTokenRepository;
+    private final AuthMetricsService authMetricsService;
     private final long refreshTokenDays;
 
     public RefreshTokenService(
             RefreshTokenRepository refreshTokenRepository,
+            AuthMetricsService authMetricsService,
             @Value("${app.security.refresh-token-days}") long refreshTokenDays
     ) {
         this.refreshTokenRepository = refreshTokenRepository;
+        this.authMetricsService = authMetricsService;
         this.refreshTokenDays = refreshTokenDays;
     }
 
@@ -43,12 +47,21 @@ public class RefreshTokenService {
     public RotationResult rotate(String rawToken) {
         String currentHash = hash(rawToken);
         RefreshTokenEntity current = refreshTokenRepository.findByTokenHash(currentHash)
-                .orElseThrow(() -> new UnauthorizedException("Refresh token invalido"));
+                .orElseThrow(() -> {
+                    authMetricsService.refreshFailure("invalid");
+                    return new UnauthorizedException("Refresh token invalido");
+                });
 
         if (current.getRevokedAt() != null) {
+            if (current.getReplacedByTokenHash() != null) {
+                authMetricsService.refreshFailure("reused");
+                throw new UnauthorizedException("Refresh token reutilizado");
+            }
+            authMetricsService.refreshFailure("revoked");
             throw new UnauthorizedException("Refresh token revocado");
         }
         if (current.getExpiresAt().isBefore(LocalDateTime.now())) {
+            authMetricsService.refreshFailure("expired");
             throw new UnauthorizedException("Refresh token expirado");
         }
 
@@ -70,13 +83,23 @@ public class RefreshTokenService {
 
     @Transactional
     public void revokeAllByUserId(Long userId) {
-        LocalDateTime now = LocalDateTime.now();
-        refreshTokenRepository.findAll().stream()
-                .filter(item -> item.getUserId().equals(userId) && item.getRevokedAt() == null)
-                .forEach(item -> {
-                    item.setRevokedAt(now);
-                    refreshTokenRepository.save(item);
-                });
+        refreshTokenRepository.revokeAllActiveByUserId(userId, LocalDateTime.now());
+    }
+
+    @Transactional
+    public void revokeTokenForUser(Long userId, String rawToken) {
+        String tokenHash = hash(rawToken);
+        RefreshTokenEntity token = refreshTokenRepository.findByTokenHash(tokenHash)
+                .orElseThrow(() -> new UnauthorizedException("Refresh token invalido"));
+
+        if (!token.getUserId().equals(userId)) {
+            throw new UnauthorizedException("Refresh token invalido");
+        }
+
+        if (token.getRevokedAt() == null) {
+            token.setRevokedAt(LocalDateTime.now());
+            refreshTokenRepository.save(token);
+        }
     }
 
     private String generateRawToken() {

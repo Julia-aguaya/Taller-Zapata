@@ -1,0 +1,97 @@
+Implementar la capa de aplicación (service), API (controller + DTOs) y tests de integración para presupuestos, presupuesto_items y repuestos_caso.
+
+## Contexto
+Spring Boot 3.3.5, JPA, tests con MockMvc + H2 (Flyway disabled). DTOs son Java records.
+
+## ANTES de empezar, lee estos archivos para entender el patron exacto:
+1. backend/src/main/java/com/tallerzapata/backend/api/insurance/CaseFranchiseResponse.java
+2. backend/src/main/java/com/tallerzapata/backend/api/insurance/CaseFranchiseUpsertRequest.java
+3. backend/src/main/java/com/tallerzapata/backend/application/insurance/InsuranceService.java
+4. backend/src/main/java/com/tallerzapata/backend/api/insurance/InsuranceController.java
+5. backend/src/test/java/com/tallerzapata/backend/api/insurance/InsuranceIntegrationTest.java
+6. backend/src/test/resources/data.sql
+
+## Infra ya creada (no tocar, solo usar)
+Las entidades y repos ya existen en backend/src/main/java/com/tallerzapata/backend/infrastructure/persistence/budget/:
+- BudgetEntity + BudgetRepository (findByCaseId)
+- BudgetItemEntity + BudgetItemRepository (findByBudgetIdOrderByVisualOrderAsc)
+- CasePartEntity + CasePartRepository (findByCaseIdOrderByIdAsc)
+- Catalogos: BudgetReportStatusEntity/Repository, BudgetTaskEntity/Repository, DamageLevelEntity/Repository, PartDecisionEntity/Repository, BudgetActionEntity/Repository, PartStatusEntity/Repository, PartPurchaserEntity/Repository, PartPaymentStatusEntity/Repository
+- El catalogo autorizaciones_repuestos_seguro ya existe en insurance (InsurancePartsAuthorizationEntity/Repository)
+
+## Que implementar
+
+### 1. DTOs (Java records)
+Crear en backend/src/main/java/com/tallerzapata/backend/api/budget/:
+
+BudgetResponse: Long id, Long caseId, Long organizationId, Long branchId, LocalDate budgetDate, String reportStatusCode, BigDecimal laborWithoutVat, BigDecimal vatRate, BigDecimal laborVat, BigDecimal laborWithVat, BigDecimal partsTotal, BigDecimal totalQuoted, Integer estimatedDays, BigDecimal minimumCloseAmount, String observations, Integer currentVersion, List<BudgetItemResponse> items
+
+BudgetUpsertRequest: LocalDate budgetDate, String reportStatusCode, BigDecimal laborWithoutVat, BigDecimal vatRate, BigDecimal partsTotal, Integer estimatedDays, BigDecimal minimumCloseAmount, String observations
+
+BudgetItemResponse: Long id, Long budgetId, Integer visualOrder, String affectedPiece, String taskCode, String damageLevelCode, String partDecisionCode, String actionCode, Boolean requiresReplacement, BigDecimal partValue, BigDecimal estimatedHours, BigDecimal laborAmount, Boolean active
+
+BudgetItemCreateRequest: Integer visualOrder, String affectedPiece, String taskCode, String damageLevelCode, String partDecisionCode, String actionCode, Boolean requiresReplacement, BigDecimal partValue, BigDecimal estimatedHours, BigDecimal laborAmount
+
+BudgetItemUpdateRequest: Integer visualOrder, String affectedPiece, String taskCode, String damageLevelCode, String partDecisionCode, String actionCode, Boolean requiresReplacement, BigDecimal partValue, BigDecimal estimatedHours, BigDecimal laborAmount, Boolean active
+
+BudgetCloseRequest: String reportStatusCode, String observations
+
+CasePartResponse: Long id, Long caseId, Long budgetItemId, String description, String partCode, String finalSupplier, String authorizationCode, String statusCode, String purchasedByCode, String paymentStatusCode, BigDecimal budgetedPrice, BigDecimal finalPrice, LocalDate receivedDate, Boolean used, Boolean returned
+
+CasePartCreateRequest: Long budgetItemId, String description, String partCode, String finalSupplier, String authorizationCode, String statusCode, String purchasedByCode, String paymentStatusCode, BigDecimal budgetedPrice, BigDecimal finalPrice, LocalDate receivedDate, Boolean used, Boolean returned
+
+CasePartUpdateRequest: Long budgetItemId, String description, String partCode, String finalSupplier, String authorizationCode, String statusCode, String purchasedByCode, String paymentStatusCode, BigDecimal budgetedPrice, BigDecimal finalPrice, LocalDate receivedDate, Boolean used, Boolean returned
+
+### 2. BudgetService
+Crear en backend/src/main/java/com/tallerzapata/backend/application/budget/BudgetService.java
+
+Inyectar: BudgetRepository, BudgetItemRepository, CasePartRepository, CaseRepository, y todos los repos de catalogos (8 + InsurancePartsAuthorizationRepository), CurrentUserService, CaseAccessControlService, CaseAuditService.
+
+Metodos con permisos "presupuesto.ver" y "presupuesto.crear":
+- getBudget(Long caseId): busca BudgetEntity por caseId, mapea a BudgetResponse incluyendo items
+- upsertBudget(Long caseId, BudgetUpsertRequest, HttpServletRequest): busca o crea. Valida reportStatusCode. Calcula laborVat = laborWithoutVat * vatRate / 100, laborWithVat = laborWithoutVat + laborVat, totalQuoted = laborWithVat + partsTotal. vatRate default 21.00. Audit "upsert_presupuesto"
+- closeBudget(Long caseId, BudgetCloseRequest, HttpServletRequest): busca, setea reportStatusCode. Audit "cerrar_presupuesto"
+- listBudgetItems(Long caseId): busca BudgetEntity, lista items por budgetId
+- createBudgetItem(Long caseId, BudgetItemCreateRequest, HttpServletRequest): crea item con budgetId del caso. Valida taskCode, damageLevelCode, partDecisionCode, actionCode. Audit "crear_presupuesto_item"
+- updateBudgetItem(Long caseId, Long itemId, BudgetItemUpdateRequest, HttpServletRequest): valida que item pertenezca al presupuesto del caso. Actualiza. Valida catalogos. Audit "actualizar_presupuesto_item"
+- listCaseParts(Long caseId): lista repuestos por caseId
+- createCasePart(Long caseId, CasePartCreateRequest, HttpServletRequest): valida caso. Valida authorizationCode (InsurancePartsAuthorizationRepository), statusCode, purchasedByCode, paymentStatusCode. Si budgetItemId != null, validar que exista. Audit "crear_repuesto_caso"
+- updateCasePart(Long caseId, Long partId, CasePartUpdateRequest, HttpServletRequest): valida que repuesto pertenezca al caso. Actualiza. Valida catalogos. Audit "actualizar_repuesto_caso"
+
+### 3. BudgetController
+Crear en backend/src/main/java/com/tallerzapata/backend/api/budget/BudgetController.java
+
+@RestController
+@RequestMapping("/api/v1")
+- GET /cases/{caseId}/budget
+- PUT /cases/{caseId}/budget
+- POST /cases/{caseId}/budget/close
+- GET /cases/{caseId}/budget/items
+- POST /cases/{caseId}/budget/items
+- PUT /cases/{caseId}/budget/items/{itemId}
+- GET /cases/{caseId}/parts
+- POST /cases/{caseId}/parts
+- PUT /cases/{caseId}/parts/{partId}
+
+### 4. Tests
+Crear BudgetIntegrationTest en backend/src/test/java/com/tallerzapata/backend/api/budget/
+
+Tests:
+- shouldUpsertBudget: crea presupuesto, verifica status 200 y calculos
+- shouldCreateAndListBudgetItems: crea item, lista, verifica
+- shouldUpdateBudgetItem: actualiza item
+- shouldCloseBudget: cierra presupuesto
+- shouldCreateAndListCaseParts: crea repuesto, lista
+- shouldUpdateCasePart: actualiza repuesto
+- shouldRejectInvalidCatalogCode: taskCode invalido -> 409
+
+En setUp:
+DELETE FROM repuestos_caso, presupuesto_items, presupuestos (antes de casos)
+Luego seedBaseData() con usuario 3, persona 10, vehiculo 10, caso 100 (copiar patron de InsuranceIntegrationTest)
+
+### 5. Verificacion
+Correr: cd backend && ./mvnw.cmd test -Dtest=BudgetIntegrationTest
+Si falla, corregir.
+Luego: ./mvnw.cmd -q test para verificar suite completa.
+
+Devolveme resumen de TODO creado/modificado y resultado de tests.

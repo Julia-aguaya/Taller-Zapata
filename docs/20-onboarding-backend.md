@@ -122,7 +122,7 @@ app:
 **Endpoints:**
 - `POST /api/v1/auth/login` - Iniciar sesión (email + password)
 - `POST /api/v1/auth/refresh` - Rotar refresh token
-- `POST /api/v1/auth/logout` - Revocar refresh tokens
+- `POST /api/v1/auth/logout` - Revocar refresh token actual (o todos, segun payload)
 - `GET /api/v1/auth/me` - Obtener usuario autenticado
 
 **Archivos clave:**
@@ -144,7 +144,7 @@ app:
 ### 5.2 Personas
 
 **Endpoints:**
-- `GET /api/v1/persons?document=...` - Buscar por documento
+- `GET /api/v1/persons?document=...&q=...` - Buscar por documento exacto o autocomplete parcial (nombre/documento)
 - `GET /api/v1/persons/{personId}` - Detalle
 - `POST /api/v1/persons` - Alta
 - `PUT /api/v1/persons/{personId}` - Edición
@@ -155,7 +155,7 @@ app:
 ### 5.3 Vehículos
 
 **Endpoints:**
-- `GET /api/v1/vehicles?plate=...` - Buscar por dominio
+- `GET /api/v1/vehicles?plate=...&q=...` - Buscar por dominio exacto o autocomplete parcial (dominio/marca/modelo)
 - `GET /api/v1/vehicles/{vehicleId}` - Detalle
 - `POST /api/v1/vehicles` - Alta
 - `PUT /api/v1/vehicles/{vehicleId}` - Edición
@@ -166,7 +166,8 @@ app:
 ### 5.4 Casos (casefile)
 
 **Endpoints:**
-- `GET /api/v1/cases?page=0&size=20&organizationId=1&branchId=1` - Listado con paginación/filtros
+- `GET /api/v1/cases?page=0&size=20&organizationId=1&branchId=1` - Listado paginado con metadata (`items`, `page`, `size`, `totalElements`, `totalPages`)
+- `GET /api/v1/cases/catalogs` - Catálogos para formularios (tipos, roles, prioridades)
 - `GET /api/v1/cases/{caseId}` - Detalle
 - `POST /api/v1/cases` - Alta (transaccional, crea persona/vehículo principal si no existen)
 - `PUT /api/v1/cases/{caseId}` - Edición
@@ -174,6 +175,7 @@ app:
 - `POST /api/v1/cases/{caseId}/relations` - Crear relación entre casos
 - `POST /api/v1/cases/{caseId}/workflow/transitions` - Transicionar estado
 - `GET /api/v1/cases/{caseId}/workflow/history` - Historial de estados
+- `GET /api/v1/cases/{caseId}/workflow/actions` - Acciones disponibles por estado/permisos
 
 **Archivos clave:**
 - `api/casefile/CaseController.java`
@@ -213,7 +215,7 @@ app:
 - **JWT real**: Access token viejbpo 15 minutos (`access-token-seconds: 900`).
 - **Refresh token**: Persistido en DB, vida de 15 días, rotación obligatoria.
 - **Login**: Valida password con BCrypt (`passwordEncoder.matches()`).
-- **Logout**: Revoca todos los refresh tokens del usuario en DB.
+- **Logout**: por defecto revoca el refresh token enviado en payload; si `revokeAllSessions=true`, revoca todos los refresh tokens activos del usuario.
 
 ### Filtros
 
@@ -221,6 +223,14 @@ app:
 |--------|--------|---------|
 | `JwtAuthenticationFilter` | todos (prod, local, test) | Extrae Bearer token y autentica |
 | `HeaderAuthenticationFilter` | solo `test` | Lee `X-User-Id` (compatibilidad de tests) |
+
+### Métricas de auth
+
+- `auth.login.total{result=success|failure,reason=...}`
+- `auth.refresh.total{result=success|failure,reason=...}`
+- `auth.logout.total{result=success,scope=single_session|all_sessions}`
+
+Estas métricas quedan expuestas por Actuator en `management` (`/actuator/metrics`).
 
 ### Configuración de seguridad
 
