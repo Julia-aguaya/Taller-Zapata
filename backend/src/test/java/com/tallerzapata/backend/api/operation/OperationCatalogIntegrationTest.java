@@ -1,5 +1,6 @@
 package com.tallerzapata.backend.api.operation;
 
+import com.tallerzapata.backend.testsupport.TestDatabaseCleaner;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,10 +25,12 @@ class OperationCatalogIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private TestDatabaseCleaner cleaner;
+
     @BeforeEach
     void setUp() {
-        jdbcTemplate.update("DELETE FROM usuario_roles WHERE usuario_id = ?", 2L);
-        jdbcTemplate.update("DELETE FROM usuarios WHERE id = ?", 2L);
+        cleaner.cleanAll();
         jdbcTemplate.update(
                 "INSERT INTO usuarios (id, public_id, username, email, password_hash, nombre, apellido, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 2L, "00000000-0000-0000-0000-000000000200", "consulta", "consulta@tallerzapata.local", "hash", "Carlos", "Consulta", true

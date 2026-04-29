@@ -30,7 +30,8 @@ WHERE p.codigo IN (
     'workflow.reparacion.asignar_turno',
     'workflow.reparacion.cerrar',
     'workflow.pago.marcar_pagado',
-    'workflow.documentacion.completar'
+    'workflow.documentacion.completar',
+    'workflow.legal.iniciar'
 );
 
 UPDATE workflow_transiciones

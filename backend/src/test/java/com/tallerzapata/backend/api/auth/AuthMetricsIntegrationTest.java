@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.api.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tallerzapata.backend.testsupport.TestDatabaseCleaner;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -37,6 +38,9 @@ class AuthMetricsIntegrationTest {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private TestDatabaseCleaner cleaner;
 
     @BeforeEach
     void preparePasswordHash() {

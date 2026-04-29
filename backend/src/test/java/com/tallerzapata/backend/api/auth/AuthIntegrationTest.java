@@ -2,6 +2,7 @@ package com.tallerzapata.backend.api.auth;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tallerzapata.backend.testsupport.TestDatabaseCleaner;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,6 +37,9 @@ class AuthIntegrationTest {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private TestDatabaseCleaner cleaner;
 
     @BeforeEach
     void preparePasswordHash() {

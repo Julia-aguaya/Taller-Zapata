@@ -1,5 +1,6 @@
 package com.tallerzapata.backend.api.casefile;
 
+import com.tallerzapata.backend.testsupport.TestDatabaseCleaner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,23 +25,12 @@ class CaseAuditIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private TestDatabaseCleaner cleaner;
+
     @BeforeEach
     void setUp() {
-        jdbcTemplate.update("DELETE FROM auditoria_eventos");
-        jdbcTemplate.update("DELETE FROM caso_estado_historial");
-        jdbcTemplate.update("DELETE FROM workflow_transiciones");
-        jdbcTemplate.update("DELETE FROM caso_relaciones");
-        jdbcTemplate.update("DELETE FROM caso_siniestro");
-        jdbcTemplate.update("DELETE FROM caso_vehiculos");
-        jdbcTemplate.update("DELETE FROM caso_personas");
-        jdbcTemplate.update("DELETE FROM casos");
-        jdbcTemplate.update("DELETE FROM vehiculo_personas");
-        jdbcTemplate.update("DELETE FROM vehiculos");
-        jdbcTemplate.update("DELETE FROM persona_contactos");
-        jdbcTemplate.update("DELETE FROM persona_domicilios");
-        jdbcTemplate.update("DELETE FROM personas");
-        jdbcTemplate.update("DELETE FROM usuario_roles WHERE usuario_id <> 1");
-        jdbcTemplate.update("DELETE FROM usuarios WHERE id <> 1");
+        cleaner.cleanAll();
 
         seedData();
     }
@@ -150,30 +140,24 @@ class CaseAuditIntegrationTest {
         );
 
         jdbcTemplate.update(
-                "INSERT INTO auditoria_eventos (id, usuario_id, caso_id, entidad_tipo, entidad_id, accion_codigo, antes_json, despues_json, metadata_json, ip_origen, user_agent, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+                "INSERT INTO auditoria_eventos (id, usuario_id, caso_id, entidad_tipo, entidad_id, accion_codigo, antes_json, despues_json, metadata_json, ip_origen, user_agent, created_at) VALUES (?, ?, ?, ?, ?, ?, JSON '{\"domain\":\"tramite\",\"stateCode\":\"INGRESADO\"}', JSON '{\"domain\":\"tramite\",\"stateCode\":\"EN_TRAMITE\"}', JSON '{\"actionCode\":\"tramite.avanzar\"}', ?, ?, CURRENT_TIMESTAMP)",
                 1001L,
                 3L,
                 100L,
                 "casos",
                 100L,
                 "transicionar_estado",
-                "{\"domain\":\"tramite\",\"stateCode\":\"INGRESADO\"}",
-                "{\"domain\":\"tramite\",\"stateCode\":\"EN_TRAMITE\"}",
-                "{\"actionCode\":\"tramite.avanzar\"}",
                 "127.0.0.1",
                 "JUnit"
         );
         jdbcTemplate.update(
-                "INSERT INTO auditoria_eventos (id, usuario_id, caso_id, entidad_tipo, entidad_id, accion_codigo, antes_json, despues_json, metadata_json, ip_origen, user_agent, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+                "INSERT INTO auditoria_eventos (id, usuario_id, caso_id, entidad_tipo, entidad_id, accion_codigo, antes_json, despues_json, metadata_json, ip_origen, user_agent, created_at) VALUES (?, ?, ?, ?, ?, ?, JSON '{\"priorityCode\":\"MEDIA\"}', JSON '{\"priorityCode\":\"ALTA\"}', JSON '{\"source\":\"manual\"}', ?, ?, CURRENT_TIMESTAMP)",
                 1002L,
                 1L,
                 100L,
                 "casos",
                 100L,
                 "actualizar",
-                "{\"priorityCode\":\"MEDIA\"}",
-                "{\"priorityCode\":\"ALTA\"}",
-                "{\"source\":\"manual\"}",
                 "127.0.0.1",
                 "JUnit"
         );

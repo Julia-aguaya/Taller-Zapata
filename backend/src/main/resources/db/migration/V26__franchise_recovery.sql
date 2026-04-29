@@ -63,7 +63,7 @@ INSERT INTO estados_cobro_recupero (codigo, nombre, activo) VALUES
 ('NO_APLICA', 'No aplica', 1),
 ('EN_JUICIO', 'En juicio', 1);
 
-INSERT INTO permisos (id, codigo, nombre, modulo_codigo, descripcion) VALUES
+INSERT INTO permisos (id, codigo, nombre, modulo, descripcion) VALUES
 (33, 'recupero.ver', 'Ver recuperos', 'recovery', 'Permite consultar recuperos de franquicia'),
 (34, 'recupero.crear', 'Crear recuperos', 'recovery', 'Permite crear y editar recuperos');
 

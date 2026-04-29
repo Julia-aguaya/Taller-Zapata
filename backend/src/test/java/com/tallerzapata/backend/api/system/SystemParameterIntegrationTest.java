@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.api.system;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tallerzapata.backend.testsupport.TestDatabaseCleaner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,12 +26,11 @@ class SystemParameterIntegrationTest {
     @Autowired private MockMvc mockMvc;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private ObjectMapper objectMapper;
+    @Autowired private TestDatabaseCleaner cleaner;
 
     @BeforeEach
     void setUp() {
-        jdbcTemplate.update("DELETE FROM parametros_sistema");
-        jdbcTemplate.update("DELETE FROM usuario_roles WHERE usuario_id <> 1");
-        jdbcTemplate.update("DELETE FROM usuarios WHERE id <> 1");
+        cleaner.cleanAll();
         seedBaseData();
     }
 

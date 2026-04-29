@@ -2,6 +2,7 @@ package com.tallerzapata.backend.api.identity;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tallerzapata.backend.api.auth.LoginRequest;
+import com.tallerzapata.backend.testsupport.TestDatabaseCleaner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,11 +38,18 @@ class IdentityAdminIntegrationTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private TestDatabaseCleaner cleaner;
+
     @BeforeEach
     void prepareData() {
+        cleaner.cleanAll();
+
+        // Limpiar organizaciones/sucursales de test previos (H2 in-memory persiste entre tests)
+        jdbcTemplate.update("DELETE FROM sucursales WHERE id >= 3");
+        jdbcTemplate.update("DELETE FROM organizaciones WHERE id >= 2");
+
         jdbcTemplate.update("UPDATE usuarios SET password_hash = ? WHERE id = ?", passwordEncoder.encode("password"), 1L);
-        jdbcTemplate.update("DELETE FROM usuario_roles WHERE usuario_id IN (?, ?, ?, ?)", 9L, 10L, 11L, 12L);
-        jdbcTemplate.update("DELETE FROM usuarios WHERE id = ?", 9L);
         jdbcTemplate.update(
                 "INSERT INTO usuarios (id, public_id, username, email, password_hash, nombre, apellido, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 9L,
@@ -54,7 +62,6 @@ class IdentityAdminIntegrationTest {
                 true
         );
 
-        jdbcTemplate.update("DELETE FROM usuarios WHERE id = ?", 10L);
         jdbcTemplate.update(
                 "INSERT INTO usuarios (id, public_id, username, email, password_hash, nombre, apellido, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 10L,
@@ -67,8 +74,6 @@ class IdentityAdminIntegrationTest {
                 true
         );
 
-        jdbcTemplate.update("DELETE FROM sucursales WHERE id IN (?, ?)", 3L, 4L);
-        jdbcTemplate.update("DELETE FROM organizaciones WHERE id = ?", 2L);
         jdbcTemplate.update(
                 "INSERT INTO organizaciones (id, public_id, codigo, nombre) VALUES (?, ?, ?, ?)",
                 2L,
@@ -77,21 +82,22 @@ class IdentityAdminIntegrationTest {
                 "Taller Zapata Norte"
         );
         jdbcTemplate.update(
-                "INSERT INTO sucursales (id, organizacion_id, codigo, nombre) VALUES (?, ?, ?, ?)",
+                "INSERT INTO sucursales (id, public_id, organizacion_id, codigo, nombre) VALUES (?, ?, ?, ?, ?)",
                 3L,
+                "00000000-0000-0000-0000-000000000020",
                 2L,
                 "N",
                 "Norte"
         );
         jdbcTemplate.update(
-                "INSERT INTO sucursales (id, organizacion_id, codigo, nombre) VALUES (?, ?, ?, ?)",
+                "INSERT INTO sucursales (id, public_id, organizacion_id, codigo, nombre) VALUES (?, ?, ?, ?, ?)",
                 4L,
+                "00000000-0000-0000-0000-000000000021",
                 2L,
                 "O",
                 "Oeste"
         );
 
-        jdbcTemplate.update("DELETE FROM usuarios WHERE id = ?", 11L);
         jdbcTemplate.update(
                 "INSERT INTO usuarios (id, public_id, username, email, password_hash, nombre, apellido, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 11L,
@@ -113,7 +119,6 @@ class IdentityAdminIntegrationTest {
                 true
         );
 
-        jdbcTemplate.update("DELETE FROM usuarios WHERE id = ?", 12L);
         jdbcTemplate.update(
                 "INSERT INTO usuarios (id, public_id, username, email, password_hash, nombre, apellido, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                 12L,

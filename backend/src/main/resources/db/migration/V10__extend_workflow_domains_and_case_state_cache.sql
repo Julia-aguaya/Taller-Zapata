@@ -1,10 +1,9 @@
-ALTER TABLE casos
-    ADD COLUMN estado_pago_actual_id BIGINT UNSIGNED NULL AFTER estado_reparacion_actual_id,
-    ADD COLUMN estado_documentacion_actual_id BIGINT UNSIGNED NULL AFTER estado_pago_actual_id,
-    ADD COLUMN estado_legal_actual_id BIGINT UNSIGNED NULL AFTER estado_documentacion_actual_id,
-    ADD CONSTRAINT fk_casos_estado_pago_actual FOREIGN KEY (estado_pago_actual_id) REFERENCES workflow_estados (id),
-    ADD CONSTRAINT fk_casos_estado_documentacion_actual FOREIGN KEY (estado_documentacion_actual_id) REFERENCES workflow_estados (id),
-    ADD CONSTRAINT fk_casos_estado_legal_actual FOREIGN KEY (estado_legal_actual_id) REFERENCES workflow_estados (id);
+ALTER TABLE casos ADD COLUMN estado_pago_actual_id BIGINT UNSIGNED NULL;
+ALTER TABLE casos ADD COLUMN estado_documentacion_actual_id BIGINT UNSIGNED NULL;
+ALTER TABLE casos ADD COLUMN estado_legal_actual_id BIGINT UNSIGNED NULL;
+ALTER TABLE casos ADD CONSTRAINT fk_casos_estado_pago_actual FOREIGN KEY (estado_pago_actual_id) REFERENCES workflow_estados (id);
+ALTER TABLE casos ADD CONSTRAINT fk_casos_estado_documentacion_actual FOREIGN KEY (estado_documentacion_actual_id) REFERENCES workflow_estados (id);
+ALTER TABLE casos ADD CONSTRAINT fk_casos_estado_legal_actual FOREIGN KEY (estado_legal_actual_id) REFERENCES workflow_estados (id);
 
 INSERT INTO workflow_estados (codigo, dominio, nombre, descripcion, orden_visual, terminal)
 VALUES
@@ -104,7 +103,7 @@ SELECT
     'legal.iniciar',
     'workflow.transicionar',
     0,
-    JSON_OBJECT('field', 'referenced', 'op', 'EQ', 'value', true),
+    '{"field":"referenced","op":"EQ","value":true}',
     1
 FROM workflow_estados origen
 JOIN workflow_estados destino

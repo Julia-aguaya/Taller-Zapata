@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.api.vehicle;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tallerzapata.backend.testsupport.TestDatabaseCleaner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,19 +35,16 @@ class VehicleIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private TestDatabaseCleaner cleaner;
+
     @BeforeEach
     void setUp() {
-        jdbcTemplate.update("DELETE FROM caso_estado_historial");
-        jdbcTemplate.update("DELETE FROM caso_relaciones");
-        jdbcTemplate.update("DELETE FROM caso_siniestro");
-        jdbcTemplate.update("DELETE FROM caso_vehiculos");
-        jdbcTemplate.update("DELETE FROM caso_personas");
-        jdbcTemplate.update("DELETE FROM casos");
-        jdbcTemplate.update("DELETE FROM vehiculo_personas");
-        jdbcTemplate.update("DELETE FROM vehiculos");
-        jdbcTemplate.update("DELETE FROM modelos_vehiculo");
-        jdbcTemplate.update("DELETE FROM marcas_vehiculo");
-        jdbcTemplate.update("DELETE FROM personas");
+        cleaner.cleanAll();
+
+        // Limpiar marcas/modelos de test previos (H2 in-memory persiste entre tests)
+        jdbcTemplate.update("DELETE FROM modelos_vehiculo WHERE id <= 2");
+        jdbcTemplate.update("DELETE FROM marcas_vehiculo WHERE id = 1");
 
         jdbcTemplate.update(
                 "INSERT INTO personas (id, public_id, tipo_persona, nombre, apellido, nombre_mostrar, activo) VALUES (?, ?, ?, ?, ?, ?, ?)",

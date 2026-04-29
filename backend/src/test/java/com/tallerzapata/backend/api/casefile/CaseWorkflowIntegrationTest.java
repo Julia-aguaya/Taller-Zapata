@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.api.casefile;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tallerzapata.backend.testsupport.TestDatabaseCleaner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,24 +32,21 @@ class CaseWorkflowIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private TestDatabaseCleaner cleaner;
+
     @BeforeEach
     void setUp() {
-        jdbcTemplate.update("DELETE FROM auditoria_eventos");
-        jdbcTemplate.update("DELETE FROM caso_estado_historial");
-        jdbcTemplate.update("DELETE FROM workflow_transiciones");
-        jdbcTemplate.update("DELETE FROM caso_relaciones");
-        jdbcTemplate.update("DELETE FROM caso_siniestro");
-        jdbcTemplate.update("DELETE FROM caso_vehiculos");
-        jdbcTemplate.update("DELETE FROM caso_personas");
-        jdbcTemplate.update("DELETE FROM casos");
-        jdbcTemplate.update("DELETE FROM vehiculos");
-        jdbcTemplate.update("DELETE FROM personas");
-        jdbcTemplate.update("DELETE FROM usuario_roles WHERE usuario_id <> 1");
-        jdbcTemplate.update("DELETE FROM usuarios WHERE id <> 1");
+        cleaner.cleanAll();
 
         seedVehiclesAndPeople();
         seedCases();
         seedUsers();
+        // Limpiar transiciones de test de corridas anteriores (H2 in-memory persiste entre tests).
+        // Eliminamos TODAS las transiciones porque las migraciones insertan transiciones
+        // base (ids 1-7) que duplican las semillas del test y rompen la asercion de conteo
+        // de acciones disponibles. El test se auto-semea completamente.
+        jdbcTemplate.update("DELETE FROM workflow_transiciones");
         seedWorkflowTransitions();
     }
 
@@ -144,7 +142,8 @@ class CaseWorkflowIntegrationTest {
 
     @Test
     void shouldRejectTransitionWithoutFineGrainedPermission() throws Exception {
-        jdbcTemplate.update("DELETE FROM rol_permisos WHERE rol_id = ? AND permiso_id = ?", 2L, 12L);
+        Long permisoId = jdbcTemplate.queryForObject("SELECT id FROM permisos WHERE codigo = ?", Long.class, "workflow.documentacion.completar");
+        jdbcTemplate.update("DELETE FROM rol_permisos WHERE rol_id = ? AND permiso_id = ?", 2L, permisoId);
 
         CaseWorkflowTransitionRequest request = new CaseWorkflowTransitionRequest(
                 "documentacion",
@@ -219,7 +218,8 @@ class CaseWorkflowIntegrationTest {
 
     @Test
     void shouldHideUnavailableWorkflowActionsWhenPermissionIsMissing() throws Exception {
-        jdbcTemplate.update("DELETE FROM rol_permisos WHERE rol_id = ? AND permiso_id = ?", 2L, 11L);
+        Long permisoId = jdbcTemplate.queryForObject("SELECT id FROM permisos WHERE codigo = ?", Long.class, "workflow.pago.marcar_pagado");
+        jdbcTemplate.update("DELETE FROM rol_permisos WHERE rol_id = ? AND permiso_id = ?", 2L, permisoId);
 
         mockMvc.perform(get("/api/v1/cases/100/workflow/actions")
                         .param("domain", "pago")
@@ -278,25 +278,27 @@ class CaseWorkflowIntegrationTest {
     }
 
     private void seedWorkflowTransitions() {
+        // Se usa ? FORMAT JSON para que H2 almacene el valor como objeto JSON real
+        // y no como string JSON (lo cual provoca doble encoding al leer via JPA).
         jdbcTemplate.update(
                 "INSERT INTO workflow_transiciones (id, dominio, tipo_tramite_id, estado_origen_id, estado_destino_id, accion_codigo, requiere_permiso_codigo, automatica, regla_json, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                1L, "tramite", null, 1L, 2L, "tramite.avanzar", "workflow.tramite.avanzar", false, null, true
+                9001L, "tramite", null, 1L, 2L, "tramite.avanzar", "workflow.tramite.avanzar", false, null, true
         );
         jdbcTemplate.update(
                 "INSERT INTO workflow_transiciones (id, dominio, tipo_tramite_id, estado_origen_id, estado_destino_id, accion_codigo, requiere_permiso_codigo, automatica, regla_json, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                2L, "tramite", null, 2L, 3L, "tramite.cerrar", "workflow.tramite.cerrar", false, null, true
+                9002L, "tramite", null, 2L, 3L, "tramite.cerrar", "workflow.tramite.cerrar", false, null, true
         );
         jdbcTemplate.update(
                 "INSERT INTO workflow_transiciones (id, dominio, tipo_tramite_id, estado_origen_id, estado_destino_id, accion_codigo, requiere_permiso_codigo, automatica, regla_json, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                3L, "pago", null, 7L, 8L, "pago.marcar_pagado", "workflow.pago.marcar_pagado", false, null, true
+                9003L, "pago", null, 7L, 8L, "pago.marcar_pagado", "workflow.pago.marcar_pagado", false, null, true
         );
         jdbcTemplate.update(
-                "INSERT INTO workflow_transiciones (id, dominio, tipo_tramite_id, estado_origen_id, estado_destino_id, accion_codigo, requiere_permiso_codigo, automatica, regla_json, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                30L, "documentacion", null, 9L, 10L, "documentacion.completar", "workflow.documentacion.completar", false, "{\"all\":[{\"field\":\"priorityCode\",\"op\":\"IN\",\"value\":[\"ALTA\",\"MEDIA\"]},{\"not\":{\"field\":\"reason\",\"op\":\"CONTAINS\",\"value\":\"bloqueado\"}}]}", true
+                "INSERT INTO workflow_transiciones (id, dominio, tipo_tramite_id, estado_origen_id, estado_destino_id, accion_codigo, requiere_permiso_codigo, automatica, regla_json, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ? FORMAT JSON, ?)",
+                9030L, "documentacion", null, 9L, 10L, "documentacion.completar", "workflow.documentacion.completar", false, "{\"all\":[{\"field\":\"priorityCode\",\"op\":\"IN\",\"value\":[\"ALTA\",\"MEDIA\"]},{\"not\":{\"field\":\"reason\",\"op\":\"CONTAINS\",\"value\":\"bloqueado\"}}]}", true
         );
         jdbcTemplate.update(
-                "INSERT INTO workflow_transiciones (id, dominio, tipo_tramite_id, estado_origen_id, estado_destino_id, accion_codigo, requiere_permiso_codigo, automatica, regla_json, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                4L, "legal", null, 11L, 12L, "legal.iniciar", "workflow.legal.iniciar", false, "{\"field\":\"referenced\",\"op\":\"EQ\",\"value\":true}", true
+                "INSERT INTO workflow_transiciones (id, dominio, tipo_tramite_id, estado_origen_id, estado_destino_id, accion_codigo, requiere_permiso_codigo, automatica, regla_json, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ? FORMAT JSON, ?)",
+                9004L, "legal", null, 11L, 12L, "legal.iniciar", "workflow.legal.iniciar", false, "{\"field\":\"referenced\",\"op\":\"EQ\",\"value\":\"true\"}", true
         );
     }
 }

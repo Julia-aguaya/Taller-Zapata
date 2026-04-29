@@ -1,3 +1,1 @@
-ALTER TABLE egresos_vehiculo
-    ADD COLUMN turno_reingreso_id BIGINT UNSIGNED NULL AFTER ingreso_id,
-    ADD CONSTRAINT fk_egresos_vehiculo_turno_reingreso FOREIGN KEY (turno_reingreso_id) REFERENCES turnos_reparacion (id);
+-- V17 es redundante: la columna turno_reingreso_id y su FK ya fueron agregadas en V14__init_vehicle_intakes_and_outcomes.sql

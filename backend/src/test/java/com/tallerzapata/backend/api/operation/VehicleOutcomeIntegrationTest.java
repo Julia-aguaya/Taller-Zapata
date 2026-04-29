@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.api.operation;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tallerzapata.backend.testsupport.TestDatabaseCleaner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,25 +36,12 @@ class VehicleOutcomeIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private TestDatabaseCleaner cleaner;
+
     @BeforeEach
     void setUp() {
-        jdbcTemplate.update("DELETE FROM egresos_vehiculo");
-        jdbcTemplate.update("DELETE FROM ingreso_items");
-        jdbcTemplate.update("DELETE FROM ingresos_vehiculo");
-        jdbcTemplate.update("DELETE FROM turnos_reparacion");
-        jdbcTemplate.update("DELETE FROM tareas");
-        jdbcTemplate.update("DELETE FROM auditoria_eventos");
-        jdbcTemplate.update("DELETE FROM caso_estado_historial");
-        jdbcTemplate.update("DELETE FROM caso_relaciones");
-        jdbcTemplate.update("DELETE FROM caso_siniestro");
-        jdbcTemplate.update("DELETE FROM caso_vehiculos");
-        jdbcTemplate.update("DELETE FROM caso_personas");
-        jdbcTemplate.update("DELETE FROM casos");
-        jdbcTemplate.update("DELETE FROM vehiculos");
-        jdbcTemplate.update("DELETE FROM personas");
-        jdbcTemplate.update("DELETE FROM usuario_roles WHERE usuario_id <> 1");
-        jdbcTemplate.update("DELETE FROM usuarios WHERE id <> 1");
-
+        cleaner.cleanAll();
         seedBaseData();
     }
 

@@ -1,3 +1,1 @@
-ALTER TABLE documentos
-    ADD COLUMN reemplaza_documento_id BIGINT UNSIGNED NULL AFTER observaciones,
-    ADD CONSTRAINT fk_documentos_reemplaza_documento FOREIGN KEY (reemplaza_documento_id) REFERENCES documentos (id);
+-- V16 es redundante: la columna reemplaza_documento_id y su FK ya fueron agregadas en V15__init_document_management.sql

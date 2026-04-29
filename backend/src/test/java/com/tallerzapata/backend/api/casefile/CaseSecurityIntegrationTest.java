@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.api.casefile;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tallerzapata.backend.testsupport.TestDatabaseCleaner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,24 +31,18 @@ class CaseSecurityIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private TestDatabaseCleaner cleaner;
+
     @BeforeEach
     void setUp() {
-        jdbcTemplate.update("DELETE FROM auditoria_eventos");
-        jdbcTemplate.update("DELETE FROM caso_estado_historial");
-        jdbcTemplate.update("DELETE FROM workflow_transiciones");
-        jdbcTemplate.update("DELETE FROM caso_relaciones");
-        jdbcTemplate.update("DELETE FROM caso_siniestro");
-        jdbcTemplate.update("DELETE FROM caso_vehiculos");
-        jdbcTemplate.update("DELETE FROM caso_personas");
-        jdbcTemplate.update("DELETE FROM casos");
-        jdbcTemplate.update("DELETE FROM vehiculos");
-        jdbcTemplate.update("DELETE FROM personas");
-        jdbcTemplate.update("DELETE FROM usuario_roles WHERE usuario_id <> 1");
-        jdbcTemplate.update("DELETE FROM usuarios WHERE id <> 1");
+        cleaner.cleanAll();
 
         seedVehiclesAndPeople();
         seedCases();
         seedUsers();
+        // Limpiar transiciones de test de corridas anteriores (H2 in-memory persiste entre tests)
+        jdbcTemplate.update("DELETE FROM workflow_transiciones WHERE id >= 9000");
         seedWorkflowTransitions();
     }
 
@@ -192,14 +187,13 @@ class CaseSecurityIntegrationTest {
     }
 
     private void seedWorkflowTransitions() {
-        jdbcTemplate.update("DELETE FROM workflow_transiciones");
         jdbcTemplate.update(
                 "INSERT INTO workflow_transiciones (id, dominio, tipo_tramite_id, estado_origen_id, estado_destino_id, accion_codigo, requiere_permiso_codigo, automatica, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                1L, "tramite", null, 1L, 2L, "tramite.avanzar", "workflow.transicionar", false, true
+                9001L, "tramite", null, 1L, 2L, "tramite.avanzar", "workflow.transicionar", false, true
         );
         jdbcTemplate.update(
                 "INSERT INTO workflow_transiciones (id, dominio, tipo_tramite_id, estado_origen_id, estado_destino_id, accion_codigo, requiere_permiso_codigo, automatica, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                2L, "tramite", null, 2L, 3L, "tramite.cerrar", "workflow.transicionar", false, true
+                9002L, "tramite", null, 2L, 3L, "tramite.cerrar", "workflow.transicionar", false, true
         );
     }
 }

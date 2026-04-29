@@ -37,9 +37,9 @@ INSERT INTO tipos_notificacion (codigo, nombre, activo) VALUES
 ('CASO_TRANSFERIDO', 'Caso transferido', 1),
 ('RECORDATORIO', 'Recordatorio', 1);
 
-INSERT INTO permisos (id, codigo) VALUES
-(37, 'notificacion.ver'),
-(38, 'notificacion.crear');
+INSERT INTO permisos (id, codigo, nombre, modulo, descripcion) VALUES
+(37, 'notificacion.ver', 'Ver notificaciones', 'notification', 'Permite consultar notificaciones'),
+(38, 'notificacion.crear', 'Crear notificaciones', 'notification', 'Permite crear notificaciones');
 
 INSERT INTO rol_permisos (id, rol_id, permiso_id, allow_flag) VALUES
 (70, 1, 37, TRUE),

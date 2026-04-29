@@ -5,9 +5,10 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 
@@ -34,16 +35,16 @@ public class AuditEventEntity {
     @Column(name = "accion_codigo", nullable = false)
     private String actionCode;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "antes_json")
-    @Lob
     private String beforeJson;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "despues_json")
-    @Lob
     private String afterJson;
 
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "metadata_json")
-    @Lob
     private String metadataJson;
 
     @Column(name = "ip_origen")
