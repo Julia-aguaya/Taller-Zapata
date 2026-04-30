@@ -67,8 +67,12 @@ INSERT INTO permisos (id, codigo, nombre, modulo, descripcion) VALUES
 (33, 'recupero.ver', 'Ver recuperos', 'recovery', 'Permite consultar recuperos de franquicia'),
 (34, 'recupero.crear', 'Crear recuperos', 'recovery', 'Permite crear y editar recuperos');
 
-INSERT INTO rol_permisos (id, rol_id, permiso_id, allow_flag) VALUES
-(62, 1, 33, TRUE),
-(63, 1, 34, TRUE),
-(64, 2, 33, TRUE),
-(65, 2, 34, TRUE);
+INSERT INTO rol_permisos (rol_id, permiso_id, allow_flag)
+SELECT 1, id, TRUE
+FROM permisos
+WHERE codigo IN ('recupero.ver', 'recupero.crear');
+
+INSERT INTO rol_permisos (rol_id, permiso_id, allow_flag)
+SELECT 2, id, TRUE
+FROM permisos
+WHERE codigo IN ('recupero.ver', 'recupero.crear');

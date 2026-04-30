@@ -17,13 +17,13 @@ public class FinancialMovementTypeEntity {
     private String name;
 
     @Column(name = "signo", nullable = false)
-    private Integer sign;
+    private Short sign;
 
     @Column(name = "activo", nullable = false)
     private Boolean active;
 
     public String getCode() { return code; }
     public String getName() { return name; }
-    public Integer getSign() { return sign; }
+    public Short getSign() { return sign; }
     public Boolean getActive() { return active; }
 }

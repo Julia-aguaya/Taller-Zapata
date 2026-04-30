@@ -33,11 +33,15 @@ INSERT INTO permisos (id, codigo, nombre, modulo, descripcion) VALUES
 (35, 'parametro.ver', 'Ver parametros', 'system', 'Permite consultar parametros del sistema'),
 (36, 'parametro.editar', 'Editar parametros', 'system', 'Permite modificar parametros del sistema');
 
-INSERT INTO rol_permisos (id, rol_id, permiso_id, allow_flag) VALUES
-(66, 1, 35, TRUE),
-(67, 1, 36, TRUE),
-(68, 2, 35, TRUE),
-(69, 2, 36, TRUE);
+INSERT INTO rol_permisos (rol_id, permiso_id, allow_flag)
+SELECT 1, id, TRUE
+FROM permisos
+WHERE codigo IN ('parametro.ver', 'parametro.editar');
+
+INSERT INTO rol_permisos (rol_id, permiso_id, allow_flag)
+SELECT 2, id, TRUE
+FROM permisos
+WHERE codigo IN ('parametro.ver', 'parametro.editar');
 
 INSERT INTO parametros_sistema (codigo, valor, tipo_dato_codigo, descripcion, editable, visible, modulo_codigo) VALUES
 ('TASA_IVA_DEFAULT', '21.00', 'NUMBER', 'Tasa de IVA por defecto', 1, 1, 'GENERAL'),

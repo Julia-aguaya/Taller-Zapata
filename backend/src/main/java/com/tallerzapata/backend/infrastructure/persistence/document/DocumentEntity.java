@@ -38,7 +38,7 @@ public class DocumentEntity {
     @Column(name = "tamano_bytes", nullable = false)
     private Long sizeBytes;
 
-    @Column(name = "checksum_sha256", nullable = false)
+    @Column(name = "checksum_sha256", nullable = false, columnDefinition = "char(64)")
     private String checksumSha256;
 
     @Column(name = "categoria_id", nullable = false)

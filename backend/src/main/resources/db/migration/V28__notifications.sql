@@ -41,8 +41,12 @@ INSERT INTO permisos (id, codigo, nombre, modulo, descripcion) VALUES
 (37, 'notificacion.ver', 'Ver notificaciones', 'notification', 'Permite consultar notificaciones'),
 (38, 'notificacion.crear', 'Crear notificaciones', 'notification', 'Permite crear notificaciones');
 
-INSERT INTO rol_permisos (id, rol_id, permiso_id, allow_flag) VALUES
-(70, 1, 37, TRUE),
-(71, 1, 38, TRUE),
-(72, 2, 37, TRUE),
-(73, 2, 38, TRUE);
+INSERT INTO rol_permisos (rol_id, permiso_id, allow_flag)
+SELECT 1, id, TRUE
+FROM permisos
+WHERE codigo IN ('notificacion.ver', 'notificacion.crear');
+
+INSERT INTO rol_permisos (rol_id, permiso_id, allow_flag)
+SELECT 2, id, TRUE
+FROM permisos
+WHERE codigo IN ('notificacion.ver', 'notificacion.crear');

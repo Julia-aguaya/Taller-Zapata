@@ -20,7 +20,7 @@ public class RefreshTokenEntity {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
-    @Column(name = "token_hash", nullable = false)
+    @Column(name = "token_hash", nullable = false, length = 64, columnDefinition = "CHAR(64)")
     private String tokenHash;
 
     @Column(name = "expires_at", nullable = false)
@@ -29,7 +29,7 @@ public class RefreshTokenEntity {
     @Column(name = "revoked_at")
     private LocalDateTime revokedAt;
 
-    @Column(name = "replaced_by_token_hash")
+    @Column(name = "replaced_by_token_hash", length = 64, columnDefinition = "CHAR(64)")
     private String replacedByTokenHash;
 
     public Long getId() { return id; }
