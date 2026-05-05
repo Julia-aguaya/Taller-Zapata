@@ -1,10 +1,55 @@
 import { useEffect, useMemo, useState } from 'react';
+import {
+  clearBackendSession,
+  getCaseAppointmentsUrl,
+  getCaseBudgetUrl,
+  getCaseDetailUrl,
+  getCaseFinanceSummaryUrl,
+  getCaseFinancialMovementsUrl,
+  getCaseReceiptsUrl,
+  getCaseVehicleIntakesUrl,
+  getCaseVehicleOutcomesUrl,
+  getConnectivityProbeUrl,
+  getCurrentUserUrl,
+  getLoginUrl,
+  getUnreadNotificationsUrl,
+  loginAgainstBackend,
+  markAuthenticatedNotificationAsRead,
+  probeBackendConnection,
+  readAuthenticatedCaseAppointments,
+  readAuthenticatedCaseBudget,
+  readAuthenticatedCaseDetail,
+  readAuthenticatedCaseDocuments,
+  readAuthenticatedCaseFinanceSummary,
+  readAuthenticatedCaseFinancialMovements,
+  readAuthenticatedCaseReceipts,
+  readAuthenticatedCaseVehicleIntakes,
+  readAuthenticatedCaseVehicleOutcomes,
+  readAuthenticatedCaseWorkflowActions,
+  readAuthenticatedCaseWorkflowHistory,
+  readAuthenticatedCases,
+  readAuthenticatedUnreadNotifications,
+  readBackendSession,
+  readCurrentUser,
+  storeBackendSession,
+} from './lib/api/backend';
+import AuthenticatedUserSnapshot from './components/AuthenticatedUserSnapshot';
+import CasesList from './components/cases/CasesList';
+import CasesMetrics from './components/cases/CasesMetrics';
+import CasesToolbar from './components/cases/CasesToolbar';
+import CaseAppointmentsSection from './components/detail/CaseAppointmentsSection';
+import CaseBudgetSection from './components/detail/CaseBudgetSection';
+import CaseDocumentsSection from './components/detail/CaseDocumentsSection';
+import CaseFinanceSection from './components/detail/CaseFinanceSection';
+import CaseFinancialMovementsSection from './components/detail/CaseFinancialMovementsSection';
+import CaseReceiptsSection from './components/detail/CaseReceiptsSection';
+import CaseVehicleIntakesSection from './components/detail/CaseVehicleIntakesSection';
+import CaseVehicleOutcomesSection from './components/detail/CaseVehicleOutcomesSection';
+import CaseWorkflowSection from './components/detail/CaseWorkflowSection';
+import { createAuthenticatedCaseDetailInitialState } from './lib/ui/authenticatedCaseDetailState';
 
 const NAV_ITEMS = [
-  { id: 'panel', label: 'Panel General' },
-  { id: 'agenda', label: 'Agenda' },
-  { id: 'nuevo', label: 'Nuevo Caso' },
-  { id: 'gestion', label: 'Gestion' },
+  { id: 'panel', label: 'Carpetas' },
 ];
 
 const BRANCHES = [
@@ -289,6 +334,1432 @@ function normalizeDocument(value) {
 
 function normalizePlate(value) {
   return String(value ?? '').replace(/\s+/g, '').toUpperCase();
+}
+
+function formatProbeCheckedAt(value, idleMessage = 'Todavía no se verificó la conexión real.') {
+  if (!value) {
+    return idleMessage;
+  }
+
+  return `Último intento ${new Date(value).toLocaleTimeString('es-AR')}`;
+}
+
+function maskToken(value) {
+  if (!value) {
+    return 'Sin token guardado';
+  }
+
+  if (value.length <= 24) {
+    return value;
+  }
+
+  return `${value.slice(0, 16)}...${value.slice(-8)}`;
+}
+
+function getSessionLabel(session) {
+  return session?.user?.displayName || session?.user?.email || 'Usuario autenticado';
+}
+
+function getFriendlyAuthMessage(error) {
+  if (!error) {
+    return 'No pudimos iniciar sesión. Intentá nuevamente en unos instantes.';
+  }
+
+  if (error.httpStatus === 401 || error.httpStatus === 403) {
+    return 'El email o la contraseña no coinciden. Revisalos e intentalo de nuevo.';
+  }
+
+  if (error.httpStatus >= 500) {
+    return 'Ahora no pudimos validar tu acceso. Probá de nuevo en unos instantes.';
+  }
+
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
+    return 'No pudimos conectarnos para validar tu acceso. Revisá tu conexión e intentá nuevamente.';
+  }
+
+  return error.message || 'No pudimos iniciar sesión. Intentá nuevamente en unos instantes.';
+}
+
+function getFriendlyCasesMessage(error) {
+  if (!error) {
+    return 'No pudimos traer tus carpetas reales. Intentá nuevamente en unos instantes.';
+  }
+
+  if (error.httpStatus === 401 || error.httpStatus === 403) {
+    return 'Tu sesión ya no tiene permiso para ver tus carpetas. Volvé a ingresar e intentá nuevamente.';
+  }
+
+  if (error.httpStatus >= 500) {
+    return 'Ahora no pudimos traer tus carpetas. Probá de nuevo en unos instantes.';
+  }
+
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
+    return 'No pudimos conectarnos para traer tus carpetas. Revisá que el backend siga disponible.';
+  }
+
+  return error.message || 'No pudimos traer tus carpetas reales. Intentá nuevamente en unos instantes.';
+}
+
+function getFriendlyCaseDetailMessage(error) {
+  if (!error) {
+    return 'No pudimos abrir esta carpeta ahora. Intentá nuevamente en unos instantes.';
+  }
+
+  if (error.httpStatus === 401 || error.httpStatus === 403) {
+    return 'Tu sesión ya no tiene permiso para abrir esta carpeta. Volvé a ingresar e intentá nuevamente.';
+  }
+
+  if (error.httpStatus === 404) {
+    return 'Esta carpeta ya no está disponible para consultar en este momento.';
+  }
+
+  if (error.httpStatus >= 500) {
+    return 'Ahora no pudimos abrir el detalle de esta carpeta. Probá de nuevo en unos instantes.';
+  }
+
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
+    return 'No pudimos conectarnos para abrir esta carpeta. Revisá tu conexión e intentá nuevamente.';
+  }
+
+  return error.message || 'No pudimos abrir esta carpeta ahora. Intentá nuevamente en unos instantes.';
+}
+
+function getFriendlyNotificationsMessage(error) {
+  if (!error) {
+    return 'No pudimos traer tus avisos ahora. Intentá nuevamente en unos instantes.';
+  }
+
+  if (error.httpStatus === 401 || error.httpStatus === 403) {
+    return 'Tu sesión no tiene permiso para ver avisos pendientes. Volvé a ingresar e intentá nuevamente.';
+  }
+
+  if (error.httpStatus >= 500) {
+    return 'Ahora no pudimos traer tus avisos. Probá de nuevo en unos instantes.';
+  }
+
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
+    return 'No pudimos conectarnos para traer tus avisos. Revisá que el backend siga disponible.';
+  }
+
+  return error.message || 'No pudimos traer tus avisos ahora. Intentá nuevamente en unos instantes.';
+}
+
+function getFriendlyNotificationReadMessage(error) {
+  if (!error) {
+    return 'No pudimos actualizar este aviso ahora. Intentá nuevamente en unos instantes.';
+  }
+
+  if (error.httpStatus === 401 || error.httpStatus === 403) {
+    return 'Tu sesión no tiene permiso para actualizar este aviso. Volvé a ingresar e intentá nuevamente.';
+  }
+
+  if (error.httpStatus === 404) {
+    return 'Este aviso ya no está disponible para actualizar.';
+  }
+
+  if (error.httpStatus >= 500) {
+    return 'Ahora no pudimos actualizar este aviso. Probá de nuevo en unos instantes.';
+  }
+
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
+    return 'No pudimos conectarnos para actualizar este aviso. Revisá que el backend siga disponible.';
+  }
+
+  return error.message || 'No pudimos actualizar este aviso ahora. Intentá nuevamente en unos instantes.';
+}
+
+function getFriendlyCaseDocumentsMessage(error) {
+  if (!error) {
+    return 'No pudimos traer la documentación de esta carpeta ahora.';
+  }
+
+  if (error.httpStatus === 401 || error.httpStatus === 403) {
+    return 'Tu sesión no tiene permiso para ver esta documentación. Volvé a ingresar e intentá nuevamente.';
+  }
+
+  if (error.httpStatus === 404) {
+    return 'La documentación de esta carpeta no está disponible en este momento.';
+  }
+
+  if (error.httpStatus >= 500) {
+    return 'Ahora no pudimos traer la documentación de esta carpeta. Probá de nuevo en unos instantes.';
+  }
+
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
+    return 'No pudimos conectarnos para traer esta documentación. Revisá que el backend siga disponible.';
+  }
+
+  return error.message || 'No pudimos traer la documentación de esta carpeta ahora.';
+}
+
+function getFriendlyCaseAppointmentsMessage(error) {
+  if (!error) {
+    return 'No pudimos traer los turnos de esta carpeta ahora.';
+  }
+
+  if (error.httpStatus === 401 || error.httpStatus === 403) {
+    return 'Tu sesión no tiene permiso para ver los turnos de esta carpeta. Volvé a ingresar e intentá nuevamente.';
+  }
+
+  if (error.httpStatus === 404) {
+    return 'Los turnos de esta carpeta no están disponibles en este momento.';
+  }
+
+  if (error.httpStatus >= 500) {
+    return 'Ahora no pudimos traer los turnos de esta carpeta. Probá de nuevo en unos instantes.';
+  }
+
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
+    return 'No pudimos conectarnos para traer los turnos de esta carpeta. Revisá que el backend siga disponible.';
+  }
+
+  return error.message || 'No pudimos traer los turnos de esta carpeta ahora.';
+}
+
+function getFriendlyCaseBudgetMessage(error) {
+  if (!error) {
+    return 'No pudimos traer el presupuesto de esta carpeta ahora.';
+  }
+
+  if (error.httpStatus === 401 || error.httpStatus === 403) {
+    return 'Tu sesión no tiene permiso para ver el presupuesto de esta carpeta. Volvé a ingresar e intentá nuevamente.';
+  }
+
+  if (error.httpStatus === 404) {
+    return 'Todavía no hay un presupuesto cargado para esta carpeta.';
+  }
+
+  if (error.httpStatus >= 500) {
+    return 'Ahora no pudimos traer el presupuesto de esta carpeta. Probá de nuevo en unos instantes.';
+  }
+
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
+    return 'No pudimos conectarnos para traer el presupuesto de esta carpeta. Revisá que el backend siga disponible.';
+  }
+
+  return error.message || 'No pudimos traer el presupuesto de esta carpeta ahora.';
+}
+
+function getFriendlyCaseFinanceSummaryMessage(error) {
+  if (!error) {
+    return 'No pudimos traer el resumen financiero de esta carpeta ahora.';
+  }
+
+  if (error.httpStatus === 401 || error.httpStatus === 403) {
+    return 'Tu sesión no tiene permiso para ver el resumen financiero de esta carpeta. Volvé a ingresar e intentá nuevamente.';
+  }
+
+  if (error.httpStatus === 404) {
+    return 'Todavía no hay resumen financiero visible para esta carpeta.';
+  }
+
+  if (error.httpStatus >= 500) {
+    return 'Ahora no pudimos traer el resumen financiero de esta carpeta. Probá de nuevo en unos instantes.';
+  }
+
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
+    return 'No pudimos conectarnos para traer el resumen financiero de esta carpeta. Revisá que el backend siga disponible.';
+  }
+
+  return error.message || 'No pudimos traer el resumen financiero de esta carpeta ahora.';
+}
+
+function getFriendlyCaseFinancialMovementsMessage(error) {
+  if (!error) {
+    return 'No pudimos traer los movimientos financieros de esta carpeta ahora.';
+  }
+
+  if (error.httpStatus === 401 || error.httpStatus === 403) {
+    return 'Tu sesión no tiene permiso para ver los movimientos financieros de esta carpeta. Volvé a ingresar e intentá nuevamente.';
+  }
+
+  if (error.httpStatus === 404) {
+    return 'Todavía no hay movimientos financieros visibles para esta carpeta.';
+  }
+
+  if (error.httpStatus >= 500) {
+    return 'Ahora no pudimos traer los movimientos financieros de esta carpeta. Probá de nuevo en unos instantes.';
+  }
+
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
+    return 'No pudimos conectarnos para traer los movimientos financieros. Revisá que el backend siga disponible.';
+  }
+
+  return error.message || 'No pudimos traer los movimientos financieros de esta carpeta ahora.';
+}
+
+function getFriendlyCaseReceiptsMessage(error) {
+  if (!error) {
+    return 'No pudimos traer los comprobantes de esta carpeta ahora.';
+  }
+
+  if (error.httpStatus === 401 || error.httpStatus === 403) {
+    return 'Tu sesión no tiene permiso para ver los comprobantes de esta carpeta. Volvé a ingresar e intentá nuevamente.';
+  }
+
+  if (error.httpStatus === 404) {
+    return 'Todavía no hay comprobantes visibles para esta carpeta.';
+  }
+
+  if (error.httpStatus >= 500) {
+    return 'Ahora no pudimos traer los comprobantes de esta carpeta. Probá de nuevo en unos instantes.';
+  }
+
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
+    return 'No pudimos conectarnos para traer los comprobantes de esta carpeta. Revisá que el backend siga disponible.';
+  }
+
+  return error.message || 'No pudimos traer los comprobantes de esta carpeta ahora.';
+}
+
+function getFriendlyCaseVehicleIntakesMessage(error) {
+  if (!error) {
+    return 'No pudimos traer las recepciones del vehículo de esta carpeta ahora.';
+  }
+
+  if (error.httpStatus === 401 || error.httpStatus === 403) {
+    return 'Tu sesión no tiene permiso para ver las recepciones del vehículo de esta carpeta. Volvé a ingresar e intentá nuevamente.';
+  }
+
+  if (error.httpStatus === 404) {
+    return 'Todavía no vemos ingresos de vehículo cargados para esta carpeta.';
+  }
+
+  if (error.httpStatus >= 500) {
+    return 'Ahora no pudimos traer las recepciones del vehículo de esta carpeta. Probá de nuevo en unos instantes.';
+  }
+
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
+    return 'No pudimos conectarnos para traer las recepciones del vehículo. Revisá que el backend siga disponible.';
+  }
+
+  return error.message || 'No pudimos traer las recepciones del vehículo de esta carpeta ahora.';
+}
+
+function getFriendlyCaseVehicleOutcomesMessage(error) {
+  if (!error) {
+    return 'No pudimos traer las entregas del vehículo de esta carpeta ahora.';
+  }
+
+  if (error.httpStatus === 401 || error.httpStatus === 403) {
+    return 'Tu sesión no tiene permiso para ver las entregas del vehículo de esta carpeta. Volvé a ingresar e intentá nuevamente.';
+  }
+
+  if (error.httpStatus === 404) {
+    return 'Todavía no vemos egresos de vehículo cargados para esta carpeta.';
+  }
+
+  if (error.httpStatus >= 500) {
+    return 'Ahora no pudimos traer las entregas del vehículo de esta carpeta. Probá de nuevo en unos instantes.';
+  }
+
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
+    return 'No pudimos conectarnos para traer las entregas del vehículo. Revisá que el backend siga disponible.';
+  }
+
+  return error.message || 'No pudimos traer las entregas del vehículo de esta carpeta ahora.';
+}
+
+function getCasesTechnicalDetail({ endpoint, httpStatus, errorMessage }) {
+  const parts = [];
+
+  if (httpStatus) {
+    parts.push(`HTTP ${httpStatus}`);
+  }
+
+  if (endpoint) {
+    parts.push(endpoint);
+  }
+
+  if (errorMessage && errorMessage !== getFriendlyCasesMessage({ message: errorMessage, httpStatus })) {
+    parts.push(errorMessage);
+  }
+
+  return parts.join(' · ');
+}
+
+function getBackendCasesItems(payload) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (Array.isArray(payload?.content)) {
+    return payload.content;
+  }
+
+  if (Array.isArray(payload?.items)) {
+    return payload.items;
+  }
+
+  return [];
+}
+
+function formatBackendState(code, fallback = 'Sin dato') {
+  if (!code) {
+    return fallback;
+  }
+
+  return String(code)
+    .split(/[._-]+/)
+    .filter(Boolean)
+    .map((token) => token.charAt(0).toUpperCase() + token.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function formatWorkflowDomain(domain, fallback = 'Seguimiento') {
+  const normalized = String(domain || '').trim().toLowerCase();
+
+  if (!normalized) {
+    return fallback;
+  }
+
+  const labels = {
+    tramite: 'Tramite',
+    reparacion: 'Reparacion',
+    pago: 'Cobro',
+    documentacion: 'Documentacion',
+    legal: 'Gestion legal',
+  };
+
+  return labels[normalized] || formatBackendState(normalized, fallback);
+}
+
+function getWorkflowHistoryItems(payload) {
+  return Array.isArray(payload) ? payload : [];
+}
+
+function getWorkflowActionsItems(payload) {
+  return Array.isArray(payload?.actions) ? payload.actions : [];
+}
+
+function getCaseDocumentItems(payload) {
+  return Array.isArray(payload) ? payload : [];
+}
+
+function getCaseAppointmentItems(payload) {
+  return Array.isArray(payload) ? payload : [];
+}
+
+function getCaseVehicleIntakeItems(payload) {
+  return Array.isArray(payload) ? payload : [];
+}
+
+function getCaseBudgetItems(payload) {
+  return Array.isArray(payload?.items)
+    ? payload.items.filter((item) => item?.active !== false)
+    : [];
+}
+
+function sortAppointmentsByDate(items) {
+  return [...items].sort((left, right) => {
+    const leftKey = `${left?.appointmentDate || '9999-12-31'}T${left?.appointmentTime || '23:59:59'}`;
+    const rightKey = `${right?.appointmentDate || '9999-12-31'}T${right?.appointmentTime || '23:59:59'}`;
+    return leftKey.localeCompare(rightKey);
+  });
+}
+
+function buildCaseAppointmentsState(payload, fallbackDetail = '') {
+  const items = sortAppointmentsByDate(getCaseAppointmentItems(payload));
+  const today = new Date().toISOString().slice(0, 10);
+  const upcomingAppointment = items.find((item) => item?.appointmentDate && item.appointmentDate >= today) || null;
+  const nextAppointment = upcomingAppointment || items[items.length - 1] || null;
+  const hasUpcomingAppointment = Boolean(upcomingAppointment);
+  const detail = fallbackDetail || (items.length === 0
+    ? 'Cuando haya un turno asignado para esta carpeta, lo vas a ver acá automáticamente.'
+    : hasUpcomingAppointment
+      ? 'Las fechas pueden actualizarse si el taller reprograma la recepción del vehículo.'
+      : 'El último turno informado ya pasó. Si aparece una nueva fecha, la vas a ver acá automáticamente.');
+
+  return {
+    status: items.length > 0 ? 'success' : 'empty',
+    items,
+    total: items.length,
+    nextAppointment,
+    hasUpcomingAppointment,
+    detail,
+  };
+}
+
+function buildCaseVehicleIntakesState(payload, fallbackDetail = '') {
+  const items = getCaseVehicleIntakeItems(payload);
+  const sorted = [...items].sort((left, right) => {
+    const leftKey = left?.intakeDate || left?.receivedAt || left?.createdAt || '9999-12-31';
+    const rightKey = right?.intakeDate || right?.receivedAt || right?.createdAt || '9999-12-31';
+    return rightKey.localeCompare(leftKey);
+  });
+  const latest = sorted[0] || null;
+  const detail = fallbackDetail || (sorted.length === 0
+    ? 'Cuando se registre la recepción del vehículo, la vas a ver acá.'
+    : 'Los datos de recepción se actualizan a medida que el taller registra novedades.');
+
+  return {
+    status: sorted.length > 0 ? 'success' : 'empty',
+    items: sorted,
+    total: sorted.length,
+    latest,
+    detail,
+  };
+}
+
+function buildRejectedCaseVehicleIntakesState(error) {
+  if (error?.httpStatus === 404) {
+    return {
+      status: 'empty',
+      items: [],
+      total: 0,
+      latest: null,
+      detail: getFriendlyCaseVehicleIntakesMessage(error),
+    };
+  }
+
+  return {
+    status: 'error',
+    items: [],
+    total: 0,
+    latest: null,
+    detail: getFriendlyCaseVehicleIntakesMessage(error),
+  };
+}
+
+function getCaseVehicleOutcomeItems(payload) {
+  return Array.isArray(payload) ? payload : [];
+}
+
+function buildCaseVehicleOutcomesState(payload, fallbackDetail = '') {
+  const items = getCaseVehicleOutcomeItems(payload);
+  const sorted = [...items].sort((left, right) => {
+    const leftKey = left?.outcomeDate || left?.deliveredAt || left?.createdAt || '9999-12-31';
+    const rightKey = right?.outcomeDate || right?.deliveredAt || right?.createdAt || '9999-12-31';
+    return rightKey.localeCompare(leftKey);
+  });
+  const latest = sorted[0] || null;
+  const detail = fallbackDetail || (sorted.length === 0
+    ? 'Cuando se registre la entrega del vehículo, la vas a ver acá.'
+    : 'Los datos de egreso se actualizan a medida que el taller confirma la entrega.');
+
+  return {
+    status: sorted.length > 0 ? 'success' : 'empty',
+    items: sorted,
+    total: sorted.length,
+    latest,
+    detail,
+  };
+}
+
+function buildRejectedCaseVehicleOutcomesState(error) {
+  if (error?.httpStatus === 404) {
+    return {
+      status: 'empty',
+      items: [],
+      total: 0,
+      latest: null,
+      detail: getFriendlyCaseVehicleOutcomesMessage(error),
+    };
+  }
+
+  return {
+    status: 'error',
+    items: [],
+    total: 0,
+    latest: null,
+    detail: getFriendlyCaseVehicleOutcomesMessage(error),
+  };
+}
+
+function buildCaseBudgetState(payload, fallbackDetail = '') {
+  const items = getCaseBudgetItems(payload);
+  const detail = fallbackDetail || (items.length > 0
+    ? 'Los importes pueden ajustarse si el equipo confirma nuevas piezas o mano de obra.'
+    : 'Cuando el equipo cargue el detalle del presupuesto, lo vas a ver reflejado acá.');
+
+  return {
+    status: 'success',
+    data: payload,
+    items,
+    totalItems: items.length,
+    detail,
+  };
+}
+
+function buildRejectedCaseBudgetState(error) {
+  const baseState = {
+    data: null,
+    items: [],
+    totalItems: 0,
+    detail: getFriendlyCaseBudgetMessage(error),
+  };
+
+  if (error?.httpStatus === 404) {
+    return {
+      ...baseState,
+      status: 'empty',
+    };
+  }
+
+  return {
+    ...baseState,
+    status: 'error',
+  };
+}
+
+function buildCaseFinanceSummaryState(payload, fallbackDetail = '') {
+  const summary = payload || null;
+  const hasData = Boolean(summary);
+  const detail = fallbackDetail || (hasData
+    ? 'Estos valores cambian cuando se registran movimientos, retenciones o aplicaciones del caso.'
+    : 'Cuando haya datos financieros cargados para esta carpeta, vas a ver el resumen acá.');
+
+  return {
+    status: hasData ? 'success' : 'empty',
+    data: summary,
+    detail,
+  };
+}
+
+function buildRejectedCaseFinanceSummaryState(error) {
+  if (error?.httpStatus === 404) {
+    return {
+      status: 'empty',
+      data: null,
+      detail: getFriendlyCaseFinanceSummaryMessage(error),
+    };
+  }
+
+  return {
+    status: 'error',
+    data: null,
+    detail: getFriendlyCaseFinanceSummaryMessage(error),
+  };
+}
+
+function getCaseFinancialMovementItems(payload) {
+  return Array.isArray(payload) ? payload : [];
+}
+
+function getCaseReceiptItems(payload) {
+  return Array.isArray(payload) ? payload : [];
+}
+
+function buildCaseFinancialMovementsState(payload, fallbackDetail = '') {
+  const items = getCaseFinancialMovementItems(payload);
+  const sorted = [...items].sort((left, right) => {
+    const leftKey = `${left?.movementAt || ''}-${left?.id || 0}`;
+    const rightKey = `${right?.movementAt || ''}-${right?.id || 0}`;
+    return rightKey.localeCompare(leftKey);
+  });
+  const detail = fallbackDetail || (sorted.length > 0
+    ? 'Este listado refleja los últimos registros económicos de la carpeta.'
+    : 'Cuando haya movimientos financieros cargados, los vas a ver acá.');
+
+  return {
+    status: sorted.length > 0 ? 'success' : 'empty',
+    items: sorted,
+    total: sorted.length,
+    detail,
+  };
+}
+
+function buildRejectedCaseFinancialMovementsState(error) {
+  if (error?.httpStatus === 404) {
+    return {
+      status: 'empty',
+      items: [],
+      total: 0,
+      detail: getFriendlyCaseFinancialMovementsMessage(error),
+    };
+  }
+
+  return {
+    status: 'error',
+    items: [],
+    total: 0,
+    detail: getFriendlyCaseFinancialMovementsMessage(error),
+  };
+}
+
+function buildCaseReceiptsState(payload, fallbackDetail = '') {
+  const items = getCaseReceiptItems(payload);
+  const sorted = [...items].sort((left, right) => {
+    const leftKey = `${left?.issuedDate || left?.createdAt || ''}-${left?.id || 0}`;
+    const rightKey = `${right?.issuedDate || right?.createdAt || ''}-${right?.id || 0}`;
+    return rightKey.localeCompare(leftKey);
+  });
+  const latest = sorted[0] || null;
+  const detail = fallbackDetail || (sorted.length > 0
+    ? 'Este listado muestra los comprobantes registrados para esta carpeta.'
+    : 'Cuando se registre un comprobante para esta carpeta, lo vas a ver acá.');
+
+  return {
+    status: sorted.length > 0 ? 'success' : 'empty',
+    items: sorted,
+    total: sorted.length,
+    latest,
+    detail,
+  };
+}
+
+function buildRejectedCaseReceiptsState(error) {
+  if (error?.httpStatus === 404) {
+    return {
+      status: 'empty',
+      items: [],
+      total: 0,
+      latest: null,
+      detail: getFriendlyCaseReceiptsMessage(error),
+    };
+  }
+
+  return {
+    status: 'error',
+    items: [],
+    total: 0,
+    latest: null,
+    detail: getFriendlyCaseReceiptsMessage(error),
+  };
+}
+
+function buildCaseDocumentsState(payload, fallbackDetail = '') {
+  const items = getCaseDocumentItems(payload);
+  const visibleItems = items.filter((item) => item?.visibleToCustomer === true);
+  const hiddenCount = Math.max(items.length - visibleItems.length, 0);
+  const detail = fallbackDetail || (hiddenCount > 0
+    ? `${hiddenCount} archivo${hiddenCount === 1 ? '' : 's'} sigue${hiddenCount === 1 ? '' : 'n'} en revision y por eso no aparece${hiddenCount === 1 ? '' : 'n'} para abrir desde esta vista.`
+    : '');
+
+  return {
+    status: visibleItems.length > 0 ? 'success' : 'empty',
+    items: visibleItems,
+    total: items.length,
+    visibleCount: visibleItems.length,
+    hiddenCount,
+    detail,
+  };
+}
+
+function getUnreadNotificationItems(payload) {
+  return Array.isArray(payload) ? payload : [];
+}
+
+function formatNotificationType(typeCode) {
+  const normalized = String(typeCode || '').trim().toLowerCase();
+
+  if (!normalized) {
+    return 'Aviso';
+  }
+
+  const labels = {
+    documentacion_vencida: 'Documentacion',
+    turno_proximo: 'Turno',
+    caso_actualizado: 'Carpeta',
+    pago_acreditado: 'Cobro',
+    tarea_vencida: 'Pendiente',
+  };
+
+  return labels[normalized] || formatBackendState(normalized, 'Aviso');
+}
+
+function getNotificationTone(typeCode) {
+  const normalized = String(typeCode || '').trim().toLowerCase();
+
+  if (/(error|rechaz|vencid|atras)/.test(normalized)) {
+    return 'danger';
+  }
+
+  if (/(pago|acredit|resuelt|cerrad)/.test(normalized)) {
+    return 'success';
+  }
+
+  if (/(turno|document|tarea|caso|carpeta)/.test(normalized)) {
+    return 'warning';
+  }
+
+  return 'info';
+}
+
+function getWorkflowActionAudienceCopy(action) {
+  if (!action?.targetStateName) {
+    return 'Proximo paso disponible';
+  }
+
+  return `${formatWorkflowDomain(action.domain)}: ${action.targetStateName}`;
+}
+
+function formatDocumentOrigin(originCode) {
+  const normalized = String(originCode || '').trim().toLowerCase();
+
+  if (!normalized) {
+    return 'Documento';
+  }
+
+  const labels = {
+    operacion: 'Seguimiento',
+    tramite: 'Tramite',
+    documentacion: 'Documentacion',
+    seguro: 'Seguro',
+    legal: 'Gestion legal',
+    finanza: 'Cobro',
+    finanzas: 'Cobro',
+  };
+
+  return labels[normalized] || formatBackendState(normalized, 'Documento');
+}
+
+function formatDocumentAudience(document) {
+  if (document?.principal) {
+    return 'Importante';
+  }
+
+  if (document?.visibleToCustomer) {
+    return 'Disponible';
+  }
+
+  return 'Registrado';
+}
+
+function formatDocumentDescriptor(document) {
+  const mimeType = String(document?.mimeType || '').trim().toLowerCase();
+  const fileName = String(document?.fileName || '').trim();
+  const extension = fileName.includes('.') ? fileName.split('.').pop().toUpperCase() : '';
+
+  if (mimeType === 'application/pdf') {
+    return 'PDF';
+  }
+
+  if (mimeType.startsWith('image/')) {
+    return extension ? `Imagen ${extension}` : 'Imagen';
+  }
+
+  if (mimeType.includes('word')) {
+    return 'Documento Word';
+  }
+
+  if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) {
+    return 'Planilla';
+  }
+
+  if (mimeType.includes('zip') || mimeType.includes('compressed')) {
+    return 'Archivo comprimido';
+  }
+
+  return extension || 'Archivo';
+}
+
+function groupDocumentsByOrigin(documents) {
+  const groups = new Map();
+
+  documents.forEach((document) => {
+    const key = formatDocumentOrigin(document?.originCode);
+    const bucket = groups.get(key) || [];
+    bucket.push(document);
+    groups.set(key, bucket);
+  });
+
+  return Array.from(groups.entries()).map(([origin, items]) => ({
+    origin,
+    items,
+  }));
+}
+
+function formatDocumentSize(sizeBytes) {
+  const size = Number(sizeBytes || 0);
+
+  if (!Number.isFinite(size) || size <= 0) {
+    return '';
+  }
+
+  if (size < 1024) {
+    return `${size} B`;
+  }
+
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatAppointmentTime(time) {
+  if (!time) {
+    return 'Horario a confirmar';
+  }
+
+  return String(time).slice(0, 5);
+}
+
+function getAppointmentStatusTone(statusCode) {
+  const normalized = String(statusCode || '').trim().toLowerCase();
+
+  if (/(confirm|complet|cerrad)/.test(normalized)) {
+    return 'success';
+  }
+
+  if (/(reprogram|pend|espera)/.test(normalized)) {
+    return 'warning';
+  }
+
+  if (/(cancel|error|rechaz)/.test(normalized)) {
+    return 'danger';
+  }
+
+  return 'info';
+}
+
+function buildCaseDetailSupportNotice(parts) {
+  const filtered = parts.filter(Boolean);
+
+  if (filtered.length === 0) {
+    return '';
+  }
+
+  if (filtered.length === 1) {
+    return filtered[0];
+  }
+
+  if (filtered.length === 2) {
+    return `${filtered[0]} ${filtered[1]}`;
+  }
+
+  return `${filtered.slice(0, -1).join(' ')} ${filtered[filtered.length - 1]}`;
+}
+
+function normalizeAuthenticatedCasesPayload(payload) {
+  const items = getBackendCasesItems(payload);
+
+  return {
+    items,
+    total: typeof payload?.totalElements === 'number' ? payload.totalElements : items.length,
+    visible: items.length,
+    page: typeof payload?.page === 'number' ? payload.page : 0,
+    size: typeof payload?.size === 'number' ? payload.size : items.length,
+    totalPages: typeof payload?.totalPages === 'number' ? payload.totalPages : (items.length ? 1 : 0),
+  };
+}
+
+function getBackendCaseKey(item) {
+  return item.folderCode || item.publicId || item.id || 'Caso sin código';
+}
+
+function getBackendCaseDetailHeadline(item) {
+  return item.folderCode || item.publicId || (item.id ? `Caso ${item.id}` : 'Carpeta sin identificador');
+}
+
+function getBackendBranchLabel(item) {
+  return item.branchCode || (item.branchId ? `Sucursal ${item.branchId}` : 'Sucursal no informada');
+}
+
+function getBackendStatusTone(value) {
+  const normalized = String(value || '').toLowerCase();
+
+  if (!normalized) {
+    return 'warning';
+  }
+
+  if (/(pagad|cerrad|finaliz|acordad|resuelt)/.test(normalized)) {
+    return 'success';
+  }
+
+  if (/(rechaz|error|anulad|vencid)/.test(normalized)) {
+    return 'danger';
+  }
+
+  if (/(pend|espera|sin|programar)/.test(normalized)) {
+    return 'warning';
+  }
+
+  return 'info';
+}
+
+function summarizeCasesPayload(payload) {
+  const { items, total } = normalizeAuthenticatedCasesPayload(payload);
+  const firstItem = items[0];
+  const firstLabel = firstItem?.folderCode || firstItem?.publicId || firstItem?.id || 'sin registros';
+
+  return {
+    total,
+    visible: items.length,
+    firstLabel,
+  };
+}
+
+function getCaseSearchHaystack(item) {
+  const parts = [
+    item?.folderCode,
+    item?.publicId,
+    item?.id,
+    item?.domain,
+    item?.patent,
+    item?.plate,
+    item?.licensePlate,
+    item?.currentCaseStateCode,
+    item?.currentRepairStateCode,
+    item?.currentPaymentStateCode,
+    item?.holderName,
+    item?.ownerName,
+    item?.claimantName,
+    item?.insuredName,
+    item?.customerName,
+    item?.firstName,
+    item?.lastName,
+    item?.dni,
+    item?.document,
+    item?.email,
+    item?.phone,
+    item?.insuranceCompany,
+    item?.insuranceCompanyName,
+    item?.branchCode,
+    item?.branchName,
+  ];
+
+  return parts
+    .filter(Boolean)
+    .map((value) => String(value).toLowerCase())
+    .join(' ');
+}
+
+function AuthenticatedCaseDetail({ detailState, onOpenDetail }) {
+  if (detailState.status === 'idle') {
+    return (
+      <div className="backend-cases-empty backend-detail-empty" role="status">
+        <strong>Elegí una carpeta para ver su detalle.</strong>
+        <p>Vas a poder revisar un resumen real con los datos principales del caso.</p>
+      </div>
+    );
+  }
+
+  if (detailState.status === 'loading') {
+    return (
+      <div className="backend-cases-empty backend-detail-empty" role="status" aria-live="polite">
+        <strong>Estamos abriendo la carpeta.</strong>
+        <p>En unos instantes vas a ver el resumen actualizado del caso.</p>
+      </div>
+    );
+  }
+
+  if (detailState.status === 'error') {
+    return (
+      <div className="backend-detail-feedback" role="status" aria-live="polite">
+        <div className="backend-cases-empty backend-detail-empty">
+          <strong>{detailState.title}</strong>
+          <p>{detailState.detail}</p>
+        </div>
+        {detailState.item ? (
+          <button className="secondary-button" onClick={() => { void onOpenDetail(detailState.item); }} type="button">
+            Reintentar
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
+  const item = detailState.data;
+  const workflowHistory = detailState.workflowHistory;
+  const workflowActions = detailState.workflowActions;
+  const budgetState = detailState.budgetState;
+  const appointmentsState = detailState.appointmentsState;
+  const documentsState = detailState.documentsState;
+  const financeSummaryState = detailState.financeSummaryState;
+  const financialMovementsState = detailState.financialMovementsState;
+  const receiptsState = detailState.receiptsState;
+  const vehicleIntakesState = detailState.vehicleIntakesState;
+  const vehicleOutcomesState = detailState.vehicleOutcomesState;
+  const documentGroups = groupDocumentsByOrigin(documentsState.items);
+
+  return (
+    <article className="backend-detail-card" aria-live="polite">
+      <div className="backend-detail-head">
+        <div className="stack-tight">
+          <p className="eyebrow">Detalle de carpeta</p>
+          <h3>{getBackendCaseDetailHeadline(item)}</h3>
+          <p className="muted">
+            Este resumen trae el estado real informado por el sistema para que puedas seguir tu caso sin salir del panel.
+          </p>
+        </div>
+        <StatusBadge tone="info">{getBackendBranchLabel(item)}</StatusBadge>
+      </div>
+
+      <div className="backend-detail-grid" role="list" aria-label="Resumen de la carpeta seleccionada">
+        <div className="backend-detail-row" role="listitem"><span>Trámite</span><strong>{formatBackendState(item.currentCaseStateCode)}</strong></div>
+        <div className="backend-detail-row" role="listitem"><span>Reparación</span><strong>{formatBackendState(item.currentRepairStateCode)}</strong></div>
+        <div className="backend-detail-row" role="listitem"><span>Cobro</span><strong>{formatBackendState(item.currentPaymentStateCode)}</strong></div>
+        <div className="backend-detail-row" role="listitem"><span>Documentación</span><strong>{formatBackendState(item.currentDocumentationStateCode, 'En revisión')}</strong></div>
+        <div className="backend-detail-row" role="listitem"><span>Gestión legal</span><strong>{formatBackendState(item.currentLegalStateCode, 'Sin novedad')}</strong></div>
+        <div className="backend-detail-row" role="listitem"><span>Prioridad</span><strong>{formatBackendState(item.priorityCode, 'Estándar')}</strong></div>
+        <div className="backend-detail-row" role="listitem"><span>Cierre</span><strong>{item.closedAt ? formatDateTime(item.closedAt) : 'Todavía en curso'}</strong></div>
+        <div className="backend-detail-row" role="listitem"><span>Archivo</span><strong>{item.archivedAt ? formatDateTime(item.archivedAt) : 'Disponible para seguimiento'}</strong></div>
+      </div>
+
+      <div className="backend-detail-note">
+        <span>Observación general</span>
+        <p>{item.generalObservations || 'Por ahora esta carpeta no tiene una observación visible para compartir en esta vista.'}</p>
+      </div>
+
+      <div className="backend-detail-highlights" role="list" aria-label="Resumen rapido del estado de la carpeta">
+        <article className="backend-detail-highlight" role="listitem">
+          <span>Próximo turno</span>
+          <strong>{appointmentsState.nextAppointment?.appointmentDate ? formatDate(appointmentsState.nextAppointment.appointmentDate) : '-'}</strong>
+          <small>{appointmentsState.nextAppointment?.appointmentTime ? `Horario ${formatAppointmentTime(appointmentsState.nextAppointment.appointmentTime)}` : 'Sin horario confirmado todavía.'}</small>
+        </article>
+        <article className="backend-detail-highlight" role="listitem">
+          <span>Presupuesto</span>
+          <strong>{budgetState.status === 'success' ? money(budgetState.data?.totalQuoted) : '-'}</strong>
+          <small>{budgetState.status === 'success' ? 'Estimación total visible hoy.' : 'Sin estimación visible por ahora.'}</small>
+        </article>
+        <article className="backend-detail-highlight" role="listitem">
+          <span>Saldo del caso</span>
+          <strong>{financeSummaryState.status === 'success' ? money(financeSummaryState.data?.saldo) : '-'}</strong>
+          <small>{financeSummaryState.status === 'success' ? 'Resultado actual entre ingresos y egresos.' : 'Todavía sin saldo visible.'}</small>
+        </article>
+        <article className="backend-detail-highlight" role="listitem">
+          <span>Documentos visibles</span>
+          <strong>{documentsState.visibleCount}</strong>
+          <small>{documentsState.total} registrados para esta carpeta.</small>
+        </article>
+        <article className="backend-detail-highlight" role="listitem">
+          <span>Movimientos</span>
+          <strong>{financialMovementsState.total}</strong>
+          <small>Registros económicos visibles.</small>
+        </article>
+        <article className="backend-detail-highlight" role="listitem">
+          <span>Entregas</span>
+          <strong>{vehicleOutcomesState.total}</strong>
+          <small>Egresos del vehículo cargados.</small>
+        </article>
+      </div>
+
+      <div className="backend-detail-sections">
+        <CaseWorkflowSection
+          workflowHistory={workflowHistory}
+          workflowActions={workflowActions}
+          formatBackendState={formatBackendState}
+          formatDateTime={formatDateTime}
+          formatWorkflowDomain={formatWorkflowDomain}
+          getBackendStatusTone={getBackendStatusTone}
+          getWorkflowActionAudienceCopy={getWorkflowActionAudienceCopy}
+          StatusBadge={StatusBadge}
+        />
+
+        <CaseFinancialMovementsSection
+          financialMovementsState={financialMovementsState}
+          formatBackendState={formatBackendState}
+          formatDateTime={formatDateTime}
+          money={money}
+          StatusBadge={StatusBadge}
+        />
+
+        <CaseReceiptsSection
+          receiptsState={receiptsState}
+          formatBackendState={formatBackendState}
+          formatDate={formatDate}
+          formatDateTime={formatDateTime}
+          money={money}
+          StatusBadge={StatusBadge}
+        />
+
+        <CaseFinanceSection
+          financeSummaryState={financeSummaryState}
+          money={money}
+        />
+
+
+
+        <CaseBudgetSection
+          budgetState={budgetState}
+          formatBackendState={formatBackendState}
+          formatDate={formatDate}
+          getBackendStatusTone={getBackendStatusTone}
+          money={money}
+          StatusBadge={StatusBadge}
+        />
+
+        <CaseAppointmentsSection
+          appointmentsState={appointmentsState}
+          formatAppointmentTime={formatAppointmentTime}
+          formatBackendState={formatBackendState}
+          formatDate={formatDate}
+          getAppointmentStatusTone={getAppointmentStatusTone}
+          StatusBadge={StatusBadge}
+        />
+
+        <CaseVehicleIntakesSection
+          vehicleIntakesState={vehicleIntakesState}
+          formatBackendState={formatBackendState}
+          formatDate={formatDate}
+          getBackendStatusTone={getBackendStatusTone}
+          StatusBadge={StatusBadge}
+        />
+
+        <CaseVehicleOutcomesSection
+          vehicleOutcomesState={vehicleOutcomesState}
+          formatBackendState={formatBackendState}
+          formatDate={formatDate}
+          getBackendStatusTone={getBackendStatusTone}
+          StatusBadge={StatusBadge}
+        />
+
+        <CaseDocumentsSection
+          documentGroups={documentGroups}
+          documentsState={documentsState}
+          formatDate={formatDate}
+          formatDateTime={formatDateTime}
+          formatDocumentAudience={formatDocumentAudience}
+          formatDocumentDescriptor={formatDocumentDescriptor}
+          formatDocumentSize={formatDocumentSize}
+          StatusBadge={StatusBadge}
+        />
+      </div>
+
+      {detailState.trackingNotice ? (
+        <div className="backend-detail-notice" role="status">
+          <p>{detailState.trackingNotice}</p>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function AuthenticatedCasesPreview({ detailState, onOpenDetail, onRefresh, state }) {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCaseState, setSelectedCaseState] = useState('all');
+  const [selectedBranch, setSelectedBranch] = useState('all');
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+  const caseStateOptions = useMemo(() => {
+    const values = Array.from(new Set(
+      state.items
+        .map((item) => formatBackendState(item.currentCaseStateCode, 'Sin dato'))
+        .filter(Boolean),
+    ));
+
+    return values.sort((left, right) => left.localeCompare(right, 'es'));
+  }, [state.items]);
+  const branchOptions = useMemo(() => {
+    const values = Array.from(new Set(
+      state.items
+        .map((item) => getBackendBranchLabel(item))
+        .filter(Boolean),
+    ));
+
+    return values.sort((left, right) => left.localeCompare(right, 'es'));
+  }, [state.items]);
+  const filteredItems = useMemo(() => {
+    return state.items.filter((item) => {
+      const matchesSearch = !normalizedSearchTerm || getCaseSearchHaystack(item).includes(normalizedSearchTerm);
+      const caseState = formatBackendState(item.currentCaseStateCode, 'Sin dato');
+      const branch = getBackendBranchLabel(item);
+      const matchesState = selectedCaseState === 'all' || caseState === selectedCaseState;
+      const matchesBranch = selectedBranch === 'all' || branch === selectedBranch;
+
+      return matchesSearch && matchesState && matchesBranch;
+    });
+  }, [normalizedSearchTerm, selectedCaseState, selectedBranch, state.items]);
+  const hasItems = state.items.length > 0;
+  const hasFilteredItems = filteredItems.length > 0;
+  const isLoading = state.status === 'loading';
+  const statusTone = state.status === 'error'
+    ? 'danger'
+    : state.status === 'success'
+      ? 'success'
+      : 'info';
+  const statusLabel = isLoading
+    ? 'Cargando'
+    : state.status === 'success'
+      ? 'Conectado'
+      : state.status === 'error'
+        ? 'Revisar'
+        : 'Pendiente';
+
+  return (
+    <section className="card backend-cases-card simple-panel-section">
+      <CasesToolbar
+        branchOptions={branchOptions}
+        caseStateOptions={caseStateOptions}
+        isLoading={isLoading}
+        onRefresh={onRefresh}
+        searchTerm={searchTerm}
+        selectedBranch={selectedBranch}
+        selectedCaseState={selectedCaseState}
+        setSearchTerm={setSearchTerm}
+        setSelectedBranch={setSelectedBranch}
+        setSelectedCaseState={setSelectedCaseState}
+        statusLabel={statusLabel}
+        statusTone={statusTone}
+        StatusBadge={StatusBadge}
+      />
+
+      <CasesMetrics
+        filteredItems={filteredItems}
+        formatDateTime={formatDateTime}
+        hasFilteredItems={hasFilteredItems}
+        isLoading={isLoading}
+        normalizedSearchTerm={normalizedSearchTerm}
+        state={state}
+      />
+
+      {state.status === 'error' ? (
+        <div className={`alert-banner ${state.tone}-banner backend-inline-banner`} role="status" aria-live="polite">
+          <div className="api-connection-copy">
+            <strong>{state.title}</strong>
+            <small>{state.detail}</small>
+          </div>
+        </div>
+      ) : null}
+
+      {hasItems && hasFilteredItems ? (
+        <CasesList
+          detailState={detailState}
+          filteredItems={filteredItems}
+          formatBackendState={formatBackendState}
+          getBackendBranchLabel={getBackendBranchLabel}
+          getBackendCaseKey={getBackendCaseKey}
+          getBackendStatusTone={getBackendStatusTone}
+          onOpenDetail={onOpenDetail}
+          StatusBadge={StatusBadge}
+        />
+      ) : null}
+
+      {hasItems && hasFilteredItems ? (
+        <AuthenticatedCaseDetail
+          detailState={detailState}
+          onOpenDetail={onOpenDetail}
+        />
+      ) : null}
+
+      {state.status === 'success' && hasItems && !hasFilteredItems ? (
+        <div className="backend-cases-empty" role="status" aria-live="polite">
+          <strong>No encontramos carpetas con estos filtros.</strong>
+          <p>
+            {`Búsqueda: ${searchTerm.trim() || 'sin texto'} · Estado: ${selectedCaseState === 'all' ? 'Todos' : selectedCaseState} · Sucursal: ${selectedBranch === 'all' ? 'Todos' : selectedBranch}.`}
+            {' '}Probá ajustar los filtros para volver a ver resultados.
+          </p>
+        </div>
+      ) : null}
+
+      {state.status === 'loading' && !hasItems ? (
+        <div className="backend-cases-empty" role="status" aria-live="polite">
+          <strong>Estamos cargando tus carpetas.</strong>
+          <p>En unos instantes vas a ver la información más reciente de tu cuenta.</p>
+        </div>
+      ) : null}
+
+      {state.status === 'success' && !hasItems ? (
+        <div className="backend-cases-empty" role="status">
+          <strong>Todavía no vemos carpetas para mostrar.</strong>
+          <p>Cuando haya casos asociados a tu cuenta, van a aparecer acá automáticamente.</p>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function AuthenticatedNotificationsPreview({ pendingIds, state, onMarkAsRead, onOpenCaseDetail, onRefresh }) {
+  const hasItems = state.items.length > 0;
+  const isLoading = state.status === 'loading';
+  const statusTone = state.status === 'error'
+    ? 'danger'
+    : state.status === 'success'
+      ? 'success'
+      : 'info';
+  const statusLabel = isLoading
+    ? 'Actualizando'
+    : state.status === 'success'
+      ? 'Activas'
+      : state.status === 'error'
+        ? 'Revisar'
+        : 'Pendiente';
+
+  return (
+    <section className="card backend-notifications-card simple-panel-section">
+      <div className="section-head backend-cases-head">
+        <div className="stack-tight">
+          <p className="eyebrow">Avisos</p>
+          <h2>Pendientes para revisar</h2>
+          <p className="muted">
+            Acá ves los avisos reales que siguen sin leer en tu cuenta para no perder contexto entre una entrada y la siguiente.
+          </p>
+        </div>
+
+        <div className="backend-cases-actions">
+          <StatusBadge tone={statusTone}>{statusLabel}</StatusBadge>
+          <button className="secondary-button" disabled={isLoading} onClick={() => { void onRefresh(); }} type="button">
+            {isLoading ? 'Actualizando...' : 'Actualizar'}
+          </button>
+        </div>
+      </div>
+
+      <div className="backend-cases-metrics" role="list" aria-label="Resumen de avisos pendientes">
+        <article className="backend-case-metric" role="listitem">
+          <span>Sin leer</span>
+          <strong>{state.unreadCount}</strong>
+          <small>{state.unreadCount === 1 ? 'Hay un aviso esperando revisión.' : 'Mostramos los avisos pendientes de tu cuenta.'}</small>
+        </article>
+        <article className="backend-case-metric" role="listitem">
+          <span>Última actualización</span>
+          <strong>{state.checkedAt ? formatDateTime(state.checkedAt) : '-'}</strong>
+          <small>{isLoading ? 'Estamos refrescando tus avisos.' : 'Podés volver a consultar cuando quieras.'}</small>
+        </article>
+      </div>
+
+      {state.status === 'error' ? (
+        <div className={`alert-banner ${state.tone}-banner backend-inline-banner`} role="status" aria-live="polite">
+          <div className="api-connection-copy">
+            <strong>{state.title}</strong>
+            <small>{state.detail}</small>
+          </div>
+        </div>
+      ) : null}
+
+      {hasItems ? (
+        <div className="notification-list" role="list" aria-label="Notificaciones pendientes">
+          {state.items.map((notification) => {
+            const isPending = pendingIds.includes(notification.id);
+
+            return (
+              <article className="notification-card" key={notification.id} role="listitem">
+                <div className="notification-card-head">
+                  <div className="stack-tight">
+                    <span className="client-case-kicker">{formatNotificationType(notification.typeCode)}</span>
+                    <h3>{notification.title || 'Aviso pendiente'}</h3>
+                  </div>
+                  <StatusBadge tone={getNotificationTone(notification.typeCode)}>{formatNotificationType(notification.typeCode)}</StatusBadge>
+                </div>
+
+                <p className="notification-card-message">{notification.message || 'Tenés un aviso pendiente para revisar.'}</p>
+
+                <div className="notification-card-meta">
+                  <small>{notification.createdAt ? formatDateTime(notification.createdAt) : 'Sin fecha informada'}</small>
+                  {notification.caseId ? <small>Carpeta #{notification.caseId}</small> : null}
+                </div>
+
+                <div className="notification-card-actions">
+                  {notification.caseId ? (
+                    <button className="ghost-button" onClick={() => { void onOpenCaseDetail({ id: notification.caseId }); }} type="button">
+                      Abrir carpeta
+                    </button>
+                  ) : null}
+                  <button className="secondary-button" disabled={isPending} onClick={() => { void onMarkAsRead(notification); }} type="button">
+                    {isPending ? 'Actualizando...' : 'Marcar leída'}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {state.status === 'loading' && !hasItems ? (
+        <div className="backend-cases-empty" role="status" aria-live="polite">
+          <strong>Estamos cargando tus avisos.</strong>
+          <p>En unos instantes vas a ver las novedades pendientes de tu cuenta.</p>
+        </div>
+      ) : null}
+
+      {state.status === 'success' && !hasItems ? (
+        <div className="backend-cases-empty" role="status">
+          <strong>No tenés avisos pendientes.</strong>
+          <p>Cuando aparezca una novedad real para tu cuenta, la vas a ver acá.</p>
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 function buildCustomerMockData(items) {
@@ -1906,6 +3377,17 @@ function formatDate(date) {
   }
 
   return new Intl.DateTimeFormat('es-AR').format(new Date(`${date}T12:00:00`));
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return '-';
+  }
+
+  return new Intl.DateTimeFormat('es-AR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(value));
 }
 
 function addBusinessDays(date, days) {
@@ -3998,6 +5480,10 @@ function collectPaymentEvents(items) {
 
 function triggerDownload(filename, content, mimeType) {
   const blob = new Blob([content], { type: mimeType });
+  triggerBlobDownload(filename, blob);
+}
+
+function triggerBlobDownload(filename, blob) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -4038,299 +5524,55 @@ function buildPanelExportRows(items) {
   }));
 }
 
-function PanelGeneral({ items, onOpenCase }) {
-  const [query, setQuery] = useState('');
-  const [selectedType, setSelectedType] = useState(TRAMITE_TYPES[0]);
-  const [taskFilter, setTaskFilter] = useState('Todos');
-
-  const visibleItems = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-
-    return items
-      .filter((item) => {
-        const haystack = [
-          item.code,
-          item.claimNumber,
-          item.customer.firstName,
-          item.customer.lastName,
-          item.vehicle.plate,
-          item.vehicle.brand,
-          item.vehicle.model,
-        ].join(' ').toLowerCase();
-
-        if (normalizedQuery && !haystack.includes(normalizedQuery)) return false;
-        if (taskFilter === 'Con pendientes' && item.computed.pendingTasksCount === 0) return false;
-        if (taskFilter === 'Sin pendientes' && item.computed.pendingTasksCount > 0) return false;
-
-        return true;
-      })
-      .sort((a, b) => {
-        const aOpen = a.computed.closeReady ? 1 : 0;
-        const bOpen = b.computed.closeReady ? 1 : 0;
-        return aOpen - bOpen || b.computed.urgency - a.computed.urgency || a.counter - b.counter;
-      });
-  }, [items, query, taskFilter]);
-
-  const openItems = visibleItems.filter((item) => !item.computed.closeReady);
-  const closedItems = visibleItems.filter((item) => item.computed.closeReady);
-  const pendingTaskItems = openItems.filter((item) => item.computed.pendingTasksCount > 0);
-  const highlightedPendingItems = [...pendingTaskItems]
-    .sort((a, b) => {
-      const aPriority = getPendingPriorityMeta(a);
-      const bPriority = getPendingPriorityMeta(b);
-      return bPriority.score - aPriority.score || b.computed.urgency - a.computed.urgency || a.counter - b.counter;
-    })
-    .slice(0, 3);
-  const prioritizedOpenItems = openItems.slice(0, 6);
-  const typeCounts = TRAMITE_TYPES.reduce((accumulator, type) => {
-    accumulator[type] = openItems.filter((item) => (item.tramiteType ?? 'Particular') === type).length;
-    return accumulator;
-  }, {});
-  const selectedTypeTotal = typeCounts[selectedType] ?? 0;
-  const selectedTypeItems = openItems.filter(
-    (item) => (item.tramiteType ?? 'Particular') === selectedType && item.computed.pendingTasksCount > 0,
-  );
-  const selectedTypeHasData = selectedTypeTotal > 0;
-
-  const handleOpenCase = (itemId, target) => onOpenCase(itemId, target);
-
-  const handleRowKeyDown = (event, itemId) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      handleOpenCase(itemId);
-    }
-  };
-
-    return (
-      <div className="page-stack">
-        <section className="hero-panel compact-hero panel-simple-hero">
-          <div className="stack-tight">
-            <h1>Panel general</h1>
-          </div>
-        </section>
-
-      <section className="card pending-board simple-panel-section">
-          <div className="section-head">
-            <div className="stack-tight">
-              <h2>Tareas pendientes</h2>
-          </div>
-          <StatusBadge tone={highlightedPendingItems.length ? 'danger' : 'success'}>
-            {highlightedPendingItems.length ? `${highlightedPendingItems.length} casos` : 'Sin pendientes críticas'}
-          </StatusBadge>
-        </div>
-
-        {highlightedPendingItems.length ? (
-          <div className="pending-board-grid priority-grid">
-            {highlightedPendingItems.map((item, index) => {
-              const priority = getPendingPriorityMeta(item);
-
-              return (
-               <button className="pending-case priority-case" key={item.id} onClick={() => handleOpenCase(item.id, priority.target)} type="button">
-                <div className="priority-case-head">
-                  <span className="priority-index">0{index + 1}</span>
-                  <StatusBadge tone={priority.attention}>{priority.attentionLabel}</StatusBadge>
-                </div>
-                <div className="priority-identity">
-                  <strong>{item.code}</strong>
-                  <span>{getFolderDisplayName(item)}</span>
-                  <span>{item.vehicle.brand} {item.vehicle.model} - {item.vehicle.plate}</span>
-                </div>
-                <div className="priority-detail-grid">
-                  <div className="priority-detail-card is-critical">
-                    <span>Motivo</span>
-                    <strong>{priority.reason}</strong>
-                  </div>
-                  <div className="priority-detail-card">
-                    <span>Estado</span>
-                    <strong>{priority.status}</strong>
-                  </div>
-                </div>
-                <div className="tag-row priority-tag-row">
-                  <StatusBadge tone={getStatusTone(item.computed.tramiteStatus)}>{item.computed.tramiteStatus}</StatusBadge>
-                  <StatusBadge tone={getStatusTone(item.computed.repairStatus)}>{item.computed.repairStatus}</StatusBadge>
-                </div>
-                 <div className="priority-link-row" aria-hidden="true">
-                   <span>Abrir directo</span>
-                   <strong>{priority.routeLabel}</strong>
-                 </div>
-               </button>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="empty-state muted">No hay tareas pendientes dentro del filtro actual.</div>
-        )}
-      </section>
-
-      <section className="card simple-panel-section">
-          <div className="section-head">
-            <div className="stack-tight">
-              <h2>Priorizados</h2>
-          </div>
-          <StatusBadge tone="info">{openItems.length} abiertos</StatusBadge>
-        </div>
-
-        <div className="table-wrap">
-          <table className="data-table compact-table clickable-table">
-            <thead>
-              <tr>
-                <th>Carpeta</th>
-                <th>Cliente</th>
-                <th>Patente</th>
-                <th>Trámite</th>
-                <th>Reparación</th>
-                <th>Pendientes</th>
-              </tr>
-            </thead>
-            <tbody>
-              {prioritizedOpenItems.map((item) => (
-                <tr className={item.computed.pendingTasksCount ? 'row-danger' : ''} key={item.id} onClick={() => handleOpenCase(item.id)} onKeyDown={(event) => handleRowKeyDown(event, item.id)} tabIndex={0}>
-                  <td><strong>{item.code}</strong></td>
-                  <td>{getFolderDisplayName(item)}</td>
-                  <td>{item.vehicle.plate}</td>
-                  <td><StatusBadge tone={getStatusTone(item.computed.tramiteStatus)}>{item.computed.tramiteStatus}</StatusBadge></td>
-                  <td><StatusBadge tone={getStatusTone(item.computed.repairStatus)}>{item.computed.repairStatus}</StatusBadge></td>
-                  <td>{item.computed.pendingTasksCount}</td>
-                </tr>
-              ))}
-              {!prioritizedOpenItems.length ? (
-                <tr>
-                  <td colSpan="6">No hay carpetas abiertas con los filtros elegidos.</td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
+function PanelGeneral({
+  backendSession,
+  currentUserEndpoint,
+  currentUserState,
+  authenticatedCaseDetailState,
+  authenticatedCasesState,
+  authenticatedNotificationsState,
+  onRefreshCurrentUser,
+  onMarkNotificationAsRead,
+  onOpenAuthenticatedCaseDetail,
+  onRefreshAuthenticatedCases,
+  onRefreshAuthenticatedNotifications,
+  pendingNotificationIds,
+}) {
+  return (
+    <div className="page-stack">
+      <section className="hero-panel compact-hero panel-simple-hero client-overview-hero">
+        <div className="stack-tight">
+          <p className="eyebrow">Seguimiento</p>
+          <h1>Tus carpetas, en un solo lugar</h1>
+          <p className="muted client-overview-copy">
+            Esta primera vista reúne la información principal de tus casos para que puedas entrar y entender el estado general de tu cuenta al instante.
+          </p>
         </div>
       </section>
 
-      <section className="card filters-card">
-          <div className="section-head">
-            <div className="stack-tight">
-              <h2>Buscar</h2>
-          </div>
-          <StatusBadge tone="info">{visibleItems.length} visibles</StatusBadge>
-        </div>
+      <AuthenticatedUserSnapshot
+        endpoint={currentUserEndpoint}
+        formatDateTime={formatDateTime}
+        onRefresh={onRefreshCurrentUser}
+        session={backendSession}
+        state={currentUserState}
+        StatusBadge={StatusBadge}
+      />
 
-        <div className="form-grid simple-filter-grid">
-          <label className="search-box field">
-            <span>Buscar cliente, patente, carpeta o siniestro</span>
-            <input onChange={(event) => setQuery(event.target.value)} placeholder="Ej: Perez, AA365BE, 0002PC" value={query} />
-          </label>
-          <SelectField label="Tareas pendientes" onChange={setTaskFilter} options={PANEL_TASK_FILTERS} value={taskFilter} />
-        </div>
-      </section>
+      <AuthenticatedCasesPreview
+        detailState={authenticatedCaseDetailState}
+        onOpenDetail={onOpenAuthenticatedCaseDetail}
+        onRefresh={onRefreshAuthenticatedCases}
+        state={authenticatedCasesState}
+      />
 
-      <section className="card grouped-section simple-panel-section">
-          <div className="section-head">
-            <div className="stack-tight">
-              <h2>Tipos de trámite</h2>
-          </div>
-          <StatusBadge tone="info">{selectedTypeTotal} abiertos</StatusBadge>
-        </div>
-
-        <div className="tramite-type-shell" role="tablist" aria-label="Tipos de trámites">
-          {TRAMITE_TYPES.map((type) => (
-            <button
-              aria-selected={selectedType === type}
-              className={`tramite-type-chip ${selectedType === type ? 'is-active' : ''}`}
-              key={type}
-              onClick={() => setSelectedType(type)}
-              role="tab"
-              type="button"
-            >
-              <span>{type}</span>
-              <strong>{typeCounts[type] ?? 0}</strong>
-            </button>
-          ))}
-        </div>
-
-        <div className="tramite-type-panel">
-          <div className="section-head tramite-type-summary">
-            <div className="stack-tight">
-              <h2>{selectedType}</h2>
-            </div>
-            <StatusBadge tone={selectedTypeItems.length ? 'info' : 'success'}>
-              {selectedTypeHasData ? `${selectedTypeItems.length} con pendiente` : 'Sin casos cargados'}
-            </StatusBadge>
-          </div>
-
-          {selectedTypeHasData ? (
-            <div className="table-wrap">
-              <table className="data-table compact-table clickable-table">
-                <thead>
-                  <tr>
-                    <th>Carpeta</th>
-                    <th>Cliente</th>
-                    <th>Patente</th>
-                    <th>Estado del trámite</th>
-                    <th>Estado de reparación</th>
-                    <th>Pendientes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedTypeItems.map((item) => (
-                    <tr className={item.computed.pendingTasksCount ? 'row-danger' : ''} key={item.id} onClick={() => handleOpenCase(item.id)} onKeyDown={(event) => handleRowKeyDown(event, item.id)} tabIndex={0}>
-                      <td><strong>{item.code}</strong></td>
-                      <td>{getFolderDisplayName(item)}</td>
-                      <td>{item.vehicle.plate}</td>
-                      <td><StatusBadge tone={getStatusTone(item.computed.tramiteStatus)}>{item.computed.tramiteStatus}</StatusBadge></td>
-                      <td><StatusBadge tone={getStatusTone(item.computed.repairStatus)}>{item.computed.repairStatus}</StatusBadge></td>
-                      <td>{item.computed.pendingTasksCount}</td>
-                    </tr>
-                  ))}
-                  {!selectedTypeItems.length ? (
-                    <tr>
-                      <td colSpan="6">No hay trámites pendientes para {selectedType} dentro del filtro actual.</td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="tramite-type-empty" role="status">
-              <strong>{selectedType}</strong>
-              <p>Sin casos cargados.</p>
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section className="card simple-panel-section">
-          <div className="section-head">
-            <div className="stack-tight">
-              <h2>Cerrados</h2>
-          </div>
-          <StatusBadge tone="success">{closedItems.length}</StatusBadge>
-        </div>
-
-        <div className="table-wrap">
-          <table className="data-table compact-table">
-            <thead>
-              <tr>
-                <th>Carpeta</th>
-                <th>Cliente</th>
-                <th>Cierre</th>
-                <th>Reparación</th>
-              </tr>
-            </thead>
-            <tbody>
-              {closedItems.map((item) => (
-                <tr key={item.id} onClick={() => handleOpenCase(item.id)} onKeyDown={(event) => handleRowKeyDown(event, item.id)} tabIndex={0}>
-                  <td><strong>{item.code}</strong></td>
-                  <td>{getFolderDisplayName(item)}</td>
-                  <td>{formatDate(item.computed.closeDate)}</td>
-                  <td>{item.computed.repairStatus}</td>
-                </tr>
-              ))}
-              {!closedItems.length ? (
-                <tr>
-                  <td colSpan="4">Todavía no hay carpetas cerradas dentro del filtro.</td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <AuthenticatedNotificationsPreview
+        pendingIds={pendingNotificationIds}
+        state={authenticatedNotificationsState}
+        onMarkAsRead={onMarkNotificationAsRead}
+        onOpenCaseDetail={onOpenAuthenticatedCaseDetail}
+        onRefresh={onRefreshAuthenticatedNotifications}
+      />
     </div>
   );
 }
@@ -4495,6 +5737,29 @@ function FichaTecnicaTab({ item, updateCase }) {
             <DataField label="Fecha nacimiento" onChange={(value) => updateCase((draft) => { draft.customer.birthDate = value; })} type="date" value={item.customer.birthDate || ''} />
             <SelectField label="Estado civil" onChange={(value) => updateCase((draft) => { draft.customer.civilStatus = value; })} options={CIVIL_STATUS_OPTIONS} placeholder="Seleccioná" value={item.customer.civilStatus || ''} />
             <DataField label="Telefono" onChange={(value) => updateCase((draft) => { draft.customer.phone = value; })} value={item.customer.phone} />
+            <DataField label="Localidad" onChange={(value) => updateCase((draft) => { draft.customer.locality = value; })} value={item.customer.locality} />
+            <DataField label="Email" onChange={(value) => updateCase((draft) => { draft.customer.email = value; })} value={item.customer.email} />
+            <DataField label="Ocupación" onChange={(value) => updateCase((draft) => { draft.customer.occupation = value; })} value={item.customer.occupation || ''} />
+            <DataField label="Calle" onChange={(value) => updateCase((draft) => { draft.customer.street = value; })} value={item.customer.street || ''} />
+            <DataField label="Número" onChange={(value) => updateCase((draft) => { draft.customer.streetNumber = value; })} value={item.customer.streetNumber || ''} />
+            <DataField label="Piso / Depto" onChange={(value) => updateCase((draft) => { draft.customer.addressExtra = value; })} value={item.customer.addressExtra || ''} />
+            <ToggleField label="Referenciado" onChange={(value) => updateCase((draft) => { draft.customer.referenced = value; if (value !== 'SI') draft.customer.referencedName = ''; })} value={item.customer.referenced} />
+            {item.customer.referenced === 'SI' ? (
+              <DataField label="Nombre referenciado" onChange={(value) => updateCase((draft) => { draft.customer.referencedName = value; })} value={item.customer.referencedName} />
+            ) : null}
+          </div>
+          {isThirdParty ? (
+            <>
+              <div className="budget-ready-panel budget-ready-panel-compact">
+                <StatusBadge tone={clientRegistry.isOwner === 'SI' ? 'success' : 'info'}>{clientRegistry.isOwner === 'SI' ? 'Cliente titular registral' : 'Titular registral externo'}</StatusBadge>
+                <small>Si el cliente no es titular, la demo toma el primer titular registral para nombrar la carpeta.</small>
+              </div>
+              <div className="form-grid three-columns compact-grid">
+                <ToggleField label="Titular registral" onChange={(value) => updateCase((draft) => {
+                  draft.thirdParty.clientRegistry.isOwner = value;
+                  if (value !== 'NO') {
+                    draft.thirdParty.clientRegistry.ownershipPercentage = '100%';
+       d label="Telefono" onChange={(value) => updateCase((draft) => { draft.customer.phone = value; })} value={item.customer.phone} />
             <DataField label="Localidad" onChange={(value) => updateCase((draft) => { draft.customer.locality = value; })} value={item.customer.locality} />
             <DataField label="Email" onChange={(value) => updateCase((draft) => { draft.customer.email = value; })} value={item.customer.email} />
             <DataField label="Ocupación" onChange={(value) => updateCase((draft) => { draft.customer.occupation = value; })} value={item.customer.occupation || ''} />
@@ -8806,6 +10071,13 @@ function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRe
 }
 
 function App() {
+  const probeEndpoint = getConnectivityProbeUrl();
+  const loginEndpoint = getLoginUrl();
+  const currentUserEndpoint = getCurrentUserUrl();
+  const unreadNotificationsEndpoint = getUnreadNotificationsUrl();
+  const storedSession = readBackendSession();
+  const hasStoredSession = Boolean(storedSession?.accessToken);
+  const [shouldBootstrapSession] = useState(hasStoredSession);
   const [cases, setCases] = useState(initialCases);
   const [activeView, setActiveView] = useState('panel');
   const [selectedCaseId, setSelectedCaseId] = useState('');
@@ -8818,6 +10090,72 @@ function App() {
   const [customerLookupState, setCustomerLookupState] = useState({ status: 'idle', message: '', detail: '' });
   const [vehicleLookupState, setVehicleLookupState] = useState({ status: 'idle', message: '', detail: '' });
   const [autofilledFields, setAutofilledFields] = useState([]);
+  const [apiConnection, setApiConnection] = useState({
+    status: 'idle',
+    tone: 'info',
+    title: 'Conectividad sin verificar',
+    detail: `Todavía no probé la conexión real hacia ${probeEndpoint}.`,
+    endpoint: probeEndpoint,
+    checkedAt: '',
+    httpStatus: null,
+  });
+  const [loginForm, setLoginForm] = useState({
+    email: storedSession?.user?.email || '',
+    password: '',
+  });
+  const [backendSession, setBackendSession] = useState(storedSession);
+  const [appAccess, setAppAccess] = useState(hasStoredSession ? 'checking' : 'guest');
+  const [authState, setAuthState] = useState({
+    status: hasStoredSession ? 'loading' : 'idle',
+    tone: hasStoredSession ? 'info' : 'info',
+    title: hasStoredSession ? 'Recuperando tu acceso' : 'Bienvenido/a',
+    detail: hasStoredSession
+      ? 'Estamos verificando tu sesión guardada para que puedas continuar.'
+      : 'Ingresá con tu email y tu contraseña para ver tus carpetas.',
+    endpoint: loginEndpoint,
+    checkedAt: storedSession?.savedAt || '',
+    httpStatus: null,
+  });
+  const [currentUserState, setCurrentUserState] = useState({
+    status: 'idle',
+    tone: 'info',
+    title: 'Lectura autenticada pendiente',
+    detail: 'Después del login voy a pedir /auth/me para mostrar qué usuario devolvió el backend.',
+    endpoint: currentUserEndpoint,
+    checkedAt: '',
+    httpStatus: null,
+  });
+  const [authenticatedCasesState, setAuthenticatedCasesState] = useState({
+    status: 'idle',
+    tone: 'info',
+    title: 'Carga pendiente',
+    detail: 'Todavía no cargamos tus carpetas.',
+    endpoint: probeEndpoint,
+    checkedAt: '',
+    httpStatus: null,
+    technicalDetail: '',
+    items: [],
+    total: 0,
+    visible: 0,
+    page: 0,
+    size: 5,
+    totalPages: 0,
+  });
+  const [authenticatedCaseDetailState, setAuthenticatedCaseDetailState] = useState({
+    ...createAuthenticatedCaseDetailInitialState(),
+  });
+  const [authenticatedNotificationsState, setAuthenticatedNotificationsState] = useState({
+    status: 'idle',
+    tone: 'info',
+    title: 'Avisos pendientes',
+    detail: 'Todavía no cargamos tus avisos.',
+    endpoint: unreadNotificationsEndpoint,
+    checkedAt: '',
+    httpStatus: null,
+    items: [],
+    unreadCount: 0,
+  });
+  const [pendingNotificationIds, setPendingNotificationIds] = useState([]);
 
   const computedCases = useMemo(() => cases.map(getComputedCase), [cases]);
   const agendaItems = useMemo(() => buildAgendaStore(computedCases), [computedCases]);
@@ -8913,6 +10251,732 @@ function App() {
     const timer = window.setTimeout(() => setAutofilledFields([]), 1800);
     return () => window.clearTimeout(timer);
   }, [autofilledFields]);
+
+  const refreshApiConnection = async (signal) => {
+    setApiConnection({
+      status: 'loading',
+      tone: 'info',
+      title: 'Probando backend...',
+      detail: `Haciendo un GET real a ${probeEndpoint}.`,
+      endpoint: probeEndpoint,
+      checkedAt: '',
+      httpStatus: null,
+    });
+
+    try {
+      const result = await probeBackendConnection({ signal });
+
+      setApiConnection({
+        status: result.ok ? 'success' : 'error',
+        tone: result.tone,
+        title: result.title,
+        detail: result.detail,
+        endpoint: result.endpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: result.httpStatus,
+      });
+    } catch (error) {
+      if (error.name !== 'AbortError') {
+        setApiConnection({
+          status: 'error',
+          tone: 'danger',
+          title: 'Error al probar backend',
+          detail: `Falló la verificación real hacia ${probeEndpoint}.`,
+          endpoint: probeEndpoint,
+          checkedAt: new Date().toISOString(),
+          httpStatus: null,
+        });
+      }
+    }
+  };
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void refreshApiConnection(controller.signal);
+    return () => controller.abort();
+  }, []);
+
+  const resetSessionState = ({ authTitle, authDetail, authTone = 'info', checkedAt = new Date().toISOString() }) => {
+    clearBackendSession();
+    setBackendSession(null);
+    setAppAccess('guest');
+    setAuthState({
+      status: authTone === 'danger' ? 'error' : 'idle',
+      tone: authTone,
+      title: authTitle,
+      detail: authDetail,
+      endpoint: loginEndpoint,
+      checkedAt,
+      httpStatus: null,
+    });
+    setCurrentUserState({
+      status: 'idle',
+      tone: 'info',
+      title: 'Lectura autenticada pendiente',
+      detail: 'Sin token guardado no puedo pedir /auth/me.',
+      endpoint: currentUserEndpoint,
+      checkedAt: '',
+      httpStatus: null,
+    });
+    setAuthenticatedCasesState({
+      status: 'idle',
+      tone: 'info',
+      title: 'Carga pendiente',
+      detail: 'Volvé a ingresar para recuperar tus carpetas.',
+      endpoint: probeEndpoint,
+      checkedAt: '',
+      httpStatus: null,
+      technicalDetail: '',
+      items: [],
+      total: 0,
+      visible: 0,
+      page: 0,
+      size: 5,
+      totalPages: 0,
+    });
+    setAuthenticatedCaseDetailState(createAuthenticatedCaseDetailInitialState());
+    setAuthenticatedNotificationsState({
+      status: 'idle',
+      tone: 'info',
+      title: 'Avisos pendientes',
+      detail: 'Volvé a ingresar para recuperar tus avisos.',
+      endpoint: unreadNotificationsEndpoint,
+      checkedAt: '',
+      httpStatus: null,
+      items: [],
+      unreadCount: 0,
+    });
+    setPendingNotificationIds([]);
+  };
+
+  const runCurrentUserRead = async (accessToken, signal) => {
+    setCurrentUserState({
+      status: 'loading',
+      tone: 'info',
+      title: 'Leyendo usuario autenticado...',
+      detail: `Haciendo un GET real a ${currentUserEndpoint}.`,
+      endpoint: currentUserEndpoint,
+      checkedAt: '',
+      httpStatus: null,
+    });
+
+    try {
+      const result = await readCurrentUser(accessToken, { signal });
+      const user = result.data || {};
+
+      setCurrentUserState({
+        status: 'success',
+        tone: 'success',
+        title: 'Usuario autenticado leído',
+        detail: `${user.displayName || 'Usuario sin nombre'} · rol ${user.role || 'sin rol informado'}`,
+        endpoint: result.endpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: result.httpStatus,
+      });
+
+      setBackendSession((current) => {
+        if (!current) {
+          return current;
+        }
+
+        const nextSession = {
+          ...current,
+          user: {
+            ...current.user,
+            ...user,
+          },
+        };
+        storeBackendSession(nextSession);
+        return nextSession;
+      });
+    } catch (error) {
+      setCurrentUserState({
+        status: 'error',
+        tone: 'danger',
+        title: 'Falló GET /auth/me',
+        detail: error.message,
+        endpoint: currentUserEndpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: error.httpStatus || null,
+      });
+      throw error;
+    }
+  };
+
+  const runAuthenticatedCasesRead = async (accessToken, signal) => {
+    setAuthenticatedCasesState({
+      status: 'loading',
+      tone: 'info',
+      title: 'Actualizando carpetas',
+      detail: 'Estamos trayendo la información más reciente de tu cuenta.',
+      endpoint: probeEndpoint,
+      checkedAt: '',
+      httpStatus: null,
+      technicalDetail: '',
+      items: [],
+      total: 0,
+      visible: 0,
+      page: 0,
+      size: 5,
+      totalPages: 0,
+    });
+    setAuthenticatedCaseDetailState((current) => (current.status === 'idle'
+        ? current
+        : {
+            ...current,
+            status: 'idle',
+            tone: 'info',
+            title: 'Detalle pendiente',
+            detail: 'Elegí una carpeta para ver un resumen real del caso.',
+            endpoint: '',
+            checkedAt: '',
+            httpStatus: null,
+            item: null,
+            data: null,
+            workflowHistory: [],
+            workflowActions: [],
+            budgetState: {
+              status: 'idle',
+              data: null,
+              items: [],
+              totalItems: 0,
+              detail: '',
+            },
+            appointmentsState: {
+              status: 'idle',
+              items: [],
+              total: 0,
+              nextAppointment: null,
+              hasUpcomingAppointment: false,
+              detail: '',
+            },
+            documentsState: {
+              status: 'idle',
+              items: [],
+              total: 0,
+              visibleCount: 0,
+              hiddenCount: 0,
+              detail: '',
+            },
+            financeSummaryState: {
+              status: 'idle',
+              data: null,
+              detail: '',
+            },
+            financialMovementsState: {
+              status: 'idle',
+              items: [],
+              total: 0,
+              detail: '',
+            },
+            receiptsState: {
+              status: 'idle',
+              items: [],
+              total: 0,
+              latest: null,
+              detail: '',
+            },
+            vehicleIntakesState: {
+              status: 'idle',
+              items: [],
+              total: 0,
+              latest: null,
+              detail: '',
+            },
+            vehicleOutcomesState: {
+              status: 'idle',
+              items: [],
+              total: 0,
+              latest: null,
+              detail: '',
+            },
+            trackingNotice: '',
+          }));
+
+    try {
+      const result = await readAuthenticatedCases(accessToken, { page: 0, size: 5, signal });
+      const summary = summarizeCasesPayload(result.data);
+      const normalized = normalizeAuthenticatedCasesPayload(result.data);
+
+      setAuthenticatedCasesState({
+        status: 'success',
+        tone: 'success',
+        title: 'Carpetas actualizadas',
+        detail: `Te mostramos ${summary.visible} carpeta${summary.visible === 1 ? '' : 's'} y la primera visible es ${summary.firstLabel}.`,
+        endpoint: result.endpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: result.httpStatus,
+        technicalDetail: getCasesTechnicalDetail({ endpoint: result.endpoint, httpStatus: result.httpStatus }),
+        ...normalized,
+      });
+    } catch (error) {
+      setAuthenticatedCasesState({
+        status: 'error',
+        tone: 'danger',
+        title: 'No pudimos cargar tus carpetas',
+        detail: getFriendlyCasesMessage(error),
+        endpoint: probeEndpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: error.httpStatus || null,
+        technicalDetail: getCasesTechnicalDetail({ endpoint: probeEndpoint, httpStatus: error.httpStatus || null, errorMessage: error.message }),
+        items: [],
+        total: 0,
+        visible: 0,
+        page: 0,
+        size: 5,
+        totalPages: 0,
+      });
+    }
+  };
+
+  const runAuthenticatedNotificationsRead = async (accessToken, signal) => {
+    setAuthenticatedNotificationsState((current) => ({
+      ...current,
+      status: 'loading',
+      tone: 'info',
+      title: 'Actualizando avisos',
+      detail: 'Estamos trayendo las novedades pendientes de tu cuenta.',
+      endpoint: unreadNotificationsEndpoint,
+      checkedAt: current.checkedAt,
+      httpStatus: null,
+    }));
+
+    try {
+      const result = await readAuthenticatedUnreadNotifications(accessToken, { signal });
+      const items = getUnreadNotificationItems(result.data);
+
+      setAuthenticatedNotificationsState({
+        status: 'success',
+        tone: 'success',
+        title: 'Avisos actualizados',
+        detail: items.length === 0
+          ? 'No hay avisos pendientes en este momento.'
+          : `Trajimos ${items.length} aviso${items.length === 1 ? '' : 's'} pendiente${items.length === 1 ? '' : 's'} de tu cuenta.`,
+        endpoint: result.endpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: result.httpStatus,
+        items,
+        unreadCount: items.length,
+      });
+    } catch (error) {
+      setAuthenticatedNotificationsState({
+        status: 'error',
+        tone: 'danger',
+        title: 'No pudimos cargar tus avisos',
+        detail: getFriendlyNotificationsMessage(error),
+        endpoint: unreadNotificationsEndpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: error.httpStatus || null,
+        items: [],
+        unreadCount: 0,
+      });
+    }
+  };
+
+  const openAuthenticatedCaseDetail = async (item) => {
+    if (!backendSession?.accessToken || !item?.id) {
+      return;
+    }
+
+    const endpoint = getCaseDetailUrl(item.id);
+    const budgetEndpoint = getCaseBudgetUrl(item.id);
+    const appointmentsEndpoint = getCaseAppointmentsUrl(item.id);
+    const financeSummaryEndpoint = getCaseFinanceSummaryUrl(item.id);
+    const financialMovementsEndpoint = getCaseFinancialMovementsUrl(item.id);
+    const receiptsEndpoint = getCaseReceiptsUrl(item.id);
+    const vehicleIntakesEndpoint = getCaseVehicleIntakesUrl(item.id);
+    const vehicleOutcomesEndpoint = getCaseVehicleOutcomesUrl(item.id);
+
+    setAuthenticatedCaseDetailState({
+      status: 'loading',
+      tone: 'info',
+      title: 'Abriendo carpeta',
+      detail: 'Estamos trayendo el resumen más reciente de este caso.',
+      endpoint,
+      checkedAt: '',
+      httpStatus: null,
+      item,
+      data: null,
+      workflowHistory: [],
+      workflowActions: [],
+      budgetState: {
+        status: 'loading',
+        data: null,
+        items: [],
+        totalItems: 0,
+        detail: 'Estamos revisando la estimación cargada para esta carpeta.',
+        endpoint: budgetEndpoint,
+      },
+      appointmentsState: {
+        status: 'loading',
+        items: [],
+        total: 0,
+        nextAppointment: null,
+        hasUpcomingAppointment: false,
+        detail: 'Estamos revisando las fechas de recepción disponibles para esta carpeta.',
+        endpoint: appointmentsEndpoint,
+      },
+      documentsState: {
+        status: 'loading',
+        items: [],
+        total: 0,
+        visibleCount: 0,
+        hiddenCount: 0,
+        detail: 'Estamos revisando los archivos cargados en esta carpeta.',
+      },
+      financeSummaryState: {
+        status: 'loading',
+        data: null,
+        detail: 'Estamos revisando el resumen financiero disponible para esta carpeta.',
+        endpoint: financeSummaryEndpoint,
+      },
+      financialMovementsState: {
+        status: 'loading',
+        items: [],
+        total: 0,
+        detail: 'Estamos revisando los movimientos financieros de esta carpeta.',
+        endpoint: financialMovementsEndpoint,
+      },
+      receiptsState: {
+        status: 'loading',
+        items: [],
+        total: 0,
+        latest: null,
+        detail: 'Estamos revisando los comprobantes de esta carpeta.',
+        endpoint: receiptsEndpoint,
+      },
+      vehicleIntakesState: {
+        status: 'loading',
+        items: [],
+        total: 0,
+        latest: null,
+        detail: 'Estamos revisando los ingresos del vehículo de esta carpeta.',
+        endpoint: vehicleIntakesEndpoint,
+      },
+      vehicleOutcomesState: {
+        status: 'loading',
+        items: [],
+        total: 0,
+        latest: null,
+        detail: 'Estamos revisando los egresos del vehículo de esta carpeta.',
+        endpoint: vehicleOutcomesEndpoint,
+      },
+      trackingNotice: '',
+    });
+
+    try {
+      const [detailResult, historyResult, actionsResult, budgetResult, appointmentsResult, documentsResult, financeSummaryResult, financialMovementsResult, receiptsResult, vehicleIntakesResult, vehicleOutcomesResult] = await Promise.allSettled([
+        readAuthenticatedCaseDetail(backendSession.accessToken, item.id),
+        readAuthenticatedCaseWorkflowHistory(backendSession.accessToken, item.id),
+        readAuthenticatedCaseWorkflowActions(backendSession.accessToken, item.id),
+        readAuthenticatedCaseBudget(backendSession.accessToken, item.id),
+        readAuthenticatedCaseAppointments(backendSession.accessToken, item.id),
+        readAuthenticatedCaseDocuments(backendSession.accessToken, item.id),
+        readAuthenticatedCaseFinanceSummary(backendSession.accessToken, item.id),
+        readAuthenticatedCaseFinancialMovements(backendSession.accessToken, item.id),
+        readAuthenticatedCaseReceipts(backendSession.accessToken, item.id),
+        readAuthenticatedCaseVehicleIntakes(backendSession.accessToken, item.id),
+        readAuthenticatedCaseVehicleOutcomes(backendSession.accessToken, item.id),
+      ]);
+
+      if (detailResult.status === 'rejected') {
+        throw detailResult.reason;
+      }
+
+      const workflowHistory = historyResult.status === 'fulfilled'
+        ? getWorkflowHistoryItems(historyResult.value.data)
+        : [];
+      const workflowActions = actionsResult.status === 'fulfilled'
+        ? getWorkflowActionsItems(actionsResult.value.data)
+        : [];
+      const budgetState = budgetResult.status === 'fulfilled'
+        ? buildCaseBudgetState(budgetResult.value.data)
+        : buildRejectedCaseBudgetState(budgetResult.reason);
+      const appointmentsState = appointmentsResult.status === 'fulfilled'
+        ? buildCaseAppointmentsState(appointmentsResult.value.data)
+          : {
+              status: 'error',
+              items: [],
+              total: 0,
+              nextAppointment: null,
+              hasUpcomingAppointment: false,
+              detail: getFriendlyCaseAppointmentsMessage(appointmentsResult.reason),
+            };
+      const documentsState = documentsResult.status === 'fulfilled'
+        ? buildCaseDocumentsState(documentsResult.value.data)
+        : {
+            status: 'error',
+            items: [],
+            total: 0,
+            visibleCount: 0,
+            hiddenCount: 0,
+            detail: getFriendlyCaseDocumentsMessage(documentsResult.reason),
+          };
+      const financeSummaryState = financeSummaryResult.status === 'fulfilled'
+        ? buildCaseFinanceSummaryState(financeSummaryResult.value.data)
+        : buildRejectedCaseFinanceSummaryState(financeSummaryResult.reason);
+      const financialMovementsState = financialMovementsResult.status === 'fulfilled'
+        ? buildCaseFinancialMovementsState(financialMovementsResult.value.data)
+        : buildRejectedCaseFinancialMovementsState(financialMovementsResult.reason);
+      const receiptsState = receiptsResult.status === 'fulfilled'
+        ? buildCaseReceiptsState(receiptsResult.value.data)
+        : buildRejectedCaseReceiptsState(receiptsResult.reason);
+      const vehicleIntakesState = vehicleIntakesResult.status === 'fulfilled'
+        ? buildCaseVehicleIntakesState(vehicleIntakesResult.value.data)
+        : buildRejectedCaseVehicleIntakesState(vehicleIntakesResult.reason);
+      const vehicleOutcomesState = vehicleOutcomesResult.status === 'fulfilled'
+        ? buildCaseVehicleOutcomesState(vehicleOutcomesResult.value.data)
+        : buildRejectedCaseVehicleOutcomesState(vehicleOutcomesResult.reason);
+      const trackingNotice = buildCaseDetailSupportNotice([
+        appointmentsResult.status === 'rejected'
+          ? 'Abrimos la carpeta, pero los turnos no pudieron mostrarse ahora.'
+          : '',
+        budgetResult.status === 'rejected' && budgetResult.reason?.httpStatus !== 404
+          ? 'Abrimos la carpeta, pero el presupuesto no pudo mostrarse ahora.'
+          : '',
+        historyResult.status === 'rejected' || actionsResult.status === 'rejected'
+          ? 'Abrimos la carpeta, pero algunas novedades de seguimiento no pudieron mostrarse ahora.'
+          : '',
+        financeSummaryResult.status === 'rejected' && financeSummaryResult.reason?.httpStatus !== 404
+          ? 'Abrimos la carpeta, pero el resumen financiero no pudo mostrarse ahora.'
+          : '',
+        financialMovementsResult.status === 'rejected' && financialMovementsResult.reason?.httpStatus !== 404
+          ? 'Abrimos la carpeta, pero los movimientos financieros no pudieron mostrarse ahora.'
+          : '',
+        receiptsResult.status === 'rejected' && receiptsResult.reason?.httpStatus !== 404
+          ? 'Abrimos la carpeta, pero los comprobantes no pudieron mostrarse ahora.'
+          : '',
+        vehicleIntakesResult.status === 'rejected' && vehicleIntakesResult.reason?.httpStatus !== 404
+          ? 'Abrimos la carpeta, pero la recepción del vehículo no pudo mostrarse ahora.'
+          : '',
+        vehicleOutcomesResult.status === 'rejected' && vehicleOutcomesResult.reason?.httpStatus !== 404
+          ? 'Abrimos la carpeta, pero la entrega del vehículo no pudo mostrarse ahora.'
+          : '',
+      ]);
+
+      setAuthenticatedCaseDetailState({
+        status: 'success',
+        tone: 'success',
+        title: 'Detalle actualizado',
+        detail: `Abrimos la carpeta ${getBackendCaseDetailHeadline(detailResult.value.data)} con informacion real del backend.`,
+        endpoint: detailResult.value.endpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: detailResult.value.httpStatus,
+        item,
+        data: detailResult.value.data,
+        workflowHistory,
+        workflowActions,
+        budgetState,
+        appointmentsState,
+        documentsState,
+        financeSummaryState,
+        financialMovementsState,
+        receiptsState,
+        vehicleIntakesState,
+        vehicleOutcomesState,
+        trackingNotice,
+      });
+    } catch (error) {
+      setAuthenticatedCaseDetailState({
+        status: 'error',
+        tone: 'danger',
+        title: 'No pudimos abrir esta carpeta',
+        detail: getFriendlyCaseDetailMessage(error),
+        endpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: error.httpStatus || null,
+        item,
+        data: null,
+        workflowHistory: [],
+        workflowActions: [],
+        budgetState: {
+          status: 'error',
+          data: null,
+          items: [],
+          totalItems: 0,
+          detail: '',
+        },
+        appointmentsState: {
+          status: 'error',
+          items: [],
+          total: 0,
+          nextAppointment: null,
+          hasUpcomingAppointment: false,
+          detail: '',
+        },
+        documentsState: {
+          status: 'error',
+          items: [],
+          total: 0,
+          visibleCount: 0,
+          hiddenCount: 0,
+          detail: '',
+        },
+        financeSummaryState: {
+          status: 'error',
+          data: null,
+          detail: '',
+        },
+        financialMovementsState: {
+          status: 'error',
+          items: [],
+          total: 0,
+          detail: '',
+        },
+        receiptsState: {
+          status: 'error',
+          items: [],
+          total: 0,
+          latest: null,
+          detail: '',
+        },
+        vehicleIntakesState: {
+          status: 'error',
+          items: [],
+          total: 0,
+          latest: null,
+          detail: '',
+        },
+        vehicleOutcomesState: {
+          status: 'error',
+          items: [],
+          total: 0,
+          latest: null,
+          detail: '',
+        },
+        trackingNotice: '',
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (!shouldBootstrapSession) {
+      return undefined;
+    }
+
+    const controller = new AbortController();
+
+    const validateStoredSession = async () => {
+      try {
+        await runCurrentUserRead(storedSession.accessToken, controller.signal);
+        setAppAccess('authenticated');
+        void runAuthenticatedCasesRead(storedSession.accessToken, controller.signal).catch(() => {});
+        void runAuthenticatedNotificationsRead(storedSession.accessToken, controller.signal).catch(() => {});
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          return;
+        }
+
+        resetSessionState({
+          authTitle: 'Sesión vencida o inválida',
+          authDetail: 'La sesión guardada no pasó la validación con /auth/me. Limpié localStorage para que vuelvas a entrar.',
+          authTone: 'danger',
+        });
+      }
+    };
+
+    void validateStoredSession();
+    return () => controller.abort();
+  }, [shouldBootstrapSession]);
+
+  const submitRealLogin = async () => {
+    const email = loginForm.email.trim();
+    const password = loginForm.password;
+
+    if (!email || !password) {
+      setAuthState({
+        status: 'error',
+        tone: 'danger',
+        title: 'Completá tus datos',
+        detail: 'Ingresá tu email y tu contraseña para continuar.',
+        endpoint: loginEndpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: null,
+      });
+      return;
+    }
+
+    setAuthState({
+      status: 'loading',
+      tone: 'info',
+      title: 'Ingresando...',
+      detail: 'Estamos verificando tus datos.',
+      endpoint: loginEndpoint,
+      checkedAt: '',
+      httpStatus: null,
+    });
+
+    try {
+      const result = await loginAgainstBackend({ email, password });
+      const nextSession = {
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        expiresInSeconds: result.expiresInSeconds,
+        user: {
+          email,
+          ...(result.user || {}),
+        },
+        savedAt: new Date().toISOString(),
+      };
+
+      storeBackendSession(nextSession);
+      setBackendSession(nextSession);
+      setAppAccess('authenticated');
+      setAuthState({
+        status: 'success',
+        tone: 'success',
+        title: 'Acceso confirmado',
+        detail: `Bienvenido/a${result.user?.displayName ? `, ${result.user.displayName}` : ''}.`,
+        endpoint: result.endpoint,
+        checkedAt: nextSession.savedAt,
+        httpStatus: result.httpStatus,
+      });
+
+      flash({ tone: 'success', title: 'Bienvenido/a', message: 'Tu sesión se inició correctamente.' });
+
+      void runCurrentUserRead(result.accessToken).catch(() => {});
+      void runAuthenticatedCasesRead(result.accessToken).catch(() => {});
+      void runAuthenticatedNotificationsRead(result.accessToken).catch(() => {});
+    } catch (error) {
+      setAuthState({
+        status: 'error',
+        tone: 'danger',
+        title: 'No pudimos ingresar',
+        detail: getFriendlyAuthMessage(error),
+        endpoint: loginEndpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: error.httpStatus || null,
+      });
+    }
+  };
+
+  const readWithStoredToken = async (reader) => {
+    if (!backendSession?.accessToken) {
+      flash({ tone: 'danger', title: 'Sin token', message: 'Primero necesitás hacer login real o recuperar una sesión guardada.' });
+      return;
+    }
+
+    try {
+      await reader(backendSession.accessToken);
+    } catch {
+      // El estado de error ya se informa dentro del reader.
+    }
+  };
+
+  const resetStoredSession = () => {
+    resetSessionState({
+      authTitle: 'Sesión cerrada',
+      authDetail: 'Tu sesión se cerró correctamente.',
+    });
+  };
+
+  const handleForgotPassword = () => {
+    flash({
+      tone: 'info',
+      title: 'Recuperar acceso',
+      message: 'Si no recordás tu contraseña, comunicate con quien administra tu cuenta para restablecerla.',
+    });
+  };
 
   const updateCase = (id, mutator) => {
     setCases((current) => current.map((item) => {
@@ -9302,6 +11366,131 @@ function App() {
     setActiveView('nuevo');
   };
 
+  const refreshAuthenticatedCasesPreview = async () => {
+    await readWithStoredToken(async (accessToken) => {
+      await runAuthenticatedCasesRead(accessToken);
+    });
+  };
+
+  const refreshAuthenticatedNotificationsPreview = async () => {
+    await readWithStoredToken(async (accessToken) => {
+      await runAuthenticatedNotificationsRead(accessToken);
+    });
+  };
+
+  const refreshCurrentUserPreview = async () => {
+    await readWithStoredToken(async (accessToken) => {
+      await runCurrentUserRead(accessToken);
+    });
+  };
+
+  const markNotificationAsRead = async (notification) => {
+    if (!notification?.id || !backendSession?.accessToken) {
+      return;
+    }
+
+    setPendingNotificationIds((current) => (current.includes(notification.id) ? current : [...current, notification.id]));
+
+    await readWithStoredToken(async (accessToken) => {
+      try {
+        await markAuthenticatedNotificationAsRead(accessToken, notification.id);
+        setAuthenticatedNotificationsState((current) => {
+          const nextItems = current.items.filter((item) => item.id !== notification.id);
+          return {
+            ...current,
+            status: 'success',
+            tone: 'success',
+            title: 'Avisos actualizados',
+            detail: nextItems.length === 0
+              ? 'Ya no quedan avisos pendientes en este momento.'
+              : `Todavía tenés ${nextItems.length} aviso${nextItems.length === 1 ? '' : 's'} pendiente${nextItems.length === 1 ? '' : 's'} para revisar.`,
+            checkedAt: new Date().toISOString(),
+            httpStatus: 200,
+            items: nextItems,
+            unreadCount: nextItems.length,
+          };
+        });
+        flash({ tone: 'success', title: 'Aviso actualizado', message: 'La notificación se marcó como leída.' });
+      } catch (error) {
+        flash({ tone: 'danger', title: 'No pudimos actualizar el aviso', message: getFriendlyNotificationReadMessage(error) });
+      } finally {
+        setPendingNotificationIds((current) => current.filter((id) => id !== notification.id));
+      }
+    });
+  };
+
+  if (appAccess !== 'authenticated') {
+    const isCheckingSession = appAccess === 'checking';
+
+    return (
+      <div className="auth-shell">
+        <section className="auth-stage">
+          <article className="auth-panel auth-panel-brand">
+              <p className="eyebrow">Acceso</p>
+              <h1>Bienvenido/a.</h1>
+              <p className="muted">
+                Ingresá para consultar tus carpetas y seguir el estado general de tus casos desde un solo lugar.
+              </p>
+
+            <div className="auth-highlight-grid">
+              <div className="auth-highlight-card">
+                <span>Acceso simple</span>
+                <strong>Entrá con tus datos</strong>
+                <small>Solo necesitás tu email y tu contraseña.</small>
+              </div>
+              <div className="auth-highlight-card">
+                <span>Seguimiento</span>
+                <strong>Volvé a tus carpetas</strong>
+                <small>Si ya tenías una sesión guardada, la retomamos automáticamente.</small>
+              </div>
+            </div>
+          </article>
+
+          <article className="auth-panel auth-panel-form">
+            <div className="stack-tight">
+              <p className="eyebrow">Acceso</p>
+              <h2>{isCheckingSession ? 'Estamos verificando tu acceso' : 'Ingresá a tu cuenta'}</h2>
+              <p className="muted">
+                {isCheckingSession ? 'Aguardá un instante mientras validamos tu sesión guardada.' : 'Usá tu email y tu contraseña para continuar.'}
+              </p>
+            </div>
+
+            {isCheckingSession ? (
+              <div className="auth-check-card">
+                <StatusBadge tone="info">Verificando</StatusBadge>
+                <strong>{getSessionLabel(backendSession)}</strong>
+                <p className="muted">En breve te llevamos a la pantalla principal.</p>
+              </div>
+            ) : (
+              <>
+                <div className="form-grid two-columns auth-login-grid">
+                  <DataField label="Email" onChange={(value) => setLoginForm((current) => ({ ...current, email: value }))} value={loginForm.email} />
+                  <DataField label="Contraseña" onChange={(value) => setLoginForm((current) => ({ ...current, password: value }))} type="password" value={loginForm.password} />
+                </div>
+
+                <div className="auth-demo-actions">
+                  <button className="primary-button" disabled={authState.status === 'loading'} onClick={() => { void submitRealLogin(); }} type="button">
+                    Ingresar
+                  </button>
+                  <button className="auth-forgot-button" onClick={handleForgotPassword} type="button">
+                    Olvidé mi contraseña
+                  </button>
+                </div>
+              </>
+            )}
+
+            <div className={`alert-banner ${authState.tone}-banner auth-demo-banner`} role="status" aria-live="polite">
+              <div className="api-connection-copy">
+                <strong>{authState.title}</strong>
+                <small>{authState.detail}</small>
+              </div>
+            </div>
+          </article>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -9309,7 +11498,7 @@ function App() {
           <span className="brand-mark">DT</span>
           <div>
             <strong>Delta Taller</strong>
-            <small>Particular + Todo Riesgo</small>
+            <small>Seguimiento de carpetas</small>
           </div>
         </div>
 
@@ -9322,23 +11511,31 @@ function App() {
         </nav>
 
         <div className="sidebar-card">
-          <p className="eyebrow">Logica fija</p>
-          <h2>Flujos demo</h2>
-          <p className="muted">Particular mantiene su lógica actual y Todo Riesgo agrega Gestión del trámite sin romper reparación ni pagos existentes.</p>
+          <p className="eyebrow">Operación</p>
+          <h2>Vista cliente</h2>
+          <p className="muted">Accedé a tus carpetas y consultá el estado general de cada caso desde un solo lugar.</p>
         </div>
       </aside>
 
       <main className="workspace">
         <header className="topbar">
           <div>
-            <p className="eyebrow">Demo React</p>
-            <h2>{activeView === 'panel' ? 'Panel General' : activeView === 'agenda' ? 'Agenda de tareas' : activeView === 'nuevo' ? 'Nuevo Caso' : 'Gestión de trámites'}</h2>
+            <p className="eyebrow">Panel</p>
+            <h2>{activeView === 'panel' ? 'Mis carpetas' : activeView === 'agenda' ? 'Agenda de tareas' : activeView === 'nuevo' ? 'Nuevo Caso' : 'Gestión de trámites'}</h2>
           </div>
 
           <div className="topbar-right">
-            <StatusBadge tone="danger">Rojo pendiente</StatusBadge>
-            <StatusBadge tone="info">Azul avanzado</StatusBadge>
-            <StatusBadge tone="success">Verde resuelto</StatusBadge>
+            <div className="topbar-notification-pill" role="status" aria-live="polite">
+              <span>Avisos pendientes</span>
+              <strong>{authenticatedNotificationsState.unreadCount}</strong>
+            </div>
+            <div className="session-badge-panel">
+              <div>
+                <span>Cuenta activa</span>
+                <strong>{getSessionLabel(backendSession)}</strong>
+              </div>
+              <button className="ghost-button" onClick={resetStoredSession} type="button">Cerrar sesión</button>
+            </div>
           </div>
         </header>
 
@@ -9368,11 +11565,23 @@ function App() {
 
         {activeView === 'panel' ? (
           <PanelGeneral
+            backendSession={backendSession}
+            currentUserEndpoint={currentUserEndpoint}
+            currentUserState={currentUserState}
+            authenticatedCaseDetailState={authenticatedCaseDetailState}
+            authenticatedCasesState={authenticatedCasesState}
+            authenticatedNotificationsState={authenticatedNotificationsState}
             flash={flash}
             items={computedCases}
+            onMarkNotificationAsRead={markNotificationAsRead}
             onExportExcel={exportPanelExcel}
             onExportPdf={exportPanelPdf}
             onOpenCase={openCase}
+            onOpenAuthenticatedCaseDetail={openAuthenticatedCaseDetail}
+            onRefreshCurrentUser={refreshCurrentUserPreview}
+            onRefreshAuthenticatedCases={refreshAuthenticatedCasesPreview}
+            onRefreshAuthenticatedNotifications={refreshAuthenticatedNotificationsPreview}
+            pendingNotificationIds={pendingNotificationIds}
           />
         ) : null}
 
