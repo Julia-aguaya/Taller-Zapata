@@ -2,33 +2,70 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   clearBackendSession,
   getCaseAppointmentsUrl,
+  getCaseAuditEventsUrl,
   getCaseBudgetUrl,
   getCaseDetailUrl,
   getCaseFinanceSummaryUrl,
   getCaseFinancialMovementsUrl,
   getCaseReceiptsUrl,
+  getCaseRelationsUrl,
+  getCaseInsuranceUrl,
+  getCaseInsuranceProcessingUrl,
+  getCaseFranchiseUrl,
+  getCaseInsuranceProcessingDocumentsUrl,
+  getCaseCleasUrl,
+  getCaseThirdPartyUrl,
+  getCaseLegalUrl,
+  getCaseLegalNewsUrl,
+  getCaseLegalExpensesUrl,
+  getCaseFranchiseRecoveryUrl,
   getCaseVehicleIntakesUrl,
   getCaseVehicleOutcomesUrl,
   getConnectivityProbeUrl,
   getCurrentUserUrl,
   getLoginUrl,
   getUnreadNotificationsUrl,
+  getNotificationsUrl,
+  getSystemParametersUrl,
+  getOperationCatalogsUrl,
+  getFinanceCatalogsUrl,
+  getInsuranceCatalogsUrl,
+  getDocumentsCatalogsUrl,
   loginAgainstBackend,
   markAuthenticatedNotificationAsRead,
   probeBackendConnection,
   readAuthenticatedCaseAppointments,
+  readAuthenticatedCaseAuditEvents,
   readAuthenticatedCaseBudget,
   readAuthenticatedCaseDetail,
   readAuthenticatedCaseDocuments,
   readAuthenticatedCaseFinanceSummary,
   readAuthenticatedCaseFinancialMovements,
   readAuthenticatedCaseReceipts,
+  readAuthenticatedCaseRelations,
+  readAuthenticatedCaseInsurance,
+  readAuthenticatedCaseInsuranceProcessing,
+  readAuthenticatedCaseFranchise,
+  readAuthenticatedCaseInsuranceProcessingDocuments,
+  readAuthenticatedCaseCleas,
+  readAuthenticatedCaseThirdParty,
+  readAuthenticatedCaseLegal,
+  readAuthenticatedCaseLegalNews,
+  readAuthenticatedCaseLegalExpenses,
+  readAuthenticatedCaseFranchiseRecovery,
   readAuthenticatedCaseVehicleIntakes,
   readAuthenticatedCaseVehicleOutcomes,
   readAuthenticatedCaseWorkflowActions,
   readAuthenticatedCaseWorkflowHistory,
   readAuthenticatedCases,
   readAuthenticatedUnreadNotifications,
+  readAuthenticatedNotifications,
+  readAuthenticatedSystemParameters,
+  readAuthenticatedOperationCatalogs,
+  readAuthenticatedFinanceCatalogs,
+  readAuthenticatedInsuranceCatalogs,
+  readAuthenticatedDocumentsCatalogs,
+  readAuthenticatedUnreadNotificationsCount,
   readBackendSession,
   readCurrentUser,
   storeBackendSession,
@@ -46,6 +83,18 @@ import CaseReceiptsSection from './components/detail/CaseReceiptsSection';
 import CaseVehicleIntakesSection from './components/detail/CaseVehicleIntakesSection';
 import CaseVehicleOutcomesSection from './components/detail/CaseVehicleOutcomesSection';
 import CaseWorkflowSection from './components/detail/CaseWorkflowSection';
+import CaseAuditEventsSection from './components/detail/CaseAuditEventsSection';
+import CaseRelationsSection from './components/detail/CaseRelationsSection';
+import CaseInsuranceSection from './components/detail/CaseInsuranceSection';
+import CaseInsuranceProcessingSection from './components/detail/CaseInsuranceProcessingSection';
+import CaseFranchiseSection from './components/detail/CaseFranchiseSection';
+import CaseInsuranceProcessingDocumentsSection from './components/detail/CaseInsuranceProcessingDocumentsSection';
+import CaseCleasSection from './components/detail/CaseCleasSection';
+import CaseThirdPartySection from './components/detail/CaseThirdPartySection';
+import CaseLegalSection from './components/detail/CaseLegalSection';
+import CaseLegalNewsSection from './components/detail/CaseLegalNewsSection';
+import CaseLegalExpensesSection from './components/detail/CaseLegalExpensesSection';
+import CaseFranchiseRecoverySection from './components/detail/CaseFranchiseRecoverySection';
 import { createAuthenticatedCaseDetailInitialState } from './lib/ui/authenticatedCaseDetailState';
 
 const NAV_ITEMS = [
@@ -732,6 +781,390 @@ function getWorkflowActionsItems(payload) {
   return Array.isArray(payload?.actions) ? payload.actions : [];
 }
 
+function getFriendlyCaseRelationsMessage(error) {
+  if (!error) return 'No pudimos traer las relaciones de esta carpeta ahora.';
+  if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver las relaciones de esta carpeta.';
+  if (error.httpStatus === 404) return 'Todavía no vemos relaciones registradas para esta carpeta.';
+  if (error.httpStatus >= 500) return 'Ahora no pudimos traer las relaciones de esta carpeta. Probá de nuevo en unos instantes.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer las relaciones. Revisá que el backend siga disponible.';
+  return error.message || 'No pudimos traer las relaciones de esta carpeta ahora.';
+}
+
+function getCaseRelationsItems(payload) {
+  return Array.isArray(payload) ? payload : [];
+}
+
+function buildCaseRelationsState(payload, fallbackDetail = '') {
+  const items = getCaseRelationsItems(payload);
+  return {
+    status: items.length > 0 ? 'success' : 'empty',
+    items,
+    total: items.length,
+    detail: fallbackDetail || (items.length > 0
+      ? 'Vínculos registrados para esta carpeta.'
+      : 'Cuando se registren vínculos, vas a verlos acá.'),
+  };
+}
+
+function buildRejectedCaseRelationsState(error) {
+  if (error?.httpStatus === 404) {
+    return { status: 'empty', items: [], total: 0, detail: getFriendlyCaseRelationsMessage(error) };
+  }
+  return { status: 'error', items: [], total: 0, detail: getFriendlyCaseRelationsMessage(error) };
+}
+
+function getFriendlyCaseInsuranceMessage(error) {
+  if (!error) return 'No pudimos traer la cobertura de esta carpeta ahora.';
+  if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver la cobertura de esta carpeta.';
+  if (error.httpStatus === 404) return 'Todavía no vemos cobertura cargada para esta carpeta.';
+  if (error.httpStatus >= 500) return 'Ahora no pudimos traer la cobertura de esta carpeta. Probá de nuevo en unos instantes.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer la cobertura. Revisá que el backend siga disponible.';
+  return error.message || 'No pudimos traer la cobertura de esta carpeta ahora.';
+}
+
+function buildCaseInsuranceState(payload, fallbackDetail = '') {
+  return {
+    status: payload ? 'success' : 'empty',
+    data: payload || null,
+    detail: fallbackDetail || (payload
+      ? 'Datos de cobertura informados para esta carpeta.'
+      : 'Cuando se registre la cobertura, vas a verla acá.'),
+  };
+}
+
+function buildRejectedCaseInsuranceState(error) {
+  if (error?.httpStatus === 404) {
+    return { status: 'empty', data: null, detail: getFriendlyCaseInsuranceMessage(error) };
+  }
+  return { status: 'error', data: null, detail: getFriendlyCaseInsuranceMessage(error) };
+}
+
+function getFriendlyCaseInsuranceProcessingMessage(error) {
+  if (!error) return 'No pudimos traer el estado del trámite con la compañía ahora.';
+  if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver el estado del trámite con la compañía.';
+  if (error.httpStatus === 404) return 'Todavía no vemos datos del trámite con la compañía para esta carpeta.';
+  if (error.httpStatus >= 500) return 'Ahora no pudimos traer el estado del trámite con la compañía. Probá de nuevo en unos instantes.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer el estado del trámite con la compañía. Revisá que el backend siga disponible.';
+  return error.message || 'No pudimos traer el estado del trámite con la compañía ahora.';
+}
+
+function buildCaseInsuranceProcessingState(payload, fallbackDetail = '') {
+  return {
+    status: payload ? 'success' : 'empty',
+    data: payload || null,
+    detail: fallbackDetail || (payload
+      ? 'Estado actual del trámite con la compañía para esta carpeta.'
+      : 'Cuando haya novedades del trámite, vas a verlas acá.'),
+  };
+}
+
+function buildRejectedCaseInsuranceProcessingState(error) {
+  if (error?.httpStatus === 404) {
+    return { status: 'empty', data: null, detail: getFriendlyCaseInsuranceProcessingMessage(error) };
+  }
+  return { status: 'error', data: null, detail: getFriendlyCaseInsuranceProcessingMessage(error) };
+}
+
+function getFriendlyCaseFranchiseMessage(error) {
+  if (!error) return 'No pudimos traer los datos de franquicia de esta carpeta ahora.';
+  if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver la franquicia de esta carpeta.';
+  if (error.httpStatus === 404) return 'Todavía no vemos datos de franquicia cargados para esta carpeta.';
+  if (error.httpStatus >= 500) return 'Ahora no pudimos traer los datos de franquicia. Probá de nuevo en unos instantes.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer la franquicia. Revisá que el backend siga disponible.';
+  return error.message || 'No pudimos traer los datos de franquicia de esta carpeta ahora.';
+}
+
+function buildCaseFranchiseState(payload, fallbackDetail = '') {
+  return {
+    status: payload ? 'success' : 'empty',
+    data: payload || null,
+    detail: fallbackDetail || (payload
+      ? 'Estos importes muestran la franquicia asociada al caso.'
+      : 'Cuando haya datos de franquicia, vas a verlos acá.'),
+  };
+}
+
+function buildRejectedCaseFranchiseState(error) {
+  if (error?.httpStatus === 404) {
+    return { status: 'empty', data: null, detail: getFriendlyCaseFranchiseMessage(error) };
+  }
+  return { status: 'error', data: null, detail: getFriendlyCaseFranchiseMessage(error) };
+}
+
+function getFriendlyCaseInsuranceProcessingDocumentsMessage(error) {
+  if (!error) return 'No pudimos traer los documentos del trámite con la compañía ahora.';
+  if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver los documentos del trámite con la compañía.';
+  if (error.httpStatus === 404) return 'Todavía no vemos documentos del trámite con la compañía para esta carpeta.';
+  if (error.httpStatus >= 500) return 'Ahora no pudimos traer los documentos del trámite con la compañía. Probá de nuevo en unos instantes.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer los documentos del trámite con la compañía. Revisá que el backend siga disponible.';
+  return error.message || 'No pudimos traer los documentos del trámite con la compañía ahora.';
+}
+
+function getCaseInsuranceProcessingDocumentItems(payload) {
+  return Array.isArray(payload) ? payload : [];
+}
+
+function buildCaseInsuranceProcessingDocumentsState(payload, fallbackDetail = '') {
+  const items = getCaseInsuranceProcessingDocumentItems(payload);
+  return {
+    status: items.length > 0 ? 'success' : 'empty',
+    items,
+    total: items.length,
+    detail: fallbackDetail || (items.length > 0
+      ? 'Documentos cargados para la gestión con la compañía.'
+      : 'Cuando se carguen documentos de este trámite, vas a verlos acá.'),
+  };
+}
+
+function buildRejectedCaseInsuranceProcessingDocumentsState(error) {
+  if (error?.httpStatus === 404) {
+    return { status: 'empty', items: [], total: 0, detail: getFriendlyCaseInsuranceProcessingDocumentsMessage(error) };
+  }
+  return { status: 'error', items: [], total: 0, detail: getFriendlyCaseInsuranceProcessingDocumentsMessage(error) };
+}
+
+function getFriendlyCaseCleasMessage(error) {
+  if (!error) return 'No pudimos traer los datos CLEAS de esta carpeta ahora.';
+  if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver los datos CLEAS de esta carpeta.';
+  if (error.httpStatus === 404) return 'Todavía no vemos datos CLEAS cargados para esta carpeta.';
+  if (error.httpStatus >= 500) return 'Ahora no pudimos traer los datos CLEAS. Probá de nuevo en unos instantes.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer los datos CLEAS. Revisá que el backend siga disponible.';
+  return error.message || 'No pudimos traer los datos CLEAS de esta carpeta ahora.';
+}
+
+function buildCaseCleasState(payload, fallbackDetail = '') {
+  return {
+    status: payload ? 'success' : 'empty',
+    data: payload || null,
+    detail: fallbackDetail || (payload
+      ? 'Estado actual de gestión CLEAS para esta carpeta.'
+      : 'Cuando haya datos CLEAS, vas a verlos acá.'),
+  };
+}
+
+function buildRejectedCaseCleasState(error) {
+  if (error?.httpStatus === 404) {
+    return { status: 'empty', data: null, detail: getFriendlyCaseCleasMessage(error) };
+  }
+  return { status: 'error', data: null, detail: getFriendlyCaseCleasMessage(error) };
+}
+
+function getFriendlyCaseThirdPartyMessage(error) {
+  if (!error) return 'No pudimos traer los datos de terceros de esta carpeta ahora.';
+  if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver los datos de terceros de esta carpeta.';
+  if (error.httpStatus === 404) return 'Todavía no vemos datos de terceros cargados para esta carpeta.';
+  if (error.httpStatus >= 500) return 'Ahora no pudimos traer los datos de terceros. Probá de nuevo en unos instantes.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer los datos de terceros. Revisá que el backend siga disponible.';
+  return error.message || 'No pudimos traer los datos de terceros de esta carpeta ahora.';
+}
+
+function buildCaseThirdPartyState(payload, fallbackDetail = '') {
+  return {
+    status: payload ? 'success' : 'empty',
+    data: payload || null,
+    detail: fallbackDetail || (payload
+      ? 'Información de terceros vinculados a esta carpeta.'
+      : 'Cuando haya datos de terceros, vas a verlos acá.'),
+  };
+}
+
+function buildRejectedCaseThirdPartyState(error) {
+  if (error?.httpStatus === 404) {
+    return { status: 'empty', data: null, detail: getFriendlyCaseThirdPartyMessage(error) };
+  }
+  return { status: 'error', data: null, detail: getFriendlyCaseThirdPartyMessage(error) };
+}
+
+function getFriendlyCaseLegalMessage(error) {
+  if (!error) return 'No pudimos traer los datos legales de esta carpeta ahora.';
+  if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver los datos legales de esta carpeta.';
+  if (error.httpStatus === 404) return 'Todavía no vemos datos legales cargados para esta carpeta.';
+  if (error.httpStatus >= 500) return 'Ahora no pudimos traer los datos legales. Probá de nuevo en unos instantes.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer los datos legales. Revisá que el backend siga disponible.';
+  return error.message || 'No pudimos traer los datos legales de esta carpeta ahora.';
+}
+
+function buildCaseLegalState(payload, fallbackDetail = '') {
+  return {
+    status: payload ? 'success' : 'empty',
+    data: payload || null,
+    detail: fallbackDetail || (payload
+      ? 'Información legal vinculada al caso.'
+      : 'Cuando haya datos legales, vas a verlos acá.'),
+  };
+}
+
+function buildRejectedCaseLegalState(error) {
+  if (error?.httpStatus === 404) {
+    return { status: 'empty', data: null, detail: getFriendlyCaseLegalMessage(error) };
+  }
+  return { status: 'error', data: null, detail: getFriendlyCaseLegalMessage(error) };
+}
+
+function getFriendlyCaseLegalNewsMessage(error) {
+  if (!error) return 'No pudimos traer las novedades legales de esta carpeta ahora.';
+  if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver las novedades legales de esta carpeta.';
+  if (error.httpStatus === 404) return 'Todavía no vemos novedades legales cargadas para esta carpeta.';
+  if (error.httpStatus >= 500) return 'Ahora no pudimos traer las novedades legales. Probá de nuevo en unos instantes.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer las novedades legales. Revisá que el backend siga disponible.';
+  return error.message || 'No pudimos traer las novedades legales de esta carpeta ahora.';
+}
+
+function getCaseLegalNewsItems(payload) {
+  return Array.isArray(payload) ? payload : [];
+}
+
+function buildCaseLegalNewsState(payload, fallbackDetail = '') {
+  const items = getCaseLegalNewsItems(payload).slice().sort((left, right) => {
+    const leftKey = left?.newsDate || left?.createdAt || '';
+    const rightKey = right?.newsDate || right?.createdAt || '';
+    return rightKey.localeCompare(leftKey);
+  });
+
+  return {
+    status: items.length > 0 ? 'success' : 'empty',
+    items,
+    total: items.length,
+    detail: fallbackDetail || (items.length > 0
+      ? 'Últimas novedades del frente legal de esta carpeta.'
+      : 'Cuando haya novedades legales, vas a verlas acá.'),
+  };
+}
+
+function buildRejectedCaseLegalNewsState(error) {
+  if (error?.httpStatus === 404) {
+    return { status: 'empty', items: [], total: 0, detail: getFriendlyCaseLegalNewsMessage(error) };
+  }
+  return { status: 'error', items: [], total: 0, detail: getFriendlyCaseLegalNewsMessage(error) };
+}
+
+function getFriendlyCaseLegalExpensesMessage(error) {
+  if (!error) return 'No pudimos traer los gastos legales de esta carpeta ahora.';
+  if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver los gastos legales de esta carpeta.';
+  if (error.httpStatus === 404) return 'Todavía no vemos gastos legales cargados para esta carpeta.';
+  if (error.httpStatus >= 500) return 'Ahora no pudimos traer los gastos legales. Probá de nuevo en unos instantes.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer los gastos legales. Revisá que el backend siga disponible.';
+  return error.message || 'No pudimos traer los gastos legales de esta carpeta ahora.';
+}
+
+function getCaseLegalExpensesItems(payload) {
+  return Array.isArray(payload) ? payload : [];
+}
+
+function buildCaseLegalExpensesState(payload, fallbackDetail = '') {
+  const items = getCaseLegalExpensesItems(payload).slice().sort((left, right) => {
+    const leftKey = left?.expenseDate || left?.createdAt || '';
+    const rightKey = right?.expenseDate || right?.createdAt || '';
+    return rightKey.localeCompare(leftKey);
+  });
+
+  return {
+    status: items.length > 0 ? 'success' : 'empty',
+    items,
+    total: items.length,
+    detail: fallbackDetail || (items.length > 0
+      ? 'Gastos legales registrados para esta carpeta.'
+      : 'Cuando se registren gastos legales, vas a verlos acá.'),
+  };
+}
+
+function buildRejectedCaseLegalExpensesState(error) {
+  if (error?.httpStatus === 404) {
+    return { status: 'empty', items: [], total: 0, detail: getFriendlyCaseLegalExpensesMessage(error) };
+  }
+  return { status: 'error', items: [], total: 0, detail: getFriendlyCaseLegalExpensesMessage(error) };
+}
+
+function getFriendlyCaseFranchiseRecoveryMessage(error) {
+  if (!error) return 'No pudimos traer el recupero de franquicia de esta carpeta ahora.';
+  if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver el recupero de franquicia de esta carpeta.';
+  if (error.httpStatus === 404) return 'Todavía no vemos datos de recupero de franquicia para esta carpeta.';
+  if (error.httpStatus >= 500) return 'Ahora no pudimos traer el recupero de franquicia. Probá de nuevo en unos instantes.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer el recupero de franquicia. Revisá que el backend siga disponible.';
+  return error.message || 'No pudimos traer el recupero de franquicia de esta carpeta ahora.';
+}
+
+function buildCaseFranchiseRecoveryState(payload, fallbackDetail = '') {
+  return {
+    status: payload ? 'success' : 'empty',
+    data: payload || null,
+    detail: fallbackDetail || (payload
+      ? 'Estado de recupero de franquicia informado para esta carpeta.'
+      : 'Cuando haya datos de recupero, vas a verlos acá.'),
+  };
+}
+
+function buildRejectedCaseFranchiseRecoveryState(error) {
+  if (error?.httpStatus === 404) {
+    return { status: 'empty', data: null, detail: getFriendlyCaseFranchiseRecoveryMessage(error) };
+  }
+  return { status: 'error', data: null, detail: getFriendlyCaseFranchiseRecoveryMessage(error) };
+}
+
+function getFriendlyCaseAuditEventsMessage(error) {
+  if (!error) {
+    return 'No pudimos traer el historial de actividad de esta carpeta ahora.';
+  }
+
+  if (error.httpStatus === 401 || error.httpStatus === 403) {
+    return 'Tu sesión no tiene permiso para ver el historial de actividad de esta carpeta. Volvé a ingresar e intentá nuevamente.';
+  }
+
+  if (error.httpStatus === 404) {
+    return 'Todavía no vemos actividad registrada para esta carpeta.';
+  }
+
+  if (error.httpStatus >= 500) {
+    return 'Ahora no pudimos traer el historial de actividad de esta carpeta. Probá de nuevo en unos instantes.';
+  }
+
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
+    return 'No pudimos conectarnos para traer el historial de actividad. Revisá que el backend siga disponible.';
+  }
+
+  return error.message || 'No pudimos traer el historial de actividad de esta carpeta ahora.';
+}
+
+function getCaseAuditEventItems(payload) {
+  return Array.isArray(payload) ? payload : [];
+}
+
+function buildCaseAuditEventsState(payload, fallbackDetail = '') {
+  const items = getCaseAuditEventItems(payload).slice().sort((left, right) => {
+    const leftKey = left?.occurredAt || left?.createdAt || '';
+    const rightKey = right?.occurredAt || right?.createdAt || '';
+    return rightKey.localeCompare(leftKey);
+  });
+  const detail = fallbackDetail || (items.length > 0
+    ? 'Estos registros muestran las últimas acciones realizadas sobre la carpeta.'
+    : 'Cuando haya actividad registrada, la vas a ver acá.');
+
+  return {
+    status: items.length > 0 ? 'success' : 'empty',
+    items,
+    total: items.length,
+    detail,
+  };
+}
+
+function buildRejectedCaseAuditEventsState(error) {
+  if (error?.httpStatus === 404) {
+    return {
+      status: 'empty',
+      items: [],
+      total: 0,
+      detail: getFriendlyCaseAuditEventsMessage(error),
+    };
+  }
+
+  return {
+    status: 'error',
+    items: [],
+    total: 0,
+    detail: getFriendlyCaseAuditEventsMessage(error),
+  };
+}
+
 function getCaseDocumentItems(payload) {
   return Array.isArray(payload) ? payload : [];
 }
@@ -1038,6 +1471,93 @@ function buildCaseDocumentsState(payload, fallbackDetail = '') {
 
 function getUnreadNotificationItems(payload) {
   return Array.isArray(payload) ? payload : [];
+}
+
+function getNotificationItems(payload) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (Array.isArray(payload?.content)) {
+    return payload.content;
+  }
+
+  if (Array.isArray(payload?.items)) {
+    return payload.items;
+  }
+
+  return [];
+}
+
+function getSystemParameterItems(payload) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (Array.isArray(payload?.items)) {
+    return payload.items;
+  }
+
+  if (Array.isArray(payload?.content)) {
+    return payload.content;
+  }
+
+  return [];
+}
+
+function getOperationCatalogSummary(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return [];
+  }
+
+  return Object.entries(payload)
+    .filter(([, value]) => Array.isArray(value))
+    .map(([key, value]) => ({ key, count: value.length }))
+    .sort((left, right) => right.count - left.count);
+}
+
+function getFinanceCatalogSummary(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return [];
+  }
+
+  return Object.entries(payload)
+    .filter(([, value]) => Array.isArray(value))
+    .map(([key, value]) => ({ key, count: value.length }))
+    .sort((left, right) => right.count - left.count);
+}
+
+function getInsuranceCatalogSummary(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return [];
+  }
+
+  return Object.entries(payload)
+    .filter(([, value]) => Array.isArray(value))
+    .map(([key, value]) => ({ key, count: value.length }))
+    .sort((left, right) => right.count - left.count);
+}
+
+function getDocumentsCatalogSummary(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return [];
+  }
+
+  return Object.entries(payload)
+    .filter(([, value]) => Array.isArray(value))
+    .map(([key, value]) => ({ key, count: value.length }))
+    .sort((left, right) => right.count - left.count);
+}
+
+function getUnreadNotificationCount(payload, fallbackCount = 0) {
+  const raw = typeof payload === 'number' ? payload : payload?.count;
+  const parsed = Number(raw);
+
+  if (Number.isFinite(parsed) && parsed >= 0) {
+    return Math.floor(parsed);
+  }
+
+  return fallbackCount;
 }
 
 function formatNotificationType(typeCode) {
@@ -1354,6 +1874,18 @@ function AuthenticatedCaseDetail({ detailState, onOpenDetail }) {
   const item = detailState.data;
   const workflowHistory = detailState.workflowHistory;
   const workflowActions = detailState.workflowActions;
+  const auditEventsState = detailState.auditEventsState;
+  const relationsState = detailState.relationsState;
+  const insuranceState = detailState.insuranceState;
+  const insuranceProcessingState = detailState.insuranceProcessingState;
+  const franchiseState = detailState.franchiseState;
+  const insuranceProcessingDocumentsState = detailState.insuranceProcessingDocumentsState;
+  const cleasState = detailState.cleasState;
+  const thirdPartyState = detailState.thirdPartyState;
+  const legalState = detailState.legalState;
+  const legalNewsState = detailState.legalNewsState;
+  const legalExpensesState = detailState.legalExpensesState;
+  const franchiseRecoveryState = detailState.franchiseRecoveryState;
   const budgetState = detailState.budgetState;
   const appointmentsState = detailState.appointmentsState;
   const documentsState = detailState.documentsState;
@@ -1435,6 +1967,92 @@ function AuthenticatedCaseDetail({ detailState, onOpenDetail }) {
           formatWorkflowDomain={formatWorkflowDomain}
           getBackendStatusTone={getBackendStatusTone}
           getWorkflowActionAudienceCopy={getWorkflowActionAudienceCopy}
+          StatusBadge={StatusBadge}
+        />
+
+        <CaseAuditEventsSection
+          auditEventsState={auditEventsState}
+          formatBackendState={formatBackendState}
+          formatDateTime={formatDateTime}
+          StatusBadge={StatusBadge}
+        />
+
+        <CaseRelationsSection
+          relationsState={relationsState}
+          formatBackendState={formatBackendState}
+          StatusBadge={StatusBadge}
+        />
+
+        <CaseInsuranceSection
+          insuranceState={insuranceState}
+          formatBackendState={formatBackendState}
+          StatusBadge={StatusBadge}
+        />
+
+        <CaseInsuranceProcessingSection
+          insuranceProcessingState={insuranceProcessingState}
+          formatBackendState={formatBackendState}
+          formatDateTime={formatDateTime}
+          StatusBadge={StatusBadge}
+        />
+
+        <CaseFranchiseSection
+          franchiseState={franchiseState}
+          money={money}
+          StatusBadge={StatusBadge}
+        />
+
+        <CaseInsuranceProcessingDocumentsSection
+          insuranceProcessingDocumentsState={insuranceProcessingDocumentsState}
+          formatDate={formatDate}
+          formatDateTime={formatDateTime}
+          formatDocumentAudience={formatDocumentAudience}
+          formatDocumentDescriptor={formatDocumentDescriptor}
+          formatDocumentSize={formatDocumentSize}
+          StatusBadge={StatusBadge}
+        />
+
+        <CaseCleasSection
+          cleasState={cleasState}
+          formatBackendState={formatBackendState}
+          formatDateTime={formatDateTime}
+          StatusBadge={StatusBadge}
+        />
+
+        <CaseThirdPartySection
+          thirdPartyState={thirdPartyState}
+          formatBackendState={formatBackendState}
+          StatusBadge={StatusBadge}
+        />
+
+        <CaseLegalSection
+          legalState={legalState}
+          formatBackendState={formatBackendState}
+          formatDateTime={formatDateTime}
+          StatusBadge={StatusBadge}
+        />
+
+        <CaseLegalNewsSection
+          legalNewsState={legalNewsState}
+          formatBackendState={formatBackendState}
+          formatDate={formatDate}
+          formatDateTime={formatDateTime}
+          StatusBadge={StatusBadge}
+        />
+
+        <CaseLegalExpensesSection
+          legalExpensesState={legalExpensesState}
+          formatBackendState={formatBackendState}
+          formatDate={formatDate}
+          money={money}
+          StatusBadge={StatusBadge}
+        />
+
+        <CaseFranchiseRecoverySection
+          franchiseRecoveryState={franchiseRecoveryState}
+          formatBackendState={formatBackendState}
+          formatDateTime={formatDateTime}
+          money={money}
           StatusBadge={StatusBadge}
         />
 
@@ -1650,8 +2268,9 @@ function AuthenticatedCasesPreview({ detailState, onOpenDetail, onRefresh, state
   );
 }
 
-function AuthenticatedNotificationsPreview({ pendingIds, state, onMarkAsRead, onOpenCaseDetail, onRefresh }) {
+function AuthenticatedNotificationsPreview({ pendingIds, state, itemActionStates = {}, onMarkAsRead, onOpenCaseDetail, onRefresh }) {
   const hasItems = state.items.length > 0;
+  const hasRecentItems = (state.recentItems || []).length > 0;
   const isLoading = state.status === 'loading';
   const statusTone = state.status === 'error'
     ? 'danger'
@@ -1689,12 +2308,23 @@ function AuthenticatedNotificationsPreview({ pendingIds, state, onMarkAsRead, on
         <article className="backend-case-metric" role="listitem">
           <span>Sin leer</span>
           <strong>{state.unreadCount}</strong>
-          <small>{state.unreadCount === 1 ? 'Hay un aviso esperando revisión.' : 'Mostramos los avisos pendientes de tu cuenta.'}</small>
+          <small>
+            {state.unreadCountSource === 'fallback-list'
+              ? 'Conteo estimado por listado; el contador oficial no respondió en este intento.'
+              : state.unreadCount === 1
+                ? 'Hay un aviso esperando revisión.'
+                : 'Mostramos los avisos pendientes de tu cuenta.'}
+          </small>
         </article>
         <article className="backend-case-metric" role="listitem">
           <span>Última actualización</span>
           <strong>{state.checkedAt ? formatDateTime(state.checkedAt) : '-'}</strong>
           <small>{isLoading ? 'Estamos refrescando tus avisos.' : 'Podés volver a consultar cuando quieras.'}</small>
+        </article>
+        <article className="backend-case-metric" role="listitem">
+          <span>Historial reciente</span>
+          <strong>{state.recentCount || 0}</strong>
+          <small>Últimos avisos recibidos, incluyendo los ya leídos.</small>
         </article>
       </div>
 
@@ -1711,6 +2341,13 @@ function AuthenticatedNotificationsPreview({ pendingIds, state, onMarkAsRead, on
         <div className="notification-list" role="list" aria-label="Notificaciones pendientes">
           {state.items.map((notification) => {
             const isPending = pendingIds.includes(notification.id);
+            const actionState = itemActionStates[notification.id] || null;
+            const actionHasError = actionState?.status === 'error';
+            const actionLabel = isPending
+              ? 'Actualizando...'
+              : actionHasError
+                ? 'Reintentar'
+                : 'Marcar leida';
 
             return (
               <article className="notification-card" key={notification.id} role="listitem">
@@ -1736,12 +2373,43 @@ function AuthenticatedNotificationsPreview({ pendingIds, state, onMarkAsRead, on
                     </button>
                   ) : null}
                   <button className="secondary-button" disabled={isPending} onClick={() => { void onMarkAsRead(notification); }} type="button">
-                    {isPending ? 'Actualizando...' : 'Marcar leída'}
+                    {actionLabel}
                   </button>
                 </div>
+
+                {actionHasError ? (
+                  <small className="notification-action-feedback" role="status" aria-live="polite">
+                    {actionState.message}
+                  </small>
+                ) : null}
               </article>
             );
           })}
+        </div>
+      ) : null}
+
+      {hasRecentItems ? (
+        <div className="notification-list" role="list" aria-label="Historial reciente de notificaciones">
+          {(state.recentItems || []).slice(0, 6).map((notification, index) => (
+            <article className="notification-card" key={notification.id || `${notification.createdAt || 'recent'}-${index}`} role="listitem">
+              <div className="notification-card-head">
+                <div className="stack-tight">
+                  <span className="client-case-kicker">{formatNotificationType(notification.typeCode)}</span>
+                  <h3>{notification.title || 'Aviso'}</h3>
+                </div>
+                <StatusBadge tone={notification.read || notification.readAt ? 'neutral' : getNotificationTone(notification.typeCode)}>
+                  {notification.read || notification.readAt ? 'Leída' : 'Pendiente'}
+                </StatusBadge>
+              </div>
+
+              <p className="notification-card-message">{notification.message || 'Sin mensaje visible.'}</p>
+
+              <div className="notification-card-meta">
+                <small>{notification.createdAt ? formatDateTime(notification.createdAt) : 'Sin fecha informada'}</small>
+                {notification.caseId ? <small>Carpeta #{notification.caseId}</small> : null}
+              </div>
+            </article>
+          ))}
         </div>
       ) : null}
 
@@ -1756,6 +2424,268 @@ function AuthenticatedNotificationsPreview({ pendingIds, state, onMarkAsRead, on
         <div className="backend-cases-empty" role="status">
           <strong>No tenés avisos pendientes.</strong>
           <p>Cuando aparezca una novedad real para tu cuenta, la vas a ver acá.</p>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function AuthenticatedSystemParametersPreview({ state, onRefresh }) {
+  const isLoading = state.status === 'loading';
+  const hasItems = (state.items || []).length > 0;
+
+  return (
+    <section className="card backend-notifications-card simple-panel-section">
+      <div className="section-head backend-cases-head">
+        <div className="stack-tight">
+          <p className="eyebrow">Parámetros</p>
+          <h2>Referencia del sistema</h2>
+          <p className="muted">Mostramos parámetros de lectura para tener contexto operativo actualizado.</p>
+        </div>
+        <div className="backend-cases-actions">
+          <StatusBadge tone={state.status === 'error' ? 'danger' : state.status === 'success' ? 'success' : 'info'}>
+            {isLoading ? 'Actualizando' : state.status === 'success' ? 'Disponible' : state.status === 'error' ? 'Revisar' : 'Pendiente'}
+          </StatusBadge>
+          <button className="secondary-button" disabled={isLoading} onClick={() => { void onRefresh(); }} type="button">
+            {isLoading ? 'Actualizando...' : 'Actualizar'}
+          </button>
+        </div>
+      </div>
+
+      {hasItems ? (
+        <div className="backend-document-summary" role="list" aria-label="Parámetros del sistema">
+          {state.items.slice(0, 6).map((param, index) => (
+            <article className="backend-document-summary-card" key={param.code || `${param.name || 'param'}-${index}`} role="listitem">
+              <span>{param.code || param.name || 'Parámetro'}</span>
+              <strong>{String(param.value ?? param.defaultValue ?? '-')}</strong>
+              <small>{param.description || 'Sin descripción disponible.'}</small>
+            </article>
+          ))}
+        </div>
+      ) : null}
+
+      {state.status === 'loading' && !hasItems ? (
+        <div className="backend-cases-empty" role="status" aria-live="polite">
+          <strong>Estamos cargando los parámetros del sistema.</strong>
+          <p>En unos instantes vas a ver esta referencia.</p>
+        </div>
+      ) : null}
+
+      {state.status === 'error' ? (
+        <div className="backend-cases-empty" role="status">
+          <strong>No pudimos cargar los parámetros del sistema.</strong>
+          <p>{state.detail || 'Intentá nuevamente en unos instantes.'}</p>
+        </div>
+      ) : null}
+
+      {state.status === 'success' && !hasItems ? (
+        <div className="backend-cases-empty" role="status">
+          <strong>No hay parámetros visibles en este momento.</strong>
+          <p>Cuando estén disponibles, los vas a ver acá.</p>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function AuthenticatedOperationCatalogsPreview({ state, onRefresh }) {
+  const isLoading = state.status === 'loading';
+  const hasItems = (state.items || []).length > 0;
+
+  return (
+    <section className="card backend-notifications-card simple-panel-section">
+      <div className="section-head backend-cases-head">
+        <div className="stack-tight">
+          <p className="eyebrow">Catálogos</p>
+          <h2>Referencia operativa</h2>
+          <p className="muted">Resumen de catálogos para validar que el panel está alineado con operación.</p>
+        </div>
+        <div className="backend-cases-actions">
+          <StatusBadge tone={state.status === 'error' ? 'danger' : state.status === 'success' ? 'success' : 'info'}>
+            {isLoading ? 'Actualizando' : state.status === 'success' ? 'Disponible' : state.status === 'error' ? 'Revisar' : 'Pendiente'}
+          </StatusBadge>
+          <button className="secondary-button" disabled={isLoading} onClick={() => { void onRefresh(); }} type="button">
+            {isLoading ? 'Actualizando...' : 'Actualizar'}
+          </button>
+        </div>
+      </div>
+
+      {hasItems ? (
+        <div className="backend-document-summary" role="list" aria-label="Resumen de catálogos de operación">
+          {state.items.slice(0, 6).map((entry) => (
+            <article className="backend-document-summary-card" key={entry.key} role="listitem">
+              <span>{formatBackendState(entry.key, entry.key)}</span>
+              <strong>{entry.count}</strong>
+              <small>Opciones disponibles en esta categoría.</small>
+            </article>
+          ))}
+        </div>
+      ) : null}
+
+      {state.status === 'loading' && !hasItems ? (
+        <div className="backend-cases-empty" role="status" aria-live="polite">
+          <strong>Estamos cargando los catálogos de operación.</strong>
+          <p>En unos instantes vas a ver esta referencia.</p>
+        </div>
+      ) : null}
+
+      {state.status === 'error' ? (
+        <div className="backend-cases-empty" role="status">
+          <strong>No pudimos cargar los catálogos de operación.</strong>
+          <p>{state.detail || 'Intentá nuevamente en unos instantes.'}</p>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function AuthenticatedFinanceCatalogsPreview({ state, onRefresh }) {
+  const isLoading = state.status === 'loading';
+  const hasItems = (state.items || []).length > 0;
+
+  return (
+    <section className="card backend-notifications-card simple-panel-section">
+      <div className="section-head backend-cases-head">
+        <div className="stack-tight">
+          <p className="eyebrow">Finanzas</p>
+          <h2>Catálogos financieros</h2>
+          <p className="muted">Resumen de catálogos para validar reglas de cobros y movimientos.</p>
+        </div>
+        <div className="backend-cases-actions">
+          <StatusBadge tone={state.status === 'error' ? 'danger' : state.status === 'success' ? 'success' : 'info'}>
+            {isLoading ? 'Actualizando' : state.status === 'success' ? 'Disponible' : state.status === 'error' ? 'Revisar' : 'Pendiente'}
+          </StatusBadge>
+          <button className="secondary-button" disabled={isLoading} onClick={() => { void onRefresh(); }} type="button">
+            {isLoading ? 'Actualizando...' : 'Actualizar'}
+          </button>
+        </div>
+      </div>
+
+      {hasItems ? (
+        <div className="backend-document-summary" role="list" aria-label="Resumen de catálogos de finanzas">
+          {state.items.slice(0, 6).map((entry) => (
+            <article className="backend-document-summary-card" key={entry.key} role="listitem">
+              <span>{formatBackendState(entry.key, entry.key)}</span>
+              <strong>{entry.count}</strong>
+              <small>Opciones disponibles en esta categoría.</small>
+            </article>
+          ))}
+        </div>
+      ) : null}
+
+      {state.status === 'loading' && !hasItems ? (
+        <div className="backend-cases-empty" role="status" aria-live="polite">
+          <strong>Estamos cargando los catálogos de finanzas.</strong>
+          <p>En unos instantes vas a ver esta referencia.</p>
+        </div>
+      ) : null}
+
+      {state.status === 'error' ? (
+        <div className="backend-cases-empty" role="status">
+          <strong>No pudimos cargar los catálogos de finanzas.</strong>
+          <p>{state.detail || 'Intentá nuevamente en unos instantes.'}</p>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function AuthenticatedInsuranceCatalogsPreview({ state, onRefresh }) {
+  const isLoading = state.status === 'loading';
+  const hasItems = (state.items || []).length > 0;
+
+  return (
+    <section className="card backend-notifications-card simple-panel-section">
+      <div className="section-head backend-cases-head">
+        <div className="stack-tight">
+          <p className="eyebrow">Seguros</p>
+          <h2>Catálogos de seguros</h2>
+          <p className="muted">Resumen de catálogos para validar reglas del circuito de seguros.</p>
+        </div>
+        <div className="backend-cases-actions">
+          <StatusBadge tone={state.status === 'error' ? 'danger' : state.status === 'success' ? 'success' : 'info'}>
+            {isLoading ? 'Actualizando' : state.status === 'success' ? 'Disponible' : state.status === 'error' ? 'Revisar' : 'Pendiente'}
+          </StatusBadge>
+          <button className="secondary-button" disabled={isLoading} onClick={() => { void onRefresh(); }} type="button">
+            {isLoading ? 'Actualizando...' : 'Actualizar'}
+          </button>
+        </div>
+      </div>
+
+      {hasItems ? (
+        <div className="backend-document-summary" role="list" aria-label="Resumen de catálogos de seguros">
+          {state.items.slice(0, 6).map((entry) => (
+            <article className="backend-document-summary-card" key={entry.key} role="listitem">
+              <span>{formatBackendState(entry.key, entry.key)}</span>
+              <strong>{entry.count}</strong>
+              <small>Opciones disponibles en esta categoría.</small>
+            </article>
+          ))}
+        </div>
+      ) : null}
+
+      {state.status === 'loading' && !hasItems ? (
+        <div className="backend-cases-empty" role="status" aria-live="polite">
+          <strong>Estamos cargando los catálogos de seguros.</strong>
+          <p>En unos instantes vas a ver esta referencia.</p>
+        </div>
+      ) : null}
+
+      {state.status === 'error' ? (
+        <div className="backend-cases-empty" role="status">
+          <strong>No pudimos cargar los catálogos de seguros.</strong>
+          <p>{state.detail || 'Intentá nuevamente en unos instantes.'}</p>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function AuthenticatedDocumentsCatalogsPreview({ state, onRefresh }) {
+  const isLoading = state.status === 'loading';
+  const hasItems = (state.items || []).length > 0;
+
+  return (
+    <section className="card backend-notifications-card simple-panel-section">
+      <div className="section-head backend-cases-head">
+        <div className="stack-tight">
+          <p className="eyebrow">Documentación</p>
+          <h2>Catálogos de documentos</h2>
+          <p className="muted">Resumen de categorías y listas para validar el circuito documental.</p>
+        </div>
+        <div className="backend-cases-actions">
+          <StatusBadge tone={state.status === 'error' ? 'danger' : state.status === 'success' ? 'success' : 'info'}>
+            {isLoading ? 'Actualizando' : state.status === 'success' ? 'Disponible' : state.status === 'error' ? 'Revisar' : 'Pendiente'}
+          </StatusBadge>
+          <button className="secondary-button" disabled={isLoading} onClick={() => { void onRefresh(); }} type="button">
+            {isLoading ? 'Actualizando...' : 'Actualizar'}
+          </button>
+        </div>
+      </div>
+
+      {hasItems ? (
+        <div className="backend-document-summary" role="list" aria-label="Resumen de catálogos de documentos">
+          {state.items.slice(0, 6).map((entry) => (
+            <article className="backend-document-summary-card" key={entry.key} role="listitem">
+              <span>{formatBackendState(entry.key, entry.key)}</span>
+              <strong>{entry.count}</strong>
+              <small>Opciones disponibles en esta categoría.</small>
+            </article>
+          ))}
+        </div>
+      ) : null}
+
+      {state.status === 'loading' && !hasItems ? (
+        <div className="backend-cases-empty" role="status" aria-live="polite">
+          <strong>Estamos cargando los catálogos de documentos.</strong>
+          <p>En unos instantes vas a ver esta referencia.</p>
+        </div>
+      ) : null}
+
+      {state.status === 'error' ? (
+        <div className="backend-cases-empty" role="status">
+          <strong>No pudimos cargar los catálogos de documentos.</strong>
+          <p>{state.detail || 'Intentá nuevamente en unos instantes.'}</p>
         </div>
       ) : null}
     </section>
@@ -5531,12 +6461,23 @@ function PanelGeneral({
   authenticatedCaseDetailState,
   authenticatedCasesState,
   authenticatedNotificationsState,
+  authenticatedSystemParametersState,
+  authenticatedOperationCatalogsState,
+  authenticatedFinanceCatalogsState,
+  authenticatedInsuranceCatalogsState,
+  authenticatedDocumentsCatalogsState,
   onRefreshCurrentUser,
   onMarkNotificationAsRead,
   onOpenAuthenticatedCaseDetail,
   onRefreshAuthenticatedCases,
   onRefreshAuthenticatedNotifications,
+  onRefreshAuthenticatedSystemParameters,
+  onRefreshAuthenticatedOperationCatalogs,
+  onRefreshAuthenticatedFinanceCatalogs,
+  onRefreshAuthenticatedInsuranceCatalogs,
+  onRefreshAuthenticatedDocumentsCatalogs,
   pendingNotificationIds,
+  notificationActionStateById,
 }) {
   return (
     <div className="page-stack">
@@ -5567,11 +6508,37 @@ function PanelGeneral({
       />
 
       <AuthenticatedNotificationsPreview
+        itemActionStates={notificationActionStateById}
         pendingIds={pendingNotificationIds}
         state={authenticatedNotificationsState}
         onMarkAsRead={onMarkNotificationAsRead}
         onOpenCaseDetail={onOpenAuthenticatedCaseDetail}
         onRefresh={onRefreshAuthenticatedNotifications}
+      />
+
+      <AuthenticatedSystemParametersPreview
+        state={authenticatedSystemParametersState}
+        onRefresh={onRefreshAuthenticatedSystemParameters}
+      />
+
+      <AuthenticatedOperationCatalogsPreview
+        state={authenticatedOperationCatalogsState}
+        onRefresh={onRefreshAuthenticatedOperationCatalogs}
+      />
+
+      <AuthenticatedFinanceCatalogsPreview
+        state={authenticatedFinanceCatalogsState}
+        onRefresh={onRefreshAuthenticatedFinanceCatalogs}
+      />
+
+      <AuthenticatedInsuranceCatalogsPreview
+        state={authenticatedInsuranceCatalogsState}
+        onRefresh={onRefreshAuthenticatedInsuranceCatalogs}
+      />
+
+      <AuthenticatedDocumentsCatalogsPreview
+        state={authenticatedDocumentsCatalogsState}
+        onRefresh={onRefreshAuthenticatedDocumentsCatalogs}
       />
     </div>
   );
@@ -5737,29 +6704,6 @@ function FichaTecnicaTab({ item, updateCase }) {
             <DataField label="Fecha nacimiento" onChange={(value) => updateCase((draft) => { draft.customer.birthDate = value; })} type="date" value={item.customer.birthDate || ''} />
             <SelectField label="Estado civil" onChange={(value) => updateCase((draft) => { draft.customer.civilStatus = value; })} options={CIVIL_STATUS_OPTIONS} placeholder="Seleccioná" value={item.customer.civilStatus || ''} />
             <DataField label="Telefono" onChange={(value) => updateCase((draft) => { draft.customer.phone = value; })} value={item.customer.phone} />
-            <DataField label="Localidad" onChange={(value) => updateCase((draft) => { draft.customer.locality = value; })} value={item.customer.locality} />
-            <DataField label="Email" onChange={(value) => updateCase((draft) => { draft.customer.email = value; })} value={item.customer.email} />
-            <DataField label="Ocupación" onChange={(value) => updateCase((draft) => { draft.customer.occupation = value; })} value={item.customer.occupation || ''} />
-            <DataField label="Calle" onChange={(value) => updateCase((draft) => { draft.customer.street = value; })} value={item.customer.street || ''} />
-            <DataField label="Número" onChange={(value) => updateCase((draft) => { draft.customer.streetNumber = value; })} value={item.customer.streetNumber || ''} />
-            <DataField label="Piso / Depto" onChange={(value) => updateCase((draft) => { draft.customer.addressExtra = value; })} value={item.customer.addressExtra || ''} />
-            <ToggleField label="Referenciado" onChange={(value) => updateCase((draft) => { draft.customer.referenced = value; if (value !== 'SI') draft.customer.referencedName = ''; })} value={item.customer.referenced} />
-            {item.customer.referenced === 'SI' ? (
-              <DataField label="Nombre referenciado" onChange={(value) => updateCase((draft) => { draft.customer.referencedName = value; })} value={item.customer.referencedName} />
-            ) : null}
-          </div>
-          {isThirdParty ? (
-            <>
-              <div className="budget-ready-panel budget-ready-panel-compact">
-                <StatusBadge tone={clientRegistry.isOwner === 'SI' ? 'success' : 'info'}>{clientRegistry.isOwner === 'SI' ? 'Cliente titular registral' : 'Titular registral externo'}</StatusBadge>
-                <small>Si el cliente no es titular, la demo toma el primer titular registral para nombrar la carpeta.</small>
-              </div>
-              <div className="form-grid three-columns compact-grid">
-                <ToggleField label="Titular registral" onChange={(value) => updateCase((draft) => {
-                  draft.thirdParty.clientRegistry.isOwner = value;
-                  if (value !== 'NO') {
-                    draft.thirdParty.clientRegistry.ownershipPercentage = '100%';
-       d label="Telefono" onChange={(value) => updateCase((draft) => { draft.customer.phone = value; })} value={item.customer.phone} />
             <DataField label="Localidad" onChange={(value) => updateCase((draft) => { draft.customer.locality = value; })} value={item.customer.locality} />
             <DataField label="Email" onChange={(value) => updateCase((draft) => { draft.customer.email = value; })} value={item.customer.email} />
             <DataField label="Ocupación" onChange={(value) => updateCase((draft) => { draft.customer.occupation = value; })} value={item.customer.occupation || ''} />
@@ -10075,6 +11019,12 @@ function App() {
   const loginEndpoint = getLoginUrl();
   const currentUserEndpoint = getCurrentUserUrl();
   const unreadNotificationsEndpoint = getUnreadNotificationsUrl();
+  const notificationsEndpoint = getNotificationsUrl();
+  const systemParametersEndpoint = getSystemParametersUrl();
+  const operationCatalogsEndpoint = getOperationCatalogsUrl();
+  const financeCatalogsEndpoint = getFinanceCatalogsUrl();
+  const insuranceCatalogsEndpoint = getInsuranceCatalogsUrl();
+  const documentsCatalogsEndpoint = getDocumentsCatalogsUrl();
   const storedSession = readBackendSession();
   const hasStoredSession = Boolean(storedSession?.accessToken);
   const [shouldBootstrapSession] = useState(hasStoredSession);
@@ -10153,9 +11103,63 @@ function App() {
     checkedAt: '',
     httpStatus: null,
     items: [],
+    recentItems: [],
+    recentCount: 0,
     unreadCount: 0,
+    unreadCountSource: 'none',
+  });
+  const [authenticatedSystemParametersState, setAuthenticatedSystemParametersState] = useState({
+    status: 'idle',
+    tone: 'info',
+    title: 'Parámetros del sistema',
+    detail: 'Todavía no cargamos esta referencia.',
+    endpoint: systemParametersEndpoint,
+    checkedAt: '',
+    httpStatus: null,
+    items: [],
+  });
+  const [authenticatedOperationCatalogsState, setAuthenticatedOperationCatalogsState] = useState({
+    status: 'idle',
+    tone: 'info',
+    title: 'Catálogos de operación',
+    detail: 'Todavía no cargamos esta referencia.',
+    endpoint: operationCatalogsEndpoint,
+    checkedAt: '',
+    httpStatus: null,
+    items: [],
+  });
+  const [authenticatedFinanceCatalogsState, setAuthenticatedFinanceCatalogsState] = useState({
+    status: 'idle',
+    tone: 'info',
+    title: 'Catálogos de finanzas',
+    detail: 'Todavía no cargamos esta referencia.',
+    endpoint: financeCatalogsEndpoint,
+    checkedAt: '',
+    httpStatus: null,
+    items: [],
+  });
+  const [authenticatedInsuranceCatalogsState, setAuthenticatedInsuranceCatalogsState] = useState({
+    status: 'idle',
+    tone: 'info',
+    title: 'Catálogos de seguros',
+    detail: 'Todavía no cargamos esta referencia.',
+    endpoint: insuranceCatalogsEndpoint,
+    checkedAt: '',
+    httpStatus: null,
+    items: [],
+  });
+  const [authenticatedDocumentsCatalogsState, setAuthenticatedDocumentsCatalogsState] = useState({
+    status: 'idle',
+    tone: 'info',
+    title: 'Catálogos de documentos',
+    detail: 'Todavía no cargamos esta referencia.',
+    endpoint: documentsCatalogsEndpoint,
+    checkedAt: '',
+    httpStatus: null,
+    items: [],
   });
   const [pendingNotificationIds, setPendingNotificationIds] = useState([]);
+  const [notificationActionStateById, setNotificationActionStateById] = useState({});
 
   const computedCases = useMemo(() => cases.map(getComputedCase), [cases]);
   const agendaItems = useMemo(() => buildAgendaStore(computedCases), [computedCases]);
@@ -10344,9 +11348,62 @@ function App() {
       checkedAt: '',
       httpStatus: null,
       items: [],
+      recentItems: [],
+      recentCount: 0,
       unreadCount: 0,
+      unreadCountSource: 'none',
     });
     setPendingNotificationIds([]);
+    setAuthenticatedSystemParametersState({
+      status: 'idle',
+      tone: 'info',
+      title: 'Parámetros del sistema',
+      detail: 'Volvé a ingresar para recuperar esta referencia.',
+      endpoint: systemParametersEndpoint,
+      checkedAt: '',
+      httpStatus: null,
+      items: [],
+    });
+    setAuthenticatedOperationCatalogsState({
+      status: 'idle',
+      tone: 'info',
+      title: 'Catálogos de operación',
+      detail: 'Volvé a ingresar para recuperar esta referencia.',
+      endpoint: operationCatalogsEndpoint,
+      checkedAt: '',
+      httpStatus: null,
+      items: [],
+    });
+    setAuthenticatedFinanceCatalogsState({
+      status: 'idle',
+      tone: 'info',
+      title: 'Catálogos de finanzas',
+      detail: 'Volvé a ingresar para recuperar esta referencia.',
+      endpoint: financeCatalogsEndpoint,
+      checkedAt: '',
+      httpStatus: null,
+      items: [],
+    });
+    setAuthenticatedInsuranceCatalogsState({
+      status: 'idle',
+      tone: 'info',
+      title: 'Catálogos de seguros',
+      detail: 'Volvé a ingresar para recuperar esta referencia.',
+      endpoint: insuranceCatalogsEndpoint,
+      checkedAt: '',
+      httpStatus: null,
+      items: [],
+    });
+    setAuthenticatedDocumentsCatalogsState({
+      status: 'idle',
+      tone: 'info',
+      title: 'Catálogos de documentos',
+      detail: 'Volvé a ingresar para recuperar esta referencia.',
+      endpoint: documentsCatalogsEndpoint,
+      checkedAt: '',
+      httpStatus: null,
+      items: [],
+    });
   };
 
   const runCurrentUserRead = async (accessToken, signal) => {
@@ -10542,8 +11599,34 @@ function App() {
     }));
 
     try {
-      const result = await readAuthenticatedUnreadNotifications(accessToken, { signal });
+      const [unreadResult, unreadCountResult, notificationsResult] = await Promise.allSettled([
+        readAuthenticatedUnreadNotifications(accessToken, { signal }),
+        readAuthenticatedUnreadNotificationsCount(accessToken, { signal }),
+        readAuthenticatedNotifications(accessToken, { signal }),
+      ]);
+
+      if (unreadResult.status !== 'fulfilled') {
+        throw unreadResult.reason;
+      }
+
+      const result = unreadResult.value;
       const items = getUnreadNotificationItems(result.data);
+      const recentItems = notificationsResult.status === 'fulfilled'
+        ? getNotificationItems(notificationsResult.value.data)
+        : [];
+      const countResponsePayload = unreadCountResult.status === 'fulfilled' ? unreadCountResult.value.data : null;
+      const unreadCount = getUnreadNotificationCount(countResponsePayload, items.length);
+      const unreadCountSource = unreadCountResult.status === 'fulfilled' ? 'api' : 'fallback-list';
+
+      setNotificationActionStateById((current) => {
+        const next = {};
+        items.forEach((item) => {
+          if (current[item.id]?.status === 'error') {
+            next[item.id] = current[item.id];
+          }
+        });
+        return next;
+      });
 
       setAuthenticatedNotificationsState({
         status: 'success',
@@ -10551,14 +11634,22 @@ function App() {
         title: 'Avisos actualizados',
         detail: items.length === 0
           ? 'No hay avisos pendientes en este momento.'
-          : `Trajimos ${items.length} aviso${items.length === 1 ? '' : 's'} pendiente${items.length === 1 ? '' : 's'} de tu cuenta.`,
-        endpoint: result.endpoint,
+          : unreadCountSource === 'api'
+            ? `Trajimos ${items.length} aviso${items.length === 1 ? '' : 's'} y el contador oficial marca ${unreadCount}.`
+            : `Trajimos ${items.length} aviso${items.length === 1 ? '' : 's'}. El contador oficial no respondió y usamos un conteo estimado.`,
+        endpoint: notificationsResult.status === 'fulfilled' ? notificationsResult.value.endpoint : result.endpoint,
         checkedAt: new Date().toISOString(),
         httpStatus: result.httpStatus,
         items,
-        unreadCount: items.length,
+        recentItems,
+        recentCount: recentItems.length,
+        unreadCount,
+        unreadCountSource,
       });
     } catch (error) {
+      const countResult = await readAuthenticatedUnreadNotificationsCount(accessToken, { signal }).catch(() => null);
+      const fallbackCount = countResult ? getUnreadNotificationCount(countResult.data, 0) : 0;
+
       setAuthenticatedNotificationsState({
         status: 'error',
         tone: 'danger',
@@ -10568,8 +11659,226 @@ function App() {
         checkedAt: new Date().toISOString(),
         httpStatus: error.httpStatus || null,
         items: [],
-        unreadCount: 0,
+        recentItems: [],
+        recentCount: 0,
+        unreadCount: fallbackCount,
+        unreadCountSource: countResult ? 'api' : 'none',
       });
+    }
+  };
+
+  const runAuthenticatedSystemParametersRead = async (accessToken, signal) => {
+    setAuthenticatedSystemParametersState((current) => ({
+      ...current,
+      status: 'loading',
+      tone: 'info',
+      title: 'Actualizando parámetros',
+      detail: 'Estamos trayendo la referencia del sistema.',
+      endpoint: systemParametersEndpoint,
+      checkedAt: current.checkedAt,
+      httpStatus: null,
+    }));
+
+    try {
+      const result = await readAuthenticatedSystemParameters(accessToken, { signal });
+      const items = getSystemParameterItems(result.data);
+
+      setAuthenticatedSystemParametersState({
+        status: 'success',
+        tone: 'success',
+        title: 'Parámetros actualizados',
+        detail: items.length > 0
+          ? `Trajimos ${items.length} parámetro${items.length === 1 ? '' : 's'} de referencia.`
+          : 'No hay parámetros visibles en este momento.',
+        endpoint: result.endpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: result.httpStatus,
+        items,
+      });
+    } catch (error) {
+      setAuthenticatedSystemParametersState((current) => ({
+        ...current,
+        status: 'error',
+        tone: 'danger',
+        title: 'No pudimos cargar parámetros',
+        detail: error?.message || 'Intentá nuevamente en unos instantes.',
+        endpoint: systemParametersEndpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: error?.httpStatus || null,
+        items: [],
+      }));
+    }
+  };
+
+  const runAuthenticatedOperationCatalogsRead = async (accessToken, signal) => {
+    setAuthenticatedOperationCatalogsState((current) => ({
+      ...current,
+      status: 'loading',
+      tone: 'info',
+      title: 'Actualizando catálogos',
+      detail: 'Estamos trayendo la referencia de operación.',
+      endpoint: operationCatalogsEndpoint,
+      checkedAt: current.checkedAt,
+      httpStatus: null,
+    }));
+
+    try {
+      const result = await readAuthenticatedOperationCatalogs(accessToken, { signal });
+      const items = getOperationCatalogSummary(result.data);
+
+      setAuthenticatedOperationCatalogsState({
+        status: 'success',
+        tone: 'success',
+        title: 'Catálogos actualizados',
+        detail: items.length > 0
+          ? `Trajimos ${items.length} categoría${items.length === 1 ? '' : 's'} de catálogo.`
+          : 'No hay categorías visibles en este momento.',
+        endpoint: result.endpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: result.httpStatus,
+        items,
+      });
+    } catch (error) {
+      setAuthenticatedOperationCatalogsState((current) => ({
+        ...current,
+        status: 'error',
+        tone: 'danger',
+        title: 'No pudimos cargar catálogos',
+        detail: error?.message || 'Intentá nuevamente en unos instantes.',
+        endpoint: operationCatalogsEndpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: error?.httpStatus || null,
+        items: [],
+      }));
+    }
+  };
+
+  const runAuthenticatedFinanceCatalogsRead = async (accessToken, signal) => {
+    setAuthenticatedFinanceCatalogsState((current) => ({
+      ...current,
+      status: 'loading',
+      tone: 'info',
+      title: 'Actualizando catálogos',
+      detail: 'Estamos trayendo la referencia de finanzas.',
+      endpoint: financeCatalogsEndpoint,
+      checkedAt: current.checkedAt,
+      httpStatus: null,
+    }));
+
+    try {
+      const result = await readAuthenticatedFinanceCatalogs(accessToken, { signal });
+      const items = getFinanceCatalogSummary(result.data);
+
+      setAuthenticatedFinanceCatalogsState({
+        status: 'success',
+        tone: 'success',
+        title: 'Catálogos actualizados',
+        detail: items.length > 0
+          ? `Trajimos ${items.length} categoría${items.length === 1 ? '' : 's'} de finanzas.`
+          : 'No hay categorías visibles en este momento.',
+        endpoint: result.endpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: result.httpStatus,
+        items,
+      });
+    } catch (error) {
+      setAuthenticatedFinanceCatalogsState((current) => ({
+        ...current,
+        status: 'error',
+        tone: 'danger',
+        title: 'No pudimos cargar catálogos',
+        detail: error?.message || 'Intentá nuevamente en unos instantes.',
+        endpoint: financeCatalogsEndpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: error?.httpStatus || null,
+        items: [],
+      }));
+    }
+  };
+
+  const runAuthenticatedInsuranceCatalogsRead = async (accessToken, signal) => {
+    setAuthenticatedInsuranceCatalogsState((current) => ({
+      ...current,
+      status: 'loading',
+      tone: 'info',
+      title: 'Actualizando catálogos',
+      detail: 'Estamos trayendo la referencia de seguros.',
+      endpoint: insuranceCatalogsEndpoint,
+      checkedAt: current.checkedAt,
+      httpStatus: null,
+    }));
+
+    try {
+      const result = await readAuthenticatedInsuranceCatalogs(accessToken, { signal });
+      const items = getInsuranceCatalogSummary(result.data);
+
+      setAuthenticatedInsuranceCatalogsState({
+        status: 'success',
+        tone: 'success',
+        title: 'Catálogos actualizados',
+        detail: items.length > 0
+          ? `Trajimos ${items.length} categoría${items.length === 1 ? '' : 's'} de seguros.`
+          : 'No hay categorías visibles en este momento.',
+        endpoint: result.endpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: result.httpStatus,
+        items,
+      });
+    } catch (error) {
+      setAuthenticatedInsuranceCatalogsState((current) => ({
+        ...current,
+        status: 'error',
+        tone: 'danger',
+        title: 'No pudimos cargar catálogos',
+        detail: error?.message || 'Intentá nuevamente en unos instantes.',
+        endpoint: insuranceCatalogsEndpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: error?.httpStatus || null,
+        items: [],
+      }));
+    }
+  };
+
+  const runAuthenticatedDocumentsCatalogsRead = async (accessToken, signal) => {
+    setAuthenticatedDocumentsCatalogsState((current) => ({
+      ...current,
+      status: 'loading',
+      tone: 'info',
+      title: 'Actualizando catálogos',
+      detail: 'Estamos trayendo la referencia de documentos.',
+      endpoint: documentsCatalogsEndpoint,
+      checkedAt: current.checkedAt,
+      httpStatus: null,
+    }));
+
+    try {
+      const result = await readAuthenticatedDocumentsCatalogs(accessToken, { signal });
+      const items = getDocumentsCatalogSummary(result.data);
+
+      setAuthenticatedDocumentsCatalogsState({
+        status: 'success',
+        tone: 'success',
+        title: 'Catálogos actualizados',
+        detail: items.length > 0
+          ? `Trajimos ${items.length} categoría${items.length === 1 ? '' : 's'} de documentos.`
+          : 'No hay categorías visibles en este momento.',
+        endpoint: result.endpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: result.httpStatus,
+        items,
+      });
+    } catch (error) {
+      setAuthenticatedDocumentsCatalogsState((current) => ({
+        ...current,
+        status: 'error',
+        tone: 'danger',
+        title: 'No pudimos cargar catálogos',
+        detail: error?.message || 'Intentá nuevamente en unos instantes.',
+        endpoint: documentsCatalogsEndpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: error?.httpStatus || null,
+        items: [],
+      }));
     }
   };
 
@@ -10579,7 +11888,19 @@ function App() {
     }
 
     const endpoint = getCaseDetailUrl(item.id);
+    const relationsEndpoint = getCaseRelationsUrl(item.id);
+    const insuranceEndpoint = getCaseInsuranceUrl(item.id);
+    const insuranceProcessingEndpoint = getCaseInsuranceProcessingUrl(item.id);
+    const franchiseEndpoint = getCaseFranchiseUrl(item.id);
+    const insuranceProcessingDocumentsEndpoint = getCaseInsuranceProcessingDocumentsUrl(item.id);
+    const cleasEndpoint = getCaseCleasUrl(item.id);
+    const thirdPartyEndpoint = getCaseThirdPartyUrl(item.id);
+    const legalEndpoint = getCaseLegalUrl(item.id);
+    const legalNewsEndpoint = getCaseLegalNewsUrl(item.id);
+    const legalExpensesEndpoint = getCaseLegalExpensesUrl(item.id);
+    const franchiseRecoveryEndpoint = getCaseFranchiseRecoveryUrl(item.id);
     const budgetEndpoint = getCaseBudgetUrl(item.id);
+    const auditEventsEndpoint = getCaseAuditEventsUrl(item.id);
     const appointmentsEndpoint = getCaseAppointmentsUrl(item.id);
     const financeSummaryEndpoint = getCaseFinanceSummaryUrl(item.id);
     const financialMovementsEndpoint = getCaseFinancialMovementsUrl(item.id);
@@ -10599,6 +11920,83 @@ function App() {
       data: null,
       workflowHistory: [],
       workflowActions: [],
+      auditEventsState: {
+        status: 'loading',
+        items: [],
+        total: 0,
+        detail: 'Estamos revisando la actividad reciente de esta carpeta.',
+        endpoint: auditEventsEndpoint,
+      },
+      relationsState: {
+        status: 'loading',
+        items: [],
+        total: 0,
+        detail: 'Estamos revisando los vínculos de esta carpeta.',
+        endpoint: relationsEndpoint,
+      },
+      insuranceState: {
+        status: 'loading',
+        data: null,
+        detail: 'Estamos revisando la cobertura de esta carpeta.',
+        endpoint: insuranceEndpoint,
+      },
+      insuranceProcessingState: {
+        status: 'loading',
+        data: null,
+        detail: 'Estamos revisando el estado del trámite con la compañía.',
+        endpoint: insuranceProcessingEndpoint,
+      },
+      franchiseState: {
+        status: 'loading',
+        data: null,
+        detail: 'Estamos revisando los datos de franquicia de esta carpeta.',
+        endpoint: franchiseEndpoint,
+      },
+      insuranceProcessingDocumentsState: {
+        status: 'loading',
+        items: [],
+        total: 0,
+        detail: 'Estamos revisando los documentos del trámite con la compañía.',
+        endpoint: insuranceProcessingDocumentsEndpoint,
+      },
+      cleasState: {
+        status: 'loading',
+        data: null,
+        detail: 'Estamos revisando los datos CLEAS de esta carpeta.',
+        endpoint: cleasEndpoint,
+      },
+      thirdPartyState: {
+        status: 'loading',
+        data: null,
+        detail: 'Estamos revisando los datos de terceros de esta carpeta.',
+        endpoint: thirdPartyEndpoint,
+      },
+      legalState: {
+        status: 'loading',
+        data: null,
+        detail: 'Estamos revisando los datos legales de esta carpeta.',
+        endpoint: legalEndpoint,
+      },
+      legalNewsState: {
+        status: 'loading',
+        items: [],
+        total: 0,
+        detail: 'Estamos revisando las novedades legales de esta carpeta.',
+        endpoint: legalNewsEndpoint,
+      },
+      legalExpensesState: {
+        status: 'loading',
+        items: [],
+        total: 0,
+        detail: 'Estamos revisando los gastos legales de esta carpeta.',
+        endpoint: legalExpensesEndpoint,
+      },
+      franchiseRecoveryState: {
+        status: 'loading',
+        data: null,
+        detail: 'Estamos revisando el recupero de franquicia de esta carpeta.',
+        endpoint: franchiseRecoveryEndpoint,
+      },
       budgetState: {
         status: 'loading',
         data: null,
@@ -10665,10 +12063,22 @@ function App() {
     });
 
     try {
-      const [detailResult, historyResult, actionsResult, budgetResult, appointmentsResult, documentsResult, financeSummaryResult, financialMovementsResult, receiptsResult, vehicleIntakesResult, vehicleOutcomesResult] = await Promise.allSettled([
+      const [detailResult, historyResult, actionsResult, auditEventsResult, relationsResult, insuranceResult, insuranceProcessingResult, insuranceProcessingDocumentsResult, cleasResult, thirdPartyResult, legalResult, legalNewsResult, legalExpensesResult, franchiseRecoveryResult, franchiseResult, budgetResult, appointmentsResult, documentsResult, financeSummaryResult, financialMovementsResult, receiptsResult, vehicleIntakesResult, vehicleOutcomesResult] = await Promise.allSettled([
         readAuthenticatedCaseDetail(backendSession.accessToken, item.id),
         readAuthenticatedCaseWorkflowHistory(backendSession.accessToken, item.id),
         readAuthenticatedCaseWorkflowActions(backendSession.accessToken, item.id),
+        readAuthenticatedCaseAuditEvents(backendSession.accessToken, item.id),
+        readAuthenticatedCaseRelations(backendSession.accessToken, item.id),
+        readAuthenticatedCaseInsurance(backendSession.accessToken, item.id),
+        readAuthenticatedCaseInsuranceProcessing(backendSession.accessToken, item.id),
+        readAuthenticatedCaseInsuranceProcessingDocuments(backendSession.accessToken, item.id),
+        readAuthenticatedCaseCleas(backendSession.accessToken, item.id),
+        readAuthenticatedCaseThirdParty(backendSession.accessToken, item.id),
+        readAuthenticatedCaseLegal(backendSession.accessToken, item.id),
+        readAuthenticatedCaseLegalNews(backendSession.accessToken, item.id),
+        readAuthenticatedCaseLegalExpenses(backendSession.accessToken, item.id),
+        readAuthenticatedCaseFranchiseRecovery(backendSession.accessToken, item.id),
+        readAuthenticatedCaseFranchise(backendSession.accessToken, item.id),
         readAuthenticatedCaseBudget(backendSession.accessToken, item.id),
         readAuthenticatedCaseAppointments(backendSession.accessToken, item.id),
         readAuthenticatedCaseDocuments(backendSession.accessToken, item.id),
@@ -10689,6 +12099,42 @@ function App() {
       const workflowActions = actionsResult.status === 'fulfilled'
         ? getWorkflowActionsItems(actionsResult.value.data)
         : [];
+      const auditEventsState = auditEventsResult.status === 'fulfilled'
+        ? buildCaseAuditEventsState(auditEventsResult.value.data)
+        : buildRejectedCaseAuditEventsState(auditEventsResult.reason);
+      const relationsState = relationsResult.status === 'fulfilled'
+        ? buildCaseRelationsState(relationsResult.value.data)
+        : buildRejectedCaseRelationsState(relationsResult.reason);
+      const insuranceState = insuranceResult.status === 'fulfilled'
+        ? buildCaseInsuranceState(insuranceResult.value.data)
+        : buildRejectedCaseInsuranceState(insuranceResult.reason);
+      const insuranceProcessingState = insuranceProcessingResult.status === 'fulfilled'
+        ? buildCaseInsuranceProcessingState(insuranceProcessingResult.value.data)
+        : buildRejectedCaseInsuranceProcessingState(insuranceProcessingResult.reason);
+      const franchiseState = franchiseResult.status === 'fulfilled'
+        ? buildCaseFranchiseState(franchiseResult.value.data)
+        : buildRejectedCaseFranchiseState(franchiseResult.reason);
+      const insuranceProcessingDocumentsState = insuranceProcessingDocumentsResult.status === 'fulfilled'
+        ? buildCaseInsuranceProcessingDocumentsState(insuranceProcessingDocumentsResult.value.data)
+        : buildRejectedCaseInsuranceProcessingDocumentsState(insuranceProcessingDocumentsResult.reason);
+      const cleasState = cleasResult.status === 'fulfilled'
+        ? buildCaseCleasState(cleasResult.value.data)
+        : buildRejectedCaseCleasState(cleasResult.reason);
+      const thirdPartyState = thirdPartyResult.status === 'fulfilled'
+        ? buildCaseThirdPartyState(thirdPartyResult.value.data)
+        : buildRejectedCaseThirdPartyState(thirdPartyResult.reason);
+      const legalState = legalResult.status === 'fulfilled'
+        ? buildCaseLegalState(legalResult.value.data)
+        : buildRejectedCaseLegalState(legalResult.reason);
+      const legalNewsState = legalNewsResult.status === 'fulfilled'
+        ? buildCaseLegalNewsState(legalNewsResult.value.data)
+        : buildRejectedCaseLegalNewsState(legalNewsResult.reason);
+      const legalExpensesState = legalExpensesResult.status === 'fulfilled'
+        ? buildCaseLegalExpensesState(legalExpensesResult.value.data)
+        : buildRejectedCaseLegalExpensesState(legalExpensesResult.reason);
+      const franchiseRecoveryState = franchiseRecoveryResult.status === 'fulfilled'
+        ? buildCaseFranchiseRecoveryState(franchiseRecoveryResult.value.data)
+        : buildRejectedCaseFranchiseRecoveryState(franchiseRecoveryResult.reason);
       const budgetState = budgetResult.status === 'fulfilled'
         ? buildCaseBudgetState(budgetResult.value.data)
         : buildRejectedCaseBudgetState(budgetResult.reason);
@@ -10737,6 +12183,42 @@ function App() {
         historyResult.status === 'rejected' || actionsResult.status === 'rejected'
           ? 'Abrimos la carpeta, pero algunas novedades de seguimiento no pudieron mostrarse ahora.'
           : '',
+        auditEventsResult.status === 'rejected' && auditEventsResult.reason?.httpStatus !== 404
+          ? 'Abrimos la carpeta, pero la actividad reciente no pudo mostrarse ahora.'
+          : '',
+        relationsResult.status === 'rejected' && relationsResult.reason?.httpStatus !== 404
+          ? 'Abrimos la carpeta, pero los vínculos no pudieron mostrarse ahora.'
+          : '',
+        insuranceResult.status === 'rejected' && insuranceResult.reason?.httpStatus !== 404
+          ? 'Abrimos la carpeta, pero la cobertura no pudo mostrarse ahora.'
+          : '',
+        insuranceProcessingResult.status === 'rejected' && insuranceProcessingResult.reason?.httpStatus !== 404
+          ? 'Abrimos la carpeta, pero el estado del trámite con la compañía no pudo mostrarse ahora.'
+          : '',
+        franchiseResult.status === 'rejected' && franchiseResult.reason?.httpStatus !== 404
+          ? 'Abrimos la carpeta, pero la franquicia no pudo mostrarse ahora.'
+          : '',
+        insuranceProcessingDocumentsResult.status === 'rejected' && insuranceProcessingDocumentsResult.reason?.httpStatus !== 404
+          ? 'Abrimos la carpeta, pero los documentos del trámite con la compañía no pudieron mostrarse ahora.'
+          : '',
+        cleasResult.status === 'rejected' && cleasResult.reason?.httpStatus !== 404
+          ? 'Abrimos la carpeta, pero los datos CLEAS no pudieron mostrarse ahora.'
+          : '',
+        thirdPartyResult.status === 'rejected' && thirdPartyResult.reason?.httpStatus !== 404
+          ? 'Abrimos la carpeta, pero los datos de terceros no pudieron mostrarse ahora.'
+          : '',
+        legalResult.status === 'rejected' && legalResult.reason?.httpStatus !== 404
+          ? 'Abrimos la carpeta, pero los datos legales no pudieron mostrarse ahora.'
+          : '',
+        legalNewsResult.status === 'rejected' && legalNewsResult.reason?.httpStatus !== 404
+          ? 'Abrimos la carpeta, pero las novedades legales no pudieron mostrarse ahora.'
+          : '',
+        legalExpensesResult.status === 'rejected' && legalExpensesResult.reason?.httpStatus !== 404
+          ? 'Abrimos la carpeta, pero los gastos legales no pudieron mostrarse ahora.'
+          : '',
+        franchiseRecoveryResult.status === 'rejected' && franchiseRecoveryResult.reason?.httpStatus !== 404
+          ? 'Abrimos la carpeta, pero el recupero de franquicia no pudo mostrarse ahora.'
+          : '',
         financeSummaryResult.status === 'rejected' && financeSummaryResult.reason?.httpStatus !== 404
           ? 'Abrimos la carpeta, pero el resumen financiero no pudo mostrarse ahora.'
           : '',
@@ -10766,6 +12248,18 @@ function App() {
         data: detailResult.value.data,
         workflowHistory,
         workflowActions,
+        auditEventsState,
+        relationsState,
+        insuranceState,
+        insuranceProcessingState,
+        franchiseState,
+        insuranceProcessingDocumentsState,
+        cleasState,
+        thirdPartyState,
+        legalState,
+        legalNewsState,
+        legalExpensesState,
+        franchiseRecoveryState,
         budgetState,
         appointmentsState,
         documentsState,
@@ -10789,6 +12283,71 @@ function App() {
         data: null,
         workflowHistory: [],
         workflowActions: [],
+        auditEventsState: {
+          status: 'error',
+          items: [],
+          total: 0,
+          detail: '',
+        },
+        relationsState: {
+          status: 'error',
+          items: [],
+          total: 0,
+          detail: '',
+        },
+        insuranceState: {
+          status: 'error',
+          data: null,
+          detail: '',
+        },
+        insuranceProcessingState: {
+          status: 'error',
+          data: null,
+          detail: '',
+        },
+        franchiseState: {
+          status: 'error',
+          data: null,
+          detail: '',
+        },
+        insuranceProcessingDocumentsState: {
+          status: 'error',
+          items: [],
+          total: 0,
+          detail: '',
+        },
+        cleasState: {
+          status: 'error',
+          data: null,
+          detail: '',
+        },
+        thirdPartyState: {
+          status: 'error',
+          data: null,
+          detail: '',
+        },
+        legalState: {
+          status: 'error',
+          data: null,
+          detail: '',
+        },
+        legalNewsState: {
+          status: 'error',
+          items: [],
+          total: 0,
+          detail: '',
+        },
+        legalExpensesState: {
+          status: 'error',
+          items: [],
+          total: 0,
+          detail: '',
+        },
+        franchiseRecoveryState: {
+          status: 'error',
+          data: null,
+          detail: '',
+        },
         budgetState: {
           status: 'error',
           data: null,
@@ -10862,6 +12421,11 @@ function App() {
         setAppAccess('authenticated');
         void runAuthenticatedCasesRead(storedSession.accessToken, controller.signal).catch(() => {});
         void runAuthenticatedNotificationsRead(storedSession.accessToken, controller.signal).catch(() => {});
+        void runAuthenticatedSystemParametersRead(storedSession.accessToken, controller.signal).catch(() => {});
+        void runAuthenticatedOperationCatalogsRead(storedSession.accessToken, controller.signal).catch(() => {});
+        void runAuthenticatedFinanceCatalogsRead(storedSession.accessToken, controller.signal).catch(() => {});
+        void runAuthenticatedInsuranceCatalogsRead(storedSession.accessToken, controller.signal).catch(() => {});
+        void runAuthenticatedDocumentsCatalogsRead(storedSession.accessToken, controller.signal).catch(() => {});
       } catch (error) {
         if (error.name === 'AbortError') {
           return;
@@ -10937,6 +12501,11 @@ function App() {
       void runCurrentUserRead(result.accessToken).catch(() => {});
       void runAuthenticatedCasesRead(result.accessToken).catch(() => {});
       void runAuthenticatedNotificationsRead(result.accessToken).catch(() => {});
+      void runAuthenticatedSystemParametersRead(result.accessToken).catch(() => {});
+      void runAuthenticatedOperationCatalogsRead(result.accessToken).catch(() => {});
+      void runAuthenticatedFinanceCatalogsRead(result.accessToken).catch(() => {});
+      void runAuthenticatedInsuranceCatalogsRead(result.accessToken).catch(() => {});
+      void runAuthenticatedDocumentsCatalogsRead(result.accessToken).catch(() => {});
     } catch (error) {
       setAuthState({
         status: 'error',
@@ -11378,6 +12947,36 @@ function App() {
     });
   };
 
+  const refreshAuthenticatedSystemParametersPreview = async () => {
+    await readWithStoredToken(async (accessToken) => {
+      await runAuthenticatedSystemParametersRead(accessToken);
+    });
+  };
+
+  const refreshAuthenticatedOperationCatalogsPreview = async () => {
+    await readWithStoredToken(async (accessToken) => {
+      await runAuthenticatedOperationCatalogsRead(accessToken);
+    });
+  };
+
+  const refreshAuthenticatedFinanceCatalogsPreview = async () => {
+    await readWithStoredToken(async (accessToken) => {
+      await runAuthenticatedFinanceCatalogsRead(accessToken);
+    });
+  };
+
+  const refreshAuthenticatedInsuranceCatalogsPreview = async () => {
+    await readWithStoredToken(async (accessToken) => {
+      await runAuthenticatedInsuranceCatalogsRead(accessToken);
+    });
+  };
+
+  const refreshAuthenticatedDocumentsCatalogsPreview = async () => {
+    await readWithStoredToken(async (accessToken) => {
+      await runAuthenticatedDocumentsCatalogsRead(accessToken);
+    });
+  };
+
   const refreshCurrentUserPreview = async () => {
     await readWithStoredToken(async (accessToken) => {
       await runCurrentUserRead(accessToken);
@@ -11390,12 +12989,24 @@ function App() {
     }
 
     setPendingNotificationIds((current) => (current.includes(notification.id) ? current : [...current, notification.id]));
+    setNotificationActionStateById((current) => ({
+      ...current,
+      [notification.id]: {
+        status: 'loading',
+        message: '',
+      },
+    }));
 
     await readWithStoredToken(async (accessToken) => {
       try {
         await markAuthenticatedNotificationAsRead(accessToken, notification.id);
         setAuthenticatedNotificationsState((current) => {
           const nextItems = current.items.filter((item) => item.id !== notification.id);
+          const nextRecentItems = (current.recentItems || []).map((item) => (
+            item.id === notification.id
+              ? { ...item, read: true, readAt: new Date().toISOString() }
+              : item
+          ));
           return {
             ...current,
             status: 'success',
@@ -11407,11 +13018,26 @@ function App() {
             checkedAt: new Date().toISOString(),
             httpStatus: 200,
             items: nextItems,
+            recentItems: nextRecentItems,
+            recentCount: nextRecentItems.length,
             unreadCount: nextItems.length,
+            unreadCountSource: 'fallback-list',
           };
+        });
+        setNotificationActionStateById((current) => {
+          const next = { ...current };
+          delete next[notification.id];
+          return next;
         });
         flash({ tone: 'success', title: 'Aviso actualizado', message: 'La notificación se marcó como leída.' });
       } catch (error) {
+        setNotificationActionStateById((current) => ({
+          ...current,
+          [notification.id]: {
+            status: 'error',
+            message: getFriendlyNotificationReadMessage(error),
+          },
+        }));
         flash({ tone: 'danger', title: 'No pudimos actualizar el aviso', message: getFriendlyNotificationReadMessage(error) });
       } finally {
         setPendingNotificationIds((current) => current.filter((id) => id !== notification.id));
@@ -11528,6 +13154,7 @@ function App() {
             <div className="topbar-notification-pill" role="status" aria-live="polite">
               <span>Avisos pendientes</span>
               <strong>{authenticatedNotificationsState.unreadCount}</strong>
+              {authenticatedNotificationsState.unreadCountSource === 'fallback-list' ? <small>estimado</small> : null}
             </div>
             <div className="session-badge-panel">
               <div>
@@ -11571,6 +13198,11 @@ function App() {
             authenticatedCaseDetailState={authenticatedCaseDetailState}
             authenticatedCasesState={authenticatedCasesState}
             authenticatedNotificationsState={authenticatedNotificationsState}
+            authenticatedSystemParametersState={authenticatedSystemParametersState}
+            authenticatedOperationCatalogsState={authenticatedOperationCatalogsState}
+            authenticatedFinanceCatalogsState={authenticatedFinanceCatalogsState}
+            authenticatedInsuranceCatalogsState={authenticatedInsuranceCatalogsState}
+            authenticatedDocumentsCatalogsState={authenticatedDocumentsCatalogsState}
             flash={flash}
             items={computedCases}
             onMarkNotificationAsRead={markNotificationAsRead}
@@ -11581,7 +13213,13 @@ function App() {
             onRefreshCurrentUser={refreshCurrentUserPreview}
             onRefreshAuthenticatedCases={refreshAuthenticatedCasesPreview}
             onRefreshAuthenticatedNotifications={refreshAuthenticatedNotificationsPreview}
+            onRefreshAuthenticatedSystemParameters={refreshAuthenticatedSystemParametersPreview}
+            onRefreshAuthenticatedOperationCatalogs={refreshAuthenticatedOperationCatalogsPreview}
+            onRefreshAuthenticatedFinanceCatalogs={refreshAuthenticatedFinanceCatalogsPreview}
+            onRefreshAuthenticatedInsuranceCatalogs={refreshAuthenticatedInsuranceCatalogsPreview}
+            onRefreshAuthenticatedDocumentsCatalogs={refreshAuthenticatedDocumentsCatalogsPreview}
             pendingNotificationIds={pendingNotificationIds}
+            notificationActionStateById={notificationActionStateById}
           />
         ) : null}
 

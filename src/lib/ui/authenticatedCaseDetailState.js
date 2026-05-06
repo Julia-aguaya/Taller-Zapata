@@ -11,6 +11,71 @@ export function createAuthenticatedCaseDetailInitialState() {
     data: null,
     workflowHistory: [],
     workflowActions: [],
+    auditEventsState: {
+      status: 'idle',
+      items: [],
+      total: 0,
+      detail: '',
+    },
+    relationsState: {
+      status: 'idle',
+      items: [],
+      total: 0,
+      detail: '',
+    },
+    insuranceState: {
+      status: 'idle',
+      data: null,
+      detail: '',
+    },
+    insuranceProcessingState: {
+      status: 'idle',
+      data: null,
+      detail: '',
+    },
+    franchiseState: {
+      status: 'idle',
+      data: null,
+      detail: '',
+    },
+    insuranceProcessingDocumentsState: {
+      status: 'idle',
+      items: [],
+      total: 0,
+      detail: '',
+    },
+    cleasState: {
+      status: 'idle',
+      data: null,
+      detail: '',
+    },
+    thirdPartyState: {
+      status: 'idle',
+      data: null,
+      detail: '',
+    },
+    legalState: {
+      status: 'idle',
+      data: null,
+      detail: '',
+    },
+    legalNewsState: {
+      status: 'idle',
+      items: [],
+      total: 0,
+      detail: '',
+    },
+    legalExpensesState: {
+      status: 'idle',
+      items: [],
+      total: 0,
+      detail: '',
+    },
+    franchiseRecoveryState: {
+      status: 'idle',
+      data: null,
+      detail: '',
+    },
     budgetState: {
       status: 'idle',
       data: null,

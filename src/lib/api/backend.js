@@ -2,11 +2,62 @@ const DEFAULT_API_BASE_URL = 'http://localhost:8081/api/v1';
 const CONNECTIVITY_PROBE_PATH = '/cases';
 const LOGIN_PATH = '/auth/login';
 const CURRENT_USER_PATH = '/auth/me';
+const NOTIFICATIONS_PATH = '/notifications';
 const UNREAD_NOTIFICATIONS_PATH = '/notifications/unread';
+const UNREAD_NOTIFICATIONS_COUNT_PATH = '/notifications/count-unread';
+const SYSTEM_PARAMETERS_PATH = '/system/parameters';
+const OPERATION_CATALOGS_PATH = '/operation/catalogs';
+const FINANCE_CATALOGS_PATH = '/finance/catalogs';
+const INSURANCE_CATALOGS_PATH = '/insurance/catalogs';
+const DOCUMENTS_CATALOGS_PATH = '/documents/catalogs';
 const SESSION_STORAGE_KEY = 'tallerDemo.backendSession';
 
 function buildCaseDetailPath(caseId) {
   return `/cases/${caseId}`;
+}
+
+function buildCaseRelationsPath(caseId) {
+  return `/cases/${caseId}/relations`;
+}
+
+function buildCaseInsurancePath(caseId) {
+  return `/cases/${caseId}/insurance`;
+}
+
+function buildCaseInsuranceProcessingPath(caseId) {
+  return `/cases/${caseId}/insurance-processing`;
+}
+
+function buildCaseFranchisePath(caseId) {
+  return `/cases/${caseId}/franchise`;
+}
+
+function buildCaseInsuranceProcessingDocumentsPath(caseId) {
+  return `/cases/${caseId}/insurance-processing/documents`;
+}
+
+function buildCaseCleasPath(caseId) {
+  return `/cases/${caseId}/cleas`;
+}
+
+function buildCaseThirdPartyPath(caseId) {
+  return `/cases/${caseId}/third-party`;
+}
+
+function buildCaseLegalPath(caseId) {
+  return `/cases/${caseId}/legal`;
+}
+
+function buildCaseLegalNewsPath(caseId) {
+  return `/cases/${caseId}/legal-news`;
+}
+
+function buildCaseLegalExpensesPath(caseId) {
+  return `/cases/${caseId}/legal-expenses`;
+}
+
+function buildCaseFranchiseRecoveryPath(caseId) {
+  return `/cases/${caseId}/franchise-recovery`;
 }
 
 function buildCaseWorkflowHistoryPath(caseId) {
@@ -15,6 +66,10 @@ function buildCaseWorkflowHistoryPath(caseId) {
 
 function buildCaseWorkflowActionsPath(caseId) {
   return `/cases/${caseId}/workflow/actions`;
+}
+
+function buildCaseAuditEventsPath(caseId) {
+  return `/cases/${caseId}/audit/events`;
 }
 
 function buildCaseBudgetPath(caseId) {
@@ -31,10 +86,6 @@ function buildCaseAppointmentsPath(caseId) {
 
 function buildCaseVehicleIntakesPath(caseId) {
   return `/cases/${caseId}/vehicle-intakes`;
-}
-
-function buildCaseVehicleOutcomesPath(caseId) {
-  return `/cases/${caseId}/vehicle-outcomes`;
 }
 
 function buildCaseVehicleOutcomesPath(caseId) {
@@ -107,8 +158,80 @@ export function getUnreadNotificationsUrl() {
   return buildApiUrl(UNREAD_NOTIFICATIONS_PATH);
 }
 
+export function getNotificationsUrl() {
+  return buildApiUrl(NOTIFICATIONS_PATH);
+}
+
+export function getSystemParametersUrl() {
+  return buildApiUrl(SYSTEM_PARAMETERS_PATH);
+}
+
+export function getOperationCatalogsUrl() {
+  return buildApiUrl(OPERATION_CATALOGS_PATH);
+}
+
+export function getFinanceCatalogsUrl() {
+  return buildApiUrl(FINANCE_CATALOGS_PATH);
+}
+
+export function getInsuranceCatalogsUrl() {
+  return buildApiUrl(INSURANCE_CATALOGS_PATH);
+}
+
+export function getDocumentsCatalogsUrl() {
+  return buildApiUrl(DOCUMENTS_CATALOGS_PATH);
+}
+
+export function getUnreadNotificationsCountUrl() {
+  return buildApiUrl(UNREAD_NOTIFICATIONS_COUNT_PATH);
+}
+
 export function getCaseDetailUrl(caseId) {
   return buildApiUrl(buildCaseDetailPath(caseId));
+}
+
+export function getCaseRelationsUrl(caseId) {
+  return buildApiUrl(buildCaseRelationsPath(caseId));
+}
+
+export function getCaseInsuranceUrl(caseId) {
+  return buildApiUrl(buildCaseInsurancePath(caseId));
+}
+
+export function getCaseInsuranceProcessingUrl(caseId) {
+  return buildApiUrl(buildCaseInsuranceProcessingPath(caseId));
+}
+
+export function getCaseFranchiseUrl(caseId) {
+  return buildApiUrl(buildCaseFranchisePath(caseId));
+}
+
+export function getCaseInsuranceProcessingDocumentsUrl(caseId) {
+  return buildApiUrl(buildCaseInsuranceProcessingDocumentsPath(caseId));
+}
+
+export function getCaseCleasUrl(caseId) {
+  return buildApiUrl(buildCaseCleasPath(caseId));
+}
+
+export function getCaseThirdPartyUrl(caseId) {
+  return buildApiUrl(buildCaseThirdPartyPath(caseId));
+}
+
+export function getCaseLegalUrl(caseId) {
+  return buildApiUrl(buildCaseLegalPath(caseId));
+}
+
+export function getCaseLegalNewsUrl(caseId) {
+  return buildApiUrl(buildCaseLegalNewsPath(caseId));
+}
+
+export function getCaseLegalExpensesUrl(caseId) {
+  return buildApiUrl(buildCaseLegalExpensesPath(caseId));
+}
+
+export function getCaseFranchiseRecoveryUrl(caseId) {
+  return buildApiUrl(buildCaseFranchiseRecoveryPath(caseId));
 }
 
 export function getCaseWorkflowHistoryUrl(caseId) {
@@ -117,6 +240,10 @@ export function getCaseWorkflowHistoryUrl(caseId) {
 
 export function getCaseWorkflowActionsUrl(caseId) {
   return buildApiUrl(buildCaseWorkflowActionsPath(caseId));
+}
+
+export function getCaseAuditEventsUrl(caseId) {
+  return buildApiUrl(buildCaseAuditEventsPath(caseId));
 }
 
 export function getCaseBudgetUrl(caseId) {
@@ -351,6 +478,259 @@ export async function readAuthenticatedCaseDetail(accessToken, caseId, options =
   };
 }
 
+export async function readAuthenticatedCaseRelations(accessToken, caseId, options = {}) {
+  const endpoint = getCaseRelationsUrl(caseId);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer las relaciones de la carpeta.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedCaseInsurance(accessToken, caseId, options = {}) {
+  const endpoint = getCaseInsuranceUrl(caseId);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer la cobertura de la carpeta.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedCaseInsuranceProcessing(accessToken, caseId, options = {}) {
+  const endpoint = getCaseInsuranceProcessingUrl(caseId);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer el estado del tramite con la compañía.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedCaseFranchise(accessToken, caseId, options = {}) {
+  const endpoint = getCaseFranchiseUrl(caseId);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer los datos de franquicia de esta carpeta.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedCaseInsuranceProcessingDocuments(accessToken, caseId, options = {}) {
+  const endpoint = getCaseInsuranceProcessingDocumentsUrl(caseId);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer los documentos del trámite con la compañía.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedCaseCleas(accessToken, caseId, options = {}) {
+  const endpoint = getCaseCleasUrl(caseId);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer los datos CLEAS de esta carpeta.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedCaseThirdParty(accessToken, caseId, options = {}) {
+  const endpoint = getCaseThirdPartyUrl(caseId);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer los datos de terceros de esta carpeta.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedCaseLegal(accessToken, caseId, options = {}) {
+  const endpoint = getCaseLegalUrl(caseId);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer los datos legales de esta carpeta.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedCaseLegalNews(accessToken, caseId, options = {}) {
+  const endpoint = getCaseLegalNewsUrl(caseId);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer las novedades legales de esta carpeta.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedCaseLegalExpenses(accessToken, caseId, options = {}) {
+  const endpoint = getCaseLegalExpensesUrl(caseId);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer los gastos legales de esta carpeta.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedCaseFranchiseRecovery(accessToken, caseId, options = {}) {
+  const endpoint = getCaseFranchiseRecoveryUrl(caseId);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer el recupero de franquicia de esta carpeta.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
 export async function readAuthenticatedCaseWorkflowHistory(accessToken, caseId, options = {}) {
   const endpoint = getCaseWorkflowHistoryUrl(caseId);
   const response = await fetch(endpoint, {
@@ -388,6 +768,29 @@ export async function readAuthenticatedCaseWorkflowActions(accessToken, caseId, 
 
   if (!response.ok) {
     throw buildHttpError(response, 'No pude leer los próximos pasos de la carpeta.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedCaseAuditEvents(accessToken, caseId, options = {}) {
+  const endpoint = getCaseAuditEventsUrl(caseId);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer los eventos de la carpeta.', payload);
   }
 
   return {
@@ -612,6 +1015,167 @@ export async function readAuthenticatedUnreadNotifications(accessToken, options 
 
   if (!response.ok) {
     throw buildHttpError(response, 'No pude leer las notificaciones pendientes.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedNotifications(accessToken, options = {}) {
+  const endpoint = getNotificationsUrl();
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer el historial de notificaciones.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedSystemParameters(accessToken, options = {}) {
+  const endpoint = getSystemParametersUrl();
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer los parámetros del sistema.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedOperationCatalogs(accessToken, options = {}) {
+  const endpoint = getOperationCatalogsUrl();
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer los catálogos de operación.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedFinanceCatalogs(accessToken, options = {}) {
+  const endpoint = getFinanceCatalogsUrl();
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer los catálogos de finanzas.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedInsuranceCatalogs(accessToken, options = {}) {
+  const endpoint = getInsuranceCatalogsUrl();
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer los catálogos de seguros.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedDocumentsCatalogs(accessToken, options = {}) {
+  const endpoint = getDocumentsCatalogsUrl();
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer los catálogos de documentos.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedUnreadNotificationsCount(accessToken, options = {}) {
+  const endpoint = getUnreadNotificationsCountUrl();
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer la cantidad de notificaciones pendientes.', payload);
   }
 
   return {
