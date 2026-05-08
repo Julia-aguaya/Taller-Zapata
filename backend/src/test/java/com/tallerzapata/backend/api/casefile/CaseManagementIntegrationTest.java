@@ -15,8 +15,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @SpringBootTest
@@ -85,6 +87,22 @@ class CaseManagementIntegrationTest {
 
         Integer auditCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'actualizar_siniestro_caso'", Integer.class, 100L);
         assertThat(auditCount).isEqualTo(1);
+    }
+
+    @Test
+    void shouldReadCaseIncident() throws Exception {
+        jdbcTemplate.update("INSERT INTO caso_siniestro (id, caso_id, fecha_siniestro, hora_siniestro, lugar, dinamica, observaciones, fecha_prescripcion) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                1L, 100L, LocalDate.of(2026, 4, 20), "14:30:00", "Av. Libertador 1234", "Colision por alcance", "Observaciones del siniestro", LocalDate.of(2027, 4, 20));
+
+        mockMvc.perform(get("/api/v1/cases/100/incident")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.incidentDate").value("2026-04-20"))
+                .andExpect(jsonPath("$.incidentTime").value("14:30"))
+                .andExpect(jsonPath("$.location").value("Av. Libertador 1234"))
+                .andExpect(jsonPath("$.dynamics").value("Colision por alcance"))
+                .andExpect(jsonPath("$.observations").value("Observaciones del siniestro"))
+                .andExpect(jsonPath("$.prescriptionDate").value("2027-04-20"));
     }
 
     @Test

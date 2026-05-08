@@ -1,0 +1,11 @@
+$kind: http-request
+url: http://localhost:8081/api/v1/cases?page=0&size=5
+method: GET
+queryParams:
+  page: "0"
+  size: "5"
+auth:
+  type: bearer
+  credentials:
+    token: eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiIxIiwidXNlcm5hbWUiOiJhZG1pbiIsImRpc3BsYXlOYW1lIjoiQWRtaW4gQm9vdHN0cmFwIiwiaWF0IjoxNzc3ODQzODkxLCJleHAiOjE3Nzc4NDQ3OTF9.Ioa-a4AD_hcwLrtr57KekMbCRPfo7caw0TSWx4ZW_qj82ItZF4fzsPyRVDhZSVsXr76awbLLKKFYDaqVsr1wRg
+order: 1602284850934692

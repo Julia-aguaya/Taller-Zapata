@@ -1,0 +1,12 @@
+$kind: http-request
+name: iniciar-sesion
+url: http://localhost:8081/api/v1/auth/login
+method: POST
+order: 1777825377457
+body:
+  type: json
+  content: |-
+    {
+      "email": "admin@tallerzapata.local",
+      "password": "password"
+    }

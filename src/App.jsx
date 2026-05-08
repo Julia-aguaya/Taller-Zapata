@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   clearBackendSession,
   getCaseAppointmentsUrl,
@@ -31,14 +31,30 @@ import {
   getFinanceCatalogsUrl,
   getInsuranceCatalogsUrl,
   getDocumentsCatalogsUrl,
+  getTasksUrl,
+  getInsuranceCompaniesUrl,
+  getCasesCatalogsUrl,
   loginAgainstBackend,
+  createAuthenticatedCase,
+  createAuthenticatedCaseBudgetItem,
+  createAuthenticatedCaseFinancialMovement,
+  createAuthenticatedCaseLegalExpense,
+  createAuthenticatedCaseLegalNews,
+  createAuthenticatedCasePart,
+  createAuthenticatedCaseReceipt,
+  createAuthenticatedCaseWorkflowTransition,
+  createAuthenticatedDocumentRelation,
+  createAuthenticatedPerson,
+  createAuthenticatedVehicle,
   markAuthenticatedNotificationAsRead,
   probeBackendConnection,
+  readAuthenticatedCasesCatalogs,
   readAuthenticatedCaseAppointments,
   readAuthenticatedCaseAuditEvents,
   readAuthenticatedCaseBudget,
   readAuthenticatedCaseDetail,
   readAuthenticatedCaseDocuments,
+  downloadAuthenticatedCaseDocument,
   readAuthenticatedCaseFinanceSummary,
   readAuthenticatedCaseFinancialMovements,
   readAuthenticatedCaseReceipts,
@@ -65,40 +81,44 @@ import {
   readAuthenticatedFinanceCatalogs,
   readAuthenticatedInsuranceCatalogs,
   readAuthenticatedDocumentsCatalogs,
+  readAuthenticatedTasks,
+  readAuthenticatedInsuranceCompanies,
+  readAuthenticatedInsuranceCompanyContacts,
   readAuthenticatedUnreadNotificationsCount,
   readBackendSession,
   readCurrentUser,
+  replaceAuthenticatedDocument,
+  searchAuthenticatedPersons,
+  searchAuthenticatedVehicles,
   storeBackendSession,
+  updateAuthenticatedDocument,
+  updateAuthenticatedDocumentRelation,
+  updateAuthenticatedCaseIncident,
+  updateAuthenticatedCaseBudgetItem,
+  updateAuthenticatedCaseCleas,
+  updateAuthenticatedCaseFranchise,
+  updateAuthenticatedCaseInsurance,
+  updateAuthenticatedCaseInsuranceProcessing,
+  updateAuthenticatedCaseLegal,
+  updateAuthenticatedCasePart,
+  updateAuthenticatedCaseThirdParty,
+  uploadAuthenticatedDocument,
+  upsertAuthenticatedCaseBudget,
 } from './lib/api/backend';
 import AuthenticatedUserSnapshot from './components/AuthenticatedUserSnapshot';
 import CasesList from './components/cases/CasesList';
 import CasesMetrics from './components/cases/CasesMetrics';
 import CasesToolbar from './components/cases/CasesToolbar';
 import CaseAppointmentsSection from './components/detail/CaseAppointmentsSection';
-import CaseBudgetSection from './components/detail/CaseBudgetSection';
 import CaseDocumentsSection from './components/detail/CaseDocumentsSection';
-import CaseFinanceSection from './components/detail/CaseFinanceSection';
-import CaseFinancialMovementsSection from './components/detail/CaseFinancialMovementsSection';
-import CaseReceiptsSection from './components/detail/CaseReceiptsSection';
-import CaseVehicleIntakesSection from './components/detail/CaseVehicleIntakesSection';
-import CaseVehicleOutcomesSection from './components/detail/CaseVehicleOutcomesSection';
 import CaseWorkflowSection from './components/detail/CaseWorkflowSection';
-import CaseAuditEventsSection from './components/detail/CaseAuditEventsSection';
-import CaseRelationsSection from './components/detail/CaseRelationsSection';
-import CaseInsuranceSection from './components/detail/CaseInsuranceSection';
-import CaseInsuranceProcessingSection from './components/detail/CaseInsuranceProcessingSection';
-import CaseFranchiseSection from './components/detail/CaseFranchiseSection';
-import CaseInsuranceProcessingDocumentsSection from './components/detail/CaseInsuranceProcessingDocumentsSection';
-import CaseCleasSection from './components/detail/CaseCleasSection';
-import CaseThirdPartySection from './components/detail/CaseThirdPartySection';
-import CaseLegalSection from './components/detail/CaseLegalSection';
-import CaseLegalNewsSection from './components/detail/CaseLegalNewsSection';
-import CaseLegalExpensesSection from './components/detail/CaseLegalExpensesSection';
-import CaseFranchiseRecoverySection from './components/detail/CaseFranchiseRecoverySection';
 import { createAuthenticatedCaseDetailInitialState } from './lib/ui/authenticatedCaseDetailState';
 
 const NAV_ITEMS = [
-  { id: 'panel', label: 'Carpetas' },
+  { id: 'panel', label: 'Panel general' },
+  { id: 'carpetas', label: 'Carpetas' },
+  { id: 'nuevo', label: 'Nuevo caso' },
+  { id: 'agenda', label: 'Agenda' },
 ];
 
 const BRANCHES = [
@@ -250,7 +270,7 @@ function createIngresoItem(overrides = {}) {
     id: crypto.randomUUID(),
     type: 'Otro',
     detail: '',
-    media: 'Carpeta demo',
+    media: 'Carpeta',
     ...overrides,
   };
 }
@@ -286,6 +306,7 @@ function createBudgetDefaults(overrides = {}) {
 function createBudgetLine(overrides = {}) {
   return {
     id: crypto.randomUUID(),
+    backendId: null,
     piece: '',
     task: '',
     damageLevel: '',
@@ -299,6 +320,7 @@ function createBudgetLine(overrides = {}) {
 function createRepairPart(overrides = {}) {
   return {
     id: crypto.randomUUID(),
+    backendId: null,
     name: '',
     provider: '',
     amount: '',
@@ -342,6 +364,7 @@ function createMediaItem(overrides = {}) {
 function createSettlement(overrides = {}) {
   return {
     id: crypto.randomUUID(),
+    backendId: null,
     kind: 'Parcial',
     amount: '',
     date: '',
@@ -385,7 +408,67 @@ function normalizePlate(value) {
   return String(value ?? '').replace(/\s+/g, '').toUpperCase();
 }
 
-function formatProbeCheckedAt(value, idleMessage = 'Todavía no se verificó la conexión real.') {
+function normalizeLookupText(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+function resolveInsuranceCompanyIdByName(companies = [], name = '') {
+  const normalizedTarget = normalizeLookupText(name);
+  if (!normalizedTarget) return null;
+
+  const exactMatch = companies.find((company) => normalizeLookupText(company?.name || company?.businessName || company?.label) === normalizedTarget);
+  if (exactMatch?.id) return exactMatch.id;
+
+  const partialMatch = companies.find((company) => {
+    const hay = normalizeLookupText(company?.name || company?.businessName || company?.label);
+    return hay && (hay.includes(normalizedTarget) || normalizedTarget.includes(hay));
+  });
+  return partialMatch?.id || null;
+}
+
+function getCatalogEntries(catalogs, key) {
+  const entries = catalogs?.[key];
+  return Array.isArray(entries) ? entries : [];
+}
+
+function getCatalogOptionNames(catalogs, key, fallback = []) {
+  const entries = getCatalogEntries(catalogs, key);
+  const names = entries.map((entry) => entry?.name).filter(Boolean);
+  return names.length ? names : fallback;
+}
+
+function getCatalogSelectOptions(catalogs, key, fallback = []) {
+  const entries = getCatalogEntries(catalogs, key)
+    .filter((entry) => entry?.code)
+    .map((entry) => ({ value: entry.code, label: entry.name || entry.code }));
+
+  if (entries.length) return entries;
+  return fallback.map((option) => ({ value: option, label: option }));
+}
+
+function resolveCatalogCode(value, entries = [], fallbackOptions = []) {
+  const normalized = normalizeLookupText(value);
+  if (!normalized) return null;
+
+  const matched = entries.find((entry) => {
+    const byCode = normalizeLookupText(entry?.code);
+    const byName = normalizeLookupText(entry?.name);
+    return normalized === byCode || normalized === byName;
+  });
+  if (matched?.code) return matched.code;
+
+  if (fallbackOptions.some((option) => normalizeLookupText(option) === normalized)) {
+    return value;
+  }
+
+  return null;
+}
+
+function formatProbeCheckedAt(value, idleMessage = 'Todavía no verificamos la conexión.') {
   if (!value) {
     return idleMessage;
   }
@@ -395,7 +478,7 @@ function formatProbeCheckedAt(value, idleMessage = 'Todavía no se verificó la 
 
 function maskToken(value) {
   if (!value) {
-    return 'Sin token guardado';
+    return 'Sesión no iniciada';
   }
 
   if (value.length <= 24) {
@@ -443,7 +526,7 @@ function getFriendlyCasesMessage(error) {
   }
 
   if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
-    return 'No pudimos conectarnos para traer tus carpetas. Revisá que el backend siga disponible.';
+    return 'No pudimos conectarnos para traer tus carpetas. Revisá que el sistema esté disponible.';
   }
 
   return error.message || 'No pudimos traer tus carpetas reales. Intentá nuevamente en unos instantes.';
@@ -487,7 +570,7 @@ function getFriendlyNotificationsMessage(error) {
   }
 
   if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
-    return 'No pudimos conectarnos para traer tus avisos. Revisá que el backend siga disponible.';
+    return 'No pudimos conectarnos para traer tus avisos. Revisá que el sistema esté disponible.';
   }
 
   return error.message || 'No pudimos traer tus avisos ahora. Intentá nuevamente en unos instantes.';
@@ -511,7 +594,7 @@ function getFriendlyNotificationReadMessage(error) {
   }
 
   if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
-    return 'No pudimos conectarnos para actualizar este aviso. Revisá que el backend siga disponible.';
+    return 'No pudimos conectarnos para actualizar este aviso. Revisá que el sistema esté disponible.';
   }
 
   return error.message || 'No pudimos actualizar este aviso ahora. Intentá nuevamente en unos instantes.';
@@ -535,7 +618,7 @@ function getFriendlyCaseDocumentsMessage(error) {
   }
 
   if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
-    return 'No pudimos conectarnos para traer esta documentación. Revisá que el backend siga disponible.';
+    return 'No pudimos conectarnos para traer esta documentación. Revisá que el sistema esté disponible.';
   }
 
   return error.message || 'No pudimos traer la documentación de esta carpeta ahora.';
@@ -559,7 +642,7 @@ function getFriendlyCaseAppointmentsMessage(error) {
   }
 
   if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
-    return 'No pudimos conectarnos para traer los turnos de esta carpeta. Revisá que el backend siga disponible.';
+    return 'No pudimos conectarnos para traer los turnos de esta carpeta. Revisá que el sistema esté disponible.';
   }
 
   return error.message || 'No pudimos traer los turnos de esta carpeta ahora.';
@@ -583,7 +666,7 @@ function getFriendlyCaseBudgetMessage(error) {
   }
 
   if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
-    return 'No pudimos conectarnos para traer el presupuesto de esta carpeta. Revisá que el backend siga disponible.';
+    return 'No pudimos conectarnos para traer el presupuesto de esta carpeta. Revisá que el sistema esté disponible.';
   }
 
   return error.message || 'No pudimos traer el presupuesto de esta carpeta ahora.';
@@ -607,7 +690,7 @@ function getFriendlyCaseFinanceSummaryMessage(error) {
   }
 
   if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
-    return 'No pudimos conectarnos para traer el resumen financiero de esta carpeta. Revisá que el backend siga disponible.';
+    return 'No pudimos conectarnos para traer el resumen financiero de esta carpeta. Revisá que el sistema esté disponible.';
   }
 
   return error.message || 'No pudimos traer el resumen financiero de esta carpeta ahora.';
@@ -631,7 +714,7 @@ function getFriendlyCaseFinancialMovementsMessage(error) {
   }
 
   if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
-    return 'No pudimos conectarnos para traer los movimientos financieros. Revisá que el backend siga disponible.';
+    return 'No pudimos conectarnos para traer los movimientos financieros. Revisá que el sistema esté disponible.';
   }
 
   return error.message || 'No pudimos traer los movimientos financieros de esta carpeta ahora.';
@@ -655,7 +738,7 @@ function getFriendlyCaseReceiptsMessage(error) {
   }
 
   if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
-    return 'No pudimos conectarnos para traer los comprobantes de esta carpeta. Revisá que el backend siga disponible.';
+    return 'No pudimos conectarnos para traer los comprobantes de esta carpeta. Revisá que el sistema esté disponible.';
   }
 
   return error.message || 'No pudimos traer los comprobantes de esta carpeta ahora.';
@@ -679,7 +762,7 @@ function getFriendlyCaseVehicleIntakesMessage(error) {
   }
 
   if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
-    return 'No pudimos conectarnos para traer las recepciones del vehículo. Revisá que el backend siga disponible.';
+    return 'No pudimos conectarnos para traer las recepciones del vehículo. Revisá que el sistema esté disponible.';
   }
 
   return error.message || 'No pudimos traer las recepciones del vehículo de esta carpeta ahora.';
@@ -703,7 +786,7 @@ function getFriendlyCaseVehicleOutcomesMessage(error) {
   }
 
   if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
-    return 'No pudimos conectarnos para traer las entregas del vehículo. Revisá que el backend siga disponible.';
+    return 'No pudimos conectarnos para traer las entregas del vehículo. Revisá que el sistema esté disponible.';
   }
 
   return error.message || 'No pudimos traer las entregas del vehículo de esta carpeta ahora.';
@@ -767,7 +850,7 @@ function formatWorkflowDomain(domain, fallback = 'Seguimiento') {
     reparacion: 'Reparacion',
     pago: 'Cobro',
     documentacion: 'Documentacion',
-    legal: 'Gestion legal',
+    legal: 'Gestión legal',
   };
 
   return labels[normalized] || formatBackendState(normalized, fallback);
@@ -786,7 +869,7 @@ function getFriendlyCaseRelationsMessage(error) {
   if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver las relaciones de esta carpeta.';
   if (error.httpStatus === 404) return 'Todavía no vemos relaciones registradas para esta carpeta.';
   if (error.httpStatus >= 500) return 'Ahora no pudimos traer las relaciones de esta carpeta. Probá de nuevo en unos instantes.';
-  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer las relaciones. Revisá que el backend siga disponible.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer las relaciones. Revisá que el sistema esté disponible.';
   return error.message || 'No pudimos traer las relaciones de esta carpeta ahora.';
 }
 
@@ -818,7 +901,7 @@ function getFriendlyCaseInsuranceMessage(error) {
   if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver la cobertura de esta carpeta.';
   if (error.httpStatus === 404) return 'Todavía no vemos cobertura cargada para esta carpeta.';
   if (error.httpStatus >= 500) return 'Ahora no pudimos traer la cobertura de esta carpeta. Probá de nuevo en unos instantes.';
-  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer la cobertura. Revisá que el backend siga disponible.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer la cobertura. Revisá que el sistema esté disponible.';
   return error.message || 'No pudimos traer la cobertura de esta carpeta ahora.';
 }
 
@@ -844,7 +927,7 @@ function getFriendlyCaseInsuranceProcessingMessage(error) {
   if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver el estado del trámite con la compañía.';
   if (error.httpStatus === 404) return 'Todavía no vemos datos del trámite con la compañía para esta carpeta.';
   if (error.httpStatus >= 500) return 'Ahora no pudimos traer el estado del trámite con la compañía. Probá de nuevo en unos instantes.';
-  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer el estado del trámite con la compañía. Revisá que el backend siga disponible.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer el estado del trámite con la compañía. Revisá que el sistema esté disponible.';
   return error.message || 'No pudimos traer el estado del trámite con la compañía ahora.';
 }
 
@@ -870,7 +953,7 @@ function getFriendlyCaseFranchiseMessage(error) {
   if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver la franquicia de esta carpeta.';
   if (error.httpStatus === 404) return 'Todavía no vemos datos de franquicia cargados para esta carpeta.';
   if (error.httpStatus >= 500) return 'Ahora no pudimos traer los datos de franquicia. Probá de nuevo en unos instantes.';
-  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer la franquicia. Revisá que el backend siga disponible.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer la franquicia. Revisá que el sistema esté disponible.';
   return error.message || 'No pudimos traer los datos de franquicia de esta carpeta ahora.';
 }
 
@@ -896,7 +979,7 @@ function getFriendlyCaseInsuranceProcessingDocumentsMessage(error) {
   if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver los documentos del trámite con la compañía.';
   if (error.httpStatus === 404) return 'Todavía no vemos documentos del trámite con la compañía para esta carpeta.';
   if (error.httpStatus >= 500) return 'Ahora no pudimos traer los documentos del trámite con la compañía. Probá de nuevo en unos instantes.';
-  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer los documentos del trámite con la compañía. Revisá que el backend siga disponible.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer los documentos del trámite con la compañía. Revisá que el sistema esté disponible.';
   return error.message || 'No pudimos traer los documentos del trámite con la compañía ahora.';
 }
 
@@ -928,7 +1011,7 @@ function getFriendlyCaseCleasMessage(error) {
   if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver los datos CLEAS de esta carpeta.';
   if (error.httpStatus === 404) return 'Todavía no vemos datos CLEAS cargados para esta carpeta.';
   if (error.httpStatus >= 500) return 'Ahora no pudimos traer los datos CLEAS. Probá de nuevo en unos instantes.';
-  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer los datos CLEAS. Revisá que el backend siga disponible.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer los datos CLEAS. Revisá que el sistema esté disponible.';
   return error.message || 'No pudimos traer los datos CLEAS de esta carpeta ahora.';
 }
 
@@ -954,7 +1037,7 @@ function getFriendlyCaseThirdPartyMessage(error) {
   if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver los datos de terceros de esta carpeta.';
   if (error.httpStatus === 404) return 'Todavía no vemos datos de terceros cargados para esta carpeta.';
   if (error.httpStatus >= 500) return 'Ahora no pudimos traer los datos de terceros. Probá de nuevo en unos instantes.';
-  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer los datos de terceros. Revisá que el backend siga disponible.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer los datos de terceros. Revisá que el sistema esté disponible.';
   return error.message || 'No pudimos traer los datos de terceros de esta carpeta ahora.';
 }
 
@@ -980,7 +1063,7 @@ function getFriendlyCaseLegalMessage(error) {
   if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver los datos legales de esta carpeta.';
   if (error.httpStatus === 404) return 'Todavía no vemos datos legales cargados para esta carpeta.';
   if (error.httpStatus >= 500) return 'Ahora no pudimos traer los datos legales. Probá de nuevo en unos instantes.';
-  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer los datos legales. Revisá que el backend siga disponible.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer los datos legales. Revisá que el sistema esté disponible.';
   return error.message || 'No pudimos traer los datos legales de esta carpeta ahora.';
 }
 
@@ -1006,7 +1089,7 @@ function getFriendlyCaseLegalNewsMessage(error) {
   if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver las novedades legales de esta carpeta.';
   if (error.httpStatus === 404) return 'Todavía no vemos novedades legales cargadas para esta carpeta.';
   if (error.httpStatus >= 500) return 'Ahora no pudimos traer las novedades legales. Probá de nuevo en unos instantes.';
-  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer las novedades legales. Revisá que el backend siga disponible.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer las novedades legales. Revisá que el sistema esté disponible.';
   return error.message || 'No pudimos traer las novedades legales de esta carpeta ahora.';
 }
 
@@ -1043,7 +1126,7 @@ function getFriendlyCaseLegalExpensesMessage(error) {
   if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver los gastos legales de esta carpeta.';
   if (error.httpStatus === 404) return 'Todavía no vemos gastos legales cargados para esta carpeta.';
   if (error.httpStatus >= 500) return 'Ahora no pudimos traer los gastos legales. Probá de nuevo en unos instantes.';
-  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer los gastos legales. Revisá que el backend siga disponible.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer los gastos legales. Revisá que el sistema esté disponible.';
   return error.message || 'No pudimos traer los gastos legales de esta carpeta ahora.';
 }
 
@@ -1080,7 +1163,7 @@ function getFriendlyCaseFranchiseRecoveryMessage(error) {
   if (error.httpStatus === 401 || error.httpStatus === 403) return 'Tu sesión no tiene permiso para ver el recupero de franquicia de esta carpeta.';
   if (error.httpStatus === 404) return 'Todavía no vemos datos de recupero de franquicia para esta carpeta.';
   if (error.httpStatus >= 500) return 'Ahora no pudimos traer el recupero de franquicia. Probá de nuevo en unos instantes.';
-  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer el recupero de franquicia. Revisá que el backend siga disponible.';
+  if (error.message && /fetch|network|failed to fetch/i.test(error.message)) return 'No pudimos conectarnos para traer el recupero de franquicia. Revisá que el sistema esté disponible.';
   return error.message || 'No pudimos traer el recupero de franquicia de esta carpeta ahora.';
 }
 
@@ -1119,7 +1202,7 @@ function getFriendlyCaseAuditEventsMessage(error) {
   }
 
   if (error.message && /fetch|network|failed to fetch/i.test(error.message)) {
-    return 'No pudimos conectarnos para traer el historial de actividad. Revisá que el backend siga disponible.';
+    return 'No pudimos conectarnos para traer el historial de actividad. Revisá que el sistema esté disponible.';
   }
 
   return error.message || 'No pudimos traer el historial de actividad de esta carpeta ahora.';
@@ -1549,6 +1632,27 @@ function getDocumentsCatalogSummary(payload) {
     .sort((left, right) => right.count - left.count);
 }
 
+function getTaskItems(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.content)) return payload.content;
+  if (Array.isArray(payload?.items)) return payload.items;
+  return [];
+}
+
+function getInsuranceCompanyItems(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.content)) return payload.content;
+  if (Array.isArray(payload?.items)) return payload.items;
+  return [];
+}
+
+function getInsuranceCompanyContactItems(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.content)) return payload.content;
+  if (Array.isArray(payload?.items)) return payload.items;
+  return [];
+}
+
 function getUnreadNotificationCount(payload, fallbackCount = 0) {
   const raw = typeof payload === 'number' ? payload : payload?.count;
   const parsed = Number(raw);
@@ -1616,7 +1720,7 @@ function formatDocumentOrigin(originCode) {
     tramite: 'Tramite',
     documentacion: 'Documentacion',
     seguro: 'Seguro',
-    legal: 'Gestion legal',
+    legal: 'Gestión legal',
     finanza: 'Cobro',
     finanzas: 'Cobro',
   };
@@ -1836,7 +1940,40 @@ function getCaseSearchHaystack(item) {
     .join(' ');
 }
 
-function AuthenticatedCaseDetail({ detailState, onOpenDetail }) {
+function getCaseClientLabel(item) {
+  const directName = item?.customerName || item?.claimantName || item?.insuredName || item?.holderName || item?.ownerName;
+  if (directName) return directName;
+
+  const parts = [item?.lastName, item?.firstName].filter(Boolean);
+  if (parts.length) return parts.join(', ');
+
+  return 'Cliente no informado';
+}
+
+function getCaseVehicleLabel(item) {
+  const compact = [item?.brand, item?.model].filter(Boolean).join(' ');
+  const plate = item?.plate || item?.licensePlate || item?.patent;
+  if (compact && plate) return `${compact} · ${plate}`;
+  if (compact) return compact;
+  if (plate) return plate;
+  return 'Vehiculo no informado';
+}
+
+function getCaseResponsibleLabel(item, workflowActions = []) {
+  const byCase = item?.assigneeName || item?.assignedToName || item?.ownerName || item?.managerName;
+  if (byCase) return byCase;
+
+  const byAction = workflowActions.find((action) => action?.responsibleName || action?.assigneeName);
+  return byAction?.responsibleName || byAction?.assigneeName || 'Sin responsable asignado';
+}
+
+function getCaseNextTaskLabel(workflowActions = []) {
+  const nextAction = workflowActions[0];
+  if (!nextAction) return 'Sin acción definida';
+  return nextAction.label || nextAction.title || nextAction.reason || 'Acción pendiente';
+}
+
+function AuthenticatedCaseDetail({ detailState, onOpenDetail, onSaveDocument, onDownloadDocument, onPreviewDocument, isSavingDocuments = false, isDownloadingDocument = false, isPreviewingDocument = false, documentsCatalogs = null }) {
   if (detailState.status === 'idle') {
     return (
       <div className="backend-cases-empty backend-detail-empty" role="status">
@@ -1874,27 +2011,17 @@ function AuthenticatedCaseDetail({ detailState, onOpenDetail }) {
   const item = detailState.data;
   const workflowHistory = detailState.workflowHistory;
   const workflowActions = detailState.workflowActions;
-  const auditEventsState = detailState.auditEventsState;
-  const relationsState = detailState.relationsState;
-  const insuranceState = detailState.insuranceState;
-  const insuranceProcessingState = detailState.insuranceProcessingState;
-  const franchiseState = detailState.franchiseState;
-  const insuranceProcessingDocumentsState = detailState.insuranceProcessingDocumentsState;
-  const cleasState = detailState.cleasState;
-  const thirdPartyState = detailState.thirdPartyState;
-  const legalState = detailState.legalState;
-  const legalNewsState = detailState.legalNewsState;
-  const legalExpensesState = detailState.legalExpensesState;
-  const franchiseRecoveryState = detailState.franchiseRecoveryState;
-  const budgetState = detailState.budgetState;
   const appointmentsState = detailState.appointmentsState;
   const documentsState = detailState.documentsState;
-  const financeSummaryState = detailState.financeSummaryState;
-  const financialMovementsState = detailState.financialMovementsState;
-  const receiptsState = detailState.receiptsState;
-  const vehicleIntakesState = detailState.vehicleIntakesState;
-  const vehicleOutcomesState = detailState.vehicleOutcomesState;
   const documentGroups = groupDocumentsByOrigin(documentsState.items);
+  const mainStateLabel = formatBackendState(item.currentCaseStateCode);
+  const priorityLabel = formatBackendState(item.priorityCode, 'Estandar');
+  const priorityTone = getBackendStatusTone(priorityLabel);
+  const pendingCount = item?.pendingTasksCount ?? item?.computed?.pendingTasksCount ?? workflowActions.length;
+  const nextTaskLabel = getCaseNextTaskLabel(workflowActions);
+  const openAt = item?.openedAt || item?.createdAt || item?.entryDate;
+  const dueAt = item?.dueAt || item?.nextActionAt || appointmentsState.nextAppointment?.appointmentDate;
+  const responsibleLabel = getCaseResponsibleLabel(item, workflowActions);
 
   return (
     <article className="backend-detail-card" aria-live="polite">
@@ -1902,60 +2029,38 @@ function AuthenticatedCaseDetail({ detailState, onOpenDetail }) {
         <div className="stack-tight">
           <p className="eyebrow">Detalle de carpeta</p>
           <h3>{getBackendCaseDetailHeadline(item)}</h3>
-          <p className="muted">
-            Este resumen trae el estado real informado por el sistema para que puedas seguir tu caso sin salir del panel.
-          </p>
+          <p className="muted">{getCaseClientLabel(item)} · {getCaseVehicleLabel(item)}</p>
         </div>
         <StatusBadge tone="info">{getBackendBranchLabel(item)}</StatusBadge>
       </div>
 
       <div className="backend-detail-grid" role="list" aria-label="Resumen de la carpeta seleccionada">
-        <div className="backend-detail-row" role="listitem"><span>Trámite</span><strong>{formatBackendState(item.currentCaseStateCode)}</strong></div>
-        <div className="backend-detail-row" role="listitem"><span>Reparación</span><strong>{formatBackendState(item.currentRepairStateCode)}</strong></div>
-        <div className="backend-detail-row" role="listitem"><span>Cobro</span><strong>{formatBackendState(item.currentPaymentStateCode)}</strong></div>
-        <div className="backend-detail-row" role="listitem"><span>Documentación</span><strong>{formatBackendState(item.currentDocumentationStateCode, 'En revisión')}</strong></div>
-        <div className="backend-detail-row" role="listitem"><span>Gestión legal</span><strong>{formatBackendState(item.currentLegalStateCode, 'Sin novedad')}</strong></div>
-        <div className="backend-detail-row" role="listitem"><span>Prioridad</span><strong>{formatBackendState(item.priorityCode, 'Estándar')}</strong></div>
-        <div className="backend-detail-row" role="listitem"><span>Cierre</span><strong>{item.closedAt ? formatDateTime(item.closedAt) : 'Todavía en curso'}</strong></div>
-        <div className="backend-detail-row" role="listitem"><span>Archivo</span><strong>{item.archivedAt ? formatDateTime(item.archivedAt) : 'Disponible para seguimiento'}</strong></div>
-      </div>
-
-      <div className="backend-detail-note">
-        <span>Observación general</span>
-        <p>{item.generalObservations || 'Por ahora esta carpeta no tiene una observación visible para compartir en esta vista.'}</p>
+        <div className="backend-detail-row" role="listitem"><span>Codigo</span><strong>{getBackendCaseDetailHeadline(item)}</strong></div>
+        <div className="backend-detail-row" role="listitem"><span>Cliente</span><strong>{getCaseClientLabel(item)}</strong></div>
+        <div className="backend-detail-row" role="listitem"><span>Vehiculo</span><strong>{getCaseVehicleLabel(item)}</strong></div>
+        <div className="backend-detail-row" role="listitem"><span>Estado actual</span><StatusBadge tone={getBackendStatusTone(mainStateLabel)}>{mainStateLabel}</StatusBadge></div>
+        <div className="backend-detail-row" role="listitem"><span>Prioridad</span><StatusBadge tone={priorityTone}>{priorityLabel}</StatusBadge></div>
+        <div className="backend-detail-row" role="listitem"><span>Responsable</span><strong>{responsibleLabel}</strong></div>
+        <div className="backend-detail-row" role="listitem"><span>Ingreso</span><strong>{openAt ? formatDate(openAt) : 'Sin fecha'}</strong></div>
+        <div className="backend-detail-row" role="listitem"><span>Vencimiento</span><strong>{dueAt ? formatDate(dueAt) : 'Sin fecha'}</strong></div>
       </div>
 
       <div className="backend-detail-highlights" role="list" aria-label="Resumen rapido del estado de la carpeta">
         <article className="backend-detail-highlight" role="listitem">
-          <span>Próximo turno</span>
-          <strong>{appointmentsState.nextAppointment?.appointmentDate ? formatDate(appointmentsState.nextAppointment.appointmentDate) : '-'}</strong>
-          <small>{appointmentsState.nextAppointment?.appointmentTime ? `Horario ${formatAppointmentTime(appointmentsState.nextAppointment.appointmentTime)}` : 'Sin horario confirmado todavía.'}</small>
+          <span>Pendientes</span>
+          <strong>{pendingCount}</strong>
+          <small>{pendingCount === 1 ? '1 tema pendiente en seguimiento.' : `${pendingCount} temas pendientes en seguimiento.`}</small>
         </article>
         <article className="backend-detail-highlight" role="listitem">
-          <span>Presupuesto</span>
-          <strong>{budgetState.status === 'success' ? money(budgetState.data?.totalQuoted) : '-'}</strong>
-          <small>{budgetState.status === 'success' ? 'Estimación total visible hoy.' : 'Sin estimación visible por ahora.'}</small>
+          <span>Tarea sugerida</span>
+          <strong>{nextTaskLabel}</strong>
+          <small>Priorizar este paso reduce demoras en la carpeta.</small>
         </article>
-        <article className="backend-detail-highlight" role="listitem">
-          <span>Saldo del caso</span>
-          <strong>{financeSummaryState.status === 'success' ? money(financeSummaryState.data?.saldo) : '-'}</strong>
-          <small>{financeSummaryState.status === 'success' ? 'Resultado actual entre ingresos y egresos.' : 'Todavía sin saldo visible.'}</small>
-        </article>
-        <article className="backend-detail-highlight" role="listitem">
-          <span>Documentos visibles</span>
-          <strong>{documentsState.visibleCount}</strong>
-          <small>{documentsState.total} registrados para esta carpeta.</small>
-        </article>
-        <article className="backend-detail-highlight" role="listitem">
-          <span>Movimientos</span>
-          <strong>{financialMovementsState.total}</strong>
-          <small>Registros económicos visibles.</small>
-        </article>
-        <article className="backend-detail-highlight" role="listitem">
-          <span>Entregas</span>
-          <strong>{vehicleOutcomesState.total}</strong>
-          <small>Egresos del vehículo cargados.</small>
-        </article>
+      </div>
+
+      <div className="backend-detail-primary-actions" role="group" aria-label="Acciones principales de la carpeta">
+        <a className="primary-button button-link backend-detail-action" href={getCaseHash(item.id, { tab: 'gestion' })}>Abrir gestion</a>
+        <a className="secondary-button button-link backend-detail-action" href={getCaseHash(item.id, { tab: 'documentacion' })}>Documentacion</a>
       </div>
 
       <div className="backend-detail-sections">
@@ -1970,147 +2075,12 @@ function AuthenticatedCaseDetail({ detailState, onOpenDetail }) {
           StatusBadge={StatusBadge}
         />
 
-        <CaseAuditEventsSection
-          auditEventsState={auditEventsState}
-          formatBackendState={formatBackendState}
-          formatDateTime={formatDateTime}
-          StatusBadge={StatusBadge}
-        />
-
-        <CaseRelationsSection
-          relationsState={relationsState}
-          formatBackendState={formatBackendState}
-          StatusBadge={StatusBadge}
-        />
-
-        <CaseInsuranceSection
-          insuranceState={insuranceState}
-          formatBackendState={formatBackendState}
-          StatusBadge={StatusBadge}
-        />
-
-        <CaseInsuranceProcessingSection
-          insuranceProcessingState={insuranceProcessingState}
-          formatBackendState={formatBackendState}
-          formatDateTime={formatDateTime}
-          StatusBadge={StatusBadge}
-        />
-
-        <CaseFranchiseSection
-          franchiseState={franchiseState}
-          money={money}
-          StatusBadge={StatusBadge}
-        />
-
-        <CaseInsuranceProcessingDocumentsSection
-          insuranceProcessingDocumentsState={insuranceProcessingDocumentsState}
-          formatDate={formatDate}
-          formatDateTime={formatDateTime}
-          formatDocumentAudience={formatDocumentAudience}
-          formatDocumentDescriptor={formatDocumentDescriptor}
-          formatDocumentSize={formatDocumentSize}
-          StatusBadge={StatusBadge}
-        />
-
-        <CaseCleasSection
-          cleasState={cleasState}
-          formatBackendState={formatBackendState}
-          formatDateTime={formatDateTime}
-          StatusBadge={StatusBadge}
-        />
-
-        <CaseThirdPartySection
-          thirdPartyState={thirdPartyState}
-          formatBackendState={formatBackendState}
-          StatusBadge={StatusBadge}
-        />
-
-        <CaseLegalSection
-          legalState={legalState}
-          formatBackendState={formatBackendState}
-          formatDateTime={formatDateTime}
-          StatusBadge={StatusBadge}
-        />
-
-        <CaseLegalNewsSection
-          legalNewsState={legalNewsState}
-          formatBackendState={formatBackendState}
-          formatDate={formatDate}
-          formatDateTime={formatDateTime}
-          StatusBadge={StatusBadge}
-        />
-
-        <CaseLegalExpensesSection
-          legalExpensesState={legalExpensesState}
-          formatBackendState={formatBackendState}
-          formatDate={formatDate}
-          money={money}
-          StatusBadge={StatusBadge}
-        />
-
-        <CaseFranchiseRecoverySection
-          franchiseRecoveryState={franchiseRecoveryState}
-          formatBackendState={formatBackendState}
-          formatDateTime={formatDateTime}
-          money={money}
-          StatusBadge={StatusBadge}
-        />
-
-        <CaseFinancialMovementsSection
-          financialMovementsState={financialMovementsState}
-          formatBackendState={formatBackendState}
-          formatDateTime={formatDateTime}
-          money={money}
-          StatusBadge={StatusBadge}
-        />
-
-        <CaseReceiptsSection
-          receiptsState={receiptsState}
-          formatBackendState={formatBackendState}
-          formatDate={formatDate}
-          formatDateTime={formatDateTime}
-          money={money}
-          StatusBadge={StatusBadge}
-        />
-
-        <CaseFinanceSection
-          financeSummaryState={financeSummaryState}
-          money={money}
-        />
-
-
-
-        <CaseBudgetSection
-          budgetState={budgetState}
-          formatBackendState={formatBackendState}
-          formatDate={formatDate}
-          getBackendStatusTone={getBackendStatusTone}
-          money={money}
-          StatusBadge={StatusBadge}
-        />
-
         <CaseAppointmentsSection
           appointmentsState={appointmentsState}
           formatAppointmentTime={formatAppointmentTime}
           formatBackendState={formatBackendState}
           formatDate={formatDate}
           getAppointmentStatusTone={getAppointmentStatusTone}
-          StatusBadge={StatusBadge}
-        />
-
-        <CaseVehicleIntakesSection
-          vehicleIntakesState={vehicleIntakesState}
-          formatBackendState={formatBackendState}
-          formatDate={formatDate}
-          getBackendStatusTone={getBackendStatusTone}
-          StatusBadge={StatusBadge}
-        />
-
-        <CaseVehicleOutcomesSection
-          vehicleOutcomesState={vehicleOutcomesState}
-          formatBackendState={formatBackendState}
-          formatDate={formatDate}
-          getBackendStatusTone={getBackendStatusTone}
           StatusBadge={StatusBadge}
         />
 
@@ -2122,6 +2092,14 @@ function AuthenticatedCaseDetail({ detailState, onOpenDetail }) {
           formatDocumentAudience={formatDocumentAudience}
           formatDocumentDescriptor={formatDocumentDescriptor}
           formatDocumentSize={formatDocumentSize}
+          onSaveDocument={onSaveDocument}
+          onDownloadDocument={onDownloadDocument}
+          onPreviewDocument={onPreviewDocument}
+          isSavingDocuments={isSavingDocuments}
+          isDownloadingDocument={isDownloadingDocument}
+          isPreviewingDocument={isPreviewingDocument}
+          documentsCatalogs={documentsCatalogs}
+          caseId={item?.id}
           StatusBadge={StatusBadge}
         />
       </div>
@@ -2135,7 +2113,7 @@ function AuthenticatedCaseDetail({ detailState, onOpenDetail }) {
   );
 }
 
-function AuthenticatedCasesPreview({ detailState, onOpenDetail, onRefresh, state }) {
+function AuthenticatedCasesPreview({ detailState, onOpenCase, onOpenDetail, onRefresh, onSaveDocument, onDownloadDocument, onPreviewDocument, isSavingDocuments = false, isDownloadingDocument = false, isPreviewingDocument = false, documentsCatalogs = null, state }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCaseState, setSelectedCaseState] = useState('all');
   const [selectedBranch, setSelectedBranch] = useState('all');
@@ -2229,6 +2207,7 @@ function AuthenticatedCasesPreview({ detailState, onOpenDetail, onRefresh, state
           getBackendBranchLabel={getBackendBranchLabel}
           getBackendCaseKey={getBackendCaseKey}
           getBackendStatusTone={getBackendStatusTone}
+          onOpenCase={onOpenCase}
           onOpenDetail={onOpenDetail}
           StatusBadge={StatusBadge}
         />
@@ -2238,6 +2217,13 @@ function AuthenticatedCasesPreview({ detailState, onOpenDetail, onRefresh, state
         <AuthenticatedCaseDetail
           detailState={detailState}
           onOpenDetail={onOpenDetail}
+          onSaveDocument={onSaveDocument}
+          onDownloadDocument={onDownloadDocument}
+          onPreviewDocument={onPreviewDocument}
+          isSavingDocuments={isSavingDocuments}
+          isDownloadingDocument={isDownloadingDocument}
+          isPreviewingDocument={isPreviewingDocument}
+          documentsCatalogs={documentsCatalogs}
         />
       ) : null}
 
@@ -2692,6 +2678,148 @@ function AuthenticatedDocumentsCatalogsPreview({ state, onRefresh }) {
   );
 }
 
+function AuthenticatedTasksPreview({ state, onRefresh }) {
+  const isLoading = state.status === 'loading';
+  const hasItems = (state.items || []).length > 0;
+
+  return (
+    <section className="card backend-notifications-card simple-panel-section">
+      <div className="section-head backend-cases-head">
+        <div className="stack-tight">
+          <p className="eyebrow">Tareas</p>
+          <h2>Operativas pendientes</h2>
+          <p className="muted">Lectura real de tareas para seguimiento rápido desde el panel.</p>
+        </div>
+        <div className="backend-cases-actions">
+          <StatusBadge tone={state.status === 'error' ? 'danger' : state.status === 'success' ? 'success' : 'info'}>
+            {isLoading ? 'Actualizando' : state.status === 'success' ? 'Disponible' : state.status === 'error' ? 'Revisar' : 'Pendiente'}
+          </StatusBadge>
+          <button className="secondary-button" disabled={isLoading} onClick={() => { void onRefresh(); }} type="button">
+            {isLoading ? 'Actualizando...' : 'Actualizar'}
+          </button>
+        </div>
+      </div>
+
+      {hasItems ? (
+        <div className="notification-list" role="list" aria-label="Tareas operativas">
+          {state.items.slice(0, 6).map((task, index) => (
+            <article className="notification-card" key={task.id || task.publicId || `${task.title || 'task'}-${index}`} role="listitem">
+              <div className="notification-card-head">
+                <div className="stack-tight">
+                  <span className="client-case-kicker">{formatBackendState(task.priorityCode || 'NORMAL')}</span>
+                  <h3>{task.title || task.summary || 'Tarea operativa'}</h3>
+                </div>
+                <StatusBadge tone="info">{formatBackendState(task.statusCode || 'PENDIENTE')}</StatusBadge>
+              </div>
+              {task.description ? <p className="notification-card-message">{task.description}</p> : null}
+              <div className="notification-card-meta">
+                <small>{task.dueAt ? formatDateTime(task.dueAt) : 'Sin vencimiento visible'}</small>
+                {task.caseId ? <small>Carpeta #{task.caseId}</small> : null}
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : null}
+
+      {state.status === 'loading' && !hasItems ? (
+        <div className="backend-cases-empty" role="status" aria-live="polite">
+          <strong>Estamos cargando tareas operativas.</strong>
+          <p>En unos instantes vas a ver esta información.</p>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function AuthenticatedInsuranceCompaniesPreview({ state, onRefresh }) {
+  const isLoading = state.status === 'loading';
+  const hasItems = (state.items || []).length > 0;
+
+  return (
+    <section className="card backend-notifications-card simple-panel-section">
+      <div className="section-head backend-cases-head">
+        <div className="stack-tight">
+          <p className="eyebrow">Compañías</p>
+          <h2>Seguros vinculados</h2>
+          <p className="muted">Listado real de compañías para validar el circuito de gestión con aseguradoras.</p>
+        </div>
+        <div className="backend-cases-actions">
+          <StatusBadge tone={state.status === 'error' ? 'danger' : state.status === 'success' ? 'success' : 'info'}>
+            {isLoading ? 'Actualizando' : state.status === 'success' ? 'Disponible' : state.status === 'error' ? 'Revisar' : 'Pendiente'}
+          </StatusBadge>
+          <button className="secondary-button" disabled={isLoading} onClick={() => { void onRefresh(); }} type="button">
+            {isLoading ? 'Actualizando...' : 'Actualizar'}
+          </button>
+        </div>
+      </div>
+
+      {hasItems ? (
+        <div className="notification-list" role="list" aria-label="Compañías de seguros">
+          {state.items.slice(0, 6).map((company, index) => (
+            <article className="notification-card" key={company.id || company.publicId || `${company.name || 'company'}-${index}`} role="listitem">
+              <div className="notification-card-head">
+                <div className="stack-tight">
+                  <span className="client-case-kicker">Compañía</span>
+                  <h3>{company.name || company.displayName || 'Compañía sin nombre visible'}</h3>
+                </div>
+                <StatusBadge tone="info">{formatBackendState(company.statusCode || 'ACTIVA')}</StatusBadge>
+              </div>
+              <div className="notification-card-meta">
+                <small>{company.email || company.phone || 'Sin contacto visible'}</small>
+                {company.code ? <small>Código: {company.code}</small> : null}
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function AuthenticatedInsuranceContactsPreview({ state, onRefresh }) {
+  const isLoading = state.status === 'loading';
+  const hasItems = (state.items || []).length > 0;
+
+  return (
+    <section className="card backend-notifications-card simple-panel-section">
+      <div className="section-head backend-cases-head">
+        <div className="stack-tight">
+          <p className="eyebrow">Contactos</p>
+          <h2>Referentes de compañía</h2>
+          <p className="muted">Mostramos contactos de la compañía principal para acelerar la gestión.</p>
+        </div>
+        <div className="backend-cases-actions">
+          <StatusBadge tone={state.status === 'error' ? 'danger' : state.status === 'success' ? 'success' : 'info'}>
+            {isLoading ? 'Actualizando' : state.status === 'success' ? 'Disponible' : state.status === 'error' ? 'Revisar' : 'Pendiente'}
+          </StatusBadge>
+          <button className="secondary-button" disabled={isLoading} onClick={() => { void onRefresh(); }} type="button">
+            {isLoading ? 'Actualizando...' : 'Actualizar'}
+          </button>
+        </div>
+      </div>
+
+      {hasItems ? (
+        <div className="notification-list" role="list" aria-label="Contactos de compañía">
+          {state.items.slice(0, 6).map((contact, index) => (
+            <article className="notification-card" key={contact.id || `${contact.name || 'contact'}-${index}`} role="listitem">
+              <div className="notification-card-head">
+                <div className="stack-tight">
+                  <span className="client-case-kicker">{formatBackendState(contact.roleCode || 'Contacto')}</span>
+                  <h3>{contact.name || contact.fullName || 'Contacto sin nombre visible'}</h3>
+                </div>
+                <StatusBadge tone="info">{formatBackendState(contact.statusCode || 'ACTIVO')}</StatusBadge>
+              </div>
+              <div className="notification-card-meta">
+                <small>{contact.email || contact.phone || 'Sin contacto visible'}</small>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function buildCustomerMockData(items) {
   const registry = new Map();
 
@@ -2804,6 +2932,7 @@ function createTodoRiskTask(overrides = {}) {
 function createTodoRiskInvoice(overrides = {}) {
   return {
     id: crypto.randomUUID(),
+    backendId: null,
     invoiceNumber: '',
     amount: '',
     issuedAt: '',
@@ -2982,6 +3111,8 @@ function createTodoRiskDefaults(overrides = {}) {
   return {
     insurance: {
       company: '',
+      policyNumber: '',
+      certificateNumber: '',
       thirdCompany: '',
       cleasNumber: '',
       handlerName: '',
@@ -3897,7 +4028,7 @@ function initialCases() {
             createLawyerClosureItem({ concept: 'Costas varias', amount: '235005', paymentDate: '2025-09-20', sumWorkshop: 'SI', paidDate: '2025-09-20' }),
             createLawyerClosureItem({ concept: 'Honorarios abogado', amount: '100000', paymentDate: '2025-09-20', sumWorkshop: 'NO', paidDate: '2025-09-20' }),
           ],
-          notes: 'Cierre demo judicial con separación entre sumas que ingresan al taller y rubros propios del expediente.',
+          notes: 'Cierre judicial con separación entre sumas que ingresan al taller y rubros propios del expediente.',
         },
       }),
       repair: {
@@ -3943,7 +4074,7 @@ function initialCases() {
         invoice: 'SI',
         businessName: 'Talleres Zapata SRL',
         invoiceNumber: '0002-0002991',
-        invoices: [createTodoRiskInvoice({ invoiceNumber: '0002-0002991', amount: '12541215', issuedAt: '2026-03-27', notes: 'Convenio judicial demo' })],
+        invoices: [createTodoRiskInvoice({ invoiceNumber: '0002-0002991', amount: '12541215', issuedAt: '2026-03-27', notes: 'Convenio judicial' })],
         signedAgreementDate: '2026-03-27',
         passedToPaymentsDate: '2026-03-27',
         estimatedPaymentDate: '2026-04-03',
@@ -4031,7 +4162,7 @@ function initialCases() {
         partsProvider: 'Autopartes Rosario',
         estimatedWorkDays: '5',
         minimumLaborClose: '780000',
-        observations: 'Caso demo CLEAS completo para ver franquicia, dictamen y pago mixto.',
+        observations: 'Caso CLEAS completo para ver franquicia, dictamen y pago mixto.',
       }),
       todoRisk: createTodoRiskDefaults({
         insurance: {
@@ -4062,7 +4193,7 @@ function initialCases() {
           dictamen: 'En contra',
           exceedsFranchise: 'SI',
           recoveryAmount: '1040000',
-          notes: 'Caso demo con tramo cliente cancelado y diferencia facturada a compañía.',
+          notes: 'Caso con tramo cliente cancelado y diferencia facturada a compañía.',
         },
         documentation: {
           items: [
@@ -4206,7 +4337,7 @@ function initialCases() {
       ],
       franchiseRecovery: createFranchiseRecoveryDefaults({
         managerType: 'Taller',
-        associatedCaseId: 'todo-risk-linked-demo',
+        associatedCaseId: 'todo-risk-linked',
         associatedFolderCode: '0004TZ',
         dictamen: 'A favor',
         agreementAmount: '500000',
@@ -4902,7 +5033,7 @@ function getComputedCase(item) {
   const ingresoItems = item.repair.ingreso.items?.length
     ? item.repair.ingreso.items
     : item.repair.ingreso.observation
-      ? [createIngresoItem({ type: 'Otro', detail: item.repair.ingreso.observation, media: 'Migrado demo' })]
+      ? [createIngresoItem({ type: 'Otro', detail: item.repair.ingreso.observation, media: 'Migrado' })]
       : [];
   const partsTotal = item.budget.lines.reduce((sum, line) => sum + numberValue(line.partPrice), 0);
   const laborWithoutVat = numberValue(item.budget.laborWithoutVat);
@@ -5119,7 +5250,7 @@ function getComputedCase(item) {
           clientExtrasReady,
           hasExtraWorks,
           companyPaymentReady,
-          adminAlerts: !amountMeetsMinimum && amountToInvoice > 0 ? [`Aviso demo admin: el importe total ${money(amountToInvoice)} quedó por debajo del mínimo ${money(applicableMinimum)}.`] : [],
+          adminAlerts: !amountMeetsMinimum && amountToInvoice > 0 ? [`Aviso al administrador: el importe total ${money(amountToInvoice)} quedó por debajo del mínimo ${money(applicableMinimum)}.`] : [],
         },
         tabs: {
           ficha: hasPrimaryRegistryOwner ? 'resolved' : item.folderCreated ? 'advanced' : 'pending',
@@ -5200,7 +5331,7 @@ function getComputedCase(item) {
     const closeDate = closeReady ? maxDate(item.repair.egreso.date || item.repair.egreso.reentryDate, latestPaymentDate) : '';
     const adminAlerts = [];
     if (amountToInvoice > 0 && !amountMeetsMinimum) {
-      adminAlerts.push(`Aviso demo admin: la cotización acordada ${money(amountToInvoice)} quedó por debajo del mínimo ${money(applicableMinimum)}.`);
+      adminAlerts.push(`Aviso al administrador: la cotización acordada ${money(amountToInvoice)} quedó por debajo del mínimo ${money(applicableMinimum)}.`);
     }
     const blockers = [];
     if (!item.folderCreated) blockers.push('No hay carpeta generada para iniciar el reclamo de tercero.');
@@ -5209,7 +5340,7 @@ function getComputedCase(item) {
     if (!hasPrimaryRegistryOwner) blockers.push('Si el cliente no es titular, falta cargar el titular registral principal.');
     if (!documentationComplete) blockers.push('La documentación sigue incompleta y dispara aviso bloqueante al entrar.');
     if (!presentedDate) blockers.push('Falta fecha de presentación básica del trámite.');
-    if (!amountMeetsMinimum && amountToInvoice > 0) blockers.push('La cotización acordada quedó por debajo del mínimo correspondiente y requiere aviso al admin.');
+    if (!amountMeetsMinimum && amountToInvoice > 0) blockers.push('La cotización acordada quedó por debajo del mínimo correspondiente y requiere aviso a administración.');
     if (!companyPaymentReady) blockers.push('Falta registrar fecha y monto del pago de la compañía para cerrar Pagos.');
     if (hasExtraWorks && !clientExtrasReady) blockers.push('Hay tareas extras y el cliente todavía no canceló el saldo total de ese tramo particular.');
     if (!closeReady) blockers.push('El reclamo de tercero cierra cuando termina la reparación y queda completo el cierre económico de compañía + cliente si hubo extras.');
@@ -5381,7 +5512,7 @@ function getComputedCase(item) {
     if (repairEnabled && !item.budget.authorizer) blockers.push('Falta autorizante del presupuesto asociado a la reparación.');
     if (repairEnabled && !turnoReady && budgetReady) blockers.push('La reparación sigue sin turno consistente.');
     if (!repairEnabled && franchiseRecovery.recoverToClient !== 'SI' && franchiseRecovery.recoverToClient !== 'NO') blockers.push('Definí si corresponde recupero a cliente.');
-    if (clientChargeActive && !clientResponsibilityAmount) blockers.push('Definí el tramo demo a cargo del cliente para reflejar el recupero.');
+    if (clientChargeActive && !clientResponsibilityAmount) blockers.push('Definí el tramo a cargo del cliente para reflejar el recupero.');
     if (clientChargeActive && clientResponsibilityAmount > 0 && franchiseRecovery.clientRecoveryStatus === 'Cancelado' && !franchiseRecovery.clientRecoveryDate) blockers.push('Si el recupero cliente figura cancelado, cargá la fecha correspondiente.');
     if (paymentsStarted && !paymentsReady) blockers.push('Pagos quedó iniciado de forma básica, pero todavía no se registró el cobro final.');
     if (hasEconomicAlert) blockers.push('El monto a recuperar quedó por debajo del monto acordado con la compañía.');
@@ -5879,7 +6010,7 @@ function getComputedCase(item) {
     blockers.push('No hay carpeta generada: faltan minimos obligatorios del caso particular.');
   }
   if (!budgetReady) {
-    blockers.push(reportClosed ? 'Presupuesto listo pero falta generar el documento final.' : 'Presupuesto incompleto o en rojo: Gestion reparacion permanece bloqueada.');
+    blockers.push(reportClosed ? 'Presupuesto listo pero falta generar el documento final.' : 'Presupuesto incompleto o en rojo: gestión de reparación permanece bloqueada.');
   }
   if (item.budget.lines.length && incompleteBudgetLine) {
     blockers.push('Hay lineas de presupuesto sin pieza afectada, tarea a ejecutar o nivel de dano.');
@@ -6413,6 +6544,703 @@ function triggerDownload(filename, content, mimeType) {
   triggerBlobDownload(filename, blob);
 }
 
+function getGestionEntryTarget(item) {
+  if (isThirdPartyLawyerCase(item)) {
+    return { tab: 'abogado' };
+  }
+
+  if (isThirdPartyWorkshopCase(item)) {
+    return { tab: 'documentacion' };
+  }
+
+  if (isInsuranceWorkflowCase(item) || isFranchiseRecoveryCase(item)) {
+    return { tab: 'tramite' };
+  }
+
+  return { tab: 'gestion', subtab: 'repuestos' };
+}
+
+function inferTramiteTypeFromBackendCase(item) {
+  const haystack = [
+    item?.caseTypeName,
+    item?.caseTypeCode,
+    item?.domain,
+    item?.workflowDomain,
+    item?.currentWorkflowDomain,
+    item?.folderCode,
+  ]
+    .filter(Boolean)
+    .map((value) => normalizeLookupText(value))
+    .join(' ');
+
+  if (haystack.includes('abogado')) return 'Reclamo de Tercero - Abogado';
+  if (haystack.includes('tercero') && haystack.includes('taller')) return 'Reclamo de Tercero - Taller';
+  if (haystack.includes('todo riesgo') || haystack.includes('todo_riesgo')) return 'Todo Riesgo';
+  if (haystack.includes('cleas') || haystack.includes('franquicia')) return 'CLEAS / Terceros / Franquicia';
+  if (haystack.includes('recupero')) return FRANCHISE_RECOVERY_TRAMITE;
+
+  return 'Particular';
+}
+
+function buildLocalCaseFromBackend(item, nextCounter) {
+  const tramiteType = inferTramiteTypeFromBackendCase(item);
+  const isInsuranceCase = ['Todo Riesgo', 'CLEAS / Terceros / Franquicia', 'Reclamo de Tercero - Taller', 'Reclamo de Tercero - Abogado'].includes(tramiteType);
+  const isThirdPartyWorkshop = tramiteType === 'Reclamo de Tercero - Taller';
+  const isThirdPartyLawyer = tramiteType === 'Reclamo de Tercero - Abogado';
+  const isFranchiseRecovery = tramiteType === FRANCHISE_RECOVERY_TRAMITE;
+  const holder = String(item?.holderName || item?.customerName || '').trim();
+  const holderParts = holder.split(/\s+/).filter(Boolean);
+
+  return {
+    id: String(item?.id ?? crypto.randomUUID()),
+    code: getBackendCaseKey(item),
+    counter: nextCounter,
+    tramiteType,
+    claimNumber: item?.claimNumber || '',
+    branch: item?.branchName || item?.branchCode || BRANCHES[0].label,
+    createdAt: String(item?.createdAt || item?.creationDate || item?.openedAt || todayIso()).slice(0, 10),
+    folderCreated: true,
+    customer: {
+      firstName: item?.firstName || holderParts.slice(0, -1).join(' ') || holder || 'Cliente',
+      lastName: item?.lastName || holderParts.slice(-1).join(' ') || '',
+      phone: item?.phone || '',
+      document: item?.dni || item?.document || '',
+      birthDate: '',
+      locality: '',
+      email: item?.email || '',
+      street: '',
+      streetNumber: '',
+      addressExtra: '',
+      occupation: '',
+      civilStatus: '',
+      referenced: 'NO',
+      referencedName: '',
+    },
+    vehicle: {
+      brand: item?.brand || item?.vehicleBrand || '',
+      model: item?.model || item?.vehicleModel || '',
+      plate: item?.plate || item?.patent || item?.licensePlate || '',
+      type: '',
+      usage: '',
+      paint: '',
+      year: '',
+      color: '',
+      chassis: '',
+      engine: '',
+      transmission: '',
+      mileage: '',
+      observations: '',
+    },
+    vehicleMedia: [],
+    franchiseRecovery: isFranchiseRecovery ? createFranchiseRecoveryDefaults() : undefined,
+    budget: createBudgetDefaults({ workshop: '', authorizer: AUTHORIZER_OPTIONS[0] }),
+    todoRisk: isInsuranceCase
+      ? createTodoRiskDefaults({
+        insurance: { company: '' },
+        documentation: { items: [] },
+        processing: { agenda: [] },
+      })
+      : undefined,
+    thirdParty: (isThirdPartyWorkshop || isThirdPartyLawyer)
+      ? createThirdPartyDefaults({ claim: { documents: [] } })
+      : undefined,
+    lawyer: isThirdPartyLawyer
+      ? createLawyerDefaults({ repairVehicle: 'SI', agenda: [], statusUpdates: [], closure: { expenses: [], items: [] } })
+      : undefined,
+    repair: {
+      parts: [],
+      turno: { date: '', estimatedDays: '', state: 'Pendiente programar', notes: '' },
+      ingreso: { realDate: '', hasObservation: 'NO', observation: '', items: [] },
+      egreso: {
+        date: '',
+        notes: '',
+        shouldReenter: 'SI',
+        reentryDate: '',
+        reentryEstimatedDays: '',
+        reentryState: 'Pendiente programar',
+        reentryNotes: '',
+        definitiveExit: false,
+        repairedPhotos: false,
+        repairedMedia: [],
+      },
+    },
+    payments: {
+      comprobante: 'A',
+      hasSena: 'NO',
+      senaAmount: '',
+      senaDate: '',
+      senaMode: 'Transferencia',
+      senaModeDetail: '',
+      settlements: [],
+      invoice: 'NO',
+      businessName: '',
+      invoiceNumber: '',
+      invoices: [],
+      signedAgreementDate: '',
+      passedToPaymentsDate: '',
+      estimatedPaymentDate: '',
+      paymentDate: '',
+      depositedAmount: '',
+      manualTotalAmount: '',
+      hasRetentions: 'NO',
+      retentions: {
+        iva: '',
+        gains: '',
+        employerContribution: '',
+        iibb: '',
+        drei: '',
+        other: '',
+      },
+    },
+    meta: {
+      dirtyTabs: {},
+      lastSavedByTab: {},
+      syncErrorsByTab: {},
+      removedBudgetItemIds: [],
+      removedPartIds: [],
+    },
+  };
+}
+
+function pickFirstNonEmpty(...values) {
+  for (const value of values) {
+    if (value != null && String(value).trim() !== '') {
+      return value;
+    }
+  }
+  return '';
+}
+
+function patchCaseWithBackendDetail(localCase, detailState) {
+  const normalized = ensureCaseStructure(localCase);
+  Object.assign(localCase, normalized);
+
+  const detail = detailState?.data || {};
+  const budget = detailState?.budgetState?.data || {};
+  const documents = Array.isArray(detailState?.documentsState?.items) ? detailState.documentsState.items : [];
+  const appointments = Array.isArray(detailState?.appointmentsState?.items) ? detailState.appointmentsState.items : [];
+  const intakes = Array.isArray(detailState?.vehicleIntakesState?.items) ? detailState.vehicleIntakesState.items : [];
+  const outcomes = Array.isArray(detailState?.vehicleOutcomesState?.items) ? detailState.vehicleOutcomesState.items : [];
+  const insurance = detailState?.insuranceState?.data || {};
+  const insuranceProcessing = detailState?.insuranceProcessingState?.data || {};
+  const franchise = detailState?.franchiseState?.data || {};
+  const thirdParty = detailState?.thirdPartyState?.data || {};
+  const legal = detailState?.legalState?.data || {};
+  const legalNews = Array.isArray(detailState?.legalNewsState?.items) ? detailState.legalNewsState.items : [];
+  const legalExpenses = Array.isArray(detailState?.legalExpensesState?.items) ? detailState.legalExpensesState.items : [];
+  const financeSummary = detailState?.financeSummaryState?.data || {};
+  const receipts = Array.isArray(detailState?.receiptsState?.items) ? detailState.receiptsState.items : [];
+  const financialMovements = Array.isArray(detailState?.financialMovementsState?.items) ? detailState.financialMovementsState.items : [];
+  const workflowHistory = Array.isArray(detailState?.workflowHistory) ? detailState.workflowHistory : [];
+  const workflowActions = Array.isArray(detailState?.workflowActions) ? detailState.workflowActions : [];
+
+  const mapYesNo = (value) => (value ? 'SI' : 'NO');
+  const mapQuoteStatus = (value) => {
+    const normalized = normalizeLookupText(value);
+    if (normalized.includes('acord')) return 'Acordada';
+    if (normalized.includes('observ')) return 'Observada';
+    return 'Pendiente';
+  };
+  const mapFranchiseStatus = (value) => {
+    const normalized = normalizeLookupText(value);
+    if (normalized.includes('bonific')) return 'Bonificada';
+    if (normalized.includes('cobrad')) return 'Cobrada';
+    if (normalized.includes('sin')) return 'Sin Franquicia';
+    return 'Pendiente';
+  };
+
+  localCase.claimNumber = pickFirstNonEmpty(localCase.claimNumber, detail.claimNumber, detail.claimCode, detail.externalReference);
+  localCase.customer.firstName = pickFirstNonEmpty(localCase.customer.firstName, detail.firstName, detail.customerFirstName, detail.holderFirstName);
+  localCase.customer.lastName = pickFirstNonEmpty(localCase.customer.lastName, detail.lastName, detail.customerLastName, detail.holderLastName, detail.holderName);
+  localCase.customer.phone = pickFirstNonEmpty(localCase.customer.phone, detail.phone, detail.customerPhone, detail.holderPhone);
+  localCase.customer.document = pickFirstNonEmpty(localCase.customer.document, detail.dni, detail.document, detail.customerDocument, detail.holderDocument);
+  localCase.customer.email = pickFirstNonEmpty(localCase.customer.email, detail.email, detail.customerEmail, detail.holderEmail);
+
+  localCase.vehicle.brand = pickFirstNonEmpty(localCase.vehicle.brand, detail.brand, detail.brandText, detail.vehicleBrand);
+  localCase.vehicle.model = pickFirstNonEmpty(localCase.vehicle.model, detail.model, detail.modelText, detail.vehicleModel);
+  localCase.vehicle.plate = pickFirstNonEmpty(localCase.vehicle.plate, detail.plate, detail.licensePlate, detail.patent, detail.domain);
+
+  localCase.todoRisk = localCase.todoRisk || createTodoRiskDefaults({
+    insurance: { company: '' },
+    documentation: { items: [] },
+    processing: { agenda: [] },
+  });
+
+  localCase.todoRisk.insurance.coverageDetail = pickFirstNonEmpty(localCase.todoRisk.insurance.coverageDetail, insurance.coverageDetail);
+  localCase.todoRisk.insurance.cleasNumber = pickFirstNonEmpty(localCase.todoRisk.insurance.cleasNumber, insurance.cleasNumber);
+  localCase.todoRisk.insurance.policyNumber = pickFirstNonEmpty(localCase.todoRisk.insurance.policyNumber, insurance.policyNumber);
+  localCase.todoRisk.insurance.certificateNumber = pickFirstNonEmpty(localCase.todoRisk.insurance.certificateNumber, insurance.certificateNumber);
+
+  localCase.todoRisk.processing.presentedDate = pickFirstNonEmpty(localCase.todoRisk.processing.presentedDate, insuranceProcessing.presentedAt).slice(0, 10);
+  localCase.todoRisk.processing.derivedToInspectionDate = pickFirstNonEmpty(localCase.todoRisk.processing.derivedToInspectionDate, insuranceProcessing.inspectionForwardedAt).slice(0, 10);
+  localCase.todoRisk.processing.quoteDate = pickFirstNonEmpty(localCase.todoRisk.processing.quoteDate, insuranceProcessing.quotationDate).slice(0, 10);
+  localCase.todoRisk.processing.quoteStatus = mapQuoteStatus(pickFirstNonEmpty(localCase.todoRisk.processing.quoteStatus, insuranceProcessing.quotationStatusCode));
+  localCase.todoRisk.processing.agreedAmount = pickFirstNonEmpty(localCase.todoRisk.processing.agreedAmount, insuranceProcessing.agreedAmount);
+  localCase.todoRisk.processing.noRepairNeeded = Boolean(insuranceProcessing.noRepair);
+  localCase.todoRisk.processing.adminTurnOverride = Boolean(insuranceProcessing.adminOverrideAppointment);
+
+  localCase.todoRisk.franchise.status = mapFranchiseStatus(pickFirstNonEmpty(localCase.todoRisk.franchise.status, franchise.franchiseStatusCode));
+  localCase.todoRisk.franchise.amount = pickFirstNonEmpty(localCase.todoRisk.franchise.amount, franchise.franchiseAmount);
+  localCase.todoRisk.franchise.recoveryType = pickFirstNonEmpty(localCase.todoRisk.franchise.recoveryType, franchise.recoveryTypeCode);
+  localCase.todoRisk.franchise.dictamen = pickFirstNonEmpty(localCase.todoRisk.franchise.dictamen, franchise.franchiseOpinionCode);
+  localCase.todoRisk.franchise.exceedsFranchise = mapYesNo(Boolean(franchise.exceedsFranchise));
+  localCase.todoRisk.franchise.recoveryAmount = pickFirstNonEmpty(localCase.todoRisk.franchise.recoveryAmount, franchise.recoveryAmount);
+  localCase.todoRisk.franchise.notes = pickFirstNonEmpty(localCase.todoRisk.franchise.notes, franchise.notes);
+
+  if (typeof budget.totalAmount === 'number' && Number.isFinite(budget.totalAmount)) {
+    localCase.budget.amount = String(Math.round(budget.totalAmount));
+  }
+
+  if (Array.isArray(budget.items) && budget.items.length) {
+    localCase.budget.lines = budget.items.map((entry) => createBudgetLine({
+      backendId: entry.id || null,
+      piece: entry.affectedPiece || entry.description || '',
+      task: entry.taskCode || '',
+      damageLevel: entry.damageLevelCode || '',
+      partPrice: pickFirstNonEmpty(entry.partValue, ''),
+      replacementDecision: entry.partDecisionCode || '',
+      action: entry.actionCode || '',
+      laborWithoutVat: pickFirstNonEmpty(entry.laborAmount, ''),
+      hours: pickFirstNonEmpty(entry.estimatedHours, ''),
+    }));
+
+    localCase.budget.services = budget.items.map((entry, index) => ({
+      id: entry.id || `${localCase.id}-budget-${index}`,
+      label: entry.description || entry.name || `Item ${index + 1}`,
+      amount: String(entry.amount ?? entry.total ?? ''),
+      status: 'SI',
+      observations: entry.notes || '',
+    }));
+  }
+
+  if (documents.length) {
+    localCase.todoRisk.documentation.items = documents.map((doc, index) => ({
+      id: doc.id || `${localCase.id}-doc-${index}`,
+      category: formatDocumentAudience(doc?.audienceCode),
+      name: doc.fileName || doc.name || `Documento ${index + 1}`,
+      uploadedAt: (doc.createdAt || doc.uploadedAt || '').slice(0, 10),
+      notes: doc.description || '',
+    }));
+  }
+
+  if (thirdParty && Object.keys(thirdParty).length > 0) {
+    localCase.thirdParty = localCase.thirdParty || createThirdPartyDefaults({ claim: { documents: [] } });
+    localCase.thirdParty.claim.claimReference = pickFirstNonEmpty(localCase.thirdParty.claim.claimReference, thirdParty.claimReference);
+    localCase.thirdParty.claim.documentationStatus = pickFirstNonEmpty(localCase.thirdParty.claim.documentationStatus, thirdParty.documentationStatusCode, 'Incompleta');
+    localCase.thirdParty.claim.documentationAccepted = Boolean(thirdParty.documentationAccepted);
+    localCase.thirdParty.claim.partsProviderMode = pickFirstNonEmpty(localCase.thirdParty.claim.partsProviderMode, thirdParty.partsProvisionModeCode, 'Provee Cía.');
+  }
+
+  if (legal && Object.keys(legal).length > 0) {
+    localCase.lawyer = localCase.lawyer || createLawyerDefaults({ agenda: [], statusUpdates: [], closure: { expenses: [], items: [] } });
+    localCase.lawyer.tramita = pickFirstNonEmpty(localCase.lawyer.tramita, legal.processorCode, 'Con Poder');
+    localCase.lawyer.reclama = pickFirstNonEmpty(localCase.lawyer.reclama, legal.claimantCode, 'Daño material');
+    localCase.lawyer.instance = pickFirstNonEmpty(localCase.lawyer.instance, legal.instanceCode, 'Administrativa');
+    localCase.lawyer.entryDate = pickFirstNonEmpty(localCase.lawyer.entryDate, legal.entryDate).slice(0, 10);
+    localCase.lawyer.cuij = pickFirstNonEmpty(localCase.lawyer.cuij, legal.cuij);
+    localCase.lawyer.court = pickFirstNonEmpty(localCase.lawyer.court, legal.court);
+    localCase.lawyer.autos = pickFirstNonEmpty(localCase.lawyer.autos, legal.caseNumber);
+    localCase.lawyer.opponentLawyer = pickFirstNonEmpty(localCase.lawyer.opponentLawyer, legal.counterpartLawyer);
+    localCase.lawyer.opponentPhone = pickFirstNonEmpty(localCase.lawyer.opponentPhone, legal.counterpartPhone);
+    localCase.lawyer.opponentEmail = pickFirstNonEmpty(localCase.lawyer.opponentEmail, legal.counterpartEmail);
+    localCase.lawyer.repairVehicle = mapYesNo(legal.repairsVehicle !== false);
+    localCase.lawyer.observations = pickFirstNonEmpty(localCase.lawyer.observations, legal.observations, legal.closingNotes);
+    localCase.lawyer.closure.closeBy = pickFirstNonEmpty(localCase.lawyer.closure.closeBy, legal.closedByCode, 'pendiente');
+    localCase.lawyer.closure.closeDate = pickFirstNonEmpty(localCase.lawyer.closure.closeDate, legal.legalCloseDate).slice(0, 10);
+    localCase.lawyer.closure.totalAmount = pickFirstNonEmpty(localCase.lawyer.closure.totalAmount, legal.totalProceedsAmount);
+  }
+
+  if (legalNews.length) {
+    localCase.lawyer = localCase.lawyer || createLawyerDefaults({ agenda: [], statusUpdates: [], closure: { expenses: [], items: [] } });
+    localCase.lawyer.statusUpdates = legalNews.map((entry, index) => ({
+      id: entry.id || `${localCase.id}-legal-news-${index}`,
+      date: (entry.newsDate || '').slice(0, 10),
+      detail: entry.detail || '',
+      notifyClient: Boolean(entry.notifyCustomer),
+      notifiedAt: (entry.notifiedAt || '').slice(0, 10),
+    }));
+  }
+
+  if (legalExpenses.length) {
+    localCase.lawyer = localCase.lawyer || createLawyerDefaults({ agenda: [], statusUpdates: [], closure: { expenses: [], items: [] } });
+    localCase.lawyer.closure.expenses = legalExpenses.map((entry, index) => ({
+      id: entry.id || `${localCase.id}-legal-expense-${index}`,
+      concept: entry.concept || '',
+      amount: pickFirstNonEmpty(entry.amount, ''),
+      date: (entry.expenseDate || '').slice(0, 10),
+      paidBy: pickFirstNonEmpty(entry.paidByCode, 'CLIENTE'),
+    }));
+  }
+
+  if (financeSummary && Object.keys(financeSummary).length > 0) {
+    localCase.payments.manualTotalAmount = pickFirstNonEmpty(localCase.payments.manualTotalAmount, financeSummary.totalAplicado);
+    localCase.payments.depositedAmount = pickFirstNonEmpty(localCase.payments.depositedAmount, financeSummary.totalIngresos);
+    localCase.payments.hasRetentions = Number(financeSummary.totalRetenciones || 0) > 0 ? 'SI' : localCase.payments.hasRetentions;
+    localCase.payments.retentions.other = pickFirstNonEmpty(localCase.payments.retentions.other, financeSummary.totalRetenciones);
+  }
+
+  if (receipts.length) {
+    const latestReceipt = receipts[0];
+    localCase.payments.invoice = 'SI';
+    localCase.payments.invoiceNumber = pickFirstNonEmpty(localCase.payments.invoiceNumber, latestReceipt.receiptNumber);
+    localCase.payments.businessName = pickFirstNonEmpty(localCase.payments.businessName, latestReceipt.receiverBusinessName);
+    localCase.payments.paymentDate = pickFirstNonEmpty(localCase.payments.paymentDate, latestReceipt.issuedDate).slice(0, 10);
+    localCase.payments.depositedAmount = pickFirstNonEmpty(localCase.payments.depositedAmount, latestReceipt.total);
+    localCase.payments.invoices = receipts.map((entry, index) => createTodoRiskInvoice({
+      id: `${localCase.id}-receipt-${index}`,
+      backendId: entry.id || null,
+      invoiceNumber: entry.receiptNumber || entry.publicId || '',
+      amount: pickFirstNonEmpty(entry.total, ''),
+      issuedAt: (entry.issuedDate || '').slice(0, 10),
+      notes: entry.notes || '',
+    }));
+  }
+
+  if (financialMovements.length && (!localCase.payments.settlements || localCase.payments.settlements.length === 0)) {
+    localCase.payments.settlements = financialMovements.slice(0, 20).map((entry, index) => createSettlement({
+      id: `${localCase.id}-movement-${index}`,
+      backendId: entry.id || null,
+      kind: entry.netAmount === entry.grossAmount ? 'Total' : 'Parcial',
+      amount: pickFirstNonEmpty(entry.netAmount, entry.grossAmount, ''),
+      date: (entry.movementAt || '').slice(0, 10),
+      mode: pickFirstNonEmpty(entry.paymentMethodCode, 'Transferencia'),
+      modeDetail: entry.paymentMethodDetail || '',
+    }));
+  }
+
+  if (appointments.length) {
+    const next = appointments[0];
+    localCase.repair.turno.date = pickFirstNonEmpty(localCase.repair.turno.date, next.scheduledDate, next.date);
+    localCase.repair.turno.state = 'Con Turno';
+  }
+
+  if (intakes.length) {
+    const latestIntake = intakes[0];
+    localCase.repair.ingreso.realDate = pickFirstNonEmpty(localCase.repair.ingreso.realDate, latestIntake.intakeDate, latestIntake.date);
+  }
+
+  if (outcomes.length) {
+    const latestOutcome = outcomes[0];
+    localCase.repair.egreso.date = pickFirstNonEmpty(localCase.repair.egreso.date, latestOutcome.outcomeDate, latestOutcome.date);
+  }
+
+  if (Array.isArray(detailState?.partsState?.items) && detailState.partsState.items.length) {
+    localCase.repair.parts = detailState.partsState.items.map((entry) => createRepairPart({
+      backendId: entry.id || null,
+      name: entry.description || '',
+      provider: entry.finalSupplier || '',
+      amount: pickFirstNonEmpty(entry.finalPrice, ''),
+      state: entry.statusCode || 'Pendiente',
+      purchaseBy: entry.purchasedByCode || 'Taller',
+      paymentStatus: entry.paymentStatusCode || 'Pendiente',
+      budgetAmount: pickFirstNonEmpty(entry.budgetedPrice, ''),
+      source: 'budget',
+      sourceLineId: entry.budgetItemId ? String(entry.budgetItemId) : '',
+      authorized: entry.authorizationCode || '',
+      receivedDate: (entry.receivedDate || '').slice(0, 10),
+      partCode: entry.partCode || '',
+      used: Boolean(entry.used),
+      returned: Boolean(entry.returned),
+    }));
+  }
+
+  localCase.backendWorkflow = {
+    history: workflowHistory,
+    actions: workflowActions,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function deriveWorkflowOverrides(history = []) {
+  const latestByDomain = new Map();
+
+  history
+    .slice()
+    .sort((left, right) => String(right?.stateDate || '').localeCompare(String(left?.stateDate || '')))
+    .forEach((entry) => {
+      const domain = normalizeLookupText(entry?.domain);
+      if (!domain || latestByDomain.has(domain)) return;
+      latestByDomain.set(domain, entry);
+    });
+
+  const mapTabStatus = (entry) => {
+    const raw = normalizeLookupText(entry?.stateName || entry?.stateCode);
+    if (!raw) return 'pending';
+    if (/(pagad|cerrad|finaliz|resuelt|complet|acordad)/.test(raw)) return 'resolved';
+    if (/(pend|sin|espera|nuevo|inici)/.test(raw)) return 'pending';
+    return 'advanced';
+  };
+
+  const tramiteEntry = latestByDomain.get('tramite') || latestByDomain.get('documentacion');
+  const repairEntry = latestByDomain.get('reparacion');
+  const paymentEntry = latestByDomain.get('pago');
+  const legalEntry = latestByDomain.get('legal');
+
+  const paymentRaw = normalizeLookupText(paymentEntry?.stateName || paymentEntry?.stateCode);
+  const paymentState = !paymentRaw
+    ? ''
+    : /(pagad|total|complet)/.test(paymentRaw)
+      ? 'Total'
+      : /(parcial)/.test(paymentRaw)
+        ? 'Parcial'
+        : 'Pendiente';
+
+  return {
+    tramiteStatus: pickFirstNonEmpty(tramiteEntry?.stateName, tramiteEntry?.stateCode),
+    repairStatus: pickFirstNonEmpty(repairEntry?.stateName, repairEntry?.stateCode),
+    paymentState,
+    tabs: {
+      tramite: mapTabStatus(tramiteEntry),
+      documentacion: mapTabStatus(latestByDomain.get('documentacion') || tramiteEntry),
+      gestion: mapTabStatus(repairEntry),
+      pagos: mapTabStatus(paymentEntry),
+      abogado: mapTabStatus(legalEntry),
+    },
+  };
+}
+
+function applyBackendWorkflowToCase(item) {
+  const history = Array.isArray(item?.backendWorkflow?.history) ? item.backendWorkflow.history : [];
+  if (!history.length || !item?.computed) {
+    return item;
+  }
+
+  const overrides = deriveWorkflowOverrides(history);
+  return {
+    ...item,
+    computed: {
+      ...item.computed,
+      tramiteStatus: overrides.tramiteStatus || item.computed.tramiteStatus,
+      repairStatus: overrides.repairStatus || item.computed.repairStatus,
+      paymentState: overrides.paymentState || item.computed.paymentState,
+      tabs: {
+        ...item.computed.tabs,
+        ...Object.fromEntries(Object.entries(overrides.tabs).filter(([, value]) => Boolean(value))),
+      },
+    },
+  };
+}
+
+function inferWorkflowTransitionTarget(label, domainHint = '') {
+  const normalized = normalizeLookupText(label);
+  const domain = normalizeLookupText(domainHint);
+
+  if (domain.includes('tramite')) {
+    if (normalized.includes('sin presentar')) return ['sin presentar', 'presentado'];
+    if (normalized.includes('presentado')) return ['presentado', 'tramite'];
+    if (normalized.includes('acordado')) return ['acordado'];
+    if (normalized.includes('pasado a pagos')) return ['pago', 'pagos'];
+    if (normalized.includes('pagado')) return ['pagado'];
+  }
+
+  if (domain.includes('reparacion')) {
+    if (normalized.includes('en tramite')) return ['tramite', 'en curso'];
+    if (normalized.includes('faltan repuestos')) return ['repuesto', 'turno', 'pendiente'];
+    if (normalized.includes('reparado')) return ['reparado', 'finalizado'];
+    if (normalized.includes('debe reingresar')) return ['reingreso', 'reingresar'];
+    if (normalized.includes('no debe repararse')) return ['no debe repararse', 'total'];
+  }
+
+  return [normalized];
+}
+
+function findWorkflowActionByLabel(actions = [], label, domainHint = '') {
+  const domain = normalizeLookupText(domainHint);
+  const keywords = inferWorkflowTransitionTarget(label, domainHint);
+
+  const candidates = actions.filter((action) => {
+    const actionDomain = normalizeLookupText(action?.domain);
+    if (!domain) return true;
+    return actionDomain === domain;
+  });
+
+  return candidates.find((action) => {
+    const hay = [action?.targetStateCode, action?.targetStateName, action?.actionCode, action?.reason]
+      .filter(Boolean)
+      .map((value) => normalizeLookupText(value))
+      .join(' ');
+    return keywords.some((keyword) => hay.includes(normalizeLookupText(keyword)));
+  }) || null;
+}
+
+function bindWorkflowActions(actions = [], domainHint = '', availableActions = []) {
+  const hasAvailable = Array.isArray(availableActions) && availableActions.length > 0;
+  return actions.map((action) => {
+    const backendAction = findWorkflowActionByLabel(availableActions, action.label, domainHint);
+    return {
+      ...action,
+      backendAction,
+      disabled: action.disabled || (hasAvailable && !backendAction),
+    };
+  });
+}
+
+function normalizeCaseCodesWithCatalogs(caseItem, insuranceCatalogs = null, financeCatalogs = null) {
+  const draft = ensureCaseStructure(caseItem);
+
+  const mapValue = (currentValue, catalogs, key, fallback = []) => (
+    resolveCatalogCode(currentValue, getCatalogEntries(catalogs, key), fallback) || currentValue
+  );
+
+  draft.todoRisk.processing.modality = mapValue(draft.todoRisk.processing.modality, insuranceCatalogs, 'modalityCodes', TODO_RIESGO_MODALITY_OPTIONS);
+  draft.todoRisk.processing.quoteStatus = mapValue(draft.todoRisk.processing.quoteStatus, insuranceCatalogs, 'quotationStatusCodes', TODO_RIESGO_QUOTE_STATUS_OPTIONS);
+  draft.todoRisk.processing.cleasScope = mapValue(draft.todoRisk.processing.cleasScope, insuranceCatalogs, 'cleasScopeCodes', CLEAS_SCOPE_OPTIONS);
+  draft.todoRisk.processing.dictamen = mapValue(draft.todoRisk.processing.dictamen, insuranceCatalogs, 'opinionCodes', [...TODO_RIESGO_DICTAMEN_OPTIONS, ...CLEAS_DICTAMEN_OPTIONS]);
+  draft.todoRisk.processing.clientChargeStatus = mapValue(draft.todoRisk.processing.clientChargeStatus, insuranceCatalogs, 'paymentStatusCodes', CLEAS_PAYMENT_STATUS_OPTIONS);
+  draft.todoRisk.processing.companyFranchisePaymentStatus = mapValue(draft.todoRisk.processing.companyFranchisePaymentStatus, insuranceCatalogs, 'paymentStatusCodes', CLEAS_PAYMENT_STATUS_OPTIONS);
+
+  draft.todoRisk.franchise.status = mapValue(draft.todoRisk.franchise.status, insuranceCatalogs, 'franchiseStatusCodes', TODO_RIESGO_FRANCHISE_STATUS_OPTIONS);
+  draft.todoRisk.franchise.recoveryType = mapValue(draft.todoRisk.franchise.recoveryType, insuranceCatalogs, 'franchiseRecoveryTypeCodes', TODO_RIESGO_RECOVERY_OPTIONS);
+  draft.todoRisk.franchise.dictamen = mapValue(draft.todoRisk.franchise.dictamen, insuranceCatalogs, 'franchiseOpinionCodes', TODO_RIESGO_DICTAMEN_OPTIONS);
+
+  draft.lawyer.tramita = mapValue(draft.lawyer.tramita, insuranceCatalogs, 'legalProcessorCodes', LAWYER_TRAMITA_OPTIONS);
+  draft.lawyer.reclama = mapValue(draft.lawyer.reclama, insuranceCatalogs, 'legalClaimantCodes', LAWYER_RECLAMA_OPTIONS);
+  draft.lawyer.instance = mapValue(draft.lawyer.instance, insuranceCatalogs, 'legalInstanceCodes', LAWYER_INSTANCE_OPTIONS);
+  draft.lawyer.closure.closeBy = mapValue(draft.lawyer.closure.closeBy, insuranceCatalogs, 'legalClosureReasonCodes', LAWYER_CLOSE_BY_OPTIONS);
+  draft.lawyer.closure.expenses = draft.lawyer.closure.expenses.map((entry) => ({
+    ...entry,
+    paidBy: mapValue(entry.paidBy, insuranceCatalogs, 'legalExpensePayerCodes', LAWYER_EXPENSE_PAID_BY_OPTIONS),
+  }));
+
+  draft.payments.comprobante = mapValue(draft.payments.comprobante, financeCatalogs, 'receiptTypeCodes', COMPROBANTES);
+  draft.payments.senaMode = mapValue(draft.payments.senaMode, financeCatalogs, 'paymentMethodCodes', PAYMENT_MODES);
+  draft.payments.settlements = draft.payments.settlements.map((entry) => ({
+    ...entry,
+    mode: mapValue(entry.mode, financeCatalogs, 'paymentMethodCodes', PAYMENT_MODES),
+  }));
+
+  return draft;
+}
+
+function ensureCaseStructure(caseItem) {
+  const draft = structuredClone(caseItem || {});
+
+  if (!draft.todoRisk) draft.todoRisk = createTodoRiskDefaults();
+  if (!draft.todoRisk.processing) draft.todoRisk.processing = createTodoRiskDefaults().processing;
+  if (!draft.todoRisk.franchise) draft.todoRisk.franchise = createTodoRiskDefaults().franchise;
+  if (!draft.todoRisk.insurance) draft.todoRisk.insurance = createTodoRiskDefaults().insurance;
+
+  if (!draft.lawyer) draft.lawyer = createLawyerDefaults();
+  if (!draft.lawyer.closure) draft.lawyer.closure = createLawyerDefaults().closure;
+  if (!Array.isArray(draft.lawyer.closure.expenses)) draft.lawyer.closure.expenses = [];
+
+  if (!draft.payments) draft.payments = createPaymentDefaults();
+  if (!Array.isArray(draft.payments.settlements)) draft.payments.settlements = [];
+  if (!Array.isArray(draft.payments.invoices)) draft.payments.invoices = [];
+
+  if (!draft.repair) {
+    draft.repair = {
+      parts: [],
+      turno: { date: '', estimatedDays: '', state: 'Pendiente programar', notes: '' },
+      ingreso: { realDate: '', hasObservation: 'NO', observation: '', items: [] },
+      egreso: {
+        date: '',
+        notes: '',
+        shouldReenter: 'SI',
+        reentryDate: '',
+        reentryEstimatedDays: '',
+        reentryState: 'Pendiente programar',
+        reentryNotes: '',
+        definitiveExit: false,
+        repairedPhotos: false,
+        repairedMedia: [],
+      },
+    };
+  }
+  if (!Array.isArray(draft.repair.parts)) draft.repair.parts = [];
+
+  if (!draft.meta) {
+    draft.meta = { dirtyTabs: {}, lastSavedByTab: {}, syncErrorsByTab: {}, removedBudgetItemIds: [], removedPartIds: [] };
+  }
+
+  return draft;
+}
+
+function collectCaseCodeValidationIssues(caseItem, insuranceCatalogs = null, financeCatalogs = null) {
+  const issues = [];
+  const check = (label, currentValue, catalogs, key, fallback = []) => {
+    if (!currentValue) return;
+    const resolved = resolveCatalogCode(currentValue, getCatalogEntries(catalogs, key), fallback);
+    if (!resolved) {
+      issues.push(`${label}: "${String(currentValue)}"`);
+    }
+  };
+
+  check('tramite.modality', caseItem.todoRisk?.processing?.modality, insuranceCatalogs, 'modalityCodes', TODO_RIESGO_MODALITY_OPTIONS);
+  check('tramite.quoteStatus', caseItem.todoRisk?.processing?.quoteStatus, insuranceCatalogs, 'quotationStatusCodes', TODO_RIESGO_QUOTE_STATUS_OPTIONS);
+  check('tramite.cleasScope', caseItem.todoRisk?.processing?.cleasScope, insuranceCatalogs, 'cleasScopeCodes', CLEAS_SCOPE_OPTIONS);
+  check('tramite.dictamen', caseItem.todoRisk?.processing?.dictamen, insuranceCatalogs, 'opinionCodes', [...TODO_RIESGO_DICTAMEN_OPTIONS, ...CLEAS_DICTAMEN_OPTIONS]);
+  check('tramite.clientChargeStatus', caseItem.todoRisk?.processing?.clientChargeStatus, insuranceCatalogs, 'paymentStatusCodes', CLEAS_PAYMENT_STATUS_OPTIONS);
+  check('tramite.companyFranchisePaymentStatus', caseItem.todoRisk?.processing?.companyFranchisePaymentStatus, insuranceCatalogs, 'paymentStatusCodes', CLEAS_PAYMENT_STATUS_OPTIONS);
+
+  check('franchise.status', caseItem.todoRisk?.franchise?.status, insuranceCatalogs, 'franchiseStatusCodes', TODO_RIESGO_FRANCHISE_STATUS_OPTIONS);
+  check('franchise.recoveryType', caseItem.todoRisk?.franchise?.recoveryType, insuranceCatalogs, 'franchiseRecoveryTypeCodes', TODO_RIESGO_RECOVERY_OPTIONS);
+  check('franchise.dictamen', caseItem.todoRisk?.franchise?.dictamen, insuranceCatalogs, 'franchiseOpinionCodes', TODO_RIESGO_DICTAMEN_OPTIONS);
+
+  check('lawyer.tramita', caseItem.lawyer?.tramita, insuranceCatalogs, 'legalProcessorCodes', LAWYER_TRAMITA_OPTIONS);
+  check('lawyer.reclama', caseItem.lawyer?.reclama, insuranceCatalogs, 'legalClaimantCodes', LAWYER_RECLAMA_OPTIONS);
+  check('lawyer.instance', caseItem.lawyer?.instance, insuranceCatalogs, 'legalInstanceCodes', LAWYER_INSTANCE_OPTIONS);
+  check('lawyer.closeBy', caseItem.lawyer?.closure?.closeBy, insuranceCatalogs, 'legalClosureReasonCodes', LAWYER_CLOSE_BY_OPTIONS);
+
+  (caseItem.lawyer?.closure?.expenses || []).forEach((entry, index) => {
+    check(`lawyer.expenses[${index}].paidBy`, entry?.paidBy, insuranceCatalogs, 'legalExpensePayerCodes', LAWYER_EXPENSE_PAID_BY_OPTIONS);
+  });
+
+  check('pagos.comprobante', caseItem.payments?.comprobante, financeCatalogs, 'receiptTypeCodes', COMPROBANTES);
+  check('pagos.senaMode', caseItem.payments?.senaMode, financeCatalogs, 'paymentMethodCodes', PAYMENT_MODES);
+  (caseItem.payments?.settlements || []).forEach((entry, index) => {
+    check(`pagos.settlements[${index}].mode`, entry?.mode, financeCatalogs, 'paymentMethodCodes', PAYMENT_MODES);
+  });
+
+  return issues;
+}
+
+function buildLegalNewsSignature(entry) {
+  const date = String(entry?.date || '').trim();
+  const detail = normalizeLookupText(entry?.detail || '');
+  const notify = entry?.notifyClient ? '1' : '0';
+  return `${date}|${detail}|${notify}`;
+}
+
+function buildLegalExpenseSignature(entry) {
+  const concept = normalizeLookupText(entry?.concept || '');
+  const amount = String(numberValue(entry?.amount || 0));
+  const date = String(entry?.date || '').trim();
+  const paidBy = String(entry?.paidBy || '').trim().toUpperCase();
+  return `${concept}|${amount}|${date}|${paidBy}`;
+}
+
+function buildReceiptSignature(entry) {
+  const number = normalizeLookupText(entry?.invoiceNumber || entry?.receiptNumber || entry?.publicId || '');
+  const amount = String(numberValue(entry?.amount ?? entry?.total ?? 0));
+  const date = String(entry?.issuedAt || entry?.issuedDate || '').trim();
+  return `${number}|${amount}|${date}`;
+}
+
+function buildBudgetLineSignature(entry) {
+  const piece = normalizeLookupText(entry?.piece || entry?.affectedPiece || '');
+  const action = normalizeLookupText(entry?.repairAction || entry?.actionCode || '');
+  const task = normalizeLookupText(entry?.task || entry?.taskCode || '');
+  const partPrice = String(numberValue(entry?.partPrice ?? entry?.partValue ?? 0));
+  const labor = String(numberValue(entry?.laborWithoutVat ?? entry?.laborAmount ?? 0));
+  return `${piece}|${task}|${action}|${partPrice}|${labor}`;
+}
+
+function buildPartSignature(entry) {
+  const description = normalizeLookupText(entry?.name || entry?.description || '');
+  const status = normalizeLookupText(entry?.state || entry?.statusCode || '');
+  const price = String(numberValue(entry?.amount ?? entry?.finalPrice ?? 0));
+  return `${description}|${status}|${price}`;
+}
+
+function buildFinancialMovementSignature(entry) {
+  const movementType = normalizeLookupText(entry?.movementTypeCode || entry?.kind || '');
+  const amount = String(numberValue(entry?.netAmount ?? entry?.grossAmount ?? entry?.amount ?? 0));
+  const dateRaw = String(entry?.movementAt || entry?.date || '').trim();
+  const date = dateRaw.includes('T') ? dateRaw.slice(0, 10) : dateRaw;
+  return `${movementType}|${amount}|${date}`;
+}
+
 function triggerBlobDownload(filename, blob) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -6466,6 +7294,16 @@ function PanelGeneral({
   authenticatedFinanceCatalogsState,
   authenticatedInsuranceCatalogsState,
   authenticatedDocumentsCatalogsState,
+  authenticatedTasksState,
+  authenticatedInsuranceCompaniesState,
+  authenticatedInsuranceContactsState,
+  onOpenCase,
+  onSaveDocument,
+  onDownloadDocument,
+  onPreviewDocument,
+  isSavingDocuments,
+  isDownloadingDocument,
+  isPreviewingDocument,
   onRefreshCurrentUser,
   onMarkNotificationAsRead,
   onOpenAuthenticatedCaseDetail,
@@ -6476,34 +7314,26 @@ function PanelGeneral({
   onRefreshAuthenticatedFinanceCatalogs,
   onRefreshAuthenticatedInsuranceCatalogs,
   onRefreshAuthenticatedDocumentsCatalogs,
+  onRefreshAuthenticatedTasks,
+  onRefreshAuthenticatedInsuranceCompanies,
+  onRefreshAuthenticatedInsuranceContacts,
   pendingNotificationIds,
   notificationActionStateById,
 }) {
   return (
     <div className="page-stack">
-      <section className="hero-panel compact-hero panel-simple-hero client-overview-hero">
-        <div className="stack-tight">
-          <p className="eyebrow">Seguimiento</p>
-          <h1>Tus carpetas, en un solo lugar</h1>
-          <p className="muted client-overview-copy">
-            Esta primera vista reúne la información principal de tus casos para que puedas entrar y entender el estado general de tu cuenta al instante.
-          </p>
-        </div>
-      </section>
-
-      <AuthenticatedUserSnapshot
-        endpoint={currentUserEndpoint}
-        formatDateTime={formatDateTime}
-        onRefresh={onRefreshCurrentUser}
-        session={backendSession}
-        state={currentUserState}
-        StatusBadge={StatusBadge}
-      />
-
       <AuthenticatedCasesPreview
         detailState={authenticatedCaseDetailState}
+        documentsCatalogs={authenticatedDocumentsCatalogsState.catalogs}
+        isSavingDocuments={isSavingDocuments}
+        isDownloadingDocument={isDownloadingDocument}
+        isPreviewingDocument={isPreviewingDocument}
+        onOpenCase={onOpenCase}
+        onDownloadDocument={onDownloadDocument}
+        onPreviewDocument={onPreviewDocument}
         onOpenDetail={onOpenAuthenticatedCaseDetail}
         onRefresh={onRefreshAuthenticatedCases}
+        onSaveDocument={onSaveDocument}
         state={authenticatedCasesState}
       />
 
@@ -6516,30 +7346,6 @@ function PanelGeneral({
         onRefresh={onRefreshAuthenticatedNotifications}
       />
 
-      <AuthenticatedSystemParametersPreview
-        state={authenticatedSystemParametersState}
-        onRefresh={onRefreshAuthenticatedSystemParameters}
-      />
-
-      <AuthenticatedOperationCatalogsPreview
-        state={authenticatedOperationCatalogsState}
-        onRefresh={onRefreshAuthenticatedOperationCatalogs}
-      />
-
-      <AuthenticatedFinanceCatalogsPreview
-        state={authenticatedFinanceCatalogsState}
-        onRefresh={onRefreshAuthenticatedFinanceCatalogs}
-      />
-
-      <AuthenticatedInsuranceCatalogsPreview
-        state={authenticatedInsuranceCatalogsState}
-        onRefresh={onRefreshAuthenticatedInsuranceCatalogs}
-      />
-
-      <AuthenticatedDocumentsCatalogsPreview
-        state={authenticatedDocumentsCatalogsState}
-        onRefresh={onRefreshAuthenticatedDocumentsCatalogs}
-      />
     </div>
   );
 }
@@ -6566,7 +7372,7 @@ function NuevoCaso({
     <div className="page-stack">
       <section className="hero-panel compact-hero">
         <div className="stack-tight">
-          <p className="eyebrow">Nuevo Caso</p>
+          <p className="eyebrow">Nuevo caso</p>
           <h1>Alta de caso particular</h1>
           <p className="muted">Completá los datos mínimos y generá la carpeta.</p>
         </div>
@@ -6687,7 +7493,7 @@ function FichaTecnicaTab({ item, updateCase }) {
     : 'Pendiente';
 
   return (
-    <div className="tab-layout">
+    <div className="tab-layout ficha-tab-layout ops-tab-layout">
       <div className="form-grid two-columns">
         <article className="card inner-card">
           <div className="section-head small-gap">
@@ -6719,7 +7525,7 @@ function FichaTecnicaTab({ item, updateCase }) {
             <>
               <div className="budget-ready-panel budget-ready-panel-compact">
                 <StatusBadge tone={clientRegistry.isOwner === 'SI' ? 'success' : 'info'}>{clientRegistry.isOwner === 'SI' ? 'Cliente titular registral' : 'Titular registral externo'}</StatusBadge>
-                <small>Si el cliente no es titular, la demo toma el primer titular registral para nombrar la carpeta.</small>
+                <small>Si el cliente no es titular, el sistema toma el primer titular registral para nombrar la carpeta.</small>
               </div>
               <div className="form-grid three-columns compact-grid">
                 <ToggleField label="Titular registral" onChange={(value) => updateCase((draft) => {
@@ -6882,7 +7688,7 @@ function FichaTecnicaTab({ item, updateCase }) {
   );
 }
 
-function GestionTramiteTab({ item, updateCase, flash, allCases = [] }) {
+function GestionTramiteTab({ item, updateCase, flash, insuranceCatalogs = null, allCases = [] }) {
   const todoRisk = item.todoRisk;
   const thirdParty = item.thirdParty;
   const lawyer = item.lawyer;
@@ -6900,6 +7706,14 @@ function GestionTramiteTab({ item, updateCase, flash, allCases = [] }) {
   const isFranchiseFlow = todoRisk?.processing?.cleasScope === 'Sobre franquicia';
   const isDamageTotal = todoRisk?.processing?.cleasScope === 'Sobre daño total';
   const dictamen = todoRisk?.processing?.dictamen || 'Pendiente';
+  const modalityOptions = getCatalogSelectOptions(insuranceCatalogs, 'modalityCodes', TODO_RIESGO_MODALITY_OPTIONS);
+  const opinionOptions = getCatalogSelectOptions(insuranceCatalogs, 'opinionCodes', isCleas ? CLEAS_DICTAMEN_OPTIONS : TODO_RIESGO_DICTAMEN_OPTIONS);
+  const quotationStatusOptions = getCatalogSelectOptions(insuranceCatalogs, 'quotationStatusCodes', TODO_RIESGO_QUOTE_STATUS_OPTIONS);
+  const franchiseStatusOptions = getCatalogSelectOptions(insuranceCatalogs, 'franchiseStatusCodes', TODO_RIESGO_FRANCHISE_STATUS_OPTIONS);
+  const franchiseRecoveryTypeOptions = getCatalogSelectOptions(insuranceCatalogs, 'franchiseRecoveryTypeCodes', TODO_RIESGO_RECOVERY_OPTIONS);
+  const franchiseOpinionOptions = getCatalogSelectOptions(insuranceCatalogs, 'franchiseOpinionCodes', TODO_RIESGO_DICTAMEN_OPTIONS);
+  const cleasScopeOptions = getCatalogSelectOptions(insuranceCatalogs, 'cleasScopeCodes', CLEAS_SCOPE_OPTIONS);
+  const paymentStatusOptions = getCatalogSelectOptions(insuranceCatalogs, 'paymentStatusCodes', CLEAS_PAYMENT_STATUS_OPTIONS);
 
   const addDocument = () => {
     updateCase((draft) => {
@@ -6966,7 +7780,7 @@ function GestionTramiteTab({ item, updateCase, flash, allCases = [] }) {
     };
 
     return (
-      <div className="tab-layout todo-risk-layout">
+      <div className="tab-layout todo-risk-layout pagos-tab-layout">
         <article className="card inner-card franchise-management-card">
           <div className="section-head small-gap">
             <div>
@@ -7068,13 +7882,13 @@ function GestionTramiteTab({ item, updateCase, flash, allCases = [] }) {
 
           {franchiseComputed.hasEconomicAlert ? (
             <div className="inline-alert danger-banner franchise-flow-banner">
-              Recupero económico en alerta: {money(franchiseComputed.amountToRecover || 0)} queda por debajo del monto acordado {money(franchiseComputed.agreementAmount || 0)}. Diferencia demo: {money(franchiseComputed.economicGapAmount || 0)}.
+              Recupero económico en alerta: {money(franchiseComputed.amountToRecover || 0)} queda por debajo del monto acordado {money(franchiseComputed.agreementAmount || 0)}. Diferencia: {money(franchiseComputed.economicGapAmount || 0)}.
             </div>
           ) : null}
 
           {franchiseComputed.dictamenShared ? (
             <div className="inline-alert info-banner franchise-flow-banner">
-              Dictamen compartido: se refleja demo 50/50 con {money(franchiseComputed.clientResponsibilityAmount || 0)} a cargo del cliente y {money(franchiseComputed.companyExpectedAmount || 0)} a cargo de la compañía.
+              Dictamen compartido: se refleja 50/50 con {money(franchiseComputed.clientResponsibilityAmount || 0)} a cargo del cliente y {money(franchiseComputed.companyExpectedAmount || 0)} a cargo de la compañía.
             </div>
           ) : null}
 
@@ -7173,12 +7987,12 @@ function GestionTramiteTab({ item, updateCase, flash, allCases = [] }) {
     };
 
     return (
-      <div className="tab-layout todo-risk-layout">
+      <div className="tab-layout todo-risk-layout pagos-tab-layout">
         <article className="card inner-card todo-risk-summary-card">
           <div className="section-head small-gap">
             <div>
               <p className="eyebrow">Gestión del trámite</p>
-              <h3>Base heredada de Taller + guard legal</h3>
+              <h3>Base heredada del taller + control legal</h3>
             </div>
             <StatusBadge tone={item.computed.tabs.tramite === 'resolved' ? 'success' : 'info'}>
               {item.computed.tramiteStatus}
@@ -7200,7 +8014,7 @@ function GestionTramiteTab({ item, updateCase, flash, allCases = [] }) {
               }
             })} value={lawyer.repairVehicle} />
           </div>
-          {lawyer.repairVehicle === 'NO' ? <div className="inline-alert info-banner">Se anula la reparación normal: el estado superior pasa a <strong>No debe repararse</strong> y Gestión reparación queda resuelta en demo.</div> : null}
+          {lawyer.repairVehicle === 'NO' ? <div className="inline-alert info-banner">Se anula la reparación normal: el estado superior pasa a <strong>No debe repararse</strong> y Gestión reparación queda resuelta.</div> : null}
           {!todoRisk.incident.date ? <div className="inline-alert danger-banner">Sin fecha del siniestro no se calcula la prescripción.</div> : null}
         </article>
 
@@ -7245,7 +8059,7 @@ function GestionTramiteTab({ item, updateCase, flash, allCases = [] }) {
             </div>
             <div className="tag-row">
               <button className="secondary-button" onClick={addGeneralDocument} type="button">Agregar ítem</button>
-              <button className="secondary-button" onClick={() => flash('Descargar todo demo: se agruparía la documentación general del reclamo.')} type="button">Descargar todo</button>
+              <button className="secondary-button" onClick={() => flash('Descargar todo: se agrupará la documentación general del reclamo.')} type="button">Descargar todo</button>
             </div>
           </div>
           <div className="table-wrap">
@@ -7288,7 +8102,7 @@ function GestionTramiteTab({ item, updateCase, flash, allCases = [] }) {
     };
 
     return (
-      <div className="tab-layout todo-risk-layout">
+      <div className="tab-layout todo-risk-layout pagos-tab-layout">
         <article className="card inner-card todo-risk-summary-card">
           <div className="section-head small-gap">
             <div>
@@ -7379,7 +8193,7 @@ function GestionTramiteTab({ item, updateCase, flash, allCases = [] }) {
               <p className="muted">Mínimos automáticos, proveedor de repuestos y saldo final del taller.</p>
             </div>
             <StatusBadge tone={amountBelowMinimum ? 'danger' : 'info'}>
-              {amountBelowMinimum ? 'Aviso admin pendiente' : 'Automático desde Presupuesto'}
+              {amountBelowMinimum ? 'Aviso a administración pendiente' : 'Automático desde presupuesto'}
             </StatusBadge>
           </div>
 
@@ -7414,8 +8228,8 @@ function GestionTramiteTab({ item, updateCase, flash, allCases = [] }) {
 
           {amountBelowMinimum ? (
             <div className="inline-alert danger-banner third-party-admin-alert">
-              <span>La cotización acordada / a facturar Cía. quedó por debajo del mínimo correspondiente ({money(item.computed.thirdParty.applicableMinimum)}). Se genera aviso demo al administrador.</span>
-              <button className="secondary-button compact-button" onClick={() => flash(item.computed.thirdParty.adminAlerts[0] || 'Aviso demo al admin: revisar cotización acordada por debajo del mínimo.')} type="button">Avisar admin demo</button>
+              <span>La cotización acordada / a facturar Cía. quedó por debajo del mínimo correspondiente ({money(item.computed.thirdParty.applicableMinimum)}). Se genera aviso al administrador.</span>
+              <button className="secondary-button compact-button" onClick={() => flash(item.computed.thirdParty.adminAlerts[0] || 'Aviso al administrador: revisar cotización acordada por debajo del mínimo.')} type="button">Avisar administrador</button>
             </div>
           ) : null}
         </article>
@@ -7464,7 +8278,7 @@ function GestionTramiteTab({ item, updateCase, flash, allCases = [] }) {
                   draft.todoRisk.processing.companyFranchisePaymentStatus = 'Pendiente';
                   draft.todoRisk.processing.companyFranchisePaymentDate = '';
                 }
-              })} options={CLEAS_SCOPE_OPTIONS} placeholder="Seleccioná" value={todoRisk.processing.cleasScope} />
+              })} options={cleasScopeOptions} placeholder="Seleccioná" value={resolveCatalogCode(todoRisk.processing.cleasScope, getCatalogEntries(insuranceCatalogs, 'cleasScopeCodes'), CLEAS_SCOPE_OPTIONS) || todoRisk.processing.cleasScope} />
               <SelectField label="Dictamen" onChange={(value) => updateCase((draft) => {
                 draft.todoRisk.processing.dictamen = value;
                 if (value !== 'En contra') {
@@ -7473,7 +8287,7 @@ function GestionTramiteTab({ item, updateCase, flash, allCases = [] }) {
                   draft.todoRisk.processing.companyFranchisePaymentStatus = 'Pendiente';
                   draft.todoRisk.processing.companyFranchisePaymentDate = '';
                 }
-              })} options={CLEAS_DICTAMEN_OPTIONS} value={dictamen} />
+              })} options={opinionOptions} value={resolveCatalogCode(dictamen, getCatalogEntries(insuranceCatalogs, 'opinionCodes'), CLEAS_DICTAMEN_OPTIONS) || dictamen} />
             </>
           ) : null}
         </div>
@@ -7486,7 +8300,7 @@ function GestionTramiteTab({ item, updateCase, flash, allCases = [] }) {
           : !todoRisk.franchise.recoveryType
             ? <div className="inline-alert danger-banner">Primero definí Recupero en Franquicia; recién ahí se habilita la fecha de presentación.</div>
             : null}
-        {isCleas && dictamen === 'Pendiente' ? <div className="inline-alert danger-banner">Con dictamen pendiente la demo muestra la carpeta, pero bloquea inspección, cotización y avance operativo.</div> : null}
+        {isCleas && dictamen === 'Pendiente' ? <div className="inline-alert danger-banner">Con dictamen pendiente se muestra la carpeta, pero se bloquea inspección, cotización y avance operativo.</div> : null}
         {isCleas && item.computed.todoRisk.noRepairNeeded ? <div className="inline-alert info-banner">CLEAS sobre daño total con dictamen en contra: el caso se corta acá y no sigue reparación normal.</div> : null}
       </article>
 
@@ -7497,6 +8311,8 @@ function GestionTramiteTab({ item, updateCase, flash, allCases = [] }) {
         </div>
         <div className="form-grid three-columns compact-grid">
           <SelectField label="Compañía" onChange={(value) => updateCase((draft) => { draft.todoRisk.insurance.company = value; })} options={TODO_RIESGO_INSURANCE_OPTIONS} placeholder="Seleccioná" value={todoRisk.insurance.company} />
+          <DataField label="N° póliza" onChange={(value) => updateCase((draft) => { draft.todoRisk.insurance.policyNumber = value; })} value={todoRisk.insurance.policyNumber || ''} />
+          <DataField label="N° certificado" onChange={(value) => updateCase((draft) => { draft.todoRisk.insurance.certificateNumber = value; })} value={todoRisk.insurance.certificateNumber || ''} />
           {isCleas ? <DataField label="Cía. del 3ero" onChange={(value) => updateCase((draft) => { draft.todoRisk.insurance.thirdCompany = value; })} value={todoRisk.insurance.thirdCompany || ''} /> : null}
           {isCleas ? <DataField label="N° de CLEAS" onChange={(value) => updateCase((draft) => { draft.todoRisk.insurance.cleasNumber = value; })} value={todoRisk.insurance.cleasNumber || ''} /> : null}
           <DataField label="Tramitador/a" onChange={(value) => updateCase((draft) => { draft.todoRisk.insurance.handlerName = value; })} value={todoRisk.insurance.handlerName} />
@@ -7544,7 +8360,7 @@ function GestionTramiteTab({ item, updateCase, flash, allCases = [] }) {
             <StatusBadge tone={getStatusTone(todoRisk.franchise.status)}>{todoRisk.franchise.status}</StatusBadge>
           </div>
           <div className="form-grid four-columns compact-grid">
-            <SelectField label="Estado" onChange={(value) => updateCase((draft) => { draft.todoRisk.franchise.status = value; })} options={TODO_RIESGO_FRANCHISE_STATUS_OPTIONS} value={todoRisk.franchise.status} />
+            <SelectField label="Estado" onChange={(value) => updateCase((draft) => { draft.todoRisk.franchise.status = value; })} options={franchiseStatusOptions} value={resolveCatalogCode(todoRisk.franchise.status, getCatalogEntries(insuranceCatalogs, 'franchiseStatusCodes'), TODO_RIESGO_FRANCHISE_STATUS_OPTIONS) || todoRisk.franchise.status} />
             <DataField label="Monto" onChange={(value) => updateCase((draft) => { draft.todoRisk.franchise.amount = value; })} value={todoRisk.franchise.amount} />
             <SelectField label="Recupero" onChange={(value) => updateCase((draft) => {
               draft.todoRisk.franchise.recoveryType = value;
@@ -7557,9 +8373,9 @@ function GestionTramiteTab({ item, updateCase, flash, allCases = [] }) {
                 draft.todoRisk.processing.quoteDate = '';
                 draft.todoRisk.processing.agreedAmount = '';
               }
-            })} options={TODO_RIESGO_RECOVERY_OPTIONS} placeholder="Seleccioná" value={todoRisk.franchise.recoveryType} />
+            })} options={franchiseRecoveryTypeOptions} placeholder="Seleccioná" value={resolveCatalogCode(todoRisk.franchise.recoveryType, getCatalogEntries(insuranceCatalogs, 'franchiseRecoveryTypeCodes'), TODO_RIESGO_RECOVERY_OPTIONS) || todoRisk.franchise.recoveryType} />
             <DataField disabled={todoRisk.franchise.recoveryType !== 'Cía. del 3ero'} label="Caso asociado" onChange={(value) => updateCase((draft) => { draft.todoRisk.franchise.associatedCase = value; })} value={todoRisk.franchise.associatedCase} />
-            <SelectField disabled={todoRisk.franchise.recoveryType !== 'Propia Cía.'} label="Dictamen" onChange={(value) => updateCase((draft) => { draft.todoRisk.franchise.dictamen = value; })} options={TODO_RIESGO_DICTAMEN_OPTIONS} placeholder="Seleccioná" value={todoRisk.franchise.dictamen} />
+            <SelectField disabled={todoRisk.franchise.recoveryType !== 'Propia Cía.'} label="Dictamen" onChange={(value) => updateCase((draft) => { draft.todoRisk.franchise.dictamen = value; })} options={franchiseOpinionOptions} placeholder="Seleccioná" value={resolveCatalogCode(todoRisk.franchise.dictamen, getCatalogEntries(insuranceCatalogs, 'franchiseOpinionCodes'), TODO_RIESGO_DICTAMEN_OPTIONS) || todoRisk.franchise.dictamen} />
             <ToggleField label="Cotización supera Franquicia" onChange={(value) => updateCase((draft) => {
               draft.todoRisk.franchise.exceedsFranchise = value;
               if (value !== 'NO') draft.todoRisk.franchise.recoveryAmount = '';
@@ -7577,11 +8393,11 @@ function GestionTramiteTab({ item, updateCase, flash, allCases = [] }) {
         <div className="section-head">
           <div>
             <h3>Documentación</h3>
-            <p className="muted">Categorías y carga demo del trámite.</p>
+            <p className="muted">Categorías y carga del trámite.</p>
           </div>
           <div className="tag-row">
             <button className="secondary-button" onClick={addDocument} type="button">Agregar ítem</button>
-            <button className="secondary-button" onClick={() => flash('Descargar todo demo: se agruparían los adjuntos del trámite en un zip.') } type="button">Descargar todo</button>
+            <button className="secondary-button" onClick={() => flash('Descargar todo: se agruparán los adjuntos del trámite en un archivo comprimido.') } type="button">Descargar todo</button>
           </div>
         </div>
         <div className="table-wrap">
@@ -7631,11 +8447,11 @@ function GestionTramiteTab({ item, updateCase, flash, allCases = [] }) {
             }
           })} type="date" value={todoRisk.processing.presentedDate} />
           <DataField disabled={processingLocked} label="Derivado a inspección" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.derivedToInspectionDate = value; })} type="date" value={todoRisk.processing.derivedToInspectionDate} />
-          <SelectField disabled={processingLocked} label="Modalidad" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.modality = value; })} options={TODO_RIESGO_MODALITY_OPTIONS} value={todoRisk.processing.modality} />
+          <SelectField disabled={processingLocked} label="Modalidad" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.modality = value; })} options={modalityOptions} value={resolveCatalogCode(todoRisk.processing.modality, getCatalogEntries(insuranceCatalogs, 'modalityCodes'), TODO_RIESGO_MODALITY_OPTIONS) || todoRisk.processing.modality} />
           <DataField label="Mínimo para cierre" onChange={() => {}} readOnly value={item.computed.todoRisk.minimumClosingAmount} />
           <DataField label="Lleva repuestos" onChange={() => {}} readOnly value={item.computed.hasReplacementParts ? 'SI' : 'NO'} />
           {isCleas ? <DataField label="Dictamen actual" onChange={() => {}} readOnly value={dictamen} /> : null}
-          <SelectField disabled={processingLocked} label="Cotización" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.quoteStatus = value; })} options={TODO_RIESGO_QUOTE_STATUS_OPTIONS} value={todoRisk.processing.quoteStatus} />
+          <SelectField disabled={processingLocked} label="Cotización" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.quoteStatus = value; })} options={quotationStatusOptions} value={resolveCatalogCode(todoRisk.processing.quoteStatus, getCatalogEntries(insuranceCatalogs, 'quotationStatusCodes'), TODO_RIESGO_QUOTE_STATUS_OPTIONS) || todoRisk.processing.quoteStatus} />
           <DataField disabled={processingLocked} label="Fecha cotización" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.quoteDate = value; })} type="date" value={todoRisk.processing.quoteDate} />
           <DataField disabled={processingLocked} invalid={todoRisk.processing.quoteStatus === 'Acordada' && !item.computed.todoRisk.amountMeetsMinimum} label="Monto acordado" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.agreedAmount = value; })} value={todoRisk.processing.agreedAmount} />
           {!isCleas ? <DataField label="Repuestos" onChange={() => {}} readOnly value={item.computed.todoRisk.partsAuthorization} /> : null}
@@ -7644,7 +8460,7 @@ function GestionTramiteTab({ item, updateCase, flash, allCases = [] }) {
           {isCleas && isFranchiseFlow && dictamen === 'En contra' ? <DataField label="Pago franquicia Cía." onChange={() => {}} readOnly value={item.computed.todoRisk.companyFranchisePaymentAmount} /> : null}
           <DataField label="Provee repuestos" onChange={() => {}} readOnly value={item.budget.partsProvider || 'Sin proveedor'} />
           <DataField label="A facturar Cía." onChange={() => {}} readOnly value={item.computed.todoRisk.amountToInvoice} />
-          {isCleas && isFranchiseFlow && dictamen === 'En contra' ? <SelectField label="Estado pago cliente" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.clientChargeStatus = value; })} options={CLEAS_PAYMENT_STATUS_OPTIONS} value={todoRisk.processing.clientChargeStatus} /> : null}
+          {isCleas && isFranchiseFlow && dictamen === 'En contra' ? <SelectField label="Estado pago cliente" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.clientChargeStatus = value; })} options={paymentStatusOptions} value={resolveCatalogCode(todoRisk.processing.clientChargeStatus, getCatalogEntries(insuranceCatalogs, 'paymentStatusCodes'), CLEAS_PAYMENT_STATUS_OPTIONS) || todoRisk.processing.clientChargeStatus} /> : null}
           {isCleas && isFranchiseFlow && dictamen === 'En contra' ? <DataField label="Fecha pago cliente" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.clientChargeDate = value; })} type="date" value={todoRisk.processing.clientChargeDate || ''} /> : null}
         </div>
 
@@ -7656,7 +8472,7 @@ function GestionTramiteTab({ item, updateCase, flash, allCases = [] }) {
           <div className="inline-alert danger-banner">El monto acordado debe ser igual o mayor al mínimo para cierre traído desde Presupuesto.</div>
         ) : null}
         {isCleas && isFranchiseFlow && dictamen === 'En contra' && !item.computed.todoRisk.clientChargeDefined ? (
-          <div className="inline-alert danger-banner">El PDF de referencia muestra este monto cargado de forma explícita: hasta definir "A cargo del cliente" no se deriva cuánto factura la compañía ni cuánto queda en pagos.</div>
+          <div className="inline-alert danger-banner">El comprobante de referencia muestra este monto cargado de forma explícita: hasta definir "A cargo del cliente" no se deriva cuánto factura la compañía ni cuánto queda en pagos.</div>
         ) : null}
         {isCleas && isDamageTotal && dictamen === 'En contra' ? <div className="inline-alert info-banner">Este camino se considera cierre directo: no genera reparación normal ni campos de franquicia.</div> : null}
       </article>
@@ -7768,7 +8584,7 @@ function DocumentacionTab({ item, updateCase, flash }) {
           </div>
           <div className="tag-row">
             <button className="secondary-button" onClick={addDocumentItem} type="button">Agregar ítem</button>
-            <button className="secondary-button" onClick={() => flash('Descargar todo demo: se prepararía un paquete único con toda la documentación del reclamo.')} type="button">Descargar todo</button>
+            <button className="secondary-button" onClick={() => flash('Descargar todo: se preparará un paquete único con toda la documentación del reclamo.')} type="button">Descargar todo</button>
           </div>
         </div>
         <div className="table-wrap">
@@ -7842,6 +8658,11 @@ function PresupuestoTab({ item, updateCase, flash }) {
     }
 
     updateBudget((draft) => {
+      const removedLine = draft.budget.lines.find((line) => line.id === lineId);
+      if (removedLine?.backendId) {
+        draft.meta = draft.meta || {};
+        draft.meta.removedBudgetItemIds = [...new Set([...(draft.meta.removedBudgetItemIds || []), removedLine.backendId])];
+      }
       draft.budget.lines = draft.budget.lines.filter((line) => line.id !== lineId);
     }, { syncParts: true });
   };
@@ -7901,7 +8722,7 @@ function PresupuestoTab({ item, updateCase, flash }) {
   const customerDisplayName = `${item.customer.firstName || ''} ${item.customer.lastName || ''}`.trim() || 'Pendiente';
   const budgetStatusTone = item.computed.budgetReady ? 'success' : item.computed.canGenerateBudget ? 'info' : 'danger';
   const budgetStatusLabel = item.computed.budgetReady
-    ? 'Presupuesto emitido y listo para Gestion reparacion'
+    ? 'Presupuesto emitido y listo para gestión de reparación'
     : item.computed.canGenerateBudget
       ? 'Informe cerrado. Falta generar el presupuesto final'
       : 'Presupuesto en rojo';
@@ -7941,7 +8762,7 @@ function PresupuestoTab({ item, updateCase, flash }) {
   };
 
   return (
-    <div className="tab-layout budget-layout">
+    <div className="tab-layout budget-layout ops-tab-layout">
       <div className="budget-main-grid">
         <article className="card inner-card workshop-shell">
           <div className="section-head">
@@ -8017,7 +8838,7 @@ function PresupuestoTab({ item, updateCase, flash }) {
             <article>
               <span>Informe</span>
               <strong>{item.budget.reportStatus}</strong>
-              <small>Datos espejo del Excel Particular</small>
+              <small>Datos espejo de la planilla Particular</small>
             </article>
             <article>
               <span>Repuestos cotizados</span>
@@ -8032,64 +8853,64 @@ function PresupuestoTab({ item, updateCase, flash }) {
           </div>
         </article>
 
-        <article className="card inner-card media-panel">
-          <div className="section-head">
-            <div>
-              <p className="eyebrow">Fotos y videos</p>
-              <h3>Evidencia de daños</h3>
-            </div>
-            <StatusBadge tone={mediaItems.length ? 'info' : 'danger'}>
-              {mediaItems.length ? `${mediaItems.length} adjunto(s)` : 'Sin archivos'}
-            </StatusBadge>
-          </div>
-
-          {mediaItems.length ? (
-            <div className="media-gallery">
-              {mediaItems.map((media) => (
-                <button
-                  aria-label={`Abrir ${media.type === 'video' ? 'video' : 'foto'} ${media.label}`}
-                  className="media-card"
-                  key={media.id}
-                  onClick={() => setPreviewMedia(media)}
-                  type="button"
-                >
-                  {media.thumbnail && !failedMediaIds.includes(media.id) ? (
-                    <img
-                      alt=""
-                      className="media-card-image"
-                      onError={() => markMediaThumbFailed(media.id)}
-                      src={media.thumbnail}
-                    />
-                  ) : (
-                    <div className="media-card-fallback" aria-hidden="true">
-                      <strong>{media.type === 'video' ? 'VIDEO' : 'ARCHIVO'}</strong>
-                      <small>Preview no disponible</small>
-                    </div>
-                  )}
-                  <span className="media-card-scrim" aria-hidden="true" />
-                  <span>{media.label}</span>
-                  <small>{media.description || (media.type === 'video' ? 'Video' : 'Foto')}</small>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <div className="empty-media" role="status">
-              Cargá las fotos en Ficha Técnica &gt; Ingreso para verlas acá mientras presupuestás.
-            </div>
-          )}
-        </article>
       </div>
 
-      <article className="card inner-card">
+      <article className="card inner-card media-panel">
         <div className="section-head">
           <div>
-            <p className="eyebrow">Lineas del informe</p>
-            <h3>Columnas del Excel</h3>
+            <p className="eyebrow">Fotos y videos</p>
+            <h3>Evidencia de daños</h3>
+          </div>
+          <StatusBadge tone={mediaItems.length ? 'info' : 'danger'}>
+            {mediaItems.length ? `${mediaItems.length} adjunto(s)` : 'Sin archivos'}
+          </StatusBadge>
+        </div>
+
+        {mediaItems.length ? (
+          <div className="media-gallery">
+            {mediaItems.map((media) => (
+              <button
+                aria-label={`Abrir ${media.type === 'video' ? 'video' : 'foto'} ${media.label}`}
+                className="media-card"
+                key={media.id}
+                onClick={() => setPreviewMedia(media)}
+                type="button"
+              >
+                {media.thumbnail && !failedMediaIds.includes(media.id) ? (
+                  <img
+                    alt=""
+                    className="media-card-image"
+                    onError={() => markMediaThumbFailed(media.id)}
+                    src={media.thumbnail}
+                  />
+                ) : (
+                  <div className="media-card-fallback" aria-hidden="true">
+                    <strong>{media.type === 'video' ? 'VIDEO' : 'ARCHIVO'}</strong>
+                    <small>Preview no disponible</small>
+                  </div>
+                )}
+                <span className="media-card-scrim" aria-hidden="true" />
+                <span>{media.label}</span>
+                <small>{media.description || (media.type === 'video' ? 'Video' : 'Foto')}</small>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-media" role="status">
+            Cargá las fotos en Ficha Técnica &gt; Ingreso para verlas acá mientras presupuestás.
+          </div>
+        )}
+      </article>
+
+      <article className="card inner-card checklist-block">
+        <div className="section-head">
+          <div>
+            <h3>Tareas a realizar</h3>
           </div>
           <button className="secondary-button" onClick={addLine} type="button">Agregar linea</button>
         </div>
 
-        <div className="budget-lines">
+        <div className="budget-lines checklist-lines">
           {item.budget.lines.map((line, index) => {
             const lineIssues = getBudgetLineIssues(line);
             const isReplacementLine = lineNeedsReplacementDecision(line);
@@ -8098,7 +8919,7 @@ function PresupuestoTab({ item, updateCase, flash }) {
             <div className="budget-line budget-line-extended" key={line.id}>
               <div className="budget-line-header">
                 <strong>Linea {index + 1}</strong>
-                <small>{line.action || 'Definí la tarea para derivar la accion'}</small>
+                <small>{line.action || 'Tarea sin definir'}</small>
               </div>
               <DataField label="Pieza afectada" onChange={(value) => updateBudgetLine(line.id, (target) => {
                 target.piece = value;
@@ -8165,7 +8986,7 @@ function PresupuestoTab({ item, updateCase, flash }) {
                       {line.replacementDecision || 'Sin decision'}
                     </StatusBadge>
                   ) : null}
-                  <small>{line.action || 'Definí la tarea para derivar acción'}</small>
+                  <small>{line.action || 'Tarea sin definir'}</small>
                 </div>
                 <button className="ghost-button" onClick={() => removeLine(line.id)} type="button">Eliminar linea</button>
               </div>
@@ -8179,7 +9000,7 @@ function PresupuestoTab({ item, updateCase, flash }) {
         <div className="section-head">
           <div>
             <p className="eyebrow">Servicios adicionales</p>
-            <h3>Checklist del Excel con desplegables</h3>
+            <h3></h3>
           </div>
           <StatusBadge tone="info">SI / NO / A/V</StatusBadge>
         </div>
@@ -8224,7 +9045,7 @@ function PresupuestoTab({ item, updateCase, flash }) {
           <div className="section-head">
             <div>
               <p className="eyebrow">Trabajos accesorios</p>
-              <h3>Bloque demo fuera del reclamo a la compañía</h3>
+                <h3>Bloque fuera del reclamo a la compañía</h3>
             </div>
             <div className="tag-row">
               <StatusBadge tone={item.budget.accessoryWorkEnabled === 'SI' ? 'info' : 'danger'}>
@@ -8236,7 +9057,7 @@ function PresupuestoTab({ item, updateCase, flash }) {
 
           <div className="form-grid three-columns compact-grid">
             <ToggleField label="Hay trabajos accesorios" onChange={(value) => updateBudget((draft) => { draft.budget.accessoryWorkEnabled = value; })} value={item.budget.accessoryWorkEnabled || 'NO'} />
-            <DataField label="Total accesorio demo" onChange={() => {}} readOnly value={accessoryTotal} />
+            <DataField label="Total accesorio" onChange={() => {}} readOnly value={accessoryTotal} />
             <DataField label="Impacta compañía" onChange={() => {}} readOnly value="No, queda separado" />
           </div>
 
@@ -8246,7 +9067,7 @@ function PresupuestoTab({ item, updateCase, flash }) {
                 <div className="budget-line" key={work.id}>
                   <DataField label="Detalle" onChange={(value) => updateBudget((draft) => { const target = draft.budget.accessoryWorks.find((entry) => entry.id === work.id); target.detail = value; })} value={work.detail} />
                   <DataField label="Monto" onChange={(value) => updateBudget((draft) => { const target = draft.budget.accessoryWorks.find((entry) => entry.id === work.id); target.amount = value; })} value={work.amount} />
-                   {isThirdPartyClaimCase(item) ? <ToggleField label="Incluye reemplazo" onChange={(value) => updateBudget((draft) => { const target = draft.budget.accessoryWorks.find((entry) => entry.id === work.id); target.includesReplacement = value; if (value !== 'SI') { target.replacementPiece = ''; target.replacementAmount = ''; } })} value={work.includesReplacement || 'NO'} /> : <DataField label="Cobro" onChange={() => {}} readOnly value="Cliente / demo" />}
+                   {isThirdPartyClaimCase(item) ? <ToggleField label="Incluye reemplazo" onChange={(value) => updateBudget((draft) => { const target = draft.budget.accessoryWorks.find((entry) => entry.id === work.id); target.includesReplacement = value; if (value !== 'SI') { target.replacementPiece = ''; target.replacementAmount = ''; } })} value={work.includesReplacement || 'NO'} /> : <DataField label="Cobro" onChange={() => {}} readOnly value="Cliente" />}
                    {isThirdPartyClaimCase(item) && work.includesReplacement === 'SI' ? <DataField label="Pieza reemplazo" onChange={(value) => updateBudget((draft) => { const target = draft.budget.accessoryWorks.find((entry) => entry.id === work.id); target.replacementPiece = value; })} value={work.replacementPiece || ''} /> : null}
                    {isThirdPartyClaimCase(item) && work.includesReplacement === 'SI' ? <DataField label="Monto reemplazo" onChange={(value) => updateBudget((draft) => { const target = draft.budget.accessoryWorks.find((entry) => entry.id === work.id); target.replacementAmount = value; })} value={work.replacementAmount || ''} /> : null}
                    {isThirdPartyClaimCase(item) ? <DataField label="Cobro" onChange={() => {}} readOnly value="Cliente / tramo particular" /> : null}
@@ -8402,6 +9223,10 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
   const removeRepairPart = (partId) => {
     updateCase((draft) => {
       const target = draft.repair.parts.find((entry) => entry.id === partId);
+      if (target?.backendId) {
+        draft.meta = draft.meta || {};
+        draft.meta.removedPartIds = [...new Set([...(draft.meta.removedPartIds || []), target.backendId])];
+      }
       if (!isThirdPartyWorkshopCase(draft) && target?.source === 'budget' && target.sourceLineId) {
         draft.repair.removedBudgetLineIds = [...new Set([...(draft.repair.removedBudgetLineIds || []), target.sourceLineId])];
       }
@@ -8411,12 +9236,12 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
 
   const assignTurn = () => {
     if (!item.computed.budgetReady) {
-      flash('Gestion reparacion sigue bloqueada hasta que Presupuesto quede completo y generado.');
+      flash('La gestión de reparación sigue bloqueada hasta que Presupuesto quede completo y generado.');
       return;
     }
 
     if (isInsuranceWorkflowCase(item) && !item.computed.todoRisk.quoteAgreed && !item.todoRisk.processing.adminTurnOverride) {
-      flash('Bloqueado: para Todo Riesgo necesitás cotización acordada con fecha y monto. Solo admin mock puede forzar la excepción visual.');
+      flash('Bloqueado: para Todo Riesgo necesitás cotización acordada con fecha y monto. Solo administración puede forzar la excepción visual.');
       return;
     }
 
@@ -8453,7 +9278,7 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
       }
     }
 
-    flash('Turno demo agendado. La salida estimada excluye fines de semana.');
+    flash('Turno agendado. La salida estimada excluye fines de semana.');
   };
 
   const addRepairPart = () => {
@@ -8533,7 +9358,7 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
     const noRepairNeeded = isLawyer && item.lawyer.repairVehicle === 'NO';
 
     return (
-      <div className="tab-layout">
+      <div className="tab-layout gestion-tab-layout ops-tab-layout">
         <article className="card inner-card todo-risk-summary-card">
           <div className="section-head small-gap">
             <div>
@@ -8639,11 +9464,11 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
             <div className="section-head">
               <div>
                 <p className="eyebrow">Gestión de pedidos</p>
-                <h3>Carga manual y etiquetas demo</h3>
+                <h3>Carga manual y etiquetas</h3>
               </div>
               <div className="tag-row">
                 <StatusBadge tone={item.repair.parts.length ? 'info' : 'danger'}>{item.repair.parts.length} repuesto(s)</StatusBadge>
-                <button className="secondary-button" onClick={() => flash('Imprimir etiquetas demo: se generarían las etiquetas con carpeta, inventario y código de pieza.')} type="button">Imprimir etiquetas</button>
+                <button className="secondary-button" onClick={() => flash('Imprimir etiquetas: se generarán las etiquetas con carpeta, inventario y código de pieza.')} type="button">Imprimir etiquetas</button>
                 <button className="secondary-button" onClick={addRepairPart} type="button">Agregar repuesto</button>
               </div>
             </div>
@@ -8728,7 +9553,7 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
     const authorizationBlocked = !item.computed.todoRisk.canProgressFromPresentation;
 
     return (
-      <div className="tab-layout">
+      <div className="tab-layout gestion-tab-layout ops-tab-layout">
         {!item.computed.budgetReady ? <div className="alert-banner danger-banner">Presupuesto en rojo: completá y generá el informe para habilitar Gestión reparación.</div> : null}
 
         <article className="card inner-card todo-risk-summary-card">
@@ -8765,7 +9590,7 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
                 <p className="eyebrow">Repuestos</p>
                 <h3>Automáticos desde Presupuesto</h3>
               </div>
-              <button className="secondary-button" onClick={() => flash('Imprimir etiqueta demo: se prepararía la etiqueta individual del repuesto.') } type="button">Imprimir etiqueta</button>
+              <button className="secondary-button" onClick={() => flash('Imprimir etiqueta: se preparará la etiqueta individual del repuesto.') } type="button">Imprimir etiqueta</button>
             </div>
             <div className="table-wrap">
               <table className="data-table compact-table">
@@ -8797,7 +9622,7 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
                         <td><SelectField disabled={authorizationBlocked} label="Estado" onChange={(value) => updateCase((draft) => { const target = draft.repair.parts.find((entry) => entry.id === part.id); target.state = value; })} options={REPAIR_PART_STATE_OPTIONS} value={part.state} /></td>
                         <td>{part.state === 'Recibido' ? 'Sí' : 'No'}</td>
                         <td>{inventoryCode}</td>
-                        <td><button className="ghost-button" onClick={() => flash(`Etiqueta demo para ${part.name}: ${inventoryCode}.`)} type="button">Etiqueta</button></td>
+                        <td><button className="ghost-button" onClick={() => flash(`Etiqueta para ${part.name}: ${inventoryCode}.`)} type="button">Etiqueta</button></td>
                       </tr>
                     );
                   })}
@@ -8813,18 +9638,18 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
             <div className="section-head">
               <div>
                 <p className="eyebrow">Turno</p>
-                <h3>Guard con excepción admin mock</h3>
+                <h3>Guard con excepción administrativa</h3>
               </div>
               <button className="primary-button" onClick={assignTurn} type="button">Agendar turno</button>
             </div>
-            {turnoBlockedForTodoRisk ? <div className="inline-alert danger-banner">Sin cotización acordada no se da turno, salvo la excepción visual de admin mock.</div> : null}
+            {turnoBlockedForTodoRisk ? <div className="inline-alert danger-banner">Sin cotización acordada no se da turno, salvo la excepción visual administrativa.</div> : null}
             <div className="form-grid four-columns compact-grid">
               <DataField label="Fecha" onChange={(value) => updateCase((draft) => { draft.repair.turno.date = value; })} type="date" value={item.repair.turno.date} />
               <DataField label="Días estimados" onChange={(value) => updateCase((draft) => { draft.repair.turno.estimatedDays = value; })} type="number" value={item.repair.turno.estimatedDays} />
               <DataField label="Salida estimada" onChange={() => {}} readOnly type="date" value={item.computed.turnoEstimatedExit} />
               <SelectField label="Estado" onChange={(value) => updateCase((draft) => { draft.repair.turno.state = value; })} options={TURNO_STATE_OPTIONS} value={item.repair.turno.state} />
             </div>
-            <button className={`toggle-button ${item.todoRisk.processing.adminTurnOverride ? 'is-on' : ''}`} onClick={() => updateCase((draft) => { draft.todoRisk.processing.adminTurnOverride = !draft.todoRisk.processing.adminTurnOverride; })} type="button">Excepción visual admin mock</button>
+            <button className={`toggle-button ${item.todoRisk.processing.adminTurnOverride ? 'is-on' : ''}`} onClick={() => updateCase((draft) => { draft.todoRisk.processing.adminTurnOverride = !draft.todoRisk.processing.adminTurnOverride; })} type="button">Excepción visual administrativa</button>
             <label className="field">
               <span>Anotaciones de turno</span>
               <textarea onChange={(event) => updateCase((draft) => { draft.repair.turno.notes = event.target.value; })} value={item.repair.turno.notes} />
@@ -8869,7 +9694,7 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
   }
 
   return (
-    <div className="tab-layout">
+    <div className="tab-layout gestion-tab-layout ops-tab-layout">
       {!item.computed.budgetReady ? (
         <div className="alert-banner danger-banner">Presupuesto en rojo: completá y generá el informe para habilitar acciones operativas.</div>
       ) : null}
@@ -9026,7 +9851,7 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
           <div className="section-head">
             <div>
               <p className="eyebrow">Subsolapa Turno</p>
-              <h3>Agenda demo con salida estimada automatica</h3>
+              <h3>Agenda con salida estimada automática</h3>
             </div>
             <button className="primary-button" onClick={assignTurn} type="button">Agendar turno</button>
           </div>
@@ -9054,7 +9879,7 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
           <div className="section-head">
             <div>
               <p className="eyebrow">Subsolapa Ingreso</p>
-              <h3>Fecha real + ítems del Excel</h3>
+              <h3>Fecha real + ítems de la planilla</h3>
             </div>
             <StatusBadge tone={item.repair.ingreso.realDate ? 'success' : 'danger'}>{item.repair.ingreso.realDate ? 'Ingreso registrado' : 'Pendiente'}</StatusBadge>
           </div>
@@ -9238,7 +10063,10 @@ function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepai
   );
 }
 
-function PagosTab({ item, updateCase, flash }) {
+function PagosTab({ item, updateCase, flash, financeCatalogs = null, insuranceCatalogs = null }) {
+  const receiptTypeOptions = getCatalogSelectOptions(financeCatalogs, 'receiptTypeCodes', COMPROBANTES);
+  const paymentMethodOptions = getCatalogSelectOptions(financeCatalogs, 'paymentMethodCodes', PAYMENT_MODES);
+  const insurancePaymentStatusOptions = getCatalogSelectOptions(insuranceCatalogs, 'paymentStatusCodes', CLEAS_PAYMENT_STATUS_OPTIONS);
   const [activePaymentTab, setActivePaymentTab] = useState('facturacion');
 
   if (isFranchiseRecoveryCase(item)) {
@@ -9247,7 +10075,7 @@ function PagosTab({ item, updateCase, flash }) {
     const showClientRecoveryFields = franchiseComputed.dictamenShared || (!repairEnabled && item.franchiseRecovery?.recoverToClient === 'SI');
 
     return (
-      <div className="tab-layout todo-risk-layout">
+      <div className="tab-layout todo-risk-layout pagos-tab-layout ops-tab-layout">
         <article className="card inner-card franchise-management-card">
           <div className="section-head small-gap">
             <div>
@@ -9268,7 +10096,7 @@ function PagosTab({ item, updateCase, flash }) {
           </div>
 
           {franchiseComputed.hasEconomicAlert ? <div className="inline-alert danger-banner franchise-flow-banner">Recupero económico en alerta: {money(franchiseComputed.amountToRecover || 0)} vs acordado {money(franchiseComputed.agreementAmount || 0)}.</div> : null}
-          {franchiseComputed.dictamenShared ? <div className="inline-alert info-banner franchise-flow-banner">Dictamen compartido: demo 50/50 con cliente {money(franchiseComputed.clientResponsibilityAmount || 0)} y compañía {money(franchiseComputed.companyExpectedAmount || 0)}.</div> : null}
+          {franchiseComputed.dictamenShared ? <div className="inline-alert info-banner franchise-flow-banner">Dictamen compartido: 50/50 con cliente {money(franchiseComputed.clientResponsibilityAmount || 0)} y compañía {money(franchiseComputed.companyExpectedAmount || 0)}.</div> : null}
 
           {repairEnabled && !franchiseComputed.dictamenShared ? (
             <div className="inline-alert info-banner franchise-flow-banner">
@@ -9311,7 +10139,7 @@ function PagosTab({ item, updateCase, flash }) {
           createTodoRiskInvoice({
             amount: String(draft.payments.manualTotalAmount || draft.lawyer.closure.totalAmount || ''),
             issuedAt: draft.payments.passedToPaymentsDate || draft.lawyer.entryDate || '',
-            notes: 'Convenio / factura demo abogado',
+            notes: 'Convenio / factura abogado',
           }),
         ];
       });
@@ -9327,7 +10155,7 @@ function PagosTab({ item, updateCase, flash }) {
     const paymentReferenceValue = item.lawyer.instance === 'Judicial' ? item.lawyer.cuij || '' : item.claimNumber || '';
 
     return (
-      <div className="tab-layout todo-risk-layout">
+      <div className="tab-layout todo-risk-layout pagos-tab-layout ops-tab-layout">
         <article className="card inner-card todo-risk-summary-card">
           <div className="section-head small-gap">
             <div>
@@ -9419,7 +10247,7 @@ function PagosTab({ item, updateCase, flash }) {
           <div className="section-head">
             <div>
               <p className="eyebrow">Tareas extras</p>
-              <h3>Tramo particular visible en demo</h3>
+              <h3>Tramo particular visible</h3>
             </div>
             <div className="tag-row">
               <StatusBadge tone={item.computed.thirdParty.clientExtrasReady ? 'success' : item.computed.thirdParty.hasExtraWorks ? 'danger' : 'info'}>
@@ -9445,7 +10273,7 @@ function PagosTab({ item, updateCase, flash }) {
               </div>
             ))}
           </div>
-          <button className="secondary-button" onClick={() => flash('Documentación pagos demo: acá abrirías recibos, transferencias o respaldos del convenio y extras.')} type="button">Documentación pagos</button>
+          <button className="secondary-button" onClick={() => flash('Documentación de pagos: acá podés abrir recibos, transferencias o respaldos del convenio y extras.')} type="button">Documentación pagos</button>
         </article>
       </div>
     );
@@ -9473,7 +10301,7 @@ function PagosTab({ item, updateCase, flash }) {
     };
 
     return (
-      <div className="tab-layout todo-risk-layout">
+      <div className="tab-layout todo-risk-layout pagos-tab-layout ops-tab-layout">
         <article className="card inner-card todo-risk-summary-card">
           <div className="section-head small-gap">
             <div>
@@ -9672,7 +10500,7 @@ function PagosTab({ item, updateCase, flash }) {
           {item.computed.thirdParty.hasExtraWorks && !item.thirdParty.payments.clientPayments.length ? (
             <div className="inline-alert danger-banner">Las tareas extras impactan en el cierre económico: registrá el cobro particular para llevar el saldo a cero.</div>
           ) : null}
-          <button className="secondary-button" onClick={() => flash('Documentación de pagos demo: acá abrirías recibos, transferencias o respaldos contables del tramo mixto.')} type="button">Documentación pagos</button>
+          <button className="secondary-button" onClick={() => flash('Documentación de pagos: acá podés abrir recibos, transferencias o respaldos contables del tramo mixto.')} type="button">Documentación pagos</button>
         </article>
       </div>
     );
@@ -9696,7 +10524,7 @@ function PagosTab({ item, updateCase, flash }) {
     };
 
     return (
-      <div className="tab-layout todo-risk-layout">
+      <div className="tab-layout todo-risk-layout pagos-tab-layout ops-tab-layout">
         <div className="subtabs-row">
           {[
             { id: 'facturacion', label: 'Facturación' },
@@ -9765,7 +10593,7 @@ function PagosTab({ item, updateCase, flash }) {
             {isCleas ? <DataField label="N° de CLEAS" onChange={() => {}} readOnly value={item.todoRisk.insurance.cleasNumber || '-'} /> : <DataField label="Caso asociado" onChange={() => {}} readOnly value={item.todoRisk.franchise.associatedCase || '-'} />}
             {cleasClientChargeFlow ? <DataField label="Pago franquicia Cía." onChange={() => {}} readOnly value={item.computed.todoRisk.companyFranchisePaymentAmount} /> : null}
             {cleasClientChargeFlow ? <DataField label="A cargo del cliente" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.clientChargeAmount = value; })} value={item.todoRisk.processing.clientChargeAmount || ''} /> : null}
-            {cleasClientChargeFlow ? <SelectField label="Estado pago cliente" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.clientChargeStatus = value; })} options={CLEAS_PAYMENT_STATUS_OPTIONS} value={item.todoRisk.processing.clientChargeStatus} /> : null}
+            {cleasClientChargeFlow ? <SelectField label="Estado pago cliente" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.clientChargeStatus = value; })} options={insurancePaymentStatusOptions} value={resolveCatalogCode(item.todoRisk.processing.clientChargeStatus, getCatalogEntries(insuranceCatalogs, 'paymentStatusCodes'), CLEAS_PAYMENT_STATUS_OPTIONS) || item.todoRisk.processing.clientChargeStatus} /> : null}
             {cleasClientChargeFlow ? <DataField label="Fecha pago cliente" onChange={(value) => updateCase((draft) => { draft.todoRisk.processing.clientChargeDate = value; })} type="date" value={item.todoRisk.processing.clientChargeDate || ''} /> : null}
           </div>
 
@@ -9784,7 +10612,7 @@ function PagosTab({ item, updateCase, flash }) {
             <StatusBadge tone={item.computed.todoRisk.paymentsReady ? 'success' : 'danger'}>{item.computed.todoRisk.paymentsReady ? 'Pagos en azul/verde operativo' : 'Pagos todavía no cierra'}</StatusBadge>
             <small>{cleasClientChargeFlow ? 'Condición: fecha de pago + monto + retenciones definidas si corresponde + pago cliente cancelado cuando aplica CLEAS sobre franquicia.' : 'Condición: fecha de pago + monto + retenciones definidas si corresponde + franquicia no pendiente.'}</small>
           </div>
-          <button className="secondary-button" onClick={() => flash('Documentación de pagos demo: acá abrirías la carpeta o adjuntos contables.') } type="button">Documentación pagos</button>
+          <button className="secondary-button" onClick={() => flash('Documentación de pagos: acá podés abrir la carpeta o adjuntos contables.') } type="button">Documentación pagos</button>
         </article> : null}
       </div>
     );
@@ -9809,7 +10637,7 @@ function PagosTab({ item, updateCase, flash }) {
       <html lang="es">
         <head>
           <meta charset="utf-8" />
-          <title>Recibo demo ${escapeHtml(item.code)}</title>
+          <title>Recibo ${escapeHtml(item.code)}</title>
           <style>
             body { font-family: Arial, sans-serif; margin: 28px; color: #18252f; }
             h1, h2, p { margin: 0; }
@@ -9823,7 +10651,7 @@ function PagosTab({ item, updateCase, flash }) {
         <body>
           <div class="stack">
             <div>
-              <h1>Recibo demo Particular</h1>
+              <h1>Recibo Particular</h1>
               <p>${escapeHtml(item.code)} - ${escapeHtml(`${item.customer.lastName}, ${item.customer.firstName}`)}</p>
             </div>
             <div class="card grid">
@@ -9861,7 +10689,7 @@ function PagosTab({ item, updateCase, flash }) {
   };
 
   return (
-    <div className="tab-layout">
+    <div className="tab-layout pagos-tab-layout ops-tab-layout">
       <article className="card inner-card receipt-shell">
         <div className="section-head">
           <div>
@@ -9881,10 +10709,15 @@ function PagosTab({ item, updateCase, flash }) {
             <div className="summary-row"><span>Retenciones cargadas</span><strong>{money(item.computed.totalRetentions)}</strong></div>
           </div>
 
-          <div className="form-grid two-columns compact-grid">
-            <SelectField label="Comprobante" onChange={(value) => updateCase((draft) => { draft.payments.comprobante = value; })} options={COMPROBANTES} value={item.payments.comprobante} />
-            <ToggleField label="Factura" onChange={(value) => updateCase((draft) => { draft.payments.invoice = value; if (value !== 'SI') { draft.payments.businessName = ''; draft.payments.invoiceNumber = ''; } })} value={item.payments.invoice} />
-            <ToggleField label="Senia" onChange={(value) => updateCase((draft) => { draft.payments.hasSena = value; if (value !== 'SI') { draft.payments.senaAmount = ''; draft.payments.senaDate = ''; draft.payments.senaModeDetail = ''; } })} value={item.payments.hasSena} />
+          <div className="form-grid two-columns compact-grid receipt-core-grid">
+            <SelectField label="Tipo de comprobante" onChange={(value) => updateCase((draft) => { draft.payments.comprobante = value; })} options={receiptTypeOptions} value={resolveCatalogCode(item.payments.comprobante, getCatalogEntries(financeCatalogs, 'receiptTypeCodes'), COMPROBANTES) || item.payments.comprobante} />
+            <ToggleField label="Emitir factura" onChange={(value) => updateCase((draft) => { draft.payments.invoice = value; if (value !== 'SI') { draft.payments.businessName = ''; draft.payments.invoiceNumber = ''; } })} value={item.payments.invoice} />
+            <ToggleField label="Seña" onChange={(value) => updateCase((draft) => { draft.payments.hasSena = value; if (value !== 'SI') { draft.payments.senaAmount = ''; draft.payments.senaDate = ''; draft.payments.senaModeDetail = ''; } })} value={item.payments.hasSena} />
+          </div>
+
+          <div className="receipt-status-row" aria-label="Estado de facturacion y senia">
+            <span className={`status-badge ${item.payments.invoice === 'SI' ? 'success' : 'neutral'}`}>Factura: {item.payments.invoice === 'SI' ? 'Si' : 'No'}</span>
+            <span className={`status-badge ${item.payments.hasSena === 'SI' ? 'info' : 'neutral'}`}>Seña: {item.payments.hasSena === 'SI' ? 'Si' : 'No'}</span>
           </div>
         </div>
 
@@ -9892,7 +10725,7 @@ function PagosTab({ item, updateCase, flash }) {
           <div className="form-grid four-columns compact-grid">
             <DataField label="Monto senia" onChange={(value) => updateCase((draft) => { draft.payments.senaAmount = value; })} value={item.payments.senaAmount} />
             <DataField label="Fecha senia" onChange={(value) => updateCase((draft) => { draft.payments.senaDate = value; })} type="date" value={item.payments.senaDate} />
-            <SelectField label="Modo" onChange={(value) => updateCase((draft) => { draft.payments.senaMode = value; if (value !== 'Otro') draft.payments.senaModeDetail = ''; })} options={PAYMENT_MODES} value={item.payments.senaMode} />
+            <SelectField label="Modo" onChange={(value) => updateCase((draft) => { draft.payments.senaMode = value; if (value !== 'OTRO' && value !== 'Otro') draft.payments.senaModeDetail = ''; })} options={paymentMethodOptions} value={resolveCatalogCode(item.payments.senaMode, getCatalogEntries(financeCatalogs, 'paymentMethodCodes'), PAYMENT_MODES) || item.payments.senaMode} />
             {item.payments.senaMode === 'Otro' ? (
               <DataField label="Detalle modo otro" onChange={(value) => updateCase((draft) => { draft.payments.senaModeDetail = value; })} value={item.payments.senaModeDetail} />
             ) : null}
@@ -9900,9 +10733,9 @@ function PagosTab({ item, updateCase, flash }) {
         ) : null}
 
         {item.payments.invoice === 'SI' ? (
-          <div className="form-grid two-columns compact-grid">
-            <DataField label="Razon social" onChange={(value) => updateCase((draft) => { draft.payments.businessName = value; })} value={item.payments.businessName} />
-            <DataField label="Numero factura" onChange={(value) => updateCase((draft) => { draft.payments.invoiceNumber = value; })} value={item.payments.invoiceNumber} />
+          <div className="form-grid two-columns compact-grid receipt-invoice-grid">
+            <DataField label="Razón social" onChange={(value) => updateCase((draft) => { draft.payments.businessName = value; })} value={item.payments.businessName} />
+            <DataField label="Número factura" onChange={(value) => updateCase((draft) => { draft.payments.invoiceNumber = value; })} value={item.payments.invoiceNumber} />
           </div>
         ) : null}
       </article>
@@ -9914,7 +10747,7 @@ function PagosTab({ item, updateCase, flash }) {
             <h3>Parcial, total o bonificacion</h3>
           </div>
           <div className="tag-row">
-            <button className="secondary-button" onClick={openReceiptDemo} type="button">Recibo / PDF demo</button>
+            <button className="secondary-button" onClick={openReceiptDemo} type="button">Recibo / PDF</button>
             <button className="secondary-button" onClick={addSettlement} type="button">+ Agregar pago</button>
           </div>
         </div>
@@ -9938,7 +10771,7 @@ function PagosTab({ item, updateCase, flash }) {
                   }
                   target.reason = '';
                   if (!target.mode) {
-                    target.mode = PAYMENT_MODES[0];
+                    target.mode = paymentMethodOptions[0]?.value || PAYMENT_MODES[0];
                   }
                 })} options={['Parcial', 'Total', 'Bonificacion']} value={settlement.kind} />
                 <DataField label="Monto" onChange={(value) => updateCase((draft) => {
@@ -9954,7 +10787,7 @@ function PagosTab({ item, updateCase, flash }) {
                     const target = draft.payments.settlements.find((entry) => entry.id === settlement.id);
                     target.mode = value;
                     if (value !== 'Otro') target.modeDetail = '';
-                  })} options={PAYMENT_MODES} value={settlement.mode} />
+                  })} options={paymentMethodOptions} value={resolveCatalogCode(settlement.mode, getCatalogEntries(financeCatalogs, 'paymentMethodCodes'), PAYMENT_MODES) || settlement.mode} />
                 ) : null}
               </div>
 
@@ -10011,7 +10844,7 @@ function PagosTab({ item, updateCase, flash }) {
 
         <div className="receipt-demo">
           <div>
-            <span>Recibo demo</span>
+            <span>Recibo</span>
             <strong>{item.code}</strong>
           </div>
           <div>
@@ -10072,7 +10905,12 @@ function PagosTab({ item, updateCase, flash }) {
   );
 }
 
-function AbogadoTab({ item, updateCase, flash }) {
+function AbogadoTab({ item, updateCase, flash, insuranceCatalogs = null }) {
+  const legalProcessorOptions = getCatalogSelectOptions(insuranceCatalogs, 'legalProcessorCodes', LAWYER_TRAMITA_OPTIONS);
+  const legalClaimantOptions = getCatalogSelectOptions(insuranceCatalogs, 'legalClaimantCodes', LAWYER_RECLAMA_OPTIONS);
+  const legalInstanceOptions = getCatalogSelectOptions(insuranceCatalogs, 'legalInstanceCodes', LAWYER_INSTANCE_OPTIONS);
+  const legalClosureOptions = getCatalogSelectOptions(insuranceCatalogs, 'legalClosureReasonCodes', LAWYER_CLOSE_BY_OPTIONS);
+  const legalExpensePayerOptions = getCatalogSelectOptions(insuranceCatalogs, 'legalExpensePayerCodes', LAWYER_EXPENSE_PAID_BY_OPTIONS);
   if (!isThirdPartyLawyerCase(item)) {
     return null;
   }
@@ -10135,7 +10973,7 @@ function AbogadoTab({ item, updateCase, flash }) {
       ...item.lawyer.closure.expenses.map((expense) => [expense.concept, expense.amount, expense.date, expense.paidBy].map(escapeCsvValue).join(',')),
     ].join('\n');
     triggerDownload(`gastos-${item.code}.csv`, csv, 'text/csv;charset=utf-8;');
-    flash('Descargar Excel demo: se exportó la planilla de gastos del expediente.');
+    flash('Descargar Excel: se exportó la planilla de gastos del expediente.');
   };
 
   return (
@@ -10149,9 +10987,9 @@ function AbogadoTab({ item, updateCase, flash }) {
           <StatusBadge tone={item.computed.tabs.abogado === 'resolved' ? 'success' : 'info'}>{item.computed.tabs.abogado === 'resolved' ? 'Cierre legal listo' : 'Seguimiento abierto'}</StatusBadge>
         </div>
         <div className="form-grid four-columns compact-grid">
-          <SelectField label="Tramita" onChange={(value) => updateCase((draft) => { draft.lawyer.tramita = value; })} options={LAWYER_TRAMITA_OPTIONS} value={item.lawyer.tramita} />
-          <SelectField label="Reclama" onChange={(value) => updateCase((draft) => { draft.lawyer.reclama = value; })} options={LAWYER_RECLAMA_OPTIONS} value={item.lawyer.reclama} />
-          <SelectField label="Instancia" onChange={(value) => updateCase((draft) => { draft.lawyer.instance = value; if (value !== 'Judicial') { draft.lawyer.cuij = ''; draft.lawyer.court = ''; draft.lawyer.autos = ''; } })} options={LAWYER_INSTANCE_OPTIONS} value={item.lawyer.instance} />
+          <SelectField label="Tramita" onChange={(value) => updateCase((draft) => { draft.lawyer.tramita = value; })} options={legalProcessorOptions} value={resolveCatalogCode(item.lawyer.tramita, getCatalogEntries(insuranceCatalogs, 'legalProcessorCodes'), LAWYER_TRAMITA_OPTIONS) || item.lawyer.tramita} />
+          <SelectField label="Reclama" onChange={(value) => updateCase((draft) => { draft.lawyer.reclama = value; })} options={legalClaimantOptions} value={resolveCatalogCode(item.lawyer.reclama, getCatalogEntries(insuranceCatalogs, 'legalClaimantCodes'), LAWYER_RECLAMA_OPTIONS) || item.lawyer.reclama} />
+          <SelectField label="Instancia" onChange={(value) => updateCase((draft) => { draft.lawyer.instance = value; if (value !== 'Judicial') { draft.lawyer.cuij = ''; draft.lawyer.court = ''; draft.lawyer.autos = ''; } })} options={legalInstanceOptions} value={resolveCatalogCode(item.lawyer.instance, getCatalogEntries(insuranceCatalogs, 'legalInstanceCodes'), LAWYER_INSTANCE_OPTIONS) || item.lawyer.instance} />
           <DataField label="Días tramitando" onChange={() => {}} readOnly value={item.computed.lawyer.daysProcessing} />
           <DataField label="Fecha ingreso" onChange={(value) => updateCase((draft) => { draft.lawyer.entryDate = value; })} type="date" value={item.lawyer.entryDate} />
           {isJudicial ? <DataField label="N° CUIJ" onChange={(value) => updateCase((draft) => { draft.lawyer.cuij = value; })} value={item.lawyer.cuij} /> : null}
@@ -10230,7 +11068,7 @@ function AbogadoTab({ item, updateCase, flash }) {
           <p className="muted">Separada de la documentación general del trámite.</p>
           <div className="tag-row">
             <button className="secondary-button" onClick={addExpedienteDocument} type="button">Agregar ítem</button>
-            <button className="secondary-button" onClick={() => flash('Descargar todo demo: se agruparían los archivos del expediente.')} type="button">Descargar todo</button>
+            <button className="secondary-button" onClick={() => flash('Descargar todo: se agruparán los archivos del expediente.')} type="button">Descargar todo</button>
           </div>
         </div>
         <div className="table-wrap table-wrap-framed">
@@ -10370,7 +11208,7 @@ function AbogadoTab({ item, updateCase, flash }) {
                   <td><DataField label="Concepto" onChange={(value) => updateCase((draft) => { const target = draft.lawyer.closure.expenses.find((entry) => entry.id === expense.id); target.concept = value; })} value={expense.concept} /></td>
                   <td><DataField label="Monto" onChange={(value) => updateCase((draft) => { const target = draft.lawyer.closure.expenses.find((entry) => entry.id === expense.id); target.amount = value; })} value={expense.amount} /></td>
                   <td><DataField label="Fecha" onChange={(value) => updateCase((draft) => { const target = draft.lawyer.closure.expenses.find((entry) => entry.id === expense.id); target.date = value; })} type="date" value={expense.date} /></td>
-                  <td><SelectField label="Abonó" onChange={(value) => updateCase((draft) => { const target = draft.lawyer.closure.expenses.find((entry) => entry.id === expense.id); target.paidBy = value; })} options={LAWYER_EXPENSE_PAID_BY_OPTIONS} value={expense.paidBy} /></td>
+                  <td><SelectField label="Abonó" onChange={(value) => updateCase((draft) => { const target = draft.lawyer.closure.expenses.find((entry) => entry.id === expense.id); target.paidBy = value; })} options={legalExpensePayerOptions} value={resolveCatalogCode(expense.paidBy, getCatalogEntries(insuranceCatalogs, 'legalExpensePayerCodes'), LAWYER_EXPENSE_PAID_BY_OPTIONS) || expense.paidBy} /></td>
                   <td><button className="ghost-button" onClick={() => updateCase((draft) => { draft.lawyer.closure.expenses = draft.lawyer.closure.expenses.filter((entry) => entry.id !== expense.id); })} type="button">Quitar</button></td>
                 </tr>
               ))}
@@ -10379,7 +11217,7 @@ function AbogadoTab({ item, updateCase, flash }) {
         </div>
         <div className="lawyer-total-row"><span>Total gastos</span><strong>{money(expensesTotal)}</strong></div>
         <div className="form-grid three-columns compact-grid">
-          <SelectField label="Cierre por" onChange={(value) => updateCase((draft) => { draft.lawyer.closure.closeBy = value; })} options={LAWYER_CLOSE_BY_OPTIONS} value={item.lawyer.closure.closeBy} />
+          <SelectField label="Cierre por" onChange={(value) => updateCase((draft) => { draft.lawyer.closure.closeBy = value; })} options={legalClosureOptions} value={resolveCatalogCode(item.lawyer.closure.closeBy, getCatalogEntries(insuranceCatalogs, 'legalClosureReasonCodes'), LAWYER_CLOSE_BY_OPTIONS) || item.lawyer.closure.closeBy} />
           <DataField label="Fecha" onChange={(value) => updateCase((draft) => { draft.lawyer.closure.closeDate = value; })} type="date" value={item.lawyer.closure.closeDate} />
           <DataField label="Importe total" onChange={(value) => updateCase((draft) => { draft.lawyer.closure.totalAmount = value; draft.payments.manualTotalAmount = value; })} value={item.lawyer.closure.totalAmount} />
         </div>
@@ -10417,11 +11255,12 @@ function AbogadoTab({ item, updateCase, flash }) {
 
 function AgendaView({ items, onOpenCase, onUpdateTask }) {
   const [activeAgendaTab, setActiveAgendaTab] = useState('pendientes');
-  const [assigneeFilter, setAssigneeFilter] = useState('Todos');
-  const assigneeOptions = useMemo(() => ['Todos', ...new Set(items.map((task) => task.assignee).filter(Boolean))], [items]);
+  const [assigneeFilter, setAssigneeFilter] = useState('');
+  const [isMobileCalendarVisible, setIsMobileCalendarVisible] = useState(false);
+  const assigneeOptions = useMemo(() => [{ value: '', label: 'Todos los usuarios' }, ...new Set(items.map((task) => task.assignee).filter(Boolean))], [items]);
 
   const filteredItems = useMemo(
-    () => items.filter((task) => assigneeFilter === 'Todos' || task.assignee === assigneeFilter),
+    () => items.filter((task) => !assigneeFilter || task.assignee === assigneeFilter),
     [assigneeFilter, items],
   );
 
@@ -10433,13 +11272,21 @@ function AgendaView({ items, onOpenCase, onUpdateTask }) {
   }), [filteredItems]);
 
   const visibleItems = useMemo(() => filteredItems
-    .filter((task) => task.viewBucket === activeAgendaTab)
+    .filter((task) => {
+      if (activeAgendaTab === 'proximas') {
+        return !task.resolved && task.dueMeta.bucket === 'upcoming';
+      }
+
+      return task.viewBucket === activeAgendaTab;
+    })
     .sort((left, right) => {
       const leftDate = left.scheduledAt || '9999-12-31';
       const rightDate = right.scheduledAt || '9999-12-31';
 
       if (activeAgendaTab === 'resueltas') {
-        return (right.resolvedAt || right.scheduledAt || '').localeCompare(left.resolvedAt || left.scheduledAt || '');
+        const leftResolutionDate = left.resolvedAt || left.scheduledAt || '';
+        const rightResolutionDate = right.resolvedAt || right.scheduledAt || '';
+        return rightResolutionDate.localeCompare(leftResolutionDate) || left.caseCode.localeCompare(right.caseCode);
       }
 
       return leftDate.localeCompare(rightDate) || left.caseCode.localeCompare(right.caseCode);
@@ -10475,40 +11322,58 @@ function AgendaView({ items, onOpenCase, onUpdateTask }) {
           <h1>Tareas por usuario y por caso</h1>
           <p className="muted">Consolida recordatorios reales de Gestión del trámite, Reparación y Abogado sin tocar el flujo principal del caso.</p>
         </div>
-        <div className="hero-actions agenda-hero-actions">
-          <article className="metric-card">
-            <span>Pendientes</span>
-            <strong>{counts.pendientes}</strong>
-            <small>Abiertas y no vencidas</small>
-          </article>
-          <article className="metric-card">
-            <span>Vencidas</span>
-            <strong>{counts.vencidas}</strong>
-            <small>Requieren atención hoy</small>
-          </article>
-          <article className="metric-card">
-            <span>Próximas</span>
-            <strong>{counts.proximas}</strong>
-            <small>Vencen en 48 hs</small>
-          </article>
-        </div>
       </section>
 
       <section className="card inner-card agenda-filter-card">
-        <div className="section-head small-gap">
-          <div>
-            <h3>Vistas del panel</h3>
-            <p className="muted">Filtrá por responsable y trabajá sobre la misma tarea desde Agenda o desde el caso.</p>
-          </div>
-          <div className="tag-row agenda-filter-select">
+        <div className="agenda-filter-head">
+          <div className="agenda-filter-select">
             <SelectField label="Usuario" onChange={setAssigneeFilter} options={assigneeOptions} value={assigneeFilter} />
           </div>
+          <div className="hero-actions agenda-hero-actions">
+            <article className="metric-card">
+              <span>Pendientes</span>
+              <strong>{counts.pendientes}</strong>
+              <small>Abiertas y no vencidas</small>
+            </article>
+            <article className="metric-card">
+              <span>Resueltas</span>
+              <strong>{counts.resueltas}</strong>
+              <small>Marcadas como completadas</small>
+            </article>
+            <article className="metric-card">
+              <span>Vencidas</span>
+              <strong>{counts.vencidas}</strong>
+              <small>Requieren atención hoy</small>
+            </article>
+          </div>
         </div>
-        <div className="agenda-view-tabs" role="tablist" aria-label="Vistas de agenda">
+      </section>
+
+      <div className="agenda-content-grid">
+        <article className="card inner-card agenda-tasks-card">
+          <div className="section-head small-gap agenda-task-header">
+            <div>
+              <h3>Tareas</h3>
+              <p className="muted">{assigneeFilter ? `${activeAgendaTab === 'resueltas' ? 'Resueltas' : activeAgendaTab === 'vencidas' ? 'Vencidas' : 'Pendientes'} de: ${assigneeFilter}` : activeAgendaTab === 'resueltas' ? 'Resueltas' : activeAgendaTab === 'vencidas' ? 'Vencidas' : 'Pendientes'}</p>
+            </div>
+            <div className="agenda-task-header-actions">
+              <button
+                aria-controls="agenda-calendar-panel"
+                aria-expanded={isMobileCalendarVisible}
+                className="secondary-button agenda-calendar-toggle"
+                onClick={() => setIsMobileCalendarVisible((current) => !current)}
+                type="button"
+              >
+                {isMobileCalendarVisible ? 'Ocultar calendario' : 'Ver calendario'}
+              </button>
+              <StatusBadge tone={activeAgendaTab === 'resueltas' ? 'success' : activeAgendaTab === 'vencidas' ? 'danger' : 'info'}>{visibleItems.length} tarea(s)</StatusBadge>
+            </div>
+          </div>
+          <div className="agenda-view-tabs" role="tablist" aria-label="Filtros de tareas">
           {[
             { id: 'pendientes', label: 'Pendientes', count: counts.pendientes },
             { id: 'resueltas', label: 'Resueltas', count: counts.resueltas },
-            { id: 'vencidas', label: 'Vencidas', count: counts.vencidas },
+            { id: 'vencidas', label: 'Venció', count: counts.vencidas },
           ].map((tab) => (
             <button
               className={`compact-button agenda-tab-button ${activeAgendaTab === tab.id ? 'is-selected' : ''}`}
@@ -10519,17 +11384,6 @@ function AgendaView({ items, onOpenCase, onUpdateTask }) {
               {tab.label} ({tab.count})
             </button>
           ))}
-        </div>
-      </section>
-
-      <div className="agenda-content-grid">
-        <article className="card inner-card">
-          <div className="section-head small-gap">
-            <div>
-              <h3>{activeAgendaTab === 'pendientes' ? 'Pendientes por usuario' : activeAgendaTab === 'resueltas' ? 'Tareas resueltas' : 'Tareas vencidas'}</h3>
-              <p className="muted">{visibleItems.length ? 'Cada fila mantiene vínculo directo con el caso y con la solapa de origen.' : 'No hay tareas para esta vista con el filtro actual.'}</p>
-            </div>
-            <StatusBadge tone={activeAgendaTab === 'resueltas' ? 'success' : activeAgendaTab === 'vencidas' ? 'danger' : 'info'}>{visibleItems.length} tarea(s)</StatusBadge>
           </div>
 
           {visibleItems.length ? (
@@ -10543,26 +11397,27 @@ function AgendaView({ items, onOpenCase, onUpdateTask }) {
                     <th>Estado</th>
                     <th>Responsable</th>
                     <th>Fecha límite</th>
+                    {activeAgendaTab === 'resueltas' ? <th>Fecha resolución</th> : null}
                     <th>Acción</th>
                   </tr>
                 </thead>
                 <tbody>
                   {visibleItems.map((task) => (
                     <tr className={`agenda-row is-${task.dueMeta.tone}`} key={`${task.caseId}-${task.collectionKey}-${task.id}`}>
-                      <td>
+                      <td data-label="Tarea">
                         <div className="agenda-task-copy">
                           <strong>{task.title || 'Tarea sin título'}</strong>
                           <small>{task.description || 'Sin descripción operativa.'}</small>
                         </div>
                       </td>
-                      <td>
+                      <td data-label="Vinculo">
                         <div className="agenda-task-linkage">
                           <strong>{task.caseCode}</strong>
                           <small>{task.sourceLabel}</small>
                         </div>
                       </td>
-                      <td><StatusBadge tone={getAgendaPriorityTone(task.priority)}>{getAgendaPriorityLabel(task.priority)}</StatusBadge></td>
-                      <td>
+                      <td data-label="Prioridad"><StatusBadge tone={getAgendaPriorityTone(task.priority)}>{getAgendaPriorityLabel(task.priority)}</StatusBadge></td>
+                      <td data-label="Estado">
                         <SelectField
                           label="Estado"
                           onChange={(value) => onUpdateTask(task, (draftTask) => setAgendaTaskStatus(draftTask, value))}
@@ -10570,17 +11425,38 @@ function AgendaView({ items, onOpenCase, onUpdateTask }) {
                           value={task.status}
                         />
                       </td>
-                      <td>{task.assignee}</td>
-                      <td>
+                      <td data-label="Responsable">{task.assignee}</td>
+                      <td data-label="Fecha limite">
                         <div className="agenda-task-due">
                           <strong>{formatDate(task.scheduledAt)}</strong>
                           <small>{task.dueMeta.label}</small>
                         </div>
                       </td>
-                      <td>
+                      {activeAgendaTab === 'resueltas' ? (
+                        <td data-label="Fecha resolucion">
+                          <div className="agenda-task-due">
+                            <strong>{formatDate(task.resolvedAt || task.scheduledAt)}</strong>
+                            <small>{task.resolvedAt ? 'Resuelta' : 'Sin fecha de cierre'}</small>
+                          </div>
+                        </td>
+                      ) : null}
+                      <td data-label="Accion">
                         <div className="agenda-action-group">
-                          <button className="secondary-button" onClick={() => onOpenCase(task.caseId, { tab: task.relatedTab || 'tramite', subtab: task.relatedSubtab || '' })} type="button">Abrir caso</button>
-                          <button className="ghost-button" onClick={() => onUpdateTask(task, (draftTask) => setAgendaTaskResolved(draftTask, !isAgendaTaskResolved(draftTask)))} type="button">{task.resolved ? 'Reabrir' : 'Resolver'}</button>
+                          <button
+                            className="secondary-button"
+                            onClick={() => onOpenCase(task.caseId, { tab: task.relatedTab || 'tramite', subtab: task.relatedSubtab || '' })}
+                            type="button"
+                          >
+                            Abrir
+                          </button>
+                          <button
+                            aria-label={task.resolved ? 'Reabrir tarea' : 'Marcar resuelta'}
+                            className="ghost-button"
+                            onClick={() => onUpdateTask(task, (draftTask) => setAgendaTaskResolved(draftTask, !isAgendaTaskResolved(draftTask)))}
+                            type="button"
+                          >
+                            ✓
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -10593,10 +11469,10 @@ function AgendaView({ items, onOpenCase, onUpdateTask }) {
           )}
         </article>
 
-        <article className="card inner-card agenda-calendar-card">
+        <article className={`card inner-card agenda-calendar-card ${isMobileCalendarVisible ? 'is-mobile-visible' : ''}`} id="agenda-calendar-panel">
           <div className="section-head small-gap">
             <div>
-              <h3>Calendario demo</h3>
+              <h3>Calendario</h3>
               <p className="muted">Vista mensual simple con concentración de vencimientos por día.</p>
             </div>
             <StatusBadge tone="info">Demo simple</StatusBadge>
@@ -10636,13 +11512,13 @@ function AgendaView({ items, onOpenCase, onUpdateTask }) {
   );
 }
 
-function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRepairTab, updateCase, flash, allCases = [] }) {
+function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRepairTab, updateCase, flash, onSyncCase, onRunWorkflowTransition, isSavingCase = false, hasUnsavedChanges = false, insuranceCatalogs = null, financeCatalogs = null, debugCodeIssues = [], allCases = [] }) {
   if (!item) {
     return (
       <div className="page-stack">
         <section className="card empty-state">
           <h2>No hay carpeta seleccionada.</h2>
-          <p>Elegi un caso desde Panel General o generalo en Nuevo Caso.</p>
+          <p>Elegí un caso desde Panel general o crealo en Nuevo caso.</p>
         </section>
       </div>
     );
@@ -10654,40 +11530,40 @@ function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRe
   const tabs = isThirdPartyLawyerCase(item)
     ? [
       { id: 'ficha', label: 'Ficha Tecnica' },
-      { id: 'tramite', label: 'Gestion del trámite' },
+      { id: 'tramite', label: 'Gestión del trámite' },
       { id: 'presupuesto', label: 'Presupuesto' },
-      { id: 'gestion', label: 'Gestion reparacion' },
+      { id: 'gestion', label: 'Gestión de reparación' },
       { id: 'pagos', label: 'Pagos' },
       { id: 'abogado', label: 'Abogado' },
     ]
     : isThirdPartyWorkshopCase(item)
     ? [
       { id: 'ficha', label: 'Ficha Tecnica' },
-      { id: 'tramite', label: 'Gestion del trámite' },
+      { id: 'tramite', label: 'Gestión del trámite' },
       { id: 'presupuesto', label: 'Presupuesto' },
       { id: 'documentacion', label: 'Documentación' },
-      { id: 'gestion', label: 'Gestion reparacion' },
+      { id: 'gestion', label: 'Gestión de reparación' },
       { id: 'pagos', label: 'Pagos' },
     ]
     : franchiseRecovery
     ? [
       { id: 'ficha', label: 'Ficha Tecnica' },
-      { id: 'tramite', label: 'Gestion del trámite' },
-      ...(franchiseEnablesRepair ? [{ id: 'presupuesto', label: 'Presupuesto' }, { id: 'gestion', label: 'Gestion reparacion' }] : []),
+      { id: 'tramite', label: 'Gestión del trámite' },
+      ...(franchiseEnablesRepair ? [{ id: 'presupuesto', label: 'Presupuesto' }, { id: 'gestion', label: 'Gestión de reparación' }] : []),
       { id: 'pagos', label: 'Pagos' },
     ]
     : isInsuranceWorkflowCase(item)
     ? [
       { id: 'ficha', label: 'Ficha Tecnica' },
-      { id: 'tramite', label: 'Gestion del trámite' },
+      { id: 'tramite', label: 'Gestión del trámite' },
       { id: 'presupuesto', label: 'Presupuesto' },
-      { id: 'gestion', label: 'Gestion reparacion' },
+      { id: 'gestion', label: 'Gestión de reparación' },
       { id: 'pagos', label: 'Pagos' },
     ]
     : [
       { id: 'ficha', label: 'Ficha Tecnica' },
       { id: 'presupuesto', label: 'Presupuesto' },
-      { id: 'gestion', label: 'Gestion reparacion' },
+      { id: 'gestion', label: 'Gestión de reparación' },
       { id: 'pagos', label: 'Pagos' },
     ];
 
@@ -10725,8 +11601,34 @@ function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRe
       },
     ]
     : [];
+  const availableWorkflowActions = item.backendWorkflow?.actions || [];
+  const tramiteActionsBound = bindWorkflowActions(tramiteActions, 'tramite', availableWorkflowActions);
+  const repairActionsBound = bindWorkflowActions(repairActions, 'reparacion', availableWorkflowActions);
+  const lastSavedByTab = item?.meta?.lastSavedByTab || {};
+  const syncErrorsByTab = item?.meta?.syncErrorsByTab || {};
+  const isTabDirty = (tabId) => Boolean(item?.meta?.dirtyTabs?.[tabId]);
+  const getTabSyncLabel = (tabId) => {
+    if (isSavingCase && activeTab === tabId) return 'Guardando...';
+    if (syncErrorsByTab[tabId]) return 'Error al guardar';
+    if (isTabDirty(tabId)) return 'Pendiente';
+    return lastSavedByTab[tabId] ? `Guardado ${formatDateTime(lastSavedByTab[tabId])}` : 'Sin cambios';
+  };
+  const getTabSyncTone = (tabId) => {
+    if (isSavingCase && activeTab === tabId) return 'info';
+    if (syncErrorsByTab[tabId]) return 'danger';
+    if (isTabDirty(tabId)) return 'warning';
+    return lastSavedByTab[tabId] ? 'success' : 'info';
+  };
+  const handleTramiteAction = async ({ label, backendAction }) => {
+    const transitioned = await onRunWorkflowTransition?.({
+      caseId: item.id,
+      domain: 'tramite',
+      label,
+      backendAction,
+      availableActions: item.backendWorkflow?.actions || [],
+    });
+    if (transitioned) return;
 
-  const handleTramiteAction = ({ label }) => {
     const today = todayIso();
 
     if (label === 'Sin presentar') {
@@ -10798,7 +11700,16 @@ function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRe
     });
   };
 
-  const handleRepairAction = ({ label }) => {
+  const handleRepairAction = async ({ label, backendAction }) => {
+    const transitioned = await onRunWorkflowTransition?.({
+      caseId: item.id,
+      domain: 'reparacion',
+      label,
+      backendAction,
+      availableActions: item.backendWorkflow?.actions || [],
+    });
+    if (transitioned) return;
+
     const today = todayIso();
 
     if (label === 'En trámite') {
@@ -10813,7 +11724,7 @@ function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRe
 
     if (label === 'No debe repararse') {
       if (!item.todoRisk.processing.adminTurnOverride && item.computed.repairStatus !== 'No debe repararse') {
-        flash('No debe repararse queda reservado como excepción demo controlada desde admin mock.');
+        flash('No debe repararse queda reservado como excepción controlada por administración.');
         return;
       }
 
@@ -10890,7 +11801,7 @@ function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRe
     <div className="page-stack">
       <section className={`hero-panel compact-hero detail-hero ${franchiseRecovery ? 'franchise-hero' : ''}`}>
         <div>
-          <p className="eyebrow">Gestion</p>
+          <p className="eyebrow">Gestión</p>
           <div className="detail-heading-row">
             <h1>{item.code} - {getFolderDisplayName(item)}</h1>
             {franchiseRecovery ? <span className="tramite-identity-badge is-franchise">Trámite Franquicia</span> : null}
@@ -10902,8 +11813,8 @@ function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRe
         <div className="status-toolbar status-toolbar-expanded">
           {hasInteractiveInsuranceControls ? (
             <>
-              <StatusActionBar label="Trámite" actions={tramiteActions} onSelect={handleTramiteAction} />
-              <StatusActionBar label="Reparación" actions={repairActions} onSelect={handleRepairAction} />
+              <StatusActionBar label="Trámite" actions={tramiteActionsBound} onSelect={handleTramiteAction} />
+              <StatusActionBar label="Reparación" actions={repairActionsBound} onSelect={handleRepairAction} />
             </>
           ) : (
             <>
@@ -10920,12 +11831,24 @@ function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRe
             </>
           )}
           <div className="status-group muted-restricted">
-            <span>Admin mock</span>
+            <span>Administración</span>
               <button className="ghost-button" disabled type="button">Rechazado / Desistido</button>
               {item.computed.repairStatus === 'No debe repararse' ? <StatusBadge tone="info">No debe repararse</StatusBadge> : null}
             </div>
           </div>
+        <div className="backend-cases-actions gestion-sync-actions">
+          <button className="primary-button" disabled={isSavingCase} onClick={() => { void onSyncCase?.(); }} type="button">
+            {isSavingCase ? 'Guardando...' : 'Guardar cambios'}
+          </button>
+          {hasUnsavedChanges ? <StatusBadge tone="warning">Cambios sin guardar</StatusBadge> : <StatusBadge tone="success">Sincronizado</StatusBadge>}
+        </div>
       </section>
+
+      {import.meta.env.DEV && debugCodeIssues.length ? (
+        <div className="inline-alert warning-banner" role="status" aria-live="polite">
+          <strong>Revisión técnica:</strong> {debugCodeIssues.join(' | ')}
+        </div>
+      ) : null}
 
       <div className="tab-strip">
         {tabs.map((tab) => (
@@ -10936,10 +11859,7 @@ function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRe
               if (tab.id === 'tramite' && !supportsTramiteTab) {
                 return;
               }
-              if (tab.id === 'documentacion' && !isInsuranceWorkflowCase(item)) {
-                return;
-              }
-              if (tab.id === 'documentacion' && !isThirdPartyWorkshopCase(item)) {
+              if (tab.id === 'documentacion' && !isInsuranceWorkflowCase(item) && !isThirdPartyWorkshopCase(item)) {
                 return;
               }
               if (tab.id === 'gestion' && !item.computed.budgetReady) {
@@ -10950,15 +11870,16 @@ function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRe
             }}
             state={item.computed.tabs[tab.id]}
           >
-            {tab.label}
+            {tab.label} · {getTabSyncLabel(tab.id)}
+            {syncErrorsByTab[tab.id] ? <StatusBadge tone={getTabSyncTone(tab.id)}>{syncErrorsByTab[tab.id]}</StatusBadge> : null}
           </TabButton>
         ))}
       </div>
 
-      <div className="form-grid aside-layout">
+      <div className={`form-grid aside-layout ${['ficha', 'presupuesto', 'gestion', 'pagos'].includes(activeTab) ? 'aside-layout-full' : ''}`}>
         <div>
           {activeTab === 'ficha' ? <FichaTecnicaTab item={item} updateCase={updateCase} /> : null}
-              {activeTab === 'tramite' ? <GestionTramiteTab allCases={allCases} flash={flash} item={item} updateCase={updateCase} /> : null}
+              {activeTab === 'tramite' ? <GestionTramiteTab allCases={allCases} flash={flash} insuranceCatalogs={insuranceCatalogs} item={item} updateCase={updateCase} /> : null}
               {activeTab === 'documentacion' ? <DocumentacionTab flash={flash} item={item} updateCase={updateCase} /> : null}
               {activeTab === 'presupuesto' ? <PresupuestoTab flash={flash} item={item} updateCase={updateCase} /> : null}
           {activeTab === 'gestion' ? (
@@ -10970,46 +11891,34 @@ function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRe
               updateCase={updateCase}
             />
           ) : null}
-              {activeTab === 'pagos' ? <PagosTab flash={flash} item={item} updateCase={updateCase} /> : null}
-              {activeTab === 'abogado' ? <AbogadoTab flash={flash} item={item} updateCase={updateCase} /> : null}
+              {activeTab === 'pagos' ? <PagosTab financeCatalogs={financeCatalogs} flash={flash} insuranceCatalogs={insuranceCatalogs} item={item} updateCase={updateCase} /> : null}
+              {activeTab === 'abogado' ? <AbogadoTab flash={flash} insuranceCatalogs={insuranceCatalogs} item={item} updateCase={updateCase} /> : null}
         </div>
-
-        <aside className="side-panel">
-          <article className="card inner-card">
-            <div className="section-head small-gap">
-              <h3>Bloqueos activos</h3>
-              <StatusBadge tone={item.computed.blockers.length ? 'danger' : 'success'}>{item.computed.blockers.length}</StatusBadge>
-            </div>
-            <ul className="compact-list">
-              {item.computed.blockers.map((blocker) => (
-                <li key={blocker}>{blocker}</li>
-              ))}
-            </ul>
-          </article>
-
-          <article className="card inner-card">
-            <div className="section-head small-gap">
-              <h3>Cierre del caso</h3>
-              <StatusBadge tone={item.computed.closeReady ? 'success' : 'danger'}>
-                {item.computed.closeReady ? 'Cerrable' : 'Pendiente'}
-              </StatusBadge>
-            </div>
-            <div className="summary-stack">
-              <div className="summary-row"><span>Salida definitiva / no reingreso</span><strong>{item.computed.repairResolved ? 'Cumplido' : 'Falta resolver'}</strong></div>
-              {isThirdPartyWorkshopCase(item) ? (
-                <>
-                  <div className="summary-row"><span>Pago compañía</span><strong>{item.computed.thirdParty.companyPaymentReady ? 'Cumplido' : 'Falta registrar'}</strong></div>
-                  <div className="summary-row"><span>Pago cliente extras</span><strong>{item.computed.thirdParty.hasExtraWorks ? (item.computed.thirdParty.clientExtrasReady ? 'Cumplido' : money(item.computed.thirdParty.clientExtrasBalance)) : 'No aplica'}</strong></div>
-                  <div className="summary-row"><span>Cierre económico</span><strong>{item.computed.todoRisk.paymentsReady ? 'Completo' : 'Pendiente'}</strong></div>
-                </>
-              ) : (
-                <div className="summary-row"><span>Pago total</span><strong>{item.computed.balance === 0 ? 'Cumplido' : money(item.computed.balance)}</strong></div>
-              )}
-              <div className="summary-row"><span>Fecha de cierre</span><strong>{item.computed.closeDate ? formatDate(item.computed.closeDate) : '-'}</strong></div>
-            </div>
-          </article>
-        </aside>
       </div>
+
+      <aside className="side-panel">
+        <article className="card inner-card">
+          <div className="section-head small-gap">
+            <h3>Cierre del caso</h3>
+            <StatusBadge tone={item.computed.closeReady ? 'success' : 'danger'}>
+              {item.computed.closeReady ? 'Cerrable' : 'Pendiente'}
+            </StatusBadge>
+          </div>
+          <div className="summary-stack">
+            <div className="summary-row"><span>Salida definitiva / no reingreso</span><strong>{item.computed.repairResolved ? 'Cumplido' : 'Falta resolver'}</strong></div>
+            {isThirdPartyWorkshopCase(item) ? (
+              <>
+                <div className="summary-row"><span>Pago compañía</span><strong>{item.computed.thirdParty.companyPaymentReady ? 'Cumplido' : 'Falta registrar'}</strong></div>
+                <div className="summary-row"><span>Pago cliente extras</span><strong>{item.computed.thirdParty.hasExtraWorks ? (item.computed.thirdParty.clientExtrasReady ? 'Cumplido' : money(item.computed.thirdParty.clientExtrasBalance)) : 'No aplica'}</strong></div>
+                <div className="summary-row"><span>Cierre económico</span><strong>{item.computed.todoRisk.paymentsReady ? 'Completo' : 'Pendiente'}</strong></div>
+              </>
+            ) : (
+              <div className="summary-row"><span>Pago total</span><strong>{item.computed.balance === 0 ? 'Cumplido' : money(item.computed.balance)}</strong></div>
+            )}
+            <div className="summary-row"><span>Fecha de cierre</span><strong>{item.computed.closeDate ? formatDate(item.computed.closeDate) : '-'}</strong></div>
+          </div>
+        </article>
+      </aside>
     </div>
   );
 }
@@ -11025,12 +11934,20 @@ function App() {
   const financeCatalogsEndpoint = getFinanceCatalogsUrl();
   const insuranceCatalogsEndpoint = getInsuranceCatalogsUrl();
   const documentsCatalogsEndpoint = getDocumentsCatalogsUrl();
+  const tasksEndpoint = getTasksUrl();
+  const insuranceCompaniesEndpoint = getInsuranceCompaniesUrl();
   const storedSession = readBackendSession();
   const hasStoredSession = Boolean(storedSession?.accessToken);
   const [shouldBootstrapSession] = useState(hasStoredSession);
   const [cases, setCases] = useState(initialCases);
   const [activeView, setActiveView] = useState('panel');
   const [selectedCaseId, setSelectedCaseId] = useState('');
+  const [isSavingCase, setIsSavingCase] = useState(false);
+  const [isSavingDocuments, setIsSavingDocuments] = useState(false);
+  const [isDownloadingDocument, setIsDownloadingDocument] = useState(false);
+  const [isPreviewingDocument, setIsPreviewingDocument] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [dirtyTabs, setDirtyTabs] = useState(new Set());
   const [activeTab, setActiveTab] = useState('ficha');
   const [activeRepairTab, setActiveRepairTab] = useState('repuestos');
   const [docGateAcceptedCaseId, setDocGateAcceptedCaseId] = useState('');
@@ -11044,7 +11961,7 @@ function App() {
     status: 'idle',
     tone: 'info',
     title: 'Conectividad sin verificar',
-    detail: `Todavía no probé la conexión real hacia ${probeEndpoint}.`,
+    detail: `Todavía no probamos la conexión al sistema (${probeEndpoint}).`,
     endpoint: probeEndpoint,
     checkedAt: '',
     httpStatus: null,
@@ -11054,6 +11971,11 @@ function App() {
     password: '',
   });
   const [backendSession, setBackendSession] = useState(storedSession);
+  const [sessionExpiryNotice, setSessionExpiryNotice] = useState('');
+  const [sessionExpirySeconds, setSessionExpirySeconds] = useState(0);
+  const [isSessionExpiring, setIsSessionExpiring] = useState(false);
+  const sessionExpiryTimerRef = useRef(null);
+  const sessionExpiryIntervalRef = useRef(null);
   const [appAccess, setAppAccess] = useState(hasStoredSession ? 'checking' : 'guest');
   const [authState, setAuthState] = useState({
     status: hasStoredSession ? 'loading' : 'idle',
@@ -11069,8 +11991,8 @@ function App() {
   const [currentUserState, setCurrentUserState] = useState({
     status: 'idle',
     tone: 'info',
-    title: 'Lectura autenticada pendiente',
-    detail: 'Después del login voy a pedir /auth/me para mostrar qué usuario devolvió el backend.',
+    title: 'Verificación pendiente',
+    detail: 'Después de iniciar sesión validamos tu cuenta para continuar.',
     endpoint: currentUserEndpoint,
     checkedAt: '',
     httpStatus: null,
@@ -11137,6 +12059,7 @@ function App() {
     checkedAt: '',
     httpStatus: null,
     items: [],
+    catalogs: null,
   });
   const [authenticatedInsuranceCatalogsState, setAuthenticatedInsuranceCatalogsState] = useState({
     status: 'idle',
@@ -11147,6 +12070,7 @@ function App() {
     checkedAt: '',
     httpStatus: null,
     items: [],
+    catalogs: null,
   });
   const [authenticatedDocumentsCatalogsState, setAuthenticatedDocumentsCatalogsState] = useState({
     status: 'idle',
@@ -11157,20 +12081,59 @@ function App() {
     checkedAt: '',
     httpStatus: null,
     items: [],
+    catalogs: null,
+  });
+  const [authenticatedTasksState, setAuthenticatedTasksState] = useState({
+    status: 'idle',
+    tone: 'info',
+    title: 'Tareas operativas',
+    detail: 'Todavía no cargamos esta vista.',
+    endpoint: tasksEndpoint,
+    checkedAt: '',
+    httpStatus: null,
+    items: [],
+  });
+  const [authenticatedInsuranceCompaniesState, setAuthenticatedInsuranceCompaniesState] = useState({
+    status: 'idle',
+    tone: 'info',
+    title: 'Compañías de seguros',
+    detail: 'Todavía no cargamos esta vista.',
+    endpoint: insuranceCompaniesEndpoint,
+    checkedAt: '',
+    httpStatus: null,
+    items: [],
+  });
+  const [authenticatedInsuranceContactsState, setAuthenticatedInsuranceContactsState] = useState({
+    status: 'idle',
+    tone: 'info',
+    title: 'Contactos de compañía',
+    detail: 'Todavía no cargamos esta vista.',
+    endpoint: '',
+    checkedAt: '',
+    httpStatus: null,
+    companyName: '',
+    items: [],
   });
   const [pendingNotificationIds, setPendingNotificationIds] = useState([]);
   const [notificationActionStateById, setNotificationActionStateById] = useState({});
 
-  const computedCases = useMemo(() => cases.map(getComputedCase), [cases]);
+  const computedCases = useMemo(() => cases.map((item) => applyBackendWorkflowToCase(getComputedCase(item))), [cases]);
   const agendaItems = useMemo(() => buildAgendaStore(computedCases), [computedCases]);
 
-  const selectedCase = computedCases.find((item) => item.id === selectedCaseId) || computedCases[0];
+  const selectedCase = computedCases.find((item) => String(item.id) === String(selectedCaseId)) || computedCases[0];
+  const selectedCaseCodeIssues = useMemo(() => {
+    if (!import.meta.env.DEV || !selectedCase) {
+      return [];
+    }
+    return collectCaseCodeValidationIssues(
+      selectedCase,
+      authenticatedInsuranceCatalogsState.catalogs,
+      authenticatedFinanceCatalogsState.catalogs,
+    );
+  }, [selectedCase, authenticatedInsuranceCatalogsState.catalogs, authenticatedFinanceCatalogsState.catalogs]);
   const nextCounter = computedCases.reduce((max, item) => Math.max(max, item.counter), 0) + 1;
   const nextCode = buildCaseCode(nextCounter, newCaseForm.type, newCaseForm.branch);
   const folderMissing = getFolderMissing(newCaseForm);
-  const customerMocks = useMemo(() => buildCustomerMockData(cases), [cases]);
-  const vehicleMocks = useMemo(() => buildVehicleMockData(cases), [cases]);
-
   useEffect(() => {
     const syncCaseFromHash = () => {
       const route = getCaseRouteFromHash(window.location.hash);
@@ -11180,12 +12143,12 @@ function App() {
         return;
       }
 
-      const caseExists = computedCases.some((item) => item.id === caseId);
+      const caseExists = computedCases.some((item) => String(item.id) === String(caseId));
       if (!caseExists) {
         return;
       }
 
-      const selectedFromHash = computedCases.find((item) => item.id === caseId);
+      const selectedFromHash = computedCases.find((item) => String(item.id) === String(caseId));
       const resolvedRoute = resolveGestionAccess(selectedFromHash, route);
 
       setSelectedCaseId(caseId);
@@ -11201,6 +12164,27 @@ function App() {
   }, [computedCases]);
 
   useEffect(() => {
+    if (authenticatedCaseDetailState.status !== 'success') {
+      return;
+    }
+
+    const backendCaseId = authenticatedCaseDetailState.item?.id;
+    if (backendCaseId == null) {
+      return;
+    }
+
+    setCases((current) => current.map((item) => {
+      if (String(item.id) !== String(backendCaseId)) {
+        return item;
+      }
+
+      const draft = structuredClone(item);
+      patchCaseWithBackendDetail(draft, authenticatedCaseDetailState);
+      return draft;
+    }));
+  }, [authenticatedCaseDetailState]);
+
+  useEffect(() => {
     if (activeView !== 'gestion' || !selectedCaseId) {
       return;
     }
@@ -11214,6 +12198,58 @@ function App() {
       window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${nextHash}`);
     }
   }, [activeView, selectedCaseId, activeTab, activeRepairTab]);
+
+  useEffect(() => {
+    if (activeView !== 'gestion' || !hasUnsavedChanges || isSavingCase || !selectedCase) {
+      return;
+    }
+
+    const caseId = Number(selectedCase.id);
+    if (!Number.isFinite(caseId)) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void syncSelectedCaseToBackend({ silent: true, tabs: [activeTab] });
+    }, 1200);
+
+    return () => window.clearTimeout(timer);
+  }, [activeView, activeTab, activeRepairTab, hasUnsavedChanges, isSavingCase, selectedCase]);
+
+  useEffect(() => {
+    setHasUnsavedChanges(dirtyTabs.size > 0);
+  }, [dirtyTabs]);
+
+  useEffect(() => {
+    const insuranceCatalogs = authenticatedInsuranceCatalogsState.catalogs;
+    const financeCatalogs = authenticatedFinanceCatalogsState.catalogs;
+
+    if (!insuranceCatalogs && !financeCatalogs) {
+      return;
+    }
+
+    setCases((current) => current.map((item) => normalizeCaseCodesWithCatalogs(item, insuranceCatalogs, financeCatalogs)));
+  }, [authenticatedInsuranceCatalogsState.catalogs, authenticatedFinanceCatalogsState.catalogs]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) {
+      return;
+    }
+
+    const insuranceCatalogs = authenticatedInsuranceCatalogsState.catalogs;
+    const financeCatalogs = authenticatedFinanceCatalogsState.catalogs;
+
+    if (!insuranceCatalogs && !financeCatalogs) {
+      return;
+    }
+
+    cases.forEach((caseItem) => {
+      const issues = collectCaseCodeValidationIssues(caseItem, insuranceCatalogs, financeCatalogs);
+      if (issues.length) {
+        console.warn(`[code-check] ${caseItem.code || caseItem.id}: ${issues.join(' | ')}`);
+      }
+    });
+  }, [cases, authenticatedInsuranceCatalogsState.catalogs, authenticatedFinanceCatalogsState.catalogs]);
 
   useEffect(() => {
     if (activeView !== 'gestion' || activeTab !== 'gestion' || !selectedCase) {
@@ -11301,6 +12337,18 @@ function App() {
   }, []);
 
   const resetSessionState = ({ authTitle, authDetail, authTone = 'info', checkedAt = new Date().toISOString() }) => {
+    if (sessionExpiryTimerRef.current) {
+      window.clearTimeout(sessionExpiryTimerRef.current);
+      sessionExpiryTimerRef.current = null;
+    }
+    if (sessionExpiryIntervalRef.current) {
+      window.clearInterval(sessionExpiryIntervalRef.current);
+      sessionExpiryIntervalRef.current = null;
+    }
+    setIsSessionExpiring(false);
+    setSessionExpiryNotice('');
+    setSessionExpirySeconds(0);
+
     clearBackendSession();
     setBackendSession(null);
     setAppAccess('guest');
@@ -11316,8 +12364,8 @@ function App() {
     setCurrentUserState({
       status: 'idle',
       tone: 'info',
-      title: 'Lectura autenticada pendiente',
-      detail: 'Sin token guardado no puedo pedir /auth/me.',
+      title: 'Verificación pendiente',
+      detail: 'Sin sesión iniciada no podemos validar tu cuenta.',
       endpoint: currentUserEndpoint,
       checkedAt: '',
       httpStatus: null,
@@ -11383,6 +12431,7 @@ function App() {
       checkedAt: '',
       httpStatus: null,
       items: [],
+      catalogs: null,
     });
     setAuthenticatedInsuranceCatalogsState({
       status: 'idle',
@@ -11393,6 +12442,7 @@ function App() {
       checkedAt: '',
       httpStatus: null,
       items: [],
+      catalogs: null,
     });
     setAuthenticatedDocumentsCatalogsState({
       status: 'idle',
@@ -11402,6 +12452,38 @@ function App() {
       endpoint: documentsCatalogsEndpoint,
       checkedAt: '',
       httpStatus: null,
+      items: [],
+      catalogs: null,
+    });
+    setAuthenticatedTasksState({
+      status: 'idle',
+      tone: 'info',
+      title: 'Tareas operativas',
+      detail: 'Volvé a ingresar para recuperar esta vista.',
+      endpoint: tasksEndpoint,
+      checkedAt: '',
+      httpStatus: null,
+      items: [],
+    });
+    setAuthenticatedInsuranceCompaniesState({
+      status: 'idle',
+      tone: 'info',
+      title: 'Compañías de seguros',
+      detail: 'Volvé a ingresar para recuperar esta vista.',
+      endpoint: insuranceCompaniesEndpoint,
+      checkedAt: '',
+      httpStatus: null,
+      items: [],
+    });
+    setAuthenticatedInsuranceContactsState({
+      status: 'idle',
+      tone: 'info',
+      title: 'Contactos de compañía',
+      detail: 'Volvé a ingresar para recuperar esta vista.',
+      endpoint: '',
+      checkedAt: '',
+      httpStatus: null,
+      companyName: '',
       items: [],
     });
   };
@@ -11551,7 +12633,7 @@ function App() {
           }));
 
     try {
-      const result = await readAuthenticatedCases(accessToken, { page: 0, size: 5, signal });
+      const result = await readAuthenticatedCases(accessToken, { page: 0, size: 200, signal });
       const summary = summarizeCasesPayload(result.data);
       const normalized = normalizeAuthenticatedCasesPayload(result.data);
 
@@ -11780,6 +12862,7 @@ function App() {
         checkedAt: new Date().toISOString(),
         httpStatus: result.httpStatus,
         items,
+        catalogs: result.data || null,
       });
     } catch (error) {
       setAuthenticatedFinanceCatalogsState((current) => ({
@@ -11792,6 +12875,7 @@ function App() {
         checkedAt: new Date().toISOString(),
         httpStatus: error?.httpStatus || null,
         items: [],
+        catalogs: null,
       }));
     }
   };
@@ -11823,6 +12907,7 @@ function App() {
         checkedAt: new Date().toISOString(),
         httpStatus: result.httpStatus,
         items,
+        catalogs: result.data || null,
       });
     } catch (error) {
       setAuthenticatedInsuranceCatalogsState((current) => ({
@@ -11835,6 +12920,7 @@ function App() {
         checkedAt: new Date().toISOString(),
         httpStatus: error?.httpStatus || null,
         items: [],
+        catalogs: null,
       }));
     }
   };
@@ -11866,6 +12952,7 @@ function App() {
         checkedAt: new Date().toISOString(),
         httpStatus: result.httpStatus,
         items,
+        catalogs: result.data || null,
       });
     } catch (error) {
       setAuthenticatedDocumentsCatalogsState((current) => ({
@@ -11877,6 +12964,172 @@ function App() {
         endpoint: documentsCatalogsEndpoint,
         checkedAt: new Date().toISOString(),
         httpStatus: error?.httpStatus || null,
+        items: [],
+        catalogs: null,
+      }));
+    }
+  };
+
+  const runAuthenticatedTasksRead = async (accessToken, signal) => {
+    setAuthenticatedTasksState((current) => ({
+      ...current,
+      status: 'loading',
+      tone: 'info',
+      title: 'Actualizando tareas',
+      detail: 'Estamos trayendo las tareas operativas.',
+      endpoint: tasksEndpoint,
+      checkedAt: current.checkedAt,
+      httpStatus: null,
+    }));
+
+    try {
+      const result = await readAuthenticatedTasks(accessToken, { signal });
+      const items = getTaskItems(result.data);
+
+      setAuthenticatedTasksState({
+        status: 'success',
+        tone: 'success',
+        title: 'Tareas actualizadas',
+        detail: items.length > 0
+          ? `Trajimos ${items.length} tarea${items.length === 1 ? '' : 's'} operativa${items.length === 1 ? '' : 's'}.`
+          : 'No hay tareas visibles en este momento.',
+        endpoint: result.endpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: result.httpStatus,
+        items,
+      });
+    } catch (error) {
+      setAuthenticatedTasksState((current) => ({
+        ...current,
+        status: 'error',
+        tone: 'danger',
+        title: 'No pudimos cargar tareas',
+        detail: error?.message || 'Intentá nuevamente en unos instantes.',
+        endpoint: tasksEndpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: error?.httpStatus || null,
+        items: [],
+      }));
+    }
+  };
+
+  const runAuthenticatedInsuranceCompaniesRead = async (accessToken, signal) => {
+    setAuthenticatedInsuranceCompaniesState((current) => ({
+      ...current,
+      status: 'loading',
+      tone: 'info',
+      title: 'Actualizando compañías',
+      detail: 'Estamos trayendo las compañías de seguros.',
+      endpoint: insuranceCompaniesEndpoint,
+      checkedAt: current.checkedAt,
+      httpStatus: null,
+    }));
+
+    try {
+      const result = await readAuthenticatedInsuranceCompanies(accessToken, { signal });
+      const items = getInsuranceCompanyItems(result.data);
+      const primaryCompany = items.find((company) => company?.id != null);
+
+      setAuthenticatedInsuranceCompaniesState({
+        status: 'success',
+        tone: 'success',
+        title: 'Compañías actualizadas',
+        detail: items.length > 0
+          ? `Trajimos ${items.length} compañía${items.length === 1 ? '' : 's'} de seguros.`
+          : 'No hay compañías visibles en este momento.',
+        endpoint: result.endpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: result.httpStatus,
+        items,
+      });
+
+      if (primaryCompany?.id != null) {
+        void runAuthenticatedInsuranceContactsRead(accessToken, primaryCompany, signal);
+      } else {
+        setAuthenticatedInsuranceContactsState({
+          status: 'empty',
+          tone: 'info',
+          title: 'Sin contactos disponibles',
+          detail: 'No encontramos una compañía con identificador para consultar contactos.',
+          endpoint: '',
+          checkedAt: new Date().toISOString(),
+          httpStatus: null,
+          companyName: '',
+          items: [],
+        });
+      }
+    } catch (error) {
+      setAuthenticatedInsuranceCompaniesState((current) => ({
+        ...current,
+        status: 'error',
+        tone: 'danger',
+        title: 'No pudimos cargar compañías',
+        detail: error?.message || 'Intentá nuevamente en unos instantes.',
+        endpoint: insuranceCompaniesEndpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: error?.httpStatus || null,
+        items: [],
+      }));
+
+      setAuthenticatedInsuranceContactsState((current) => ({
+        ...current,
+        status: 'error',
+        tone: 'danger',
+        title: 'No pudimos cargar contactos',
+        detail: 'Primero necesitamos cargar una compañía válida para consultar sus contactos.',
+        checkedAt: new Date().toISOString(),
+        items: [],
+      }));
+    }
+  };
+
+  const runAuthenticatedInsuranceContactsRead = async (accessToken, company, signal) => {
+    const companyId = company?.id;
+    const companyName = company?.name || company?.displayName || `Compañía ${companyId}`;
+
+    if (companyId == null) {
+      return;
+    }
+
+    setAuthenticatedInsuranceContactsState((current) => ({
+      ...current,
+      status: 'loading',
+      tone: 'info',
+      title: 'Actualizando contactos',
+      detail: `Estamos trayendo los referentes de ${companyName}.`,
+      endpoint: '',
+      companyName,
+      checkedAt: current.checkedAt,
+      httpStatus: null,
+    }));
+
+    try {
+      const result = await readAuthenticatedInsuranceCompanyContacts(accessToken, companyId, { signal });
+      const items = getInsuranceCompanyContactItems(result.data);
+
+      setAuthenticatedInsuranceContactsState({
+        status: 'success',
+        tone: 'success',
+        title: 'Contactos actualizados',
+        detail: items.length > 0
+          ? `Trajimos ${items.length} contacto${items.length === 1 ? '' : 's'} de ${companyName}.`
+          : `No hay contactos visibles para ${companyName}.`,
+        endpoint: result.endpoint,
+        checkedAt: new Date().toISOString(),
+        httpStatus: result.httpStatus,
+        companyName,
+        items,
+      });
+    } catch (error) {
+      setAuthenticatedInsuranceContactsState((current) => ({
+        ...current,
+        status: 'error',
+        tone: 'danger',
+        title: 'No pudimos cargar contactos',
+        detail: error?.message || 'Intentá nuevamente en unos instantes.',
+        checkedAt: new Date().toISOString(),
+        httpStatus: error?.httpStatus || null,
+        companyName,
         items: [],
       }));
     }
@@ -12426,6 +13679,8 @@ function App() {
         void runAuthenticatedFinanceCatalogsRead(storedSession.accessToken, controller.signal).catch(() => {});
         void runAuthenticatedInsuranceCatalogsRead(storedSession.accessToken, controller.signal).catch(() => {});
         void runAuthenticatedDocumentsCatalogsRead(storedSession.accessToken, controller.signal).catch(() => {});
+        void runAuthenticatedTasksRead(storedSession.accessToken, controller.signal).catch(() => {});
+        void runAuthenticatedInsuranceCompaniesRead(storedSession.accessToken, controller.signal).catch(() => {});
       } catch (error) {
         if (error.name === 'AbortError') {
           return;
@@ -12433,7 +13688,7 @@ function App() {
 
         resetSessionState({
           authTitle: 'Sesión vencida o inválida',
-          authDetail: 'La sesión guardada no pasó la validación con /auth/me. Limpié localStorage para que vuelvas a entrar.',
+          authDetail: 'Tu sesión anterior venció o ya no es válida. Volvé a iniciar sesión para continuar.',
           authTone: 'danger',
         });
       }
@@ -12506,6 +13761,8 @@ function App() {
       void runAuthenticatedFinanceCatalogsRead(result.accessToken).catch(() => {});
       void runAuthenticatedInsuranceCatalogsRead(result.accessToken).catch(() => {});
       void runAuthenticatedDocumentsCatalogsRead(result.accessToken).catch(() => {});
+      void runAuthenticatedTasksRead(result.accessToken).catch(() => {});
+      void runAuthenticatedInsuranceCompaniesRead(result.accessToken).catch(() => {});
     } catch (error) {
       setAuthState({
         status: 'error',
@@ -12519,7 +13776,61 @@ function App() {
     }
   };
 
+  const handleExpiredSessionRedirect = () => {
+    if (isSessionExpiring) {
+      return;
+    }
+
+    if (sessionExpiryTimerRef.current) {
+      window.clearTimeout(sessionExpiryTimerRef.current);
+      sessionExpiryTimerRef.current = null;
+    }
+    if (sessionExpiryIntervalRef.current) {
+      window.clearInterval(sessionExpiryIntervalRef.current);
+      sessionExpiryIntervalRef.current = null;
+    }
+
+    let remaining = 3;
+    setIsSessionExpiring(true);
+    setSessionExpirySeconds(remaining);
+    setSessionExpiryNotice(`Tu sesión venció. Te vamos a redirigir al login en ${remaining} segundos...`);
+
+    sessionExpiryIntervalRef.current = window.setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        if (sessionExpiryIntervalRef.current) {
+          window.clearInterval(sessionExpiryIntervalRef.current);
+          sessionExpiryIntervalRef.current = null;
+        }
+        return;
+      }
+      setSessionExpirySeconds(remaining);
+      setSessionExpiryNotice(`Tu sesión venció. Te vamos a redirigir al login en ${remaining} segundos...`);
+    }, 1000);
+
+    sessionExpiryTimerRef.current = window.setTimeout(() => {
+      if (sessionExpiryIntervalRef.current) {
+        window.clearInterval(sessionExpiryIntervalRef.current);
+        sessionExpiryIntervalRef.current = null;
+      }
+      sessionExpiryTimerRef.current = null;
+      resetSessionState({
+        authTitle: 'Sesión vencida',
+        authDetail: 'Tu sesión venció. Volvé a ingresar para continuar.',
+        authTone: 'danger',
+      });
+      setSessionExpiryNotice('');
+      setSessionExpirySeconds(0);
+      setIsSessionExpiring(false);
+      flash({ tone: 'danger', title: 'Sesión vencida', message: 'Volvé a ingresar para continuar.' });
+    }, 3000);
+  };
+
   const readWithStoredToken = async (reader) => {
+    if (isSessionExpiring) {
+      return;
+    }
+
     if (!backendSession?.accessToken) {
       flash({ tone: 'danger', title: 'Sin token', message: 'Primero necesitás hacer login real o recuperar una sesión guardada.' });
       return;
@@ -12527,10 +13838,66 @@ function App() {
 
     try {
       await reader(backendSession.accessToken);
-    } catch {
+    } catch (error) {
+      if (error?.httpStatus === 401 || error?.httpStatus === 403) {
+        handleExpiredSessionRedirect();
+        return;
+      }
       // El estado de error ya se informa dentro del reader.
     }
   };
+
+  useEffect(() => {
+    const sources = [
+      currentUserState,
+      authenticatedCasesState,
+      authenticatedNotificationsState,
+      authenticatedSystemParametersState,
+      authenticatedOperationCatalogsState,
+      authenticatedFinanceCatalogsState,
+      authenticatedInsuranceCatalogsState,
+      authenticatedDocumentsCatalogsState,
+      authenticatedTasksState,
+      authenticatedInsuranceCompaniesState,
+      authenticatedInsuranceContactsState,
+      authenticatedCaseDetailState,
+    ];
+
+    const hasSessionExpired = sources.some((source) => source?.httpStatus === 401 || source?.httpStatus === 403);
+
+    if (!backendSession?.accessToken || !hasSessionExpired) {
+      return;
+    }
+
+    handleExpiredSessionRedirect();
+  }, [
+    sessionExpiryNotice,
+    isSessionExpiring,
+    backendSession,
+    currentUserState,
+    authenticatedCasesState,
+    authenticatedNotificationsState,
+    authenticatedSystemParametersState,
+    authenticatedOperationCatalogsState,
+    authenticatedFinanceCatalogsState,
+    authenticatedInsuranceCatalogsState,
+    authenticatedDocumentsCatalogsState,
+    authenticatedTasksState,
+    authenticatedInsuranceCompaniesState,
+    authenticatedInsuranceContactsState,
+    authenticatedCaseDetailState,
+  ]);
+
+  useEffect(() => () => {
+    if (sessionExpiryTimerRef.current) {
+      window.clearTimeout(sessionExpiryTimerRef.current);
+      sessionExpiryTimerRef.current = null;
+    }
+    if (sessionExpiryIntervalRef.current) {
+      window.clearInterval(sessionExpiryIntervalRef.current);
+      sessionExpiryIntervalRef.current = null;
+    }
+  }, []);
 
   const resetStoredSession = () => {
     resetSessionState({
@@ -12553,7 +13920,7 @@ function App() {
         return item;
       }
 
-      const draft = structuredClone(item);
+      const draft = ensureCaseStructure(item);
       mutator(draft);
       return draft;
     }));
@@ -12564,6 +13931,19 @@ function App() {
       return;
     }
     updateCase(selectedCase.id, mutator);
+    setHasUnsavedChanges(true);
+    setDirtyTabs((current) => {
+      const next = new Set(current);
+      next.add(activeTab);
+      return next;
+    });
+    updateCase(selectedCase.id, (draft) => {
+      if (!draft.meta) {
+        draft.meta = { dirtyTabs: {}, lastSavedByTab: {}, syncErrorsByTab: {}, removedBudgetItemIds: [], removedPartIds: [] };
+      }
+      draft.meta.dirtyTabs = { ...(draft.meta.dirtyTabs || {}), [activeTab]: true };
+      draft.meta.syncErrorsByTab = { ...(draft.meta.syncErrorsByTab || {}), [activeTab]: '' };
+    });
   };
 
   const updateAgendaTask = (taskRef, mutator) => {
@@ -12614,77 +13994,93 @@ function App() {
     setAutofilledFields(Array.from(new Set(fields.filter(Boolean))));
   };
 
-  const autofillCustomerByDocument = () => {
+  const autofillCustomerByDocument = async () => {
     const document = normalizeDocument(newCaseForm.document);
 
     if (!document) {
-      setCustomerLookupState({ status: 'empty', message: 'Ingresá un DNI', detail: 'Cargá un DNI para buscar un cliente mock.' });
+      setCustomerLookupState({ status: 'empty', message: 'Ingresá un DNI', detail: 'Cargá un DNI para buscar el cliente.' });
       return;
     }
 
-    const customer = customerMocks.get(document);
-
-    if (!customer) {
-      setCustomerLookupState({ status: 'empty', message: 'Sin coincidencias', detail: 'No hay un cliente mock cargado para ese DNI.' });
+    if (!backendSession?.accessToken) {
+      setCustomerLookupState({ status: 'empty', message: 'Sin sesión', detail: 'Necesitás iniciar sesión para buscar el cliente real.' });
       return;
     }
 
-    setNewCaseForm((current) => ({
-      ...current,
-      firstName: customer.firstName,
-      lastName: customer.lastName,
-      phone: customer.phone,
-      document: customer.document,
-      locality: customer.locality,
-      email: customer.email,
-      referenced: customer.referenced,
-      referencedName: customer.referencedName,
-    }));
-    highlightAutofilledFields([
-      'document',
-      'firstName',
-      'lastName',
-      'phone',
-      'referenced',
-      customer.referenced === 'SI' ? 'referencedName' : '',
-    ]);
-    setCustomerLookupState({
-      status: 'found',
-      message: 'Cliente encontrado',
-      detail: `${customer.firstName} ${customer.lastName} · DNI ${customer.document}`,
-    });
+    try {
+      const result = await searchAuthenticatedPersons(backendSession.accessToken, { document });
+      const person = Array.isArray(result.data) ? result.data[0] : null;
+
+      if (!person) {
+        setCustomerLookupState({ status: 'empty', message: 'Sin coincidencias', detail: 'No encontramos un cliente con ese DNI.' });
+        return;
+      }
+
+      setNewCaseForm((current) => ({
+        ...current,
+        firstName: person.nombre || current.firstName,
+        lastName: person.apellido || current.lastName,
+        phone: person.telefonoPrincipal || current.phone,
+        document: person.numeroDocumento || current.document,
+      }));
+
+      highlightAutofilledFields(['document', 'firstName', 'lastName', 'phone']);
+      setCustomerLookupState({
+        status: 'found',
+        message: 'Cliente encontrado',
+        detail: `${person.nombre || ''} ${person.apellido || ''}`.trim() + ` · DNI ${person.numeroDocumento || document}`,
+      });
+    } catch (error) {
+      setCustomerLookupState({
+        status: 'empty',
+        message: 'No se pudo buscar',
+        detail: error?.message || 'No pudimos consultar personas en este momento.',
+      });
+    }
   };
 
-  const autofillVehicleByPlate = () => {
+  const autofillVehicleByPlate = async () => {
     const plate = normalizePlate(newCaseForm.plate);
 
     if (!plate) {
-      setVehicleLookupState({ status: 'empty', message: 'Ingresá una patente', detail: 'Cargá una patente para buscar un vehículo mock.' });
+      setVehicleLookupState({ status: 'empty', message: 'Ingresá una patente', detail: 'Cargá una patente para buscar el vehículo.' });
       return;
     }
 
-    const vehicle = vehicleMocks.get(plate);
-
-    if (!vehicle) {
-      setVehicleLookupState({ status: 'empty', message: 'Sin coincidencias', detail: 'No hay un vehículo mock cargado para esa patente.' });
+    if (!backendSession?.accessToken) {
+      setVehicleLookupState({ status: 'empty', message: 'Sin sesión', detail: 'Necesitás iniciar sesión para buscar el vehículo real.' });
       return;
     }
 
-    setNewCaseForm((current) => ({
-      ...current,
-      brand: vehicle.brand,
-      model: vehicle.model,
-      plate: vehicle.plate,
-      vehicleType: vehicle.vehicleType,
-      vehicleUse: vehicle.vehicleUse,
-      paint: vehicle.paint,
-    }));
-    highlightAutofilledFields(['plate', 'brand', 'model', 'vehicleType', 'vehicleUse', 'paint']);
-    setVehicleLookupState({
-      status: 'found',
-      message: 'Vehículo encontrado',
-      detail: `${vehicle.brand} ${vehicle.model} · ${vehicle.plate}`,
-    });
+    try {
+      const result = await searchAuthenticatedVehicles(backendSession.accessToken, { plate });
+      const vehicle = Array.isArray(result.data) ? result.data[0] : null;
+
+      if (!vehicle) {
+        setVehicleLookupState({ status: 'empty', message: 'Sin coincidencias', detail: 'No encontramos un vehículo con esa patente.' });
+        return;
+      }
+
+      setNewCaseForm((current) => ({
+        ...current,
+        brand: vehicle.brandText || current.brand,
+        model: vehicle.modelText || current.model,
+        plate: vehicle.plate || current.plate,
+      }));
+
+      highlightAutofilledFields(['plate', 'brand', 'model']);
+      setVehicleLookupState({
+        status: 'found',
+        message: 'Vehículo encontrado',
+        detail: `${vehicle.brandText || ''} ${vehicle.modelText || ''}`.trim() + ` · ${vehicle.plate || plate}`,
+      });
+    } catch (error) {
+      setVehicleLookupState({
+        status: 'empty',
+        message: 'No se pudo buscar',
+        detail: error?.message || 'No pudimos consultar vehículos en este momento.',
+      });
+    }
   };
 
   const openView = (view) => {
@@ -12717,7 +14113,7 @@ function App() {
     ].join('\n');
 
     triggerDownload('panel-general-particular.csv', csv, 'text/csv;charset=utf-8;');
-    flash(`Exportación Excel demo generada con ${rows.length} carpetas visibles.`);
+    flash(`Exportación Excel generada con ${rows.length} carpetas visibles.`);
   };
 
   const exportPanelPdf = (items) => {
@@ -12725,7 +14121,7 @@ function App() {
     const printable = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900');
 
     if (!printable) {
-      flash('No pude abrir la ventana de impresión para el PDF demo.');
+      flash('No pude abrir la ventana de impresión para el PDF.');
       return;
     }
 
@@ -12745,7 +14141,7 @@ function App() {
         </head>
         <body>
           <h1>Panel General - Particular</h1>
-          <p>Exportación demo imprimible con ${rows.length} carpetas visibles.</p>
+          <p>Exportación imprimible con ${rows.length} carpetas visibles.</p>
           <table>
             <thead>
               <tr>
@@ -12776,23 +14172,782 @@ function App() {
     printable.document.close();
     printable.focus();
     printable.print();
-    flash(`Exportación PDF demo preparada para impresión con ${rows.length} carpetas visibles.`);
+    flash(`Exportación PDF preparada para impresión con ${rows.length} carpetas visibles.`);
   };
 
   const openCase = (id, target = {}) => {
-    const targetCase = computedCases.find((item) => item.id === id);
+    let targetCase = computedCases.find((item) => String(item.id) === String(id));
+
+    if (!targetCase) {
+      const backendItem = authenticatedCasesState.items.find((item) => String(item.id) === String(id));
+
+      if (backendItem) {
+        const bridgedCase = buildLocalCaseFromBackend(backendItem, nextCounter);
+        setCases((current) => {
+          if (current.some((item) => String(item.id) === String(bridgedCase.id))) {
+            return current;
+          }
+          return [...current, bridgedCase];
+        });
+        targetCase = bridgedCase;
+      }
+    }
+
+    if (!targetCase) {
+      flash({ tone: 'danger', title: 'No pudimos abrir la carpeta', message: 'No encontramos los datos necesarios para abrir esta ficha técnica.' });
+      return;
+    }
+
     const resolvedTarget = resolveGestionAccess(targetCase, target);
     const nextTab = resolvedTarget.tab;
     const nextRepairTab = resolvedTarget.subtab || 'repuestos';
 
-    setSelectedCaseId(id);
+    setSelectedCaseId(String(id));
+    setHasUnsavedChanges(false);
+    setDirtyTabs(new Set());
     setActiveView('gestion');
     setActiveTab(nextTab);
     setActiveRepairTab(nextRepairTab);
     window.location.hash = getCaseHash(id, { tab: nextTab, subtab: nextRepairTab });
+
+    if (backendSession?.accessToken) {
+      void openAuthenticatedCaseDetail({ id });
+    }
   };
 
-  const createCase = () => {
+  const syncSelectedCaseToBackend = async ({ silent = false, tabs = null } = {}) => {
+    if (!selectedCase) {
+      if (!silent) {
+        flash({ tone: 'danger', title: 'Sin carpeta seleccionada', message: 'Elegí una carpeta antes de guardar cambios.' });
+      }
+      return;
+    }
+
+    const caseId = Number(selectedCase.id);
+    if (!Number.isFinite(caseId)) {
+      if (!silent) {
+        flash({ tone: 'danger', title: 'Carpeta no sincronizable', message: 'Esta carpeta todavía no tiene un identificador backend válido.' });
+      }
+      return;
+    }
+
+    const toDate = (value) => {
+      const normalized = String(value || '').trim();
+      return normalized ? normalized : null;
+    };
+    const toDecimal = (value) => {
+      const numeric = numberValue(value);
+      return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+    };
+    const toBooleanSiNo = (value) => value === 'SI';
+
+    const targetTabs = tabs ? new Set(tabs) : new Set(dirtyTabs);
+    const shouldSync = (tabId) => targetTabs.size === 0 || targetTabs.has(tabId);
+
+    setIsSavingCase(true);
+
+    try {
+      await readWithStoredToken(async (accessToken) => {
+        const syncOps = [];
+        const pushSyncOp = (tabId, request) => {
+          syncOps.push({ tabId, request });
+        };
+
+        if (shouldSync('ficha') || shouldSync('tramite')) {
+          pushSyncOp('ficha', updateAuthenticatedCaseIncident(accessToken, caseId, {
+              incidentDate: toDate(selectedCase.todoRisk?.incident?.date),
+              incidentTime: selectedCase.todoRisk?.incident?.time || null,
+              location: selectedCase.todoRisk?.incident?.location || null,
+              dynamics: selectedCase.todoRisk?.incident?.dynamics || null,
+              observations: selectedCase.todoRisk?.incident?.observations || null,
+              prescriptionDate: toDate(addYears(selectedCase.todoRisk?.incident?.date || '', 3)),
+            }));
+        }
+
+        if ((isInsuranceWorkflowCase(selectedCase) || isFranchiseRecoveryCase(selectedCase)) && shouldSync('tramite')) {
+          const insuranceCatalogs = authenticatedInsuranceCatalogsState.catalogs || {};
+          const modalityEntries = getCatalogEntries(insuranceCatalogs, 'modalityCodes');
+          const opinionEntries = getCatalogEntries(insuranceCatalogs, 'opinionCodes');
+          const quoteStatusEntries = getCatalogEntries(insuranceCatalogs, 'quotationStatusCodes');
+          const franchiseStatusEntries = getCatalogEntries(insuranceCatalogs, 'franchiseStatusCodes');
+          const franchiseRecoveryEntries = getCatalogEntries(insuranceCatalogs, 'franchiseRecoveryTypeCodes');
+          const franchiseOpinionEntries = getCatalogEntries(insuranceCatalogs, 'franchiseOpinionCodes');
+          const cleasScopeEntries = getCatalogEntries(insuranceCatalogs, 'cleasScopeCodes');
+          const paymentStatusEntries = getCatalogEntries(insuranceCatalogs, 'paymentStatusCodes');
+
+          const insuranceDetail = authenticatedCaseDetailState.insuranceState?.data || {};
+          const mappedInsuranceCompanyId = resolveInsuranceCompanyIdByName(
+            authenticatedInsuranceCompaniesState.items,
+            selectedCase.todoRisk?.insurance?.company,
+          );
+          const insuranceCompanyId = insuranceDetail.insuranceCompanyId || mappedInsuranceCompanyId || null;
+
+          const franchiseStatusCode = resolveCatalogCode(selectedCase.todoRisk?.franchise?.status, franchiseStatusEntries, TODO_RIESGO_FRANCHISE_STATUS_OPTIONS);
+          const recoveryTypeCode = resolveCatalogCode(selectedCase.todoRisk?.franchise?.recoveryType, franchiseRecoveryEntries, TODO_RIESGO_RECOVERY_OPTIONS);
+          const franchiseOpinionCode = resolveCatalogCode(selectedCase.todoRisk?.franchise?.dictamen, franchiseOpinionEntries, TODO_RIESGO_DICTAMEN_OPTIONS);
+          const cleasScopeCode = resolveCatalogCode(selectedCase.todoRisk?.processing?.cleasScope, cleasScopeEntries, CLEAS_SCOPE_OPTIONS);
+          const cleasOpinionCode = resolveCatalogCode(selectedCase.todoRisk?.processing?.dictamen, opinionEntries, CLEAS_DICTAMEN_OPTIONS);
+          const customerPaymentStatusCode = resolveCatalogCode(selectedCase.todoRisk?.processing?.clientChargeStatus, paymentStatusEntries, CLEAS_PAYMENT_STATUS_OPTIONS);
+          const companyPaymentStatusCode = resolveCatalogCode(selectedCase.todoRisk?.processing?.companyFranchisePaymentStatus, paymentStatusEntries, CLEAS_PAYMENT_STATUS_OPTIONS);
+          const modalityCode = resolveCatalogCode(selectedCase.todoRisk?.processing?.modality, modalityEntries, TODO_RIESGO_MODALITY_OPTIONS);
+          const processingOpinionCode = resolveCatalogCode(selectedCase.todoRisk?.processing?.dictamen, opinionEntries, [...TODO_RIESGO_DICTAMEN_OPTIONS, ...CLEAS_DICTAMEN_OPTIONS]);
+          const quotationStatusCode = resolveCatalogCode(selectedCase.todoRisk?.processing?.quoteStatus, quoteStatusEntries, TODO_RIESGO_QUOTE_STATUS_OPTIONS);
+
+          const invalidFields = [];
+          if (!insuranceCompanyId && selectedCase.todoRisk?.insurance?.company) invalidFields.push('Compañía de seguro');
+          if (selectedCase.todoRisk?.franchise?.status && !franchiseStatusCode) invalidFields.push('Franquicia: estado');
+          if (selectedCase.todoRisk?.franchise?.recoveryType && !recoveryTypeCode) invalidFields.push('Franquicia: recupero');
+          if (selectedCase.todoRisk?.franchise?.dictamen && !franchiseOpinionCode) invalidFields.push('Franquicia: dictamen');
+          if (selectedCase.todoRisk?.processing?.cleasScope && !cleasScopeCode) invalidFields.push('CLEAS: alcance');
+          if (selectedCase.todoRisk?.processing?.dictamen && !processingOpinionCode) invalidFields.push('Trámite: dictamen');
+          if (selectedCase.todoRisk?.processing?.quoteStatus && !quotationStatusCode) invalidFields.push('Trámite: estado cotización');
+          if (selectedCase.todoRisk?.processing?.modality && !modalityCode) invalidFields.push('Trámite: modalidad');
+          if (selectedCase.todoRisk?.processing?.clientChargeStatus && !customerPaymentStatusCode) invalidFields.push('CLEAS: estado pago cliente');
+          if (selectedCase.todoRisk?.processing?.companyFranchisePaymentStatus && !companyPaymentStatusCode) invalidFields.push('CLEAS: estado pago compañía');
+
+          if (invalidFields.length > 0) {
+            const validationError = new Error(`Revisá estos campos antes de guardar: ${invalidFields.join(', ')}.`);
+            validationError.tabId = 'tramite';
+            throw validationError;
+          }
+
+          if (insuranceCompanyId) {
+            pushSyncOp('tramite', updateAuthenticatedCaseInsurance(accessToken, caseId, {
+              insuranceCompanyId,
+              policyNumber: selectedCase.todoRisk?.insurance?.policyNumber || null,
+              certificateNumber: selectedCase.todoRisk?.insurance?.certificateNumber || null,
+              coverageDetail: selectedCase.todoRisk?.insurance?.coverageDetail || null,
+              thirdPartyCompanyId: insuranceDetail.thirdPartyCompanyId || null,
+              cleasNumber: selectedCase.todoRisk?.insurance?.cleasNumber || null,
+              processorCasePersonId: insuranceDetail.processorCasePersonId || null,
+              inspectorCasePersonId: insuranceDetail.inspectorCasePersonId || null,
+            }));
+          }
+
+          pushSyncOp('tramite', updateAuthenticatedCaseFranchise(accessToken, caseId, {
+            franchiseStatusCode,
+            franchiseAmount: toDecimal(selectedCase.todoRisk?.franchise?.amount),
+            recoveryTypeCode,
+            relatedCaseId: null,
+            franchiseOpinionCode,
+            exceedsFranchise: selectedCase.todoRisk?.franchise?.exceedsFranchise === 'SI',
+            recoveryAmount: toDecimal(selectedCase.todoRisk?.franchise?.recoveryAmount),
+            notes: selectedCase.todoRisk?.franchise?.notes || null,
+          }));
+
+          pushSyncOp('tramite', updateAuthenticatedCaseCleas(accessToken, caseId, {
+            scopeCode: cleasScopeCode,
+            opinionCode: cleasOpinionCode,
+            franchiseAmount: toDecimal(selectedCase.todoRisk?.franchise?.amount),
+            customerChargeAmount: toDecimal(selectedCase.todoRisk?.processing?.clientChargeAmount),
+            customerPaymentStatusCode,
+            customerPaymentDate: toDate(selectedCase.todoRisk?.processing?.clientChargeDate),
+            companyFranchisePaymentAmount: toDecimal(selectedCase.todoRisk?.processing?.companyFranchisePaymentAmount),
+            companyFranchisePaymentStatusCode: companyPaymentStatusCode,
+            companyFranchisePaymentDate: toDate(selectedCase.todoRisk?.processing?.companyFranchisePaymentDate),
+          }));
+
+          pushSyncOp('tramite', updateAuthenticatedCaseInsuranceProcessing(accessToken, caseId, {
+            presentedAt: toDate(selectedCase.todoRisk?.processing?.presentedDate),
+              inspectionForwardedAt: toDate(selectedCase.todoRisk?.processing?.derivedToInspectionDate),
+              modalityCode,
+              opinionCode: processingOpinionCode,
+              quotationStatusCode,
+              quotationDate: toDate(selectedCase.todoRisk?.processing?.quoteDate),
+              agreedAmount: toDecimal(selectedCase.todoRisk?.processing?.agreedAmount),
+              minimumCloseAmount: toDecimal(selectedCase.computed?.todoRisk?.minimumClosingAmount),
+              includesParts: Boolean(selectedCase.computed?.hasReplacementParts),
+              partsAuthorizationCode: selectedCase.computed?.partsStatus || null,
+              partsSupplierText: selectedCase.todoRisk?.processing?.cleasScope || null,
+              amountToBillCompany: toDecimal(selectedCase.computed?.todoRisk?.amountToInvoice || selectedCase.computed?.thirdParty?.amountToInvoice),
+              finalAmountForWorkshop: toDecimal(selectedCase.computed?.thirdParty?.finalInFavorTaller || selectedCase.computed?.todoRisk?.amountToInvoice),
+              noRepair: Boolean(selectedCase.todoRisk?.processing?.noRepairNeeded),
+              adminOverrideAppointment: Boolean(selectedCase.todoRisk?.processing?.adminTurnOverride),
+            }));
+        }
+
+        if ((isThirdPartyWorkshopCase(selectedCase) || isThirdPartyLawyerCase(selectedCase)) && shouldSync('tramite')) {
+          pushSyncOp('tramite', updateAuthenticatedCaseThirdParty(accessToken, caseId, {
+              thirdPartyCompanyId: null,
+              claimReference: selectedCase.thirdParty?.claim?.claimReference || null,
+              documentationStatusCode: selectedCase.thirdParty?.claim?.documentationStatus || null,
+              documentationAccepted: Boolean(selectedCase.thirdParty?.claim?.documentationAccepted),
+              partsProvisionModeCode: selectedCase.thirdParty?.claim?.partsProviderMode || null,
+              minimumLaborAmount: toDecimal(selectedCase.computed?.thirdParty?.minimumLabor),
+              minimumPartsAmount: toDecimal(selectedCase.computed?.thirdParty?.minimumParts),
+              bestQuotationSubtotal: toDecimal(selectedCase.computed?.thirdParty?.subtotalBestQuote),
+              finalPartsTotal: toDecimal(selectedCase.computed?.thirdParty?.totalFinalParts),
+              amountToBillCompany: toDecimal(selectedCase.computed?.thirdParty?.amountToInvoice),
+              finalAmountForWorkshop: toDecimal(selectedCase.computed?.thirdParty?.finalInFavorTaller),
+            }));
+        }
+
+        if (isThirdPartyLawyerCase(selectedCase) && shouldSync('abogado')) {
+          const insuranceCatalogs = authenticatedInsuranceCatalogsState.catalogs || {};
+          const legalProcessorEntries = getCatalogEntries(insuranceCatalogs, 'legalProcessorCodes');
+          const legalClaimantEntries = getCatalogEntries(insuranceCatalogs, 'legalClaimantCodes');
+          const legalInstanceEntries = getCatalogEntries(insuranceCatalogs, 'legalInstanceCodes');
+          const legalClosureEntries = getCatalogEntries(insuranceCatalogs, 'legalClosureReasonCodes');
+          const legalExpensePayerEntries = getCatalogEntries(insuranceCatalogs, 'legalExpensePayerCodes');
+
+          const processorCode = resolveCatalogCode(selectedCase.lawyer?.tramita, legalProcessorEntries, LAWYER_TRAMITA_OPTIONS);
+          const claimantCode = resolveCatalogCode(selectedCase.lawyer?.reclama, legalClaimantEntries, LAWYER_RECLAMA_OPTIONS);
+          const instanceCode = resolveCatalogCode(selectedCase.lawyer?.instance, legalInstanceEntries, LAWYER_INSTANCE_OPTIONS);
+          const closedByCode = resolveCatalogCode(selectedCase.lawyer?.closure?.closeBy, legalClosureEntries, LAWYER_CLOSE_BY_OPTIONS);
+
+          const invalidLegalFields = [];
+          if (selectedCase.lawyer?.tramita && !processorCode) invalidLegalFields.push('Abogado: tramita');
+          if (selectedCase.lawyer?.reclama && !claimantCode) invalidLegalFields.push('Abogado: reclama');
+          if (selectedCase.lawyer?.instance && !instanceCode) invalidLegalFields.push('Abogado: instancia');
+          if (selectedCase.lawyer?.closure?.closeBy && !closedByCode) invalidLegalFields.push('Abogado: cierre por');
+
+          if (invalidLegalFields.length > 0) {
+            const validationError = new Error(`Revisá estos campos antes de guardar: ${invalidLegalFields.join(', ')}.`);
+            validationError.tabId = 'abogado';
+            throw validationError;
+          }
+
+          pushSyncOp('abogado', updateAuthenticatedCaseLegal(accessToken, caseId, {
+              processorCode,
+              claimantCode,
+              instanceCode,
+              entryDate: toDate(selectedCase.lawyer?.entryDate),
+              cuij: selectedCase.lawyer?.cuij || null,
+              court: selectedCase.lawyer?.court || null,
+              caseNumber: selectedCase.lawyer?.autos || null,
+              counterpartLawyer: selectedCase.lawyer?.opponentLawyer || null,
+              counterpartPhone: selectedCase.lawyer?.opponentPhone || null,
+              counterpartEmail: selectedCase.lawyer?.opponentEmail || null,
+              repairsVehicle: toBooleanSiNo(selectedCase.lawyer?.repairVehicle),
+              closedByCode,
+              legalCloseDate: toDate(selectedCase.lawyer?.closure?.closeDate),
+              totalProceedsAmount: toDecimal(selectedCase.lawyer?.closure?.totalAmount),
+              observations: selectedCase.lawyer?.observations || null,
+              closingNotes: selectedCase.lawyer?.closure?.notes || null,
+            }));
+
+          const latestNews = (selectedCase.lawyer?.statusUpdates || []).find((entry) => entry?.detail);
+          if (latestNews) {
+            const existingNewsSignatures = new Set(
+              (authenticatedCaseDetailState.legalNewsState?.items || []).map((entry) => buildLegalNewsSignature({
+                date: entry.newsDate,
+                detail: entry.detail,
+                notifyClient: Boolean(entry.notifyCustomer),
+              })),
+            );
+            const latestNewsSignature = buildLegalNewsSignature(latestNews);
+            if (!existingNewsSignatures.has(latestNewsSignature)) {
+              pushSyncOp('abogado', createAuthenticatedCaseLegalNews(accessToken, caseId, {
+                newsDate: toDate(latestNews.date) || todayIso(),
+                detail: latestNews.detail,
+                notifyCustomer: Boolean(latestNews.notifyClient),
+              }));
+            }
+          }
+
+          const latestExpense = (selectedCase.lawyer?.closure?.expenses || []).find((entry) => entry?.concept && numberValue(entry?.amount) > 0);
+          if (latestExpense) {
+            const paidByCode = resolveCatalogCode(latestExpense.paidBy, legalExpensePayerEntries, LAWYER_EXPENSE_PAID_BY_OPTIONS);
+            if (latestExpense.paidBy && !paidByCode) {
+              const validationError = new Error('Revisá Abogado: abonó (gastos).');
+              validationError.tabId = 'abogado';
+              throw validationError;
+            }
+            const existingExpenseSignatures = new Set(
+              (authenticatedCaseDetailState.legalExpensesState?.items || []).map((entry) => buildLegalExpenseSignature({
+                concept: entry.concept,
+                amount: entry.amount,
+                date: entry.expenseDate,
+                paidBy: entry.paidByCode,
+              })),
+            );
+            const latestExpenseSignature = buildLegalExpenseSignature(latestExpense);
+            if (!existingExpenseSignatures.has(latestExpenseSignature)) {
+              pushSyncOp('abogado', createAuthenticatedCaseLegalExpense(accessToken, caseId, {
+                concept: latestExpense.concept,
+                amount: toDecimal(latestExpense.amount),
+                expenseDate: toDate(latestExpense.date),
+                paidByCode,
+                financialMovementId: null,
+              }));
+            }
+          }
+        }
+
+        if (shouldSync('presupuesto')) {
+          pushSyncOp('presupuesto', upsertAuthenticatedCaseBudget(accessToken, caseId, {
+            budgetDate: toDate(selectedCase.budget?.date || todayIso()),
+            reportStatusCode: selectedCase.budget?.reportStatus || null,
+            laborWithoutVat: toDecimal(selectedCase.budget?.laborWithoutVat),
+            vatRate: 0.21,
+            partsTotal: toDecimal(selectedCase.computed?.partsTotal),
+            estimatedDays: Number.parseInt(selectedCase.repair?.turno?.estimatedDays || '0', 10) || null,
+            minimumCloseAmount: toDecimal(selectedCase.budget?.minimumLaborClose),
+            observations: selectedCase.budget?.notes || null,
+          }));
+
+          const existingBudgetBySignature = new Map(
+            (authenticatedCaseDetailState.budgetState?.data?.items || []).map((entry) => [
+              buildBudgetLineSignature({
+                affectedPiece: entry.affectedPiece,
+                actionCode: entry.actionCode,
+                taskCode: entry.taskCode,
+                partValue: entry.partValue,
+                laborAmount: entry.laborAmount,
+              }),
+              entry,
+            ]),
+          );
+
+          (selectedCase.budget?.lines || []).forEach((line, index) => {
+            const signature = buildBudgetLineSignature(line);
+            const existingItem = line.backendId
+              ? { id: line.backendId }
+              : existingBudgetBySignature.get(signature);
+            const payload = {
+              visualOrder: index + 1,
+              affectedPiece: line.piece || null,
+              taskCode: line.task || null,
+              damageLevelCode: line.damageLevel || null,
+              partDecisionCode: line.replacementDecision || null,
+              actionCode: line.repairAction || null,
+              requiresReplacement: Boolean(line.replacementDecision && line.replacementDecision !== 'Sin definir'),
+              partValue: toDecimal(line.partPrice),
+              estimatedHours: toDecimal(line.hours),
+              laborAmount: toDecimal(line.laborWithoutVat),
+            };
+            if (existingItem?.id) {
+              pushSyncOp('presupuesto', updateAuthenticatedCaseBudgetItem(accessToken, caseId, existingItem.id, {
+                ...payload,
+                active: true,
+              }));
+            } else {
+              pushSyncOp('presupuesto', createAuthenticatedCaseBudgetItem(accessToken, caseId, payload));
+            }
+          });
+
+          (selectedCase.meta?.removedBudgetItemIds || []).forEach((backendId) => {
+            if (!backendId) return;
+            pushSyncOp('presupuesto', updateAuthenticatedCaseBudgetItem(accessToken, caseId, backendId, {
+              visualOrder: 0,
+              affectedPiece: null,
+              taskCode: null,
+              damageLevelCode: null,
+              partDecisionCode: null,
+              actionCode: null,
+              requiresReplacement: false,
+              partValue: null,
+              estimatedHours: null,
+              laborAmount: null,
+              active: false,
+            }));
+          });
+
+          const existingPartsBySignature = new Map(
+            (authenticatedCaseDetailState.partsState?.items || []).map((entry) => [
+              buildPartSignature({
+                description: entry.description,
+                statusCode: entry.statusCode,
+                finalPrice: entry.finalPrice,
+              }),
+              entry,
+            ]),
+          );
+
+          (selectedCase.repair?.parts || []).forEach((part) => {
+            const signature = buildPartSignature(part);
+            const payload = {
+              budgetItemId: null,
+              description: part.name || null,
+              partCode: null,
+              finalSupplier: part.provider || null,
+              authorizationCode: part.authorization || null,
+              statusCode: part.state || null,
+              purchasedByCode: part.purchasedBy || null,
+              paymentStatusCode: part.paymentStatus || null,
+              budgetedPrice: toDecimal(part.budgetAmount),
+              finalPrice: toDecimal(part.amount),
+              receivedDate: toDate(part.receivedAt),
+              used: Boolean(part.used),
+              returned: Boolean(part.returned),
+            };
+            const existingPart = part.backendId
+              ? { id: part.backendId }
+              : existingPartsBySignature.get(signature);
+            if (existingPart?.id) {
+              pushSyncOp('presupuesto', updateAuthenticatedCasePart(accessToken, caseId, existingPart.id, payload));
+            } else {
+              pushSyncOp('presupuesto', createAuthenticatedCasePart(accessToken, caseId, payload));
+            }
+          });
+        }
+
+        if (shouldSync('pagos')) {
+          const financeCatalogs = authenticatedFinanceCatalogsState.catalogs || {};
+          const receiptTypeEntries = getCatalogEntries(financeCatalogs, 'receiptTypeCodes');
+          const paymentMethodEntries = getCatalogEntries(financeCatalogs, 'paymentMethodCodes');
+          const movementTypeEntries = getCatalogEntries(financeCatalogs, 'movementTypeCodes');
+          const flowOriginEntries = getCatalogEntries(financeCatalogs, 'flowOriginCodes');
+          const counterpartyTypeEntries = getCatalogEntries(financeCatalogs, 'counterpartyTypeCodes');
+
+          const receiptTypeCode = resolveCatalogCode(selectedCase.payments?.comprobante, receiptTypeEntries, COMPROBANTES);
+          const paymentMethodCode = resolveCatalogCode(selectedCase.payments?.senaMode, paymentMethodEntries, PAYMENT_MODES);
+          const movementTypeCode = resolveCatalogCode('INGRESO', movementTypeEntries, ['INGRESO']);
+          const flowOriginCode = resolveCatalogCode('COMPANIA', flowOriginEntries, ['COMPANIA']);
+          const counterpartyTypeCode = resolveCatalogCode('COMPANY', counterpartyTypeEntries, ['COMPANY']);
+
+          const invalidPaymentFields = [];
+          if (selectedCase.payments?.comprobante && !receiptTypeCode) invalidPaymentFields.push('Pagos: comprobante');
+          if (selectedCase.payments?.senaMode && !paymentMethodCode) invalidPaymentFields.push('Pagos: modo de pago');
+          if (!movementTypeCode) invalidPaymentFields.push('Pagos: tipo de movimiento');
+          if (!flowOriginCode) invalidPaymentFields.push('Pagos: origen de flujo');
+          if (!counterpartyTypeCode) invalidPaymentFields.push('Pagos: contraparte');
+
+          if (invalidPaymentFields.length > 0) {
+            const validationError = new Error(`Revisá estos campos antes de guardar: ${invalidPaymentFields.join(', ')}.`);
+            validationError.tabId = 'pagos';
+            throw validationError;
+          }
+
+          const receipts = selectedCase.payments?.invoices || [];
+          const backendReceiptsById = new Map((authenticatedCaseDetailState.receiptsState?.items || []).map((entry) => [entry.id, entry]));
+          const existingReceiptSignatures = new Set(
+            (authenticatedCaseDetailState.receiptsState?.items || []).map((entry) => buildReceiptSignature({
+              receiptNumber: entry.receiptNumber,
+              total: entry.total,
+              issuedDate: entry.issuedDate,
+            })),
+          );
+
+          receipts.forEach((receipt) => {
+            if (receipt.backendId) {
+              const currentBackend = backendReceiptsById.get(receipt.backendId);
+              if (currentBackend) {
+                const backendSignature = buildReceiptSignature({
+                  receiptNumber: currentBackend.receiptNumber,
+                  total: currentBackend.total,
+                  issuedDate: currentBackend.issuedDate,
+                });
+                const localSignature = buildReceiptSignature(receipt);
+                if (backendSignature !== localSignature) {
+                  const validationError = new Error('Detectamos cambios en un recibo ya emitido. El update de recibos existentes todavía no está habilitado en backend.');
+                  validationError.tabId = 'pagos';
+                  throw validationError;
+                }
+              }
+              return;
+            }
+
+            const signature = buildReceiptSignature(receipt);
+            if (existingReceiptSignatures.has(signature)) return;
+            const total = toDecimal(receipt.amount);
+            const taxableNet = total != null ? Number((total / 1.21).toFixed(2)) : null;
+            const vatAmount = total != null && taxableNet != null ? Number((total - taxableNet).toFixed(2)) : null;
+            if (total == null || taxableNet == null || vatAmount == null) return;
+
+            pushSyncOp('pagos', createAuthenticatedCaseReceipt(accessToken, caseId, {
+              receiptTypeCode,
+              receiptNumber: receipt.invoiceNumber || `REC-${Date.now()}`,
+              receiverBusinessName: selectedCase.payments?.businessName || 'Consumidor final',
+              issuedDate: toDate(receipt.issuedAt) || todayIso(),
+              taxableNet,
+              vatAmount,
+              total,
+              signedAt: null,
+              notes: receipt.notes || null,
+              documentId: null,
+            }));
+          });
+
+          const depositedAmount = toDecimal(selectedCase.payments?.depositedAmount);
+          const paymentDate = toDate(selectedCase.payments?.paymentDate);
+          if (depositedAmount != null && paymentDate) {
+            const existingMovementSignatures = new Set(
+              (authenticatedCaseDetailState.financialMovementsState?.items || []).map((entry) => buildFinancialMovementSignature(entry)),
+            );
+            const movementSignature = buildFinancialMovementSignature({
+              movementTypeCode,
+              netAmount: depositedAmount,
+              movementAt: `${paymentDate}T12:00:00`,
+            });
+            if (existingMovementSignatures.has(movementSignature)) {
+              // already registered in backend
+            } else {
+            pushSyncOp('pagos', createAuthenticatedCaseFinancialMovement(accessToken, caseId, {
+              receiptId: null,
+              movementTypeCode,
+              flowOriginCode,
+              counterpartyTypeCode,
+              counterpartyPersonId: null,
+              counterpartyCompanyId: null,
+              movementAt: `${paymentDate}T12:00:00`,
+              grossAmount: depositedAmount,
+              netAmount: depositedAmount,
+              paymentMethodCode,
+              paymentMethodDetail: selectedCase.payments?.senaModeDetail || null,
+              cancellationTypeCode: null,
+              advancePayment: false,
+              bonification: false,
+              reason: 'Ingreso registrado desde ficha técnica',
+              externalReference: selectedCase.code || null,
+              retentions: [],
+              applications: [],
+            }));
+            }
+          }
+        }
+
+        if (syncOps.length === 0) {
+          return;
+        }
+
+        const settled = await Promise.allSettled(syncOps.map((entry) => entry.request));
+        const failedByTab = {};
+
+        settled.forEach((result, index) => {
+          if (result.status === 'fulfilled') {
+            return;
+          }
+          const tabId = syncOps[index]?.tabId || activeTab;
+          const reason = result.reason;
+          failedByTab[tabId] = reason?.message || 'Error de sincronización';
+        });
+
+        const hasFailures = Object.keys(failedByTab).length > 0;
+        if (!hasFailures) {
+          await openAuthenticatedCaseDetail({ id: caseId });
+        }
+
+        if (selectedCase) {
+          updateCase(selectedCase.id, (draft) => {
+            if (!draft.meta) {
+              draft.meta = { dirtyTabs: {}, lastSavedByTab: {}, syncErrorsByTab: {}, removedBudgetItemIds: [], removedPartIds: [] };
+            }
+            draft.meta.syncErrorsByTab = { ...(draft.meta.syncErrorsByTab || {}), ...failedByTab };
+          });
+        }
+
+        if (hasFailures) {
+          const failure = new Error('Falló la sincronización parcial en una o más solapas.');
+          failure.failedByTab = failedByTab;
+          throw failure;
+        }
+      });
+
+      const syncedAt = new Date().toISOString();
+      const syncedTabs = targetTabs.size ? Array.from(targetTabs) : [activeTab];
+
+      setDirtyTabs((current) => {
+        if (!targetTabs.size) {
+          return new Set();
+        }
+        const next = new Set(current);
+        targetTabs.forEach((tabId) => next.delete(tabId));
+        return next;
+      });
+      if (selectedCase) {
+        updateCase(selectedCase.id, (draft) => {
+          if (!draft.meta) {
+            draft.meta = { dirtyTabs: {}, lastSavedByTab: {}, syncErrorsByTab: {}, removedBudgetItemIds: [], removedPartIds: [] };
+          }
+          const dirtyTabsMap = { ...(draft.meta.dirtyTabs || {}) };
+          const lastSavedByTab = { ...(draft.meta.lastSavedByTab || {}) };
+          const syncErrorsByTab = { ...(draft.meta.syncErrorsByTab || {}) };
+          syncedTabs.forEach((tabId) => {
+            dirtyTabsMap[tabId] = false;
+            lastSavedByTab[tabId] = syncedAt;
+            syncErrorsByTab[tabId] = '';
+          });
+          if (syncedTabs.includes('presupuesto')) {
+            draft.meta.removedBudgetItemIds = [];
+            draft.meta.removedPartIds = [];
+          }
+          draft.meta.dirtyTabs = dirtyTabsMap;
+          draft.meta.lastSavedByTab = lastSavedByTab;
+          draft.meta.syncErrorsByTab = syncErrorsByTab;
+        });
+      }
+      if (!silent) {
+        flash({ tone: 'success', title: 'Cambios guardados', message: 'Sincronizamos la ficha técnica con backend y refrescamos el detalle.' });
+      }
+    } catch (error) {
+      if (selectedCase && error?.tabId) {
+        updateCase(selectedCase.id, (draft) => {
+          draft.meta = draft.meta || {};
+          draft.meta.syncErrorsByTab = { ...(draft.meta.syncErrorsByTab || {}), [error.tabId]: error.message || 'Error de sincronización' };
+        });
+      }
+      if (!silent) {
+        flash({ tone: 'danger', title: 'No pudimos guardar todo', message: error?.message || 'Falló la sincronización con backend.' });
+      }
+    } finally {
+      setIsSavingCase(false);
+    }
+  };
+
+  const runWorkflowTransitionForCase = async ({ caseId, domain, label, backendAction = null, availableActions = [] }) => {
+    const numericCaseId = Number(caseId);
+    if (!Number.isFinite(numericCaseId)) {
+      return false;
+    }
+
+    const action = backendAction || findWorkflowActionByLabel(availableActions, label, domain);
+    if (!action?.actionCode || !action?.domain) {
+      return false;
+    }
+
+    try {
+      await readWithStoredToken(async (accessToken) => {
+        await createAuthenticatedCaseWorkflowTransition(accessToken, numericCaseId, {
+          domain: action.domain,
+          actionCode: action.actionCode,
+          reason: `Transición ejecutada desde ficha técnica: ${label}`,
+          automatic: false,
+        });
+        await openAuthenticatedCaseDetail({ id: numericCaseId });
+      });
+
+      flash({ tone: 'success', title: 'Workflow actualizado', message: `Aplicamos la acción "${label}" en backend.` });
+      return true;
+    } catch (error) {
+      flash({ tone: 'danger', title: 'No pudimos cambiar de etapa', message: error?.message || 'Falló el cambio de etapa.' });
+      return false;
+    }
+  };
+
+  const saveCaseDocument = async ({ caseId, documentId = null, relationId = null, file = null, fileName = '', categoryId = null, subcategoryCode = '', documentDate = '', originCode = 'CLIENTE', observations = '', visibleToCustomer = true, principal = false, visualOrder = 1 }) => {
+    const numericCaseId = Number(caseId);
+    if (!Number.isFinite(numericCaseId)) {
+      flash({ tone: 'danger', title: 'Carpeta inválida', message: 'No pudimos identificar la carpeta para guardar el documento.' });
+      return false;
+    }
+
+    setIsSavingDocuments(true);
+
+    try {
+      await readWithStoredToken(async (accessToken) => {
+        let currentDocumentId = documentId;
+
+        if (!currentDocumentId) {
+          if (!file) {
+            throw new Error('Seleccioná un archivo para subir.');
+          }
+          const uploadData = new FormData();
+          uploadData.append('file', file, fileName || file.name || 'archivo');
+          if (categoryId) uploadData.append('categoryId', String(categoryId));
+          if (subcategoryCode) uploadData.append('subcategoryCode', subcategoryCode);
+          if (documentDate) uploadData.append('documentDate', documentDate);
+          if (originCode) uploadData.append('originCode', originCode);
+          if (observations) uploadData.append('observations', observations);
+
+          const uploadResult = await uploadAuthenticatedDocument(accessToken, uploadData);
+          currentDocumentId = uploadResult.data?.id;
+
+          if (!currentDocumentId) {
+            throw new Error('No recibimos el id del documento subido.');
+          }
+
+          await createAuthenticatedDocumentRelation(accessToken, currentDocumentId, {
+            caseId: numericCaseId,
+            entityType: 'CASE',
+            entityId: numericCaseId,
+            moduleCode: 'GENERAL',
+            principal,
+            visibleToCustomer,
+            visualOrder,
+          });
+        } else if (file) {
+          const replaceData = new FormData();
+          replaceData.append('file', file, fileName || file.name || 'archivo');
+          if (categoryId) replaceData.append('categoryId', String(categoryId));
+          if (subcategoryCode) replaceData.append('subcategoryCode', subcategoryCode);
+          if (documentDate) replaceData.append('documentDate', documentDate);
+          if (originCode) replaceData.append('originCode', originCode);
+          if (observations) replaceData.append('observations', observations);
+          await replaceAuthenticatedDocument(accessToken, currentDocumentId, replaceData);
+        }
+
+        if (currentDocumentId && !file) {
+          await updateAuthenticatedDocument(accessToken, currentDocumentId, {
+            categoryId: categoryId || 1,
+            subcategoryCode: subcategoryCode || null,
+            documentDate: documentDate || null,
+            originCode: originCode || null,
+            observations: observations || null,
+            active: true,
+          });
+        }
+
+        if (relationId) {
+          await updateAuthenticatedDocumentRelation(accessToken, relationId, {
+            principal,
+            visibleToCustomer,
+            visualOrder,
+          });
+        }
+
+        await openAuthenticatedCaseDetail({ id: numericCaseId });
+      });
+
+      flash({ tone: 'success', title: 'Documento guardado', message: 'Sincronizamos el documento con backend y refrescamos el detalle.' });
+      return true;
+    } catch (error) {
+      flash({ tone: 'danger', title: 'No pudimos guardar documento', message: error?.message || 'Falló la sincronización del documento.' });
+      return false;
+    } finally {
+      setIsSavingDocuments(false);
+    }
+  };
+
+  const downloadCaseDocument = async ({ caseId, documentId }) => {
+    const numericCaseId = Number(caseId);
+    const numericDocumentId = Number(documentId);
+    if (!Number.isFinite(numericCaseId) || !Number.isFinite(numericDocumentId)) {
+      flash({ tone: 'danger', title: 'Documento inválido', message: 'No pudimos identificar el documento para descargar.' });
+      return false;
+    }
+
+    setIsDownloadingDocument(true);
+    try {
+      await readWithStoredToken(async (accessToken) => {
+        const result = await downloadAuthenticatedCaseDocument(accessToken, numericCaseId, numericDocumentId);
+        triggerBlobDownload(result.fileName || `documento-${numericDocumentId}`, result.blob);
+      });
+      return true;
+    } catch (error) {
+      flash({ tone: 'danger', title: 'No pudimos descargar', message: error?.message || 'Falló la descarga del documento.' });
+      return false;
+    } finally {
+      setIsDownloadingDocument(false);
+    }
+  };
+
+  const previewCaseDocument = async ({ caseId, documentId }) => {
+    const numericCaseId = Number(caseId);
+    const numericDocumentId = Number(documentId);
+    if (!Number.isFinite(numericCaseId) || !Number.isFinite(numericDocumentId)) {
+      flash({ tone: 'danger', title: 'Documento inválido', message: 'No pudimos identificar el documento para previsualizar.' });
+      return false;
+    }
+
+    setIsPreviewingDocument(true);
+    try {
+      await readWithStoredToken(async (accessToken) => {
+        const result = await downloadAuthenticatedCaseDocument(accessToken, numericCaseId, numericDocumentId);
+        const blobUrl = URL.createObjectURL(result.blob);
+        window.open(blobUrl, '_blank', 'noopener,noreferrer');
+        window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+      });
+      return true;
+    } catch (error) {
+      flash({ tone: 'danger', title: 'No pudimos previsualizar', message: error?.message || 'Falló la apertura del documento.' });
+      return false;
+    } finally {
+      setIsPreviewingDocument(false);
+    }
+  };
+
+  const createCase = async () => {
     setShowNewCaseValidation(true);
 
     if (folderMissing.length) {
@@ -12800,139 +14955,134 @@ function App() {
       return;
     }
 
-    const code = buildCaseCode(nextCounter, newCaseForm.type, newCaseForm.branch);
-    const isInsuranceCase = ['Todo Riesgo', 'CLEAS / Terceros / Franquicia', 'Reclamo de Tercero - Taller', 'Reclamo de Tercero - Abogado'].includes(newCaseForm.type);
-    const isThirdPartyWorkshop = newCaseForm.type === 'Reclamo de Tercero - Taller';
-    const isThirdPartyLawyer = newCaseForm.type === 'Reclamo de Tercero - Abogado';
-    const isFranchiseRecovery = newCaseForm.type === FRANCHISE_RECOVERY_TRAMITE;
-    const newCase = {
-      id: crypto.randomUUID(),
-      code,
-      counter: nextCounter,
-      tramiteType: newCaseForm.type,
-      claimNumber: newCaseForm.claimNumber,
-      branch: newCaseForm.branch,
-      createdAt: new Date().toISOString().slice(0, 10),
-      folderCreated: true,
-      customer: {
-        firstName: newCaseForm.firstName,
-        lastName: newCaseForm.lastName,
-        phone: newCaseForm.phone,
-        document: newCaseForm.document,
-        birthDate: '',
-        locality: 'Rosario',
-        email: '',
-        street: '',
-        streetNumber: '',
-        addressExtra: '',
-        occupation: '',
-        civilStatus: '',
-        referenced: newCaseForm.referenced,
-        referencedName: newCaseForm.referencedName,
-      },
-      vehicle: {
-        brand: newCaseForm.brand,
-        model: newCaseForm.model,
-        plate: newCaseForm.plate,
-        type: newCaseForm.vehicleType,
-        usage: newCaseForm.vehicleUse,
-        paint: newCaseForm.paint,
-        year: '',
-        color: '',
-        chassis: '',
-        engine: '',
-        transmission: '',
-        mileage: '',
-        observations: '',
-      },
-      vehicleMedia: [],
-      franchiseRecovery: isFranchiseRecovery
-        ? createFranchiseRecoveryDefaults()
-        : undefined,
-      budget: createBudgetDefaults({
-        workshop: '',
-        authorizer: AUTHORIZER_OPTIONS[0],
-      }),
-      todoRisk: isInsuranceCase
-        ? createTodoRiskDefaults({
-          insurance: { company: newCaseForm.type === 'Todo Riesgo' ? TODO_RIESGO_INSURANCE_OPTIONS[0] : '' },
-          documentation: { items: newCaseForm.type === 'Todo Riesgo' ? [createTodoRiskDocument()] : [] },
-          processing: { agenda: [] },
-        })
-        : undefined,
-      thirdParty: (isThirdPartyWorkshop || isThirdPartyLawyer)
-        ? createThirdPartyDefaults({
-          claim: {
-            documents: [createTodoRiskDocument()],
-          },
-        })
-        : undefined,
-      lawyer: isThirdPartyLawyer
-        ? createLawyerDefaults({
-          repairVehicle: 'SI',
-          agenda: [createTodoRiskTask()],
-          statusUpdates: [createLawyerStatusUpdate()],
-          closure: {
-            expenses: [createLawyerExpense()],
-            items: [createLawyerClosureItem()],
-          },
-        })
-        : undefined,
-      repair: {
-        parts: [],
-        turno: { date: '', estimatedDays: '', state: 'Pendiente programar', notes: '' },
-        ingreso: { realDate: '', hasObservation: 'NO', observation: '', items: [] },
-        egreso: {
-          date: '',
-          notes: '',
-          shouldReenter: 'SI',
-          reentryDate: '',
-          reentryEstimatedDays: '',
-          reentryState: 'Pendiente programar',
-          reentryNotes: '',
-          definitiveExit: false,
-          repairedPhotos: false,
-          repairedMedia: [],
-        },
-      },
-      payments: {
-        comprobante: 'A',
-        hasSena: 'NO',
-        senaAmount: '',
-        senaDate: '',
-        senaMode: 'Transferencia',
-        senaModeDetail: '',
-        settlements: [],
-        invoice: 'NO',
-        businessName: '',
-        invoiceNumber: '',
-        invoices: newCaseForm.type === 'Todo Riesgo' || isThirdPartyLawyer ? [createTodoRiskInvoice()] : [],
-        signedAgreementDate: '',
-        passedToPaymentsDate: '',
-        estimatedPaymentDate: '',
-        paymentDate: '',
-        depositedAmount: '',
-        manualTotalAmount: '',
-        hasRetentions: 'NO',
-        retentions: {
-          iva: '',
-          gains: '',
-          employerContribution: '',
-          iibb: '',
-          drei: '',
-          other: '',
-        },
-      },
-    };
+    await readWithStoredToken(async (accessToken) => {
+      const catalogsResponse = await readAuthenticatedCasesCatalogs(accessToken);
+      const caseTypes = Array.isArray(catalogsResponse.data?.caseTypes) ? catalogsResponse.data.caseTypes : [];
+      const customerRoles = Array.isArray(catalogsResponse.data?.customerRoleCodes) ? catalogsResponse.data.customerRoleCodes : [];
+      const vehicleRoles = Array.isArray(catalogsResponse.data?.principalVehicleRoleCodes) ? catalogsResponse.data.principalVehicleRoleCodes : [];
 
-    setCases((current) => [...current, newCase]);
-    setNewCaseForm(createEmptyForm());
-    setShowNewCaseValidation(false);
-    setCustomerLookupState({ status: 'idle', message: '', detail: '' });
-    setVehicleLookupState({ status: 'idle', message: '', detail: '' });
-    setAutofilledFields([]);
-    flash({ tone: 'success', title: 'Alta exitosa', message: `Carpeta ${code} creada con éxito` });
-    setActiveView('nuevo');
+      const typeMap = {
+        Particular: ['particular'],
+        'Todo Riesgo': ['todo riesgo', 'todo_riesgo'],
+        'CLEAS / Terceros / Franquicia': ['cleas', 'terceros', 'franquicia'],
+        'Reclamo de Tercero - Taller': ['tercero', 'taller'],
+        'Reclamo de Tercero - Abogado': ['tercero', 'abogado'],
+        [FRANCHISE_RECOVERY_TRAMITE]: ['recupero', 'franquicia'],
+      };
+
+      const typeNeedles = typeMap[newCaseForm.type] || [newCaseForm.type];
+      const selectedCaseType = caseTypes.find((item) => {
+        const name = normalizeLookupText(item?.name);
+        const code = normalizeLookupText(item?.code);
+        return typeNeedles.some((needle) => name.includes(normalizeLookupText(needle)) || code.includes(normalizeLookupText(needle)));
+      });
+
+      if (!selectedCaseType?.id) {
+        throw new Error('No pudimos resolver el tipo de trámite en los catálogos de casos.');
+      }
+
+      const customerRoleCode = customerRoles.find((item) => normalizeLookupText(item?.code) === 'cliente')?.code || customerRoles[0]?.code;
+      const principalVehicleRoleCode = vehicleRoles.find((item) => normalizeLookupText(item?.code) === 'principal')?.code || vehicleRoles[0]?.code;
+
+      if (!customerRoleCode || !principalVehicleRoleCode) {
+        throw new Error('Faltan roles de cliente/vehículo principal en catálogos.');
+      }
+
+      const branchCode = getBranchCode(newCaseForm.branch);
+      const orgId = authenticatedCasesState.items.find((item) => item?.organizationId)?.organizationId || 1;
+      const branchId = authenticatedCasesState.items.find((item) => normalizeLookupText(item?.branchCode) === normalizeLookupText(branchCode))?.branchId
+        || authenticatedCasesState.items.find((item) => item?.branchId)?.branchId
+        || 1;
+
+      const document = normalizeDocument(newCaseForm.document);
+      const foundPersons = await searchAuthenticatedPersons(accessToken, { document });
+      let person = Array.isArray(foundPersons.data)
+        ? foundPersons.data.find((item) => normalizeDocument(item?.numeroDocumento) === document)
+        : null;
+
+      if (!person) {
+        const createdPerson = await createAuthenticatedPerson(accessToken, {
+          tipoPersona: 'fisica',
+          nombre: newCaseForm.firstName.trim(),
+          apellido: newCaseForm.lastName.trim(),
+          razonSocial: null,
+          tipoDocumentoCodigo: 'DNI',
+          numeroDocumento: document,
+          cuitCuil: null,
+          fechaNacimiento: null,
+          telefonoPrincipal: newCaseForm.phone.trim() || null,
+          emailPrincipal: null,
+          ocupacion: null,
+          observaciones: null,
+          activo: true,
+        });
+        person = createdPerson.data;
+      }
+
+      const plate = normalizePlate(newCaseForm.plate);
+      const foundVehicles = await searchAuthenticatedVehicles(accessToken, { plate });
+      let vehicle = Array.isArray(foundVehicles.data)
+        ? foundVehicles.data.find((item) => normalizePlate(item?.plate) === plate)
+        : null;
+
+      if (!vehicle) {
+        const createdVehicle = await createAuthenticatedVehicle(accessToken, {
+          brandId: null,
+          modelId: null,
+          brandText: newCaseForm.brand.trim(),
+          modelText: newCaseForm.model.trim(),
+          plate,
+          year: null,
+          vehicleTypeCode: null,
+          usageCode: null,
+          color: null,
+          paintCode: null,
+          chasis: null,
+          motor: null,
+          transmissionCode: null,
+          mileage: null,
+          observaciones: null,
+          activo: true,
+        });
+        vehicle = createdVehicle.data;
+      }
+
+      const createdCaseResponse = await createAuthenticatedCase(accessToken, {
+        caseTypeId: selectedCaseType.id,
+        organizationId: orgId,
+        branchId,
+        principalVehicleId: vehicle.id,
+        principalCustomerPersonId: person.id,
+        referenced: newCaseForm.referenced === 'SI',
+        referredByPersonId: null,
+        referredByText: newCaseForm.referencedName.trim() || null,
+        priorityCode: 'ALTA',
+        generalObservations: null,
+        incidentDate: null,
+        incidentTime: null,
+        incidentPlace: null,
+        incidentDynamics: null,
+        incidentObservations: null,
+        prescriptionDate: null,
+        daysInProcess: null,
+        customerRoleCode,
+        principalVehicleRoleCode,
+      });
+
+      await runAuthenticatedCasesRead(accessToken);
+
+      const createdCaseId = createdCaseResponse.data?.id;
+      if (createdCaseId) {
+        openCase(String(createdCaseId), { tab: 'ficha' });
+      }
+
+      setNewCaseForm(createEmptyForm());
+      setShowNewCaseValidation(false);
+      setCustomerLookupState({ status: 'idle', message: '', detail: '' });
+      setVehicleLookupState({ status: 'idle', message: '', detail: '' });
+      setAutofilledFields([]);
+      flash({ tone: 'success', title: 'Alta exitosa', message: `Carpeta ${createdCaseResponse.data?.folderCode || ''} creada con éxito` });
+    });
   };
 
   const refreshAuthenticatedCasesPreview = async () => {
@@ -12974,6 +15124,30 @@ function App() {
   const refreshAuthenticatedDocumentsCatalogsPreview = async () => {
     await readWithStoredToken(async (accessToken) => {
       await runAuthenticatedDocumentsCatalogsRead(accessToken);
+    });
+  };
+
+  const refreshAuthenticatedTasksPreview = async () => {
+    await readWithStoredToken(async (accessToken) => {
+      await runAuthenticatedTasksRead(accessToken);
+    });
+  };
+
+  const refreshAuthenticatedInsuranceCompaniesPreview = async () => {
+    await readWithStoredToken(async (accessToken) => {
+      await runAuthenticatedInsuranceCompaniesRead(accessToken);
+    });
+  };
+
+  const refreshAuthenticatedInsuranceContactsPreview = async () => {
+    await readWithStoredToken(async (accessToken) => {
+      const primaryCompany = (authenticatedInsuranceCompaniesState.items || []).find((company) => company?.id != null);
+
+      if (primaryCompany?.id != null) {
+        await runAuthenticatedInsuranceContactsRead(accessToken, primaryCompany);
+      } else {
+        await runAuthenticatedInsuranceCompaniesRead(accessToken);
+      }
     });
   };
 
@@ -13136,18 +15310,13 @@ function App() {
           ))}
         </nav>
 
-        <div className="sidebar-card">
-          <p className="eyebrow">Operación</p>
-          <h2>Vista cliente</h2>
-          <p className="muted">Accedé a tus carpetas y consultá el estado general de cada caso desde un solo lugar.</p>
-        </div>
       </aside>
 
       <main className="workspace">
         <header className="topbar">
           <div>
             <p className="eyebrow">Panel</p>
-            <h2>{activeView === 'panel' ? 'Mis carpetas' : activeView === 'agenda' ? 'Agenda de tareas' : activeView === 'nuevo' ? 'Nuevo Caso' : 'Gestión de trámites'}</h2>
+            <h2>{activeView === 'panel' ? 'Panel general' : activeView === 'carpetas' ? 'Mis carpetas' : activeView === 'agenda' ? 'Agenda de tareas' : activeView === 'nuevo' ? 'Nuevo caso' : 'Gestión de trámites'}</h2>
           </div>
 
           <div className="topbar-right">
@@ -13173,13 +15342,20 @@ function App() {
           </div>
         ) : null}
 
+        {sessionExpiryNotice ? (
+          <div className="alert-banner danger-banner" role="status" aria-live="polite">
+            <strong>Sesión vencida {sessionExpirySeconds > 0 ? `(${sessionExpirySeconds})` : ''}</strong>
+            <p>{sessionExpiryNotice}</p>
+          </div>
+        ) : null}
+
         {activeView === 'gestion' && selectedCase && isThirdPartyDocumentationIncomplete(selectedCase) && docGateAcceptedCaseId !== selectedCase.id ? (
           <div className="blocking-modal-overlay" role="presentation">
             <div aria-labelledby="doc-gate-title" aria-modal="true" className="blocking-modal" role="dialog">
               <p className="eyebrow">Aviso bloqueante</p>
               <h3 id="doc-gate-title">Carpeta con documentación pendiente</h3>
               <p className="muted">
-                La carpeta sigue marcada como incompleta. Aceptá para seguir navegando esta demo y revisá la solapa
+                La carpeta sigue marcada como incompleta. Aceptá para seguir navegando y revisá la solapa
                 {' '}
                 {isThirdPartyWorkshopCase(selectedCase) ? 'Documentación' : 'Gestión del trámite'}.
               </p>
@@ -13203,12 +15379,23 @@ function App() {
             authenticatedFinanceCatalogsState={authenticatedFinanceCatalogsState}
             authenticatedInsuranceCatalogsState={authenticatedInsuranceCatalogsState}
             authenticatedDocumentsCatalogsState={authenticatedDocumentsCatalogsState}
+            authenticatedTasksState={authenticatedTasksState}
+            authenticatedInsuranceCompaniesState={authenticatedInsuranceCompaniesState}
+            authenticatedInsuranceContactsState={authenticatedInsuranceContactsState}
             flash={flash}
             items={computedCases}
             onMarkNotificationAsRead={markNotificationAsRead}
             onExportExcel={exportPanelExcel}
             onExportPdf={exportPanelPdf}
-            onOpenCase={openCase}
+            onOpenCase={(item) => {
+              openCase(item.id, getGestionEntryTarget(item));
+            }}
+            onSaveDocument={saveCaseDocument}
+            onDownloadDocument={downloadCaseDocument}
+            onPreviewDocument={previewCaseDocument}
+            isSavingDocuments={isSavingDocuments}
+            isDownloadingDocument={isDownloadingDocument}
+            isPreviewingDocument={isPreviewingDocument}
             onOpenAuthenticatedCaseDetail={openAuthenticatedCaseDetail}
             onRefreshCurrentUser={refreshCurrentUserPreview}
             onRefreshAuthenticatedCases={refreshAuthenticatedCasesPreview}
@@ -13218,9 +15405,33 @@ function App() {
             onRefreshAuthenticatedFinanceCatalogs={refreshAuthenticatedFinanceCatalogsPreview}
             onRefreshAuthenticatedInsuranceCatalogs={refreshAuthenticatedInsuranceCatalogsPreview}
             onRefreshAuthenticatedDocumentsCatalogs={refreshAuthenticatedDocumentsCatalogsPreview}
+            onRefreshAuthenticatedTasks={refreshAuthenticatedTasksPreview}
+            onRefreshAuthenticatedInsuranceCompanies={refreshAuthenticatedInsuranceCompaniesPreview}
+            onRefreshAuthenticatedInsuranceContacts={refreshAuthenticatedInsuranceContactsPreview}
             pendingNotificationIds={pendingNotificationIds}
             notificationActionStateById={notificationActionStateById}
           />
+        ) : null}
+
+        {activeView === 'carpetas' ? (
+          <div className="stack-lg">
+              <AuthenticatedCasesPreview
+                detailState={authenticatedCaseDetailState}
+                documentsCatalogs={authenticatedDocumentsCatalogsState.catalogs}
+                isSavingDocuments={isSavingDocuments}
+                isDownloadingDocument={isDownloadingDocument}
+                isPreviewingDocument={isPreviewingDocument}
+                onOpenCase={(item) => {
+                  openCase(item.id, getGestionEntryTarget(item));
+                }}
+                onDownloadDocument={downloadCaseDocument}
+                onPreviewDocument={previewCaseDocument}
+                onOpenDetail={openAuthenticatedCaseDetail}
+                onRefresh={refreshAuthenticatedCasesPreview}
+                onSaveDocument={saveCaseDocument}
+                state={authenticatedCasesState}
+              />
+          </div>
         ) : null}
 
         {activeView === 'agenda' ? (
@@ -13254,8 +15465,15 @@ function App() {
             allCases={computedCases}
             flash={flash}
             item={selectedCase}
+            insuranceCatalogs={authenticatedInsuranceCatalogsState.catalogs}
+            financeCatalogs={authenticatedFinanceCatalogsState.catalogs}
+            debugCodeIssues={selectedCaseCodeIssues}
             onChangeRepairTab={setActiveRepairTab}
             onChangeTab={setActiveTab}
+            onSyncCase={syncSelectedCaseToBackend}
+            onRunWorkflowTransition={runWorkflowTransitionForCase}
+            isSavingCase={isSavingCase}
+            hasUnsavedChanges={hasUnsavedChanges}
             updateCase={updateSelectedCase}
           />
         ) : null}

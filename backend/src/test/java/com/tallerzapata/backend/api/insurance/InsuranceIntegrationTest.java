@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -96,6 +97,14 @@ class InsuranceIntegrationTest {
 
         Integer auditCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo IN ('upsert_caso_seguro', 'upsert_tramitacion_seguro', 'upsert_franquicia')", Integer.class, 100L);
         assertThat(auditCount).isEqualTo(3);
+    }
+
+    @Test
+    void shouldReturn200WithEmptyBodyWhenInsuranceProcessingDoesNotExist() throws Exception {
+        mockMvc.perform(get("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(""));
     }
 
     @Test

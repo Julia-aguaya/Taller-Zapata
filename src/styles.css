@@ -548,6 +548,13 @@ h3 {
   flex-wrap: wrap;
 }
 
+.gestion-sync-actions {
+  margin-top: 0;
+  width: 100%;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .backend-cases-search {
   max-width: 520px;
 }
@@ -620,6 +627,7 @@ h3 {
   display: grid;
   gap: 18px;
   padding: 20px;
+  overflow: hidden;
   border: 1px solid rgba(157, 177, 188, 0.28);
   border-radius: var(--radius-lg);
   background:
@@ -641,25 +649,64 @@ h3 {
 
 .backend-detail-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(1, minmax(0, 1fr));
   gap: 12px;
 }
 
 .backend-detail-row {
+  flex-wrap: wrap;
   padding: 14px 16px;
   border: 1px solid rgba(157, 177, 188, 0.22);
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.78);
 }
 
+.backend-detail-row > span,
+.backend-detail-row > strong,
+.backend-detail-row > .status-badge {
+  min-width: 0;
+}
+
 .backend-detail-row span,
 .backend-detail-note span {
   color: var(--muted);
   font-size: 0.9rem;
+  line-height: 1.35;
 }
 
 .backend-detail-row strong {
-  text-align: right;
+  text-align: left;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.backend-detail-row .status-badge {
+  justify-self: start;
+  max-width: 100%;
+}
+
+.backend-detail-head .status-badge,
+.backend-detail-row .status-badge {
+  white-space: normal;
+  text-align: center;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.backend-detail-primary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.backend-detail-action {
+  flex: 1 1 100%;
+  min-width: 0;
+  white-space: normal;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .backend-detail-note {
@@ -700,6 +747,7 @@ h3 {
   font-family: var(--mono);
   font-size: 1.15rem;
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .backend-detail-sections,
@@ -719,7 +767,7 @@ h3 {
 }
 
 .backend-detail-sections {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: repeat(1, minmax(0, 1fr));
 }
 
 .backend-section-workflow {
@@ -941,25 +989,70 @@ h3 {
   color: var(--muted);
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 700px) {
+  .backend-detail-action {
+    flex: 1 1 calc(50% - 5px);
+  }
+}
+
+@media (min-width: 768px) {
+  .backend-detail-card {
+    padding: 22px;
+    gap: 20px;
+  }
+
+  .backend-detail-row {
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .backend-detail-row > span {
+    flex: 0 0 46%;
+  }
+
+  .backend-detail-row > strong,
+  .backend-detail-row > .status-badge {
+    flex: 1 1 auto;
+    justify-content: flex-end;
+    text-align: right;
+  }
+}
+
+@media (max-width: 767px) {
+  .backend-detail-card {
+    padding: 16px;
+    gap: 14px;
+  }
+
+  .backend-detail-grid,
+  .backend-detail-highlights,
   .backend-detail-sections {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .backend-detail-row,
+  .backend-detail-highlight,
+  .backend-detail-section,
+  .backend-detail-notice {
+    padding: 12px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .backend-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .backend-detail-sections {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
   }
 
   .backend-section-workflow,
   .backend-section-appointments,
-  .backend-section-vehicle-intakes,
-  .backend-section-budget,
-  .backend-section-finance-summary {
+  .backend-section-documents {
     grid-column: auto;
-  }
-
-  .backend-section-movements,
-  .backend-section-receipts,
-  .backend-section-documents,
-  .backend-section-next-actions {
-    grid-column: 1 / -1;
   }
 
   .backend-item-list-horizontal > .backend-timeline-item,
@@ -1063,6 +1156,11 @@ h3 {
   gap: 10px;
 }
 
+.client-case-actions {
+  display: grid;
+  gap: 10px;
+}
+
 .client-case-state-row {
   padding-top: 10px;
   border-top: 1px solid rgba(157, 177, 188, 0.22);
@@ -1117,6 +1215,11 @@ h3 {
 
 .notification-card-actions {
   flex-wrap: wrap;
+}
+
+.notification-action-feedback {
+  color: var(--danger);
+  line-height: 1.5;
 }
 
 .topbar-notification-pill {
@@ -1420,6 +1523,12 @@ h3 {
   border-color: rgba(180, 109, 18, 0.22);
 }
 
+.status-badge.neutral {
+  color: var(--slate-strong);
+  background: rgba(157, 177, 188, 0.18);
+  border-color: rgba(157, 177, 188, 0.34);
+}
+
 .primary-button {
   padding: 0 18px;
   background: linear-gradient(135deg, #2a6db2, #1b548f);
@@ -1537,6 +1646,172 @@ h3 {
   gap: 14px;
 }
 
+.ops-tab-layout {
+  gap: 20px;
+}
+
+.ops-tab-layout > .card.inner-card {
+  padding: 22px;
+}
+
+.ops-tab-layout .section-head {
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.ops-tab-layout .section-head > div {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.ops-tab-layout .section-head h3 {
+  font-size: 1.08rem;
+  line-height: 1.3;
+}
+
+.ops-tab-layout .field > span {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.ops-tab-layout .tag-row,
+.ops-tab-layout .actions-row {
+  gap: 10px;
+}
+
+.ops-tab-layout .summary-stack {
+  gap: 10px;
+}
+
+.ops-tab-layout .summary-row {
+  padding-bottom: 12px;
+}
+
+.ops-tab-layout .budget-lines {
+  gap: 14px;
+}
+
+.ops-tab-layout .budget-line,
+.ops-tab-layout .settlement-card,
+.ops-tab-layout .summary-chip {
+  border-radius: var(--radius-md);
+}
+
+.ops-tab-layout .form-grid > .field,
+.ops-tab-layout .section-head > div,
+.ops-tab-layout .tag-row,
+.ops-tab-layout .status-badge,
+.ops-tab-layout .summary-row strong,
+.ops-tab-layout .summary-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pagos-tab-layout {
+  gap: 20px;
+}
+
+.pagos-tab-layout > .card.inner-card {
+  padding: 24px;
+}
+
+.pagos-tab-layout .section-head {
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.pagos-tab-layout .section-head > div {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.pagos-tab-layout .tag-row {
+  align-content: start;
+  justify-items: end;
+  gap: 10px;
+}
+
+.pagos-tab-layout .budget-lines {
+  gap: 16px;
+}
+
+.pagos-tab-layout .summary-row {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pagos-tab-layout .summary-row span,
+.pagos-tab-layout .summary-row strong,
+.pagos-tab-layout .summary-chip,
+.pagos-tab-layout .inline-alert,
+.pagos-tab-layout .status-badge,
+.pagos-tab-layout .field > span,
+.pagos-tab-layout .secondary-button,
+.pagos-tab-layout .ghost-button {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.pagos-tab-layout .form-grid {
+  align-items: start;
+}
+
+.pagos-tab-layout .form-grid.receipt-core-grid {
+  grid-template-columns: minmax(220px, 1.2fr) repeat(2, minmax(140px, 1fr));
+}
+
+.receipt-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.receipt-status-row .status-badge {
+  justify-content: flex-start;
+}
+
+.pagos-tab-layout .form-grid.receipt-invoice-grid {
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+}
+
+.pagos-tab-layout .form-grid > .field {
+  min-width: 0;
+}
+
+.pagos-tab-layout .actions-row {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pagos-tab-layout .table-wrap {
+  max-width: 100%;
+}
+
+.pagos-tab-layout .subtabs-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 761px) and (max-width: 1280px) {
+  .pagos-tab-layout .form-grid.receipt-core-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pagos-tab-layout .form-grid.four-columns,
+  .pagos-tab-layout .form-grid.five-columns,
+  .pagos-tab-layout .form-grid.six-columns,
+  .pagos-tab-layout .budget-line {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pagos-tab-layout .parts-total-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .summary-row {
   padding-bottom: 10px;
   border-bottom: 1px solid rgba(157, 177, 188, 0.28);
@@ -1575,8 +1850,8 @@ h3 {
 
 .budget-main-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.8fr);
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
 }
 
 .workshop-identity {
@@ -1908,6 +2183,60 @@ h3 {
 .budget-line-meta small,
 .budget-ready-panel small {
   color: var(--muted);
+}
+
+.checklist-block {
+  display: grid;
+  gap: 16px;
+}
+
+.checklist-block .section-head {
+  align-items: flex-start;
+}
+
+.checklist-block .section-head > div {
+  display: grid;
+  gap: 6px;
+}
+
+.checklist-block .budget-lines {
+  gap: 12px;
+}
+
+.checklist-block .budget-line {
+  gap: 14px;
+  align-items: start;
+}
+
+.checklist-block .field {
+  min-width: 0;
+}
+
+.checklist-block .field > span {
+  min-height: 20px;
+}
+
+.checklist-block .budget-line-footer {
+  align-items: flex-start;
+}
+
+.checklist-block .budget-line-footer .ghost-button {
+  justify-self: end;
+}
+
+.checklist-block .budget-line.budget-line-extended {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.checklist-block .budget-line.budget-line-extended > .field {
+  min-width: 0;
+  align-content: start;
+}
+
+.checklist-block .budget-line.budget-line-extended > .field > span {
+  min-height: 2.5em;
+  align-items: flex-start;
 }
 
 .budget-service-card {
@@ -2276,11 +2605,16 @@ h3 {
 }
 
 .inline-fields {
-  min-width: min(520px, 100%);
+  width: min(100%, 680px);
+  min-width: 0;
 }
 
 .budget-header-grid article {
   min-height: 110px;
+}
+
+.budget-layout > .media-panel {
+  margin-top: 2px;
 }
 
 .budget-totals-grid {
@@ -2733,6 +3067,10 @@ h3 {
   align-items: start;
 }
 
+.aside-layout.aside-layout-full {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .side-panel {
   display: grid;
   gap: 16px;
@@ -2910,26 +3248,65 @@ h3 {
 .agenda-task-linkage,
 .agenda-task-due {
   display: grid;
-  gap: 14px;
+  gap: 16px;
+}
+
+.agenda-layout {
+  gap: 18px;
 }
 
 .agenda-content-grid {
-  grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
+  grid-template-columns: minmax(0, 1.75fr) minmax(320px, 0.85fr);
   align-items: start;
 }
 
+.agenda-filter-head {
+  display: grid;
+  gap: 18px;
+}
+
+.agenda-filter-card {
+  padding: 24px;
+}
+
+.agenda-hero-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+
+.agenda-hero-actions .metric-card {
+  min-width: 0;
+}
+
 .agenda-view-tabs {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 4px;
+  margin-bottom: 6px;
 }
 
 .agenda-tab-button {
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.65);
   color: var(--muted);
+  flex: 1 1 160px;
+  min-height: 40px;
+  padding-inline: 14px;
+  font-size: 0.84rem;
+  font-weight: 700;
 }
 
 .agenda-filter-select {
   min-width: min(100%, 260px);
+}
+
+.agenda-filter-select .field > span {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
 }
 
 .agenda-filter-select .field {
@@ -2952,6 +3329,8 @@ h3 {
 .agenda-task-linkage strong,
 .agenda-task-due strong {
   color: var(--text);
+  font-size: 0.94rem;
+  line-height: 1.35;
 }
 
 .agenda-task-copy small,
@@ -2959,10 +3338,123 @@ h3 {
 .agenda-task-due small,
 .agenda-calendar-items small {
   color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.agenda-hero {
+  padding-block: 24px;
+}
+
+.agenda-hero .muted {
+  max-width: 68ch;
+  line-height: 1.45;
+}
+
+.agenda-task-header {
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.agenda-task-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.agenda-calendar-toggle {
+  display: none;
+}
+
+.agenda-task-header h3,
+.agenda-calendar-card h3 {
+  font-size: 1.16rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.agenda-task-header .muted,
+.agenda-calendar-card .muted {
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.agenda-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  table-layout: fixed;
+}
+
+.agenda-table th {
+  padding-block: 12px;
+  font-size: 0.74rem;
+  letter-spacing: 0.09em;
 }
 
 .agenda-action-group {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.agenda-table-wrap {
+  overflow-x: auto;
+}
+
+.agenda-table td {
+  padding-block: 12px;
+  vertical-align: top;
+}
+
+.agenda-table th,
+.agenda-table td {
+  overflow-wrap: anywhere;
+}
+
+.agenda-table td[data-label="Tarea"] {
+  min-width: 240px;
+}
+
+.agenda-table td[data-label="Vinculo"] {
+  min-width: 170px;
+}
+
+.agenda-table .field > span {
+  font-size: 0.71rem;
+  letter-spacing: 0.08em;
+}
+
+.agenda-table .status-badge {
+  min-height: 32px;
+  max-width: 100%;
+  padding: 6px 12px;
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+.agenda-action-group .secondary-button,
+.agenda-action-group .ghost-button {
+  min-height: 42px;
+  padding-inline: 14px;
+  width: 100%;
+}
+
+.agenda-action-group .ghost-button {
+  min-width: 42px;
+  padding-inline: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.agenda-table td[data-label="Accion"] {
+  min-width: 0;
+}
+
+.agenda-table td[data-label="Accion"] .agenda-action-group {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
 }
 
 .agenda-calendar-card {
@@ -3074,6 +3566,18 @@ h3 {
     grid-template-columns: 1fr;
   }
 
+  .budget-line.budget-line-extended {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .agenda-tasks-card {
+    order: 2;
+  }
+
+  .agenda-calendar-card {
+    order: 1;
+  }
+
   .detail-heading-row {
     align-items: flex-start;
   }
@@ -3085,6 +3589,57 @@ h3 {
   .aside-layout,
   .content-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1100px) {
+  .agenda-table thead {
+    display: none;
+  }
+
+  .agenda-table,
+  .agenda-table tbody,
+  .agenda-table tr,
+  .agenda-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .agenda-table tr {
+    border: 1px solid rgba(157, 177, 188, 0.3);
+    border-radius: var(--radius-md);
+    margin-bottom: 14px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.66);
+  }
+
+  .agenda-table td {
+    padding: 10px 0;
+    border: 0;
+    min-width: 0;
+  }
+
+  .agenda-table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 6px;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .agenda-table td[data-label="Accion"] .agenda-action-group {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .agenda-table td[data-label="Accion"] .ghost-button {
+    min-width: 44px;
+    min-height: 44px;
+    justify-self: end;
   }
 }
 
@@ -3112,12 +3667,46 @@ h3 {
     grid-template-columns: 1fr;
   }
 
+  .inline-fields {
+    width: 100%;
+  }
+
+  .budget-line.budget-line-extended,
+  .vehicle-meta-grid,
+  .media-gallery {
+    grid-template-columns: 1fr;
+  }
+
+  .budget-line.budget-line-extended {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .span-two {
     grid-column: span 2;
+  }
+
+  .ops-tab-layout {
+    gap: 16px;
+  }
+
+  .ops-tab-layout > .card.inner-card {
+    padding: 20px;
   }
 }
 
 @media (max-width: 760px) {
+  .pagos-tab-layout > .card.inner-card {
+    padding: 18px;
+  }
+
+  .ops-tab-layout > .card.inner-card {
+    padding: 18px;
+  }
+
+  .pagos-tab-layout .tag-row {
+    justify-items: stretch;
+  }
+
   .auth-shell {
     padding: 14px;
   }
@@ -3191,11 +3780,142 @@ h3 {
     grid-template-columns: 1fr;
   }
 
-  .agenda-view-tabs,
   .agenda-action-group,
   .agenda-calendar-grid,
   .agenda-calendar-weekdays {
     grid-template-columns: 1fr;
+  }
+
+  .agenda-view-tabs {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .agenda-hero-actions {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(168px, 1fr);
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    padding-bottom: 6px;
+  }
+
+  .agenda-tab-button {
+    flex: 1 1 calc(33.333% - 8px);
+    min-width: 0;
+  }
+
+  .agenda-table thead {
+    display: none;
+  }
+
+  .agenda-table,
+  .agenda-table tbody,
+  .agenda-table tr,
+  .agenda-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .agenda-table tr {
+    border: 1px solid rgba(157, 177, 188, 0.3);
+    border-radius: var(--radius-md);
+    margin-bottom: 14px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.66);
+  }
+
+  .agenda-table td {
+    padding: 10px 0;
+    border: 0;
+  }
+
+  .agenda-table td[data-label="Accion"] .agenda-action-group {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: stretch;
+  }
+
+  .agenda-table td[data-label="Accion"] .ghost-button {
+    min-width: 44px;
+    min-height: 44px;
+    justify-self: end;
+  }
+
+  .agenda-table td[data-label="Prioridad"] .status-badge,
+  .agenda-task-header .status-badge {
+    max-width: 100%;
+    white-space: normal;
+    line-height: 1.2;
+  }
+
+  .agenda-task-copy strong,
+  .agenda-task-linkage strong,
+  .agenda-task-due strong {
+    font-size: 0.92rem;
+  }
+
+  .agenda-task-copy small,
+  .agenda-task-linkage small,
+  .agenda-task-due small {
+    font-size: 0.78rem;
+  }
+
+  .agenda-task-header {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .agenda-task-header-actions {
+    width: 100%;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .agenda-calendar-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    padding-inline: 14px;
+    white-space: nowrap;
+  }
+
+  .agenda-tasks-card {
+    order: 1;
+  }
+
+  .agenda-calendar-card {
+    display: none;
+    order: 2;
+  }
+
+  .agenda-calendar-card.is-mobile-visible {
+    display: block;
+  }
+
+  .agenda-task-header .status-badge {
+    align-self: flex-start;
+  }
+
+  .agenda-tab-button {
+    min-height: 42px;
+    font-size: 0.82rem;
+  }
+
+  .agenda-filter-card {
+    padding: 20px;
+  }
+
+  .agenda-hero {
+    padding-block: 20px;
+  }
+
+  .agenda-action-group {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .agenda-calendar-cell {
@@ -3224,6 +3944,19 @@ h3 {
     grid-template-columns: 1fr;
   }
 
+  .checklist-block .budget-line-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .checklist-block .budget-line-footer .ghost-button {
+    justify-self: stretch;
+  }
+
+  .checklist-block .budget-line.budget-line-extended {
+    grid-template-columns: 1fr;
+  }
+
   .auto-code-card,
   .floating-notice {
     left: 14px;
@@ -3243,6 +3976,12 @@ h3 {
   h1 {
     max-width: none;
     font-size: 2.45rem;
+  }
+}
+
+@media (max-width: 1180px) and (min-width: 761px) {
+  .checklist-block .budget-line.budget-line-extended {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

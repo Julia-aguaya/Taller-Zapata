@@ -6,6 +6,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -55,5 +56,12 @@ public class CaseManagementController {
             HttpServletRequest httpRequest
     ) {
         caseManagementService.updateCaseIncident(caseId, request, httpRequest);
+    }
+
+    @Operation(summary = "Obtener incidente de caso", description = "Devuelve los datos del incidente asociado a un caso")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @GetMapping("/cases/{caseId}/incident")
+    public CaseIncidentResponse getCaseIncident(@PathVariable Long caseId) {
+        return caseManagementService.getCaseIncident(caseId);
     }
 }

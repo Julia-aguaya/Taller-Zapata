@@ -5,6 +5,7 @@ export default function CasesList({
   getBackendBranchLabel,
   getBackendCaseKey,
   getBackendStatusTone,
+  onOpenCase,
   onOpenDetail,
   StatusBadge,
 }) {
@@ -40,9 +41,14 @@ export default function CasesList({
               </div>
             </div>
 
-            <button className="secondary-button" onClick={() => { void onOpenDetail(item); }} type="button">
-              {detailState.item?.id === item.id && detailState.status === 'loading' ? 'Cargando detalle...' : 'Ver detalle'}
-            </button>
+            <div className="client-case-actions">
+              <button className="primary-button" onClick={() => { onOpenCase?.(item); }} type="button">
+                Abrir carpeta
+              </button>
+              <button className="secondary-button" onClick={() => { void onOpenDetail(item); }} type="button">
+                {detailState.item?.id === item.id && detailState.status === 'loading' ? 'Cargando detalle...' : 'Ver detalle'}
+              </button>
+            </div>
           </article>
         );
       })}

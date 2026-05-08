@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.application.casefile;
 
 import com.tallerzapata.backend.api.casefile.CaseIncidentUpdateRequest;
+import com.tallerzapata.backend.api.casefile.CaseIncidentResponse;
 import com.tallerzapata.backend.api.casefile.CasePersonAddRequest;
 import com.tallerzapata.backend.api.casefile.CaseVehicleAddRequest;
 import com.tallerzapata.backend.application.common.ConflictException;
@@ -23,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
 @Service
@@ -168,6 +170,17 @@ public class CaseManagementService {
         );
     }
 
+    @Transactional(readOnly = true)
+    public CaseIncidentResponse getCaseIncident(Long caseId) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "caso.ver");
+
+        return caseIncidentRepository.findByCaseId(caseId)
+                .map(this::toIncidentResponse)
+                .orElse(new CaseIncidentResponse(null, null, null, null, null, null));
+    }
+
     private CaseEntity requireCase(Long caseId) {
         return caseRepository.findById(caseId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
@@ -186,5 +199,16 @@ public class CaseManagementService {
             return null;
         }
         return LocalTime.parse(time.trim());
+    }
+
+    private CaseIncidentResponse toIncidentResponse(CaseIncidentEntity entity) {
+        return new CaseIncidentResponse(
+                entity.getIncidentDate(),
+                entity.getIncidentTime() == null ? null : entity.getIncidentTime().format(DateTimeFormatter.ofPattern("HH:mm")),
+                entity.getLugar(),
+                entity.getDinamica(),
+                entity.getObservaciones(),
+                entity.getPrescriptionDate()
+        );
     }
 }

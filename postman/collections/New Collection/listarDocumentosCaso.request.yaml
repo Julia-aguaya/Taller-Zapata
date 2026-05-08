@@ -1,0 +1,8 @@
+$kind: http-request
+url: 'http://localhost:8081/api/v1/cases/{{caseId}}/documents'
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: '{{token}}'
+order: 1602284850934693

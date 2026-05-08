@@ -34,34 +34,12 @@ export default function WorkflowDetailBlock({
           </div>
         ) : (
           <div className="backend-cases-empty" role="status">
-            <strong>Todavía no vemos movimientos recientes.</strong>
+            <strong>Todavía no vemos novedades recientes.</strong>
             <p>Cuando haya novedades de seguimiento, van a aparecer acá.</p>
           </div>
         )}
       </section>
 
-      <section className="backend-detail-section backend-section-next-actions">
-        <div className="stack-tight">
-          <span className="backend-detail-section-kicker">Próximo</span>
-          <h4>Lo que puede pasar ahora</h4>
-        </div>
-
-        {workflowActions.length > 0 ? (
-          <div className="backend-action-grid backend-item-list-horizontal" role="list" aria-label="Posibles próximos pasos de la carpeta">
-            {workflowActions.slice(0, 4).map((action) => (
-              <article className="backend-action-card" key={`${action.domain}-${action.actionCode}-${action.targetStateCode}`} role="listitem">
-                <strong>{getWorkflowActionAudienceCopy(action)}</strong>
-                <small>{action.automatic ? 'Se actualiza automáticamente cuando corresponde.' : 'Puede aparecer como próximo avance de tu carpeta.'}</small>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <div className="backend-cases-empty" role="status">
-            <strong>No vemos un próximo paso visible en este momento.</strong>
-            <p>Eso puede cambiar apenas la carpeta reciba una nueva novedad.</p>
-          </div>
-        )}
-      </section>
     </>
   );
 }
