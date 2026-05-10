@@ -48,3 +48,7 @@ export function hasRegistryOwnerIdentity(owner) {
 export function isThirdPartyDocumentationIncomplete(item) {
   return isThirdPartyClaimCase(item) && item.thirdParty?.claim?.documentationStatus === 'Incompleta';
 }
+
+export function isJudicialInstance(instance) {
+  return instance === 'Judicial';
+}

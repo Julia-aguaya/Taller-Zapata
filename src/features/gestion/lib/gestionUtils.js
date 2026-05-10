@@ -6,6 +6,10 @@ export function money(value) {
   }).format(Number(value || 0));
 }
 
+export function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function numberValue(value) {
   const normalized = Number(String(value || '').replace(/\./g, '').replace(',', '.'));
   return Number.isFinite(normalized) ? normalized : 0;

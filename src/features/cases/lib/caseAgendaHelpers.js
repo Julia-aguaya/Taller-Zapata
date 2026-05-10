@@ -96,3 +96,78 @@ export function getAgendaPriorityTone(priority) {
   if (priority === 'baja') return 'success';
   return 'info';
 }
+
+/**
+ * Descriptors for agenda collections across the case structure.
+ * Each descriptor maps a collectionKey to a navigable path and display metadata.
+ */
+export function getAgendaCollectionDescriptors() {
+  return [
+    { collectionKey: 'tramite', path: ['todoRisk', 'processing', 'agenda'], sourceLabel: 'Gestión del trámite', relatedTab: 'tramite' },
+    { collectionKey: 'abogado', path: ['lawyer', 'agenda'], sourceLabel: 'Abogado', relatedTab: 'abogado' },
+  ];
+}
+
+/**
+ * Returns the mutable agenda array for a given collectionKey within a draft case.
+ */
+export function getMutableAgendaCollection(draft, collectionKey) {
+  const descriptors = getAgendaCollectionDescriptors();
+  const descriptor = descriptors.find((d) => d.collectionKey === collectionKey);
+  if (!descriptor) return null;
+
+  let current = draft;
+  for (const key of descriptor.path) {
+    if (!current || typeof current !== 'object') return null;
+    current = current[key];
+  }
+
+  return Array.isArray(current) ? current : null;
+}
+
+/**
+ * Builds a flattened agenda store from computed cases.
+ * Each entry includes due metadata, view bucket, and linkage info.
+ */
+export function buildAgendaStore(computedCases) {
+  const items = [];
+  const descriptors = getAgendaCollectionDescriptors();
+
+  for (const caseItem of computedCases) {
+    for (const descriptor of descriptors) {
+      let collection = caseItem;
+      for (const key of descriptor.path) {
+        collection = collection?.[key];
+        if (!collection) break;
+      }
+
+      if (!Array.isArray(collection)) continue;
+
+      for (const task of collection) {
+        const normalized = normalizeAgendaTask(task, {
+          sourceArea: descriptor.sourceLabel,
+          relatedTab: descriptor.relatedTab,
+        });
+        const dueMeta = getAgendaTaskDueMeta(normalized.scheduledAt);
+        const viewBucket = normalized.resolved
+          ? 'resueltas'
+          : dueMeta.bucket === 'overdue'
+            ? 'vencidas'
+            : 'pendientes';
+
+        items.push({
+          ...normalized,
+          id: task.id || normalized.id,
+          title: task.title || normalized.description || '',
+          caseId: caseItem.id,
+          caseCode: caseItem.code || caseItem.folderCode || '',
+          collectionKey: descriptor.collectionKey,
+          dueMeta,
+          viewBucket,
+        });
+      }
+    }
+  }
+
+  return items;
+}

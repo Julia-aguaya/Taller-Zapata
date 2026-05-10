@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { getCaseHash, getCaseRouteFromHash, CASE_TABS, REPAIR_TABS } from './features/routing/lib/caseHash';
 import { normalizeDocument, normalizePlate, normalizeLookupText } from './features/cases/lib/caseNormalizers';
-import { formatBackendState, formatCaseNumber, formatDate, formatCurrency } from './features/cases/lib/caseFormatters';
+import { formatBackendState, formatCaseNumber, formatDate, formatDateTime, formatCurrency } from './features/cases/lib/caseFormatters';
 import { getFriendlyErrorMessage } from './features/cases/lib/caseErrorMessages';
 import {
   getCasesTechnicalDetail,
@@ -4861,8 +4861,8 @@ function App() {
       activeViewTitle={getActiveViewTitle(activeView)}
       backendSession={backendSession}
       navItems={NAV_ITEMS}
-      notice={flashState}
-      onLogout={handleLogout}
+      notice={notice}
+      onLogout={() => { clearSession(); setBackendSession(null); setAppAccess('guest'); setLoginForm({ email: '', password: '' }); }}
       onOpenView={openView}
       sessionExpiryNotice={sessionExpirySeconds > 0 ? getSessionExpiredMessage(backendSession) : null}
       sessionExpirySeconds={sessionExpirySeconds}
@@ -4944,28 +4944,13 @@ function App() {
 
         {activeView === 'panel' ? (
           <PanelGeneral
-            backendSession={backendSession}
-            currentUserEndpoint={currentUserEndpoint}
-            currentUserState={currentUserState}
+            formatDate={formatDate}
+            formatDateTime={formatDateTime}
             authenticatedCaseDetailState={authenticatedCaseDetailState}
             authenticatedCasesState={authenticatedCasesState}
             authenticatedNotificationsState={authenticatedNotificationsState}
-            authenticatedSystemParametersState={authenticatedSystemParametersState}
-            authenticatedOperationCatalogsState={authenticatedOperationCatalogsState}
-            authenticatedFinanceCatalogsState={authenticatedFinanceCatalogsState}
-            authenticatedInsuranceCatalogsState={authenticatedInsuranceCatalogsState}
             authenticatedDocumentsCatalogsState={authenticatedDocumentsCatalogsState}
-            authenticatedTasksState={authenticatedTasksState}
-            authenticatedInsuranceCompaniesState={authenticatedInsuranceCompaniesState}
-            authenticatedInsuranceContactsState={authenticatedInsuranceContactsState}
-            flash={flash}
-            items={computedCases}
-            onMarkNotificationAsRead={markNotificationAsRead}
-            onExportExcel={exportPanelExcel}
-            onExportPdf={exportPanelPdf}
-            onOpenCase={(item) => {
-              openCase(item.id, getGestionEntryTarget(item));
-            }}
+            onOpenCase={(item) => { openCase(item.id, getGestionEntryTarget(item)); }}
             onSaveDocument={saveCaseDocument}
             onDownloadDocument={downloadCaseDocument}
             onPreviewDocument={previewCaseDocument}
@@ -4973,17 +4958,9 @@ function App() {
             isDownloadingDocument={isDownloadingDocument}
             isPreviewingDocument={isPreviewingDocument}
             onOpenAuthenticatedCaseDetail={openAuthenticatedCaseDetail}
-            onRefreshCurrentUser={refreshCurrentUserPreview}
             onRefreshAuthenticatedCases={refreshAuthenticatedCasesPreview}
             onRefreshAuthenticatedNotifications={refreshAuthenticatedNotificationsPreview}
-            onRefreshAuthenticatedSystemParameters={refreshAuthenticatedSystemParametersPreview}
-            onRefreshAuthenticatedOperationCatalogs={refreshAuthenticatedOperationCatalogsPreview}
-            onRefreshAuthenticatedFinanceCatalogs={refreshAuthenticatedFinanceCatalogsPreview}
-            onRefreshAuthenticatedInsuranceCatalogs={refreshAuthenticatedInsuranceCatalogsPreview}
-            onRefreshAuthenticatedDocumentsCatalogs={refreshAuthenticatedDocumentsCatalogsPreview}
-            onRefreshAuthenticatedTasks={refreshAuthenticatedTasksPreview}
-            onRefreshAuthenticatedInsuranceCompanies={refreshAuthenticatedInsuranceCompaniesPreview}
-            onRefreshAuthenticatedInsuranceContacts={refreshAuthenticatedInsuranceContactsPreview}
+            onMarkNotificationAsRead={markNotificationAsRead}
             pendingNotificationIds={pendingNotificationIds}
             notificationActionStateById={notificationActionStateById}
           />

@@ -38,3 +38,22 @@ export function formatCurrency(amount) {
     currency: 'ARS',
   }).format(normalized);
 }
+
+export function formatDateTime(date) {
+  if (!date) return '-';
+
+  try {
+    const d = new Date(date);
+    if (Number.isNaN(d.getTime())) return '-';
+
+    return new Intl.DateTimeFormat('es-AR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(d);
+  } catch {
+    return '-';
+  }
+}

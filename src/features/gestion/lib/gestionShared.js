@@ -13,6 +13,9 @@ import {
 import { todayIso } from '../../cases/lib/caseAgendaHelpers';
 import { getFolderDisplayName } from '../../cases/lib/caseDomainCheckers';
 import { numberValue } from './gestionUtils';
+import { createTodoRiskTask } from '../../cases/lib/caseFactories';
+
+export { createTodoRiskTask };
 
 // ══════════════════════════════════════════════════════════
 // FACTORIES

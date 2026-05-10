@@ -2,8 +2,8 @@
  * Case filtering utilities
  * Pure functions for filtering cases by search term, state, and branch
  */
-import { normalizeLookupText } from '../cases/lib/caseNormalizers';
-import { formatBackendState } from '../cases/lib/caseFormatters';
+import { normalizeLookupText } from './caseNormalizers';
+import { formatBackendState } from './caseFormatters';
 
 /**
  * Get searchable text from a case item
