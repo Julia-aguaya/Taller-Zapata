@@ -2,6 +2,18 @@ import '@testing-library/jest-dom/vitest';
 import { afterAll, afterEach, beforeAll } from 'vitest';
 import { setupServer } from 'msw/node';
 
+// ---------------------------------------------------------------------------
+// GLOBALES PARA COMPONENTES QUE USAN FUNCIONES COMO VARIABLES LIBRES
+// ---------------------------------------------------------------------------
+// Varios componentes del bundle de gestión (GestionView, PresupuestoTab,
+// PagosTab) referencian `money()` y `escapeHtml()` sin importarlas.
+// Estos stubs evitan ReferenceError en el entorno de test.
+globalThis.money = globalThis.money || ((value) =>
+  new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(Number(value || 0)));
+globalThis.escapeHtml = globalThis.escapeHtml || ((str) =>
+  String(str ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]));
+globalThis.TODO_RIESGO_DOC_CATEGORY_OPTIONS = globalThis.TODO_RIESGO_DOC_CATEGORY_OPTIONS || ['Personal', 'Vehículo', 'Seguro', '3ero', 'Otro'];
+
 // Import handlers de MSW
 import { authHandlers } from './msw/handlers/auth.js';
 import { casesHandlers } from './msw/handlers/cases.js';
