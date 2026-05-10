@@ -1,0 +1,436 @@
+import StatusBadge from '../../../components/ui/StatusBadge';
+import StatusStepper from '../../../components/ui/StatusStepper';
+import TabButton from '../../../components/ui/TabButton';
+import StatusActionBar from '../../../components/ui/StatusActionBar';
+import {
+  getFolderDisplayName,
+  isCleasCase,
+  isFranchiseRecoveryCase,
+  isInsuranceWorkflowCase,
+  isThirdPartyLawyerCase,
+  isThirdPartyWorkshopCase,
+  isTodoRiesgoCase,
+} from '../../cases/lib/caseDomainCheckers';
+import { formatDate, formatDateTime } from '../../cases/lib/caseFormatters';
+import { getTramiteStepperConfig, getRepairStepperConfig, bindWorkflowActions } from '../lib/gestionHelpers';
+import FichaTecnicaTab from './FichaTecnicaTab';
+import GestionTramiteTab from './GestionTramiteTab';
+import DocumentacionTab from './DocumentacionTab';
+import PresupuestoTab from './PresupuestoTab';
+import GestionReparacionTab from './GestionReparacionTab';
+import PagosTab from './PagosTab';
+import AbogadoTab from './AbogadoTab';
+import { numberValue } from '../lib/gestionUtils';
+import { todayIso } from '../../cases/lib/caseAgendaHelpers';
+
+export default function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRepairTab, updateCase, flash, onSyncCase, onRunWorkflowTransition, isSavingCase = false, hasUnsavedChanges = false, insuranceCatalogs = null, financeCatalogs = null, debugCodeIssues = [], allCases = [] }) {
+  if (!item) {
+    return (
+      <div className="page-stack">
+        <section className="card empty-state">
+          <h2>No hay carpeta seleccionada.</h2>
+          <p>Elegí un caso desde Panel general o crealo en Nuevo caso.</p>
+        </section>
+      </div>
+    );
+  }
+
+  const franchiseRecovery = isFranchiseRecoveryCase(item);
+  const franchiseEnablesRepair = franchiseRecovery ? item.franchiseRecovery?.enablesRepair !== 'NO' : true;
+  const supportsTramiteTab = isInsuranceWorkflowCase(item) || franchiseRecovery;
+  const tabs = isThirdPartyLawyerCase(item)
+    ? [
+      { id: 'ficha', label: 'Ficha Tecnica' },
+      { id: 'tramite', label: 'Gestión del trámite' },
+      { id: 'presupuesto', label: 'Presupuesto' },
+      { id: 'gestion', label: 'Gestión de reparación' },
+      { id: 'pagos', label: 'Pagos' },
+      { id: 'abogado', label: 'Abogado' },
+    ]
+    : isThirdPartyWorkshopCase(item)
+    ? [
+      { id: 'ficha', label: 'Ficha Tecnica' },
+      { id: 'tramite', label: 'Gestión del trámite' },
+      { id: 'presupuesto', label: 'Presupuesto' },
+      { id: 'documentacion', label: 'Documentación' },
+      { id: 'gestion', label: 'Gestión de reparación' },
+      { id: 'pagos', label: 'Pagos' },
+    ]
+    : franchiseRecovery
+    ? [
+      { id: 'ficha', label: 'Ficha Tecnica' },
+      { id: 'tramite', label: 'Gestión del trámite' },
+      ...(franchiseEnablesRepair ? [{ id: 'presupuesto', label: 'Presupuesto' }, { id: 'gestion', label: 'Gestión de reparación' }] : []),
+      { id: 'pagos', label: 'Pagos' },
+    ]
+    : isInsuranceWorkflowCase(item)
+    ? [
+      { id: 'ficha', label: 'Ficha Tecnica' },
+      { id: 'tramite', label: 'Gestión del trámite' },
+      { id: 'presupuesto', label: 'Presupuesto' },
+      { id: 'gestion', label: 'Gestión de reparación' },
+      { id: 'pagos', label: 'Pagos' },
+    ]
+    : [
+      { id: 'ficha', label: 'Ficha Tecnica' },
+      { id: 'presupuesto', label: 'Presupuesto' },
+      { id: 'gestion', label: 'Gestión de reparación' },
+      { id: 'pagos', label: 'Pagos' },
+    ];
+
+  const hasInteractiveInsuranceControls = isTodoRiesgoCase(item) || isCleasCase(item);
+  const tramiteStepper = getTramiteStepperConfig(item);
+  const repairStepper = getRepairStepperConfig(item);
+  const tramiteActions = hasInteractiveInsuranceControls
+    ? [
+      { label: 'Sin presentar', active: item.computed.tramiteStatus === 'Sin presentar', disabled: false },
+      {
+        label: 'Presentado (PD) o En trámite',
+        active: ['Presentado (PD)', 'En trámite'].includes(item.computed.tramiteStatus),
+        disabled: !item.computed.todoRisk.canCompleteProcessingCore,
+      },
+      { label: 'Acordado', active: item.computed.tramiteStatus === 'Acordado', disabled: !item.todoRisk.processing.presentedDate },
+      { label: 'Pasado a pagos', active: item.computed.tramiteStatus === 'Pasado a pagos', disabled: !item.computed.todoRisk.quoteAgreed },
+      { label: 'Pagado', active: item.computed.tramiteStatus === 'Pagado', disabled: !item.payments.passedToPaymentsDate },
+    ]
+    : [];
+  const repairActions = hasInteractiveInsuranceControls
+    ? [
+      { label: 'En trámite', active: item.computed.repairStatus === 'En trámite', disabled: false },
+      {
+        label: 'Faltan repuestos / Dar Turno',
+        active: ['Faltan repuestos', 'Dar Turno'].includes(item.computed.repairStatus),
+        disabled: !item.computed.todoRisk.quoteAgreed,
+      },
+      { label: 'Con Turno', active: item.computed.repairStatus === 'Con Turno', disabled: !item.computed.todoRisk.quoteAgreed },
+      { label: 'Debe reingresar', active: item.computed.repairStatus === 'Debe reingresar', disabled: false },
+      { label: 'Reparado', active: item.computed.repairStatus === 'Reparado', disabled: false },
+      {
+        label: 'No debe repararse',
+        active: item.computed.repairStatus === 'No debe repararse',
+        disabled: !item.todoRisk.processing.adminTurnOverride && item.computed.repairStatus !== 'No debe repararse',
+      },
+    ]
+    : [];
+  const availableWorkflowActions = item.backendWorkflow?.actions || [];
+  const tramiteActionsBound = bindWorkflowActions(tramiteActions, 'tramite', availableWorkflowActions);
+  const repairActionsBound = bindWorkflowActions(repairActions, 'reparacion', availableWorkflowActions);
+  const lastSavedByTab = item?.meta?.lastSavedByTab || {};
+  const syncErrorsByTab = item?.meta?.syncErrorsByTab || {};
+  const isTabDirty = (tabId) => Boolean(item?.meta?.dirtyTabs?.[tabId]);
+  const getTabSyncLabel = (tabId) => {
+    if (isSavingCase && activeTab === tabId) return 'Guardando...';
+    if (syncErrorsByTab[tabId]) return 'Error al guardar';
+    if (isTabDirty(tabId)) return 'Pendiente';
+    return lastSavedByTab[tabId] ? `Guardado ${formatDateTime(lastSavedByTab[tabId])}` : 'Sin cambios';
+  };
+  const getTabSyncTone = (tabId) => {
+    if (isSavingCase && activeTab === tabId) return 'info';
+    if (syncErrorsByTab[tabId]) return 'danger';
+    if (isTabDirty(tabId)) return 'warning';
+    return lastSavedByTab[tabId] ? 'success' : 'info';
+  };
+  const handleTramiteAction = async ({ label, backendAction }) => {
+    const transitioned = await onRunWorkflowTransition?.({
+      caseId: item.id,
+      domain: 'tramite',
+      label,
+      backendAction,
+      availableActions: item.backendWorkflow?.actions || [],
+    });
+    if (transitioned) return;
+
+    const today = todayIso();
+
+    if (label === 'Sin presentar') {
+      updateCase((draft) => {
+        draft.todoRisk.processing.presentedDate = '';
+        draft.todoRisk.processing.derivedToInspectionDate = '';
+        draft.todoRisk.processing.quoteStatus = 'Pendiente';
+        draft.todoRisk.processing.quoteDate = '';
+        draft.todoRisk.processing.agreedAmount = '';
+        draft.payments.passedToPaymentsDate = '';
+        draft.payments.paymentDate = '';
+        draft.payments.depositedAmount = '';
+      });
+      return;
+    }
+
+    if (!item.computed.todoRisk.canCompleteProcessingCore) {
+      flash('Primero cargá fecha del siniestro y definí recupero en Franquicia.');
+      return;
+    }
+
+    if (label === 'Presentado (PD) o En trámite') {
+      updateCase((draft) => {
+        draft.todoRisk.processing.presentedDate = draft.todoRisk.processing.presentedDate || today;
+      });
+      return;
+    }
+
+    if (!item.todoRisk.processing.presentedDate) {
+      flash('No podés avanzar sin fecha de presentación.');
+      return;
+    }
+
+    if (label === 'Acordado') {
+      updateCase((draft) => {
+        draft.todoRisk.processing.quoteStatus = 'Acordada';
+        draft.todoRisk.processing.quoteDate = draft.todoRisk.processing.quoteDate || today;
+        draft.todoRisk.processing.agreedAmount = draft.todoRisk.processing.agreedAmount || String(Math.max(numberValue(draft.budget.minimumLaborClose), numberValue(item.computed.totalQuoted)));
+      });
+      return;
+    }
+
+    if (!item.computed.todoRisk.quoteAgreed) {
+      flash('Para pasar a pagos necesitás cotización acordada con fecha y monto.');
+      return;
+    }
+
+    if (label === 'Pasado a pagos') {
+      updateCase((draft) => {
+        draft.payments.passedToPaymentsDate = draft.payments.passedToPaymentsDate || today;
+      });
+      return;
+    }
+
+    updateCase((draft) => {
+      draft.payments.passedToPaymentsDate = draft.payments.passedToPaymentsDate || today;
+      draft.payments.paymentDate = draft.payments.paymentDate || today;
+      draft.payments.depositedAmount = draft.payments.depositedAmount || String(item.computed.todoRisk.amountToInvoice || 0);
+      if (draft.payments.hasRetentions === 'SI') {
+        draft.payments.retentions = {
+          iva: draft.payments.retentions?.iva || '0',
+          gains: draft.payments.retentions?.gains || '0',
+          employerContribution: draft.payments.retentions?.employerContribution || '0',
+          iibb: draft.payments.retentions?.iibb || '0',
+          drei: draft.payments.retentions?.drei || '0',
+          other: draft.payments.retentions?.other || '0',
+        };
+      }
+    });
+  };
+
+  const handleRepairAction = async ({ label, backendAction }) => {
+    const transitioned = await onRunWorkflowTransition?.({
+      caseId: item.id,
+      domain: 'reparacion',
+      label,
+      backendAction,
+      availableActions: item.backendWorkflow?.actions || [],
+    });
+    if (transitioned) return;
+
+    const today = todayIso();
+
+    if (label === 'En trámite') {
+      updateCase((draft) => {
+        draft.todoRisk.processing.noRepairNeeded = false;
+        draft.repair.turno.date = '';
+        draft.repair.egreso.date = '';
+        draft.repair.egreso.definitiveExit = false;
+      });
+      return;
+    }
+
+    if (label === 'No debe repararse') {
+      if (!item.todoRisk.processing.adminTurnOverride && item.computed.repairStatus !== 'No debe repararse') {
+        flash('No debe repararse queda reservado como excepción controlada por administración.');
+        return;
+      }
+
+      updateCase((draft) => {
+        draft.todoRisk.processing.noRepairNeeded = true;
+      });
+      return;
+    }
+
+    if (label === 'Reparado') {
+      updateCase((draft) => {
+        draft.todoRisk.processing.noRepairNeeded = false;
+        draft.repair.egreso.date = draft.repair.egreso.date || today;
+        draft.repair.egreso.shouldReenter = 'NO';
+        draft.repair.egreso.definitiveExit = true;
+      });
+      return;
+    }
+
+    if (label === 'Debe reingresar') {
+      updateCase((draft) => {
+        draft.todoRisk.processing.noRepairNeeded = false;
+        draft.repair.egreso.date = draft.repair.egreso.date || today;
+        draft.repair.egreso.shouldReenter = 'SI';
+        draft.repair.egreso.definitiveExit = false;
+      });
+      return;
+    }
+
+    if (!item.computed.todoRisk.quoteAgreed) {
+      flash('Primero necesitás cotización acordada con fecha y monto.');
+      return;
+    }
+
+    if (label === 'Faltan repuestos / Dar Turno') {
+      updateCase((draft) => {
+        draft.todoRisk.processing.noRepairNeeded = false;
+        const hasPendingAuthorizedPart = draft.repair.parts.some(
+          (part) => part.source === 'budget' && part.authorized === 'SI' && part.state !== 'Recibido',
+        );
+
+        draft.repair.parts.forEach((part) => {
+          if (part.source !== 'budget') return;
+
+          if (!part.authorized) {
+            part.authorized = 'SI';
+          }
+
+          if (part.authorized === 'SI') {
+            part.state = hasPendingAuthorizedPart ? (part.state === 'Recibido' ? 'Pendiente' : part.state) : 'Recibido';
+          }
+        });
+
+        draft.repair.turno.date = '';
+        draft.repair.turno.state = 'Pendiente programar';
+      });
+      return;
+    }
+
+    updateCase((draft) => {
+      draft.todoRisk.processing.noRepairNeeded = false;
+      draft.repair.parts.forEach((part) => {
+        if (part.source === 'budget' && part.authorized === 'SI') {
+          part.state = 'Recibido';
+        }
+      });
+      draft.repair.turno.date = draft.repair.turno.date || today;
+      draft.repair.turno.estimatedDays = draft.repair.turno.estimatedDays || draft.budget.estimatedWorkDays || '3';
+      draft.repair.turno.state = 'Confirmado';
+    });
+  };
+
+  return (
+    <div className="page-stack">
+      <section className={`hero-panel compact-hero detail-hero ${franchiseRecovery ? 'franchise-hero' : ''}`}>
+        <div>
+          <p className="eyebrow">Gestión</p>
+          <div className="detail-heading-row">
+            <h1>{item.code} - {getFolderDisplayName(item)}</h1>
+            {franchiseRecovery ? <span className="tramite-identity-badge is-franchise">Trámite Franquicia</span> : null}
+          </div>
+          <p className="muted">{item.vehicle.brand} {item.vehicle.model} - {item.vehicle.plate} · cierre {item.computed.closeReady ? formatDate(item.computed.closeDate) : 'pendiente'}</p>
+          <p className="muted">Siniestro {item.claimNumber || 'sin informar'}.</p>
+        </div>
+
+        <div className="status-toolbar status-toolbar-expanded">
+          {hasInteractiveInsuranceControls ? (
+            <>
+              <StatusActionBar label="Trámite" actions={tramiteActionsBound} onSelect={handleTramiteAction} />
+              <StatusActionBar label="Reparación" actions={repairActionsBound} onSelect={handleRepairAction} />
+            </>
+          ) : (
+            <>
+              <StatusStepper
+                activeValue={tramiteStepper.activeValue}
+                items={tramiteStepper.items}
+                label="Trámite"
+              />
+              <StatusStepper
+                activeValue={repairStepper.activeValue}
+                items={repairStepper.items}
+                label="Reparación"
+              />
+            </>
+          )}
+          <div className="status-group muted-restricted">
+            <span>Administración</span>
+              <button className="ghost-button" disabled type="button">Rechazado / Desistido</button>
+              {item.computed.repairStatus === 'No debe repararse' ? <StatusBadge tone="info">No debe repararse</StatusBadge> : null}
+            </div>
+          </div>
+        <div className="backend-cases-actions gestion-sync-actions">
+          <button className="primary-button" disabled={isSavingCase} onClick={() => { void onSyncCase?.(); }} type="button">
+            {isSavingCase ? 'Guardando...' : 'Guardar cambios'}
+          </button>
+          {hasUnsavedChanges ? <StatusBadge tone="warning">Cambios sin guardar</StatusBadge> : <StatusBadge tone="success">Sincronizado</StatusBadge>}
+        </div>
+      </section>
+
+      {import.meta.env.DEV && debugCodeIssues.length ? (
+        <div className="inline-alert warning-banner" role="status" aria-live="polite">
+          <strong>Revisión técnica:</strong> {debugCodeIssues.join(' | ')}
+        </div>
+      ) : null}
+
+      <div className="tab-strip">
+        {tabs.map((tab) => (
+          <TabButton
+            active={activeTab === tab.id}
+            key={tab.id}
+            onClick={() => {
+              if (tab.id === 'tramite' && !supportsTramiteTab) {
+                return;
+              }
+              if (tab.id === 'documentacion' && !isInsuranceWorkflowCase(item) && !isThirdPartyWorkshopCase(item)) {
+                return;
+              }
+              if (tab.id === 'gestion' && !item.computed.budgetReady) {
+                flash('Bloqueado: Presupuesto sigue en rojo. Cerralo, completalo y generá el presupuesto para habilitar Gestión reparación.');
+                return;
+              }
+              onChangeTab(tab.id);
+            }}
+            state={item.computed.tabs[tab.id]}
+          >
+            {tab.label} · {getTabSyncLabel(tab.id)}
+            {syncErrorsByTab[tab.id] ? <StatusBadge tone={getTabSyncTone(tab.id)}>{syncErrorsByTab[tab.id]}</StatusBadge> : null}
+          </TabButton>
+        ))}
+      </div>
+
+      <div className={`form-grid aside-layout ${['ficha', 'presupuesto', 'gestion', 'pagos'].includes(activeTab) ? 'aside-layout-full' : ''}`}>
+        <div>
+          {activeTab === 'ficha' ? <FichaTecnicaTab item={item} updateCase={updateCase} /> : null}
+              {activeTab === 'tramite' ? <GestionTramiteTab allCases={allCases} flash={flash} insuranceCatalogs={insuranceCatalogs} item={item} updateCase={updateCase} /> : null}
+              {activeTab === 'documentacion' ? <DocumentacionTab flash={flash} item={item} updateCase={updateCase} /> : null}
+              {activeTab === 'presupuesto' ? <PresupuestoTab flash={flash} item={item} updateCase={updateCase} /> : null}
+          {activeTab === 'gestion' ? (
+            <GestionReparacionTab
+              activeRepairTab={activeRepairTab}
+              flash={flash}
+              item={item}
+              onChangeRepairTab={onChangeRepairTab}
+              updateCase={updateCase}
+            />
+          ) : null}
+              {activeTab === 'pagos' ? <PagosTab financeCatalogs={financeCatalogs} flash={flash} insuranceCatalogs={insuranceCatalogs} item={item} updateCase={updateCase} /> : null}
+              {activeTab === 'abogado' ? <AbogadoTab flash={flash} insuranceCatalogs={insuranceCatalogs} item={item} updateCase={updateCase} /> : null}
+        </div>
+      </div>
+
+      <aside className="side-panel">
+        <article className="card inner-card">
+          <div className="section-head small-gap">
+            <h3>Cierre del caso</h3>
+            <StatusBadge tone={item.computed.closeReady ? 'success' : 'danger'}>
+              {item.computed.closeReady ? 'Cerrable' : 'Pendiente'}
+            </StatusBadge>
+          </div>
+          <div className="summary-stack">
+            <div className="summary-row"><span>Salida definitiva / no reingreso</span><strong>{item.computed.repairResolved ? 'Cumplido' : 'Falta resolver'}</strong></div>
+            {isThirdPartyWorkshopCase(item) ? (
+              <>
+                <div className="summary-row"><span>Pago compañía</span><strong>{item.computed.thirdParty.companyPaymentReady ? 'Cumplido' : 'Falta registrar'}</strong></div>
+                <div className="summary-row"><span>Pago cliente extras</span><strong>{item.computed.thirdParty.hasExtraWorks ? (item.computed.thirdParty.clientExtrasReady ? 'Cumplido' : money(item.computed.thirdParty.clientExtrasBalance)) : 'No aplica'}</strong></div>
+                <div className="summary-row"><span>Cierre económico</span><strong>{item.computed.todoRisk.paymentsReady ? 'Completo' : 'Pendiente'}</strong></div>
+              </>
+            ) : (
+              <div className="summary-row"><span>Pago total</span><strong>{item.computed.balance === 0 ? 'Cumplido' : money(item.computed.balance)}</strong></div>
+            )}
+            <div className="summary-row"><span>Fecha de cierre</span><strong>{item.computed.closeDate ? formatDate(item.computed.closeDate) : '-'}</strong></div>
+          </div>
+        </article>
+      </aside>
+    </div>
+  );
+}
+
