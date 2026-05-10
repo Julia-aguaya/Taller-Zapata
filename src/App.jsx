@@ -291,7 +291,8 @@ import {
 } from './features/cases/lib/caseFactories';
 import { patchCaseWithBackendDetail, ensureCaseStructure, pickFirstNonEmpty } from './features/cases/lib/patchCaseWithBackendDetail';
 import { money, numberValue, maxDate } from './features/gestion/lib/gestionUtils';
-import { lineIsComplete, lineNeedsReplacementDecision, buildBudgetParts, buildThirdPartyBudgetParts } from './features/gestion/lib/gestionShared';
+import { lineIsComplete, lineNeedsReplacementDecision, buildBudgetParts, buildThirdPartyBudgetParts, triggerBlobDownload, triggerDownload, escapeHtml } from './features/gestion/lib/gestionShared';
+import { escapeCsvValue, buildPanelExportRows, buildLegalNewsSignature, buildLegalExpenseSignature, buildFinancialMovementSignature, buildPartSignature, buildReceiptSignature, buildBudgetLineSignature } from './lib/utils/exportHelpers';
 import { addYears } from './features/cases/lib/caseComputedHelpers';
 import { getComputedCase } from './features/cases/computed/getComputedCase';
 
@@ -692,99 +693,6 @@ function buildVehicleMockData(items) {
   return registry;
 }
 
-function getWorkshopInfo(label) {
-  return WORKSHOPS.find((workshop) => workshop.label === label);
-}
-
-
-
-
-function createTodoRiskInvoice(overrides = {}) {
-  return {
-    id: crypto.randomUUID(),
-    backendId: null,
-    invoiceNumber: '',
-    amount: '',
-    issuedAt: '',
-    notes: '',
-    ...overrides,
-  };
-}
-
-
-
-function createRepairQuoteRow(overrides = {}) {
-  return {
-    id: crypto.randomUUID(),
-    piece: '',
-    provider1: '',
-    provider2: '',
-    provider3: '',
-    provider4: '',
-    billing: 'A',
-    paymentMethod: 'Contado',
-    source: 'manual',
-    sourceLineId: '',
-    ...overrides,
-  };
-}
-
-function createLawyerStatusUpdate(overrides = {}) {
-  return {
-    id: crypto.randomUUID(),
-    detail: '',
-    date: '',
-    notifyClient: false,
-    ...overrides,
-  };
-}
-
-function createLawyerExpense(overrides = {}) {
-  return {
-    id: crypto.randomUUID(),
-    concept: '',
-    amount: '',
-    date: '',
-    paidBy: 'CLIENTE',
-    ...overrides,
-  };
-}
-
-function createLawyerClosureItem(overrides = {}) {
-  return {
-    id: crypto.randomUUID(),
-    concept: '',
-    amount: '',
-    paymentDate: '',
-    sumWorkshop: 'SI',
-    paidDate: '',
-    ...overrides,
-  };
-}
-
-function createLawyerInjured(overrides = {}) {
-  return {
-    id: crypto.randomUUID(),
-    injuredRole: 'otro',
-    firstName: '',
-    lastName: '',
-    document: '',
-    birthDate: '',
-    address: '',
-    civilStatus: '',
-    phone: '',
-    email: '',
-    profession: '',
-    accreditsIncome: 'SI',
-    notes: '',
-    ...overrides,
-  };
-}
-
-
-function getThirdPartyInventoryCode(folderCode, index) {
-  return `${folderCode}-${String(index + 1).padStart(2, '0')}`;
-}
 
 
 
@@ -793,24 +701,12 @@ function getThirdPartyInventoryCode(folderCode, index) {
 
 
 
-function formatDateTime(value) {
-  if (!value) {
-    return '-';
-  }
-
-  return new Intl.DateTimeFormat('es-AR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(new Date(value));
-}
 
 
 
 
 
-  }
-  return new Date(`${a}T12:00:00`) > new Date(`${b}T12:00:00`) ? a : b;
-}
+
 
 
 
@@ -853,18 +749,7 @@ function getBudgetServiceStatus(item, label) {
 
 
 
-function getPrimaryFolderPerson(item) {
-  if (isThirdPartyClaimCase(item) && item.thirdParty?.clientRegistry?.isOwner === 'NO') {
-    return item.thirdParty.clientRegistry.owners?.find((owner) => owner.firstName || owner.lastName) || item.customer;
-  }
 
-  return item.customer;
-}
-
-function getFolderDisplayName(item) {
-  const person = getPrimaryFolderPerson(item);
-  return `${person.lastName || ''}, ${person.firstName || ''}`.replace(/^,\s*/, '').trim() || 'Sin titular';
-}
 
 
 
@@ -965,96 +850,7 @@ function getFolderMissing(form) {
 
 
 
-function getBudgetLineIssues(line) {
-  const issues = [];
 
-  if (!line.piece) issues.push('pieza afectada');
-  if (!line.task) issues.push('tarea a ejecutar');
-  if (!line.damageLevel) issues.push('nivel de dano');
-  if (lineNeedsReplacementDecision(line) && !line.replacementDecision) {
-    issues.push('decision interna de repuesto');
-  }
-
-  return issues;
-}
-
-function getBudgetAction(task) {
-  if (!task) return '';
-  if (task.startsWith('REEMPLAZAR')) return 'Reemplazar';
-  if (task.startsWith('REPARAR')) return 'Reparar';
-  if (task === 'CARGAR') return 'Cargar';
-  if (task === 'DIFUMINAR') return 'Difuminar';
-  if (task === 'ESCUADRAR') return 'Escuadrar';
-  return 'Verificar';
-}
-
-
-
-
-
-function syncThirdPartyQuoteRowsWithBudget(draft) {
-  if (!draft.repair.quoteRows) {
-    draft.repair.quoteRows = [];
-  }
-
-  const budgetParts = buildThirdPartyBudgetParts(draft.budget.lines, draft.budget.accessoryWorks);
-  const existingRows = new Map(draft.repair.quoteRows.map((row) => [row.sourceLineId, row]));
-
-  draft.repair.quoteRows = budgetParts.map((part) => ({
-    ...createRepairQuoteRow({ piece: part.name, source: 'budget', sourceLineId: part.lineId }),
-    ...existingRows.get(part.lineId),
-    piece: part.name,
-    source: 'budget',
-    sourceLineId: part.lineId,
-  }));
-}
-
-function syncRepairPartsWithBudget(draft) {
-  if (!draft.repair.removedBudgetLineIds) {
-    draft.repair.removedBudgetLineIds = [];
-  }
-
-  const budgetParts = buildBudgetParts(draft.budget.lines);
-  const validBudgetLineIds = new Set(budgetParts.map((part) => part.lineId));
-  draft.repair.removedBudgetLineIds = draft.repair.removedBudgetLineIds.filter((lineId) => validBudgetLineIds.has(lineId));
-
-  const removedBudgetLineIds = new Set(draft.repair.removedBudgetLineIds);
-  const manualParts = draft.repair.parts.filter((part) => part.source !== 'budget');
-  const existingBudgetParts = new Map(
-    draft.repair.parts
-      .filter((part) => part.source === 'budget' && part.sourceLineId)
-      .map((part) => [part.sourceLineId, part]),
-  );
-
-  const syncedBudgetParts = budgetParts
-    .filter((part) => !removedBudgetLineIds.has(part.lineId))
-    .map((part) => {
-      const existing = existingBudgetParts.get(part.lineId);
-
-      if (!existing) {
-        return createRepairPart({
-          name: part.name,
-          amount: part.amount,
-          budgetAmount: part.amount,
-          provider: draft.budget.partsProvider || '',
-          source: 'budget',
-          sourceLineId: part.lineId,
-        });
-      }
-
-      return {
-        ...existing,
-        name: part.name,
-        provider: existing.provider || draft.budget.partsProvider || '',
-        amount: !existing.amount || existing.amount === existing.budgetAmount ? part.amount : existing.amount,
-        budgetAmount: part.amount,
-        source: 'budget',
-        sourceLineId: part.lineId,
-      };
-    });
-
-  draft.repair.parts = [...syncedBudgetParts, ...manualParts];
-}
 
 
 
@@ -1317,60 +1113,7 @@ function resolveGestionAccess(item, target = {}) {
   };
 }
 
-function collectPaymentEvents(items) {
-  return items.flatMap((item) => {
-    const events = [];
 
-    if (item.payments.hasSena === 'SI' && item.payments.senaDate && item.payments.senaAmount) {
-      events.push({
-        id: `${item.id}-sena`,
-        type: 'Seña',
-        date: item.payments.senaDate,
-        amount: numberValue(item.payments.senaAmount),
-        gainsRetention: 0,
-        ivaRetention: 0,
-        dreiRetention: 0,
-        employerContributionRetention: 0,
-        iibbRetention: 0,
-        caseCode: item.code,
-        customerName: `${item.customer.lastName}, ${item.customer.firstName}`,
-        folderName: `${item.customer.lastName}, ${item.customer.firstName} - ${item.vehicle.brand} ${item.vehicle.model}`,
-        repairStatus: item.computed.repairStatus,
-        tramiteStatus: item.computed.tramiteStatus,
-      });
-    }
-
-    item.payments.settlements.forEach((settlement) => {
-      if (!settlement.date || !settlement.amount) {
-        return;
-      }
-
-      events.push({
-        id: settlement.id,
-        type: settlement.kind,
-        date: settlement.date,
-        amount: numberValue(settlement.amount),
-        gainsRetention: numberValue(settlement.gainsRetention),
-        ivaRetention: numberValue(settlement.ivaRetention),
-        dreiRetention: numberValue(settlement.dreiRetention),
-        employerContributionRetention: numberValue(settlement.employerContributionRetention),
-        iibbRetention: numberValue(settlement.iibbRetention),
-        caseCode: item.code,
-        customerName: `${item.customer.lastName}, ${item.customer.firstName}`,
-        folderName: `${item.customer.lastName}, ${item.customer.firstName} - ${item.vehicle.brand} ${item.vehicle.model}`,
-        repairStatus: item.computed.repairStatus,
-        tramiteStatus: item.computed.tramiteStatus,
-      });
-    });
-
-    return events;
-  });
-}
-
-function triggerDownload(filename, content, mimeType) {
-  const blob = new Blob([content], { type: mimeType });
-  triggerBlobDownload(filename, blob);
-}
 
 function getGestionEntryTarget(item) {
   if (isThirdPartyLawyerCase(item)) {
@@ -1731,92 +1474,7 @@ function collectCaseCodeValidationIssues(caseItem, insuranceCatalogs = null, fin
   return issues;
 }
 
-function buildLegalNewsSignature(entry) {
-  const date = String(entry?.date || '').trim();
-  const detail = normalizeLookupText(entry?.detail || '');
-  const notify = entry?.notifyClient ? '1' : '0';
-  return `${date}|${detail}|${notify}`;
-}
 
-function buildLegalExpenseSignature(entry) {
-  const concept = normalizeLookupText(entry?.concept || '');
-  const amount = String(numberValue(entry?.amount || 0));
-  const date = String(entry?.date || '').trim();
-  const paidBy = String(entry?.paidBy || '').trim().toUpperCase();
-  return `${concept}|${amount}|${date}|${paidBy}`;
-}
-
-function buildReceiptSignature(entry) {
-  const number = normalizeLookupText(entry?.invoiceNumber || entry?.receiptNumber || entry?.publicId || '');
-  const amount = String(numberValue(entry?.amount ?? entry?.total ?? 0));
-  const date = String(entry?.issuedAt || entry?.issuedDate || '').trim();
-  return `${number}|${amount}|${date}`;
-}
-
-function buildBudgetLineSignature(entry) {
-  const piece = normalizeLookupText(entry?.piece || entry?.affectedPiece || '');
-  const action = normalizeLookupText(entry?.repairAction || entry?.actionCode || '');
-  const task = normalizeLookupText(entry?.task || entry?.taskCode || '');
-  const partPrice = String(numberValue(entry?.partPrice ?? entry?.partValue ?? 0));
-  const labor = String(numberValue(entry?.laborWithoutVat ?? entry?.laborAmount ?? 0));
-  return `${piece}|${task}|${action}|${partPrice}|${labor}`;
-}
-
-function buildPartSignature(entry) {
-  const description = normalizeLookupText(entry?.name || entry?.description || '');
-  const status = normalizeLookupText(entry?.state || entry?.statusCode || '');
-  const price = String(numberValue(entry?.amount ?? entry?.finalPrice ?? 0));
-  return `${description}|${status}|${price}`;
-}
-
-function buildFinancialMovementSignature(entry) {
-  const movementType = normalizeLookupText(entry?.movementTypeCode || entry?.kind || '');
-  const amount = String(numberValue(entry?.netAmount ?? entry?.grossAmount ?? entry?.amount ?? 0));
-  const dateRaw = String(entry?.movementAt || entry?.date || '').trim();
-  const date = dateRaw.includes('T') ? dateRaw.slice(0, 10) : dateRaw;
-  return `${movementType}|${amount}|${date}`;
-}
-
-function triggerBlobDownload(filename, blob) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
-}
-
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function escapeCsvValue(value) {
-  const normalized = String(value ?? '').replace(/"/g, '""');
-  return `"${normalized}"`;
-}
-
-function buildPanelExportRows(items) {
-  return items.map((item) => ({
-    carpeta: item.code,
-    siniestro: item.claimNumber || '',
-    cliente: getFolderDisplayName(item),
-    vehiculo: `${item.vehicle.brand} ${item.vehicle.model}`,
-    dominio: item.vehicle.plate,
-    tramite: item.computed.tramiteStatus,
-    reparacion: item.computed.repairStatus,
-    pagos: item.computed.paymentState,
-    tareasPendientes: item.computed.pendingTasksCount,
-    fechaEstimada: item.computed.estimatedReferenceDate,
-    saldo: item.computed.balance,
-    totalCotizado: item.computed.totalQuoted,
-  }));
-}
 
 
 
