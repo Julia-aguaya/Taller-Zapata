@@ -11,3 +11,6 @@ public/mockServiceWorker.js
 
 # Windows stray
 nul
+
+# Java build artifacts
+backend/target/

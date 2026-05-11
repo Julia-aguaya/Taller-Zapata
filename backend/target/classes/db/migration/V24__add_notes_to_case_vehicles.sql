@@ -1,1 +1,0 @@
-ALTER TABLE caso_vehiculos ADD COLUMN notas VARCHAR(255) NULL AFTER orden_visual;

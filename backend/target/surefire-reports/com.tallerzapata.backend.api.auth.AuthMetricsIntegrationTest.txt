@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.tallerzapata.backend.api.auth.AuthMetricsIntegrationTest
--------------------------------------------------------------------------------
-Tests run: 3, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.429 s -- in com.tallerzapata.backend.api.auth.AuthMetricsIntegrationTest
