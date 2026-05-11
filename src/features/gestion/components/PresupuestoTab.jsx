@@ -24,7 +24,7 @@ import {
   createAccessoryWork,
   createBudgetLine,
 } from '../lib/gestionShared';
-import { numberValue } from '../lib/gestionUtils';
+import { money, numberValue } from '../lib/gestionUtils';
 
 export default function PresupuestoTab({ item, updateCase, flash }) {
   const [previewMedia, setPreviewMedia] = useState(null);

@@ -28,7 +28,7 @@ import {
   createTodoRiskInvoice,
   escapeHtml,
 } from '../lib/gestionShared';
-import { getStatusTone } from '../lib/gestionUtils';
+import { getStatusTone, money } from '../lib/gestionUtils';
 
 export default function PagosTab({ item, updateCase, flash, financeCatalogs = null, insuranceCatalogs = null }) {
   const receiptTypeOptions = getCatalogSelectOptions(financeCatalogs, 'receiptTypeCodes', COMPROBANTES);

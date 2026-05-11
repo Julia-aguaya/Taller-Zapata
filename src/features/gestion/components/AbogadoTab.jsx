@@ -32,6 +32,7 @@ import {
   createLawyerStatusUpdate,
   triggerDownload,
 } from '../lib/gestionShared';
+import { money } from '../lib/gestionUtils';
 import { createTodoRiskDocument, createTodoRiskTask } from '../../cases/lib/caseFactories';
 
 export default function AbogadoTab({ item, updateCase, flash, insuranceCatalogs = null }) {

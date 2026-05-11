@@ -63,29 +63,31 @@ test.describe('Taller Zapata E2E', () => {
   test('4. Debe abrir un caso y mostrar gestion con tabs', async ({ page }) => {
     await login(page);
 
-    // Click en el primer caso de la lista (cualquier fila clickeable)
-    await page.locator('tr').first().click();
+    // Click en "Abrir carpeta" del primer caso
+    await page.locator('button:has-text("Abrir carpeta")').first().click();
     
-    // Verificar que navego a gestion
-    await expect(page.locator('text=Gestión').or(page.getByRole('heading', { name: /gestión/i }))).toBeVisible({ timeout: 10000 });
+    // Verificar que navego a gestion (el heading dice "Gestión de trámites")
+    await expect(page.getByRole('heading', { name: /gestión de trámites/i }).first()).toBeVisible({ timeout: 10000 });
 
-    // Verificar tabs presentes
-    await expect(page.locator('button:has-text("Ficha")').first()).toBeVisible();
-    await expect(page.locator('button:has-text("Presupuesto")').first()).toBeVisible();
-    await expect(page.locator('button:has-text("Pagos")').first()).toBeVisible();
+    // Verificar tabs de gestion presentes (usan clase .tab-button)
+    await expect(page.locator('.tab-button:has-text("Ficha")').first()).toBeVisible();
+    await expect(page.locator('.tab-button:has-text("Presupuesto")').first()).toBeVisible();
+    await expect(page.locator('.tab-button:has-text("Pagos")').first()).toBeVisible();
   });
 
   test('5. Debe poder navegar entre tabs y mostrar boton de guardar', async ({ page }) => {
     await login(page);
 
-    await page.locator('tr').first().click();
-    await expect(page.locator('text=Gestión').or(page.getByRole('heading', { name: /gestión/i }))).toBeVisible({ timeout: 10000 });
+    await page.locator('button:has-text("Abrir carpeta")').first().click();
+    await expect(page.getByRole('heading', { name: /gestión de trámites/i }).first()).toBeVisible({ timeout: 10000 });
 
-    // Navegar tabs
-    await page.locator('button:has-text("Presupuesto")').first().click();
-    await expect(page.locator('text=Taller')).toBeVisible({ timeout: 5000 });
+    // Navegar al tab Presupuesto
+    await page.locator('.tab-button:has-text("Presupuesto")').first().click();
+    // Verificar que el tab está activo (tiene clase is-selected o is-active)
+    await expect(page.locator('.tab-button.is-selected:has-text("Presupuesto"), .tab-button.is-active:has-text("Presupuesto")').first()).toBeVisible({ timeout: 5000 });
 
-    await page.locator('button:has-text("Pagos")').first().click();
+    // Navegar al tab Pagos
+    await page.locator('.tab-button:has-text("Pagos")').first().click();
     await expect(page.locator('text=Guardar cambios')).toBeVisible({ timeout: 5000 });
   });
 });

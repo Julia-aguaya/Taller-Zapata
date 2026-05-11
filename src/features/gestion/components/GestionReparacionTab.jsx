@@ -33,7 +33,7 @@ import {
   syncThirdPartyQuoteRowsWithBudget,
 } from '../lib/gestionShared';
 import { createTodoRiskTask as createTodoRiskTaskFactory } from '../../cases/lib/caseFactories';
-import { getStatusTone, todayIso } from '../lib/gestionUtils';
+import { getStatusTone, money, todayIso } from '../lib/gestionUtils';
 import { todayIso as todayIsoAgenda } from '../../cases/lib/caseAgendaHelpers';
 
 export default function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepairTab, flash }) {

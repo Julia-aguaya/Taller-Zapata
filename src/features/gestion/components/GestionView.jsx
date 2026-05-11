@@ -20,7 +20,7 @@ import PresupuestoTab from './PresupuestoTab';
 import GestionReparacionTab from './GestionReparacionTab';
 import PagosTab from './PagosTab';
 import AbogadoTab from './AbogadoTab';
-import { numberValue } from '../lib/gestionUtils';
+import { money, numberValue } from '../lib/gestionUtils';
 import { todayIso } from '../../cases/lib/caseAgendaHelpers';
 
 export default function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRepairTab, updateCase, flash, onSyncCase, onRunWorkflowTransition, isSavingCase = false, hasUnsavedChanges = false, insuranceCatalogs = null, financeCatalogs = null, debugCodeIssues = [], allCases = [] }) {

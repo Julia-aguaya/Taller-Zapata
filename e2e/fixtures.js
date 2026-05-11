@@ -1,6 +1,7 @@
 /**
  * Fixtures compartidos para tests E2E de Taller Zapata.
- * Cada test usa page.route() para interceptar APIs del backend.
+ * Usa UN SOLO page.route('**\/api/v1/**') con dispatch interno por URL
+ * para evitar el bug de prioridad de Playwright (última ruta registrada gana).
  */
 
 export const BASE_URL = 'http://localhost:5173';
@@ -70,49 +71,56 @@ export const mockCase = {
   nextSuggestedTask: 'Confirmar turno',
 };
 
-// ─── Mock API handlers ───────────────────────────
+// ─── Mock API handler (single route, internal dispatch) ──────────
 
 /**
  * Registra TODOS los handlers mock necesarios para que la app funcione en E2E.
- * Usa page.route() para interceptar fetch requests.
+ * Usa UN SOLO page.route('**\/api/v1/**') con dispatch interno para evitar
+ * el bug de prioridad de Playwright donde la catch-all sobreescribe rutas especificas.
  */
 export async function setupMockApi(page) {
-  await page.route('**/api/v1/auth/login', async (route) => {
-    const body = route.request().postDataJSON();
-    if (body.password === 'wrong') {
+  await page.route('**/api/v1/**', async (route) => {
+    const url = route.request().url();
+    const method = route.request().method();
+
+    // ── Auth endpoints ──
+    if (url.includes('/auth/login')) {
+      const body = route.request().postDataJSON();
+      if (body.password === 'wrong') {
+        await route.fulfill({
+          status: 401,
+          contentType: 'application/json',
+          body: JSON.stringify({ message: 'Credenciales invalidas', httpStatus: 401 }),
+        });
+        return;
+      }
       await route.fulfill({
-        status: 401,
+        status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ message: 'Credenciales invalidas', httpStatus: 401 }),
+        body: JSON.stringify(mockSession),
       });
       return;
     }
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(mockSession),
-    });
-  });
 
-  await page.route('**/api/v1/auth/me', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(mockUser),
-    });
-  });
+    if (url.includes('/auth/me')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(mockUser),
+      });
+      return;
+    }
 
-  await page.route('**/api/v1/auth/session', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(mockSession),
-    });
-  });
+    if (url.includes('/auth/session')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(mockSession),
+      });
+      return;
+    }
 
-  await page.route('**/api/v1/cases**', async (route) => {
-    const url = route.request().url();
-
+    // ── Cases ──
     if (url.includes('/cases/catalogs')) {
       await route.fulfill({
         status: 200,
@@ -122,7 +130,8 @@ export async function setupMockApi(page) {
       return;
     }
 
-    if (url.includes('/cases/') && !url.includes('/cases?') && !url.includes('/cases/catalogs')) {
+    // Case detail (URL contains /cases/ followed by a UUID or numeric ID)
+    if (url.match(/\/cases\/[a-f0-9-]{20,}/) || url.match(/\/cases\/\d+/)) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -141,50 +150,90 @@ export async function setupMockApi(page) {
     }
 
     // Case list
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ content: [mockCase], total: 1, page: 0, size: 10 }),
-    });
-  });
+    if (url.includes('/cases')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ content: [mockCase], total: 1, page: 0, size: 10 }),
+      });
+      return;
+    }
 
-  // Notifications
-  await page.route('**/api/v1/notifications**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ content: [], total: 0 }),
-    });
-  });
+    // ── Notifications ──
+    if (url.includes('/notifications')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ content: [], total: 0 }),
+      });
+      return;
+    }
 
-  // Catalogs (system, operation, finance, insurance, documents, tasks, companies)
-  const catalogEndpoints = [
-    'system-parameters', 'operation-catalogs', 'finance-catalogs',
-    'insurance-catalogs', 'documents-catalogs', 'tasks',
-    'insurance-companies',
-  ];
-
-  for (const endpoint of catalogEndpoints) {
-    await page.route(`**/api/v1/${endpoint}**`, async (route) => {
+    // ── System / catalogs ──
+    if (url.includes('/system/parameters')) {
       await route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify([]),
       });
-    });
-  }
+      return;
+    }
 
-  // Connectivity probe
-  await page.route('**/api/v1/system/connectivity**', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify({ connected: true }),
-    });
-  });
+    if (url.includes('/system/connectivity')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ connected: true }),
+      });
+      return;
+    }
 
-  // Catch-all for any other API calls
-  await page.route('**/api/v1/**', async (route) => {
+    if (url.includes('/operation/catalogs')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      });
+      return;
+    }
+
+    if (url.includes('/finance/catalogs')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      });
+      return;
+    }
+
+    if (url.includes('/insurance/catalogs') || url.includes('/insurance/companies')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      });
+      return;
+    }
+
+    if (url.includes('/documents/catalogs')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      });
+      return;
+    }
+
+    if (url.includes('/tasks')) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([]),
+      });
+      return;
+    }
+
+    // ── Catch-all ──
     await route.fulfill({
       status: 200,
       contentType: 'application/json',
