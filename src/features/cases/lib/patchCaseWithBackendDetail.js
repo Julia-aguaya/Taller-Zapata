@@ -299,6 +299,11 @@ export function patchCaseWithBackendDetail(localCase, detailState) {
     actions: workflowActions,
     updatedAt: new Date().toISOString(),
   };
+
+  localCase.backendVisibleStates = {
+    tramite: detail.visibleTramiteState || null,
+    reparacion: detail.visibleRepairState || null,
+  };
 }
 
 function createPaymentDefaults(overrides = {}) {

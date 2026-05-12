@@ -230,7 +230,7 @@ export default function DocumentsDetailBlock({
                           }}
                           type="button"
                         >
-                          {editingDocumentId === document.documentId ? 'Cancelar edición' : 'Editar metadata'}
+                          {editingDocumentId === document.documentId ? 'Cancelar edicion' : 'Editar documento'}
                         </button>
                         {canPreview ? (
                           <button
@@ -279,7 +279,7 @@ export default function DocumentsDetailBlock({
                       {editingDocumentId === document.documentId ? (
                         <div className="form-grid two-columns compact-grid" style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #e6edf2' }}>
                           <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <small style={{ color: '#5f7481' }}>Editor rápido de metadata y archivo</small>
+                            <small style={{ color: '#5f7481' }}>Edicion rapida del documento</small>
                             <small style={{ color: '#5f7481' }}>Doc #{document.documentId}</small>
                           </div>
                           <label className="field">
@@ -371,7 +371,7 @@ export default function DocumentsDetailBlock({
                               }}
                               type="button"
                             >
-                              Guardar metadata
+                              Guardar cambios
                             </button>
                             <button
                               className="ghost-button"

@@ -125,6 +125,10 @@ function buildCaseIncidentPath(caseId) {
   return `/cases/${caseId}/incident`;
 }
 
+function buildCaseVisibleStatesPath(caseId) {
+  return `/cases/${caseId}/visible-states`;
+}
+
 function buildDocumentsPath() {
   return '/documents';
 }
@@ -1635,6 +1639,11 @@ async function postAuthenticatedMultipart(accessToken, endpoint, formData, fallb
 export async function updateAuthenticatedCaseIncident(accessToken, caseId, body, options = {}) {
   const endpoint = buildApiUrl(buildCaseIncidentPath(caseId));
   return putAuthenticatedCaseResource(accessToken, endpoint, body, 'No pude actualizar el incidente del caso.', options);
+}
+
+export async function updateAuthenticatedCaseVisibleStates(accessToken, caseId, body, options = {}) {
+  const endpoint = buildApiUrl(buildCaseVisibleStatesPath(caseId));
+  return putAuthenticatedCaseResource(accessToken, endpoint, body, 'No pude actualizar el estado visible de la carpeta.', options);
 }
 
 export async function updateAuthenticatedCaseInsuranceProcessing(accessToken, caseId, body, options = {}) {

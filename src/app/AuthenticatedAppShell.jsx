@@ -8,7 +8,7 @@ function FloatingNotice({ notice }) {
   return (
     <div className={`floating-notice ${notice.tone || 'info'}`} role="status" aria-live="polite">
       <strong>{notice.title}</strong>
-      <span>{notice.message}</span>
+      {notice.message ? <span>{notice.message}</span> : null}
     </div>
   );
 }

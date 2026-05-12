@@ -3,6 +3,7 @@ import { getCaseHash, getCaseRouteFromHash, CASE_TABS, REPAIR_TABS } from './fea
 import { normalizeDocument, normalizePlate, normalizeLookupText } from './features/cases/lib/caseNormalizers';
 import { formatBackendState, formatCaseNumber, formatDate, formatDateTime, formatCurrency } from './features/cases/lib/caseFormatters';
 import { getFriendlyErrorMessage } from './features/cases/lib/caseErrorMessages';
+import { resolvePartsAuthorizationCode, resolveReportStatusCode } from './features/cases/lib/operationCatalogResolvers';
 import {
   getCasesTechnicalDetail,
   getCaseRelationsItems,
@@ -177,6 +178,7 @@ import {
   updateAuthenticatedCaseFranchise,
   updateAuthenticatedCaseInsurance,
   updateAuthenticatedCaseInsuranceProcessing,
+  updateAuthenticatedCaseVisibleStates,
   updateAuthenticatedCaseLegal,
   updateAuthenticatedCasePart,
   updateAuthenticatedCaseThirdParty,
@@ -290,6 +292,7 @@ import {
   createTodoRiskTask,
 } from './features/cases/lib/caseFactories';
 import { patchCaseWithBackendDetail, ensureCaseStructure, pickFirstNonEmpty } from './features/cases/lib/patchCaseWithBackendDetail';
+import { applyBackendVisibleStatesToCase } from './features/cases/lib/backendVisibleStates';
 import { money, numberValue, maxDate } from './features/gestion/lib/gestionUtils';
 import { lineIsComplete, lineNeedsReplacementDecision, buildBudgetParts, buildThirdPartyBudgetParts, triggerBlobDownload, triggerDownload, escapeHtml } from './features/gestion/lib/gestionShared';
 import { escapeCsvValue, buildPanelExportRows, buildLegalNewsSignature, buildLegalExpenseSignature, buildFinancialMovementSignature, buildPartSignature, buildReceiptSignature, buildBudgetLineSignature } from './lib/utils/exportHelpers';
@@ -1613,6 +1616,7 @@ function App() {
     checkedAt: '',
     httpStatus: null,
     items: [],
+    catalogs: null,
   });
   const [authenticatedFinanceCatalogsState, setAuthenticatedFinanceCatalogsState] = useState({
     status: 'idle',
@@ -1681,7 +1685,7 @@ function App() {
   const [pendingNotificationIds, setPendingNotificationIds] = useState([]);
   const [notificationActionStateById, setNotificationActionStateById] = useState({});
 
-  const computedCases = useMemo(() => cases.map((item) => applyBackendWorkflowToCase(getComputedCase(item))), [cases]);
+  const computedCases = useMemo(() => cases.map((item) => applyBackendVisibleStatesToCase(applyBackendWorkflowToCase(getComputedCase(item)))), [cases]);
   const agendaItems = useMemo(() => buildAgendaStore(computedCases), [computedCases]);
 
   const selectedCase = computedCases.find((item) => String(item.id) === String(selectedCaseId)) || computedCases[0];
@@ -2383,6 +2387,7 @@ function App() {
         checkedAt: new Date().toISOString(),
         httpStatus: result.httpStatus,
         items,
+        catalogs: result.data || null,
       });
     } catch (error) {
       setAuthenticatedOperationCatalogsState((current) => ({
@@ -2395,6 +2400,7 @@ function App() {
         checkedAt: new Date().toISOString(),
         httpStatus: error?.httpStatus || null,
         items: [],
+        catalogs: null,
       }));
     }
   };
@@ -3463,13 +3469,6 @@ function App() {
     }
   }, []);
 
-  const resetStoredSession = () => {
-    resetSessionState({
-      authTitle: 'Sesión cerrada',
-      authDetail: 'Tu sesión se cerró correctamente.',
-    });
-  };
-
   const handleForgotPassword = () => {
     flash({
       tone: 'info',
@@ -3829,6 +3828,7 @@ function App() {
         }
 
         if ((isInsuranceWorkflowCase(selectedCase) || isFranchiseRecoveryCase(selectedCase)) && shouldSync('tramite')) {
+          const operationCatalogs = authenticatedOperationCatalogsState.catalogs || {};
           const insuranceCatalogs = authenticatedInsuranceCatalogsState.catalogs || {};
           const modalityEntries = getCatalogEntries(insuranceCatalogs, 'modalityCodes');
           const opinionEntries = getCatalogEntries(insuranceCatalogs, 'opinionCodes');
@@ -3856,6 +3856,7 @@ function App() {
           const modalityCode = resolveCatalogCode(selectedCase.todoRisk?.processing?.modality, modalityEntries, TODO_RIESGO_MODALITY_OPTIONS);
           const processingOpinionCode = resolveCatalogCode(selectedCase.todoRisk?.processing?.dictamen, opinionEntries, [...TODO_RIESGO_DICTAMEN_OPTIONS, ...CLEAS_DICTAMEN_OPTIONS]);
           const quotationStatusCode = resolveCatalogCode(selectedCase.todoRisk?.processing?.quoteStatus, quoteStatusEntries, TODO_RIESGO_QUOTE_STATUS_OPTIONS);
+          const partsAuthorizationCode = resolvePartsAuthorizationCode(selectedCase.computed?.todoRisk?.partsAuthorization, operationCatalogs);
 
           const invalidFields = [];
           if (!insuranceCompanyId && selectedCase.todoRisk?.insurance?.company) invalidFields.push('Compañía de seguro');
@@ -3868,6 +3869,9 @@ function App() {
           if (selectedCase.todoRisk?.processing?.modality && !modalityCode) invalidFields.push('Trámite: modalidad');
           if (selectedCase.todoRisk?.processing?.clientChargeStatus && !customerPaymentStatusCode) invalidFields.push('CLEAS: estado pago cliente');
           if (selectedCase.todoRisk?.processing?.companyFranchisePaymentStatus && !companyPaymentStatusCode) invalidFields.push('CLEAS: estado pago compañía');
+          if (selectedCase.computed?.todoRisk?.partsAuthorization && selectedCase.computed.todoRisk.partsAuthorization !== 'Sin repuestos' && !partsAuthorizationCode) {
+            invalidFields.push('Trámite: autorizacion de repuestos');
+          }
 
           if (invalidFields.length > 0) {
             const validationError = new Error(`Revisá estos campos antes de guardar: ${invalidFields.join(', ')}.`);
@@ -3921,7 +3925,7 @@ function App() {
               agreedAmount: toDecimal(selectedCase.todoRisk?.processing?.agreedAmount),
               minimumCloseAmount: toDecimal(selectedCase.computed?.todoRisk?.minimumClosingAmount),
               includesParts: Boolean(selectedCase.computed?.hasReplacementParts),
-              partsAuthorizationCode: selectedCase.computed?.partsStatus || null,
+              partsAuthorizationCode,
               partsSupplierText: selectedCase.todoRisk?.processing?.cleasScope || null,
               amountToBillCompany: toDecimal(selectedCase.computed?.todoRisk?.amountToInvoice || selectedCase.computed?.thirdParty?.amountToInvoice),
               finalAmountForWorkshop: toDecimal(selectedCase.computed?.thirdParty?.finalInFavorTaller || selectedCase.computed?.todoRisk?.amountToInvoice),
@@ -4039,9 +4043,17 @@ function App() {
         }
 
         if (shouldSync('presupuesto')) {
+          const operationCatalogs = authenticatedOperationCatalogsState.catalogs || {};
+          const reportStatusCode = resolveReportStatusCode(selectedCase.budget?.reportStatus, operationCatalogs);
+          if (selectedCase.budget?.reportStatus && !reportStatusCode) {
+            const validationError = new Error('Revisá Presupuesto: informe. No pudimos identificar el estado para guardarlo.');
+            validationError.tabId = 'presupuesto';
+            throw validationError;
+          }
+
           pushSyncOp('presupuesto', upsertAuthenticatedCaseBudget(accessToken, caseId, {
             budgetDate: toDate(selectedCase.budget?.date || todayIso()),
-            reportStatusCode: selectedCase.budget?.reportStatus || null,
+            reportStatusCode,
             laborWithoutVat: toDecimal(selectedCase.budget?.laborWithoutVat),
             vatRate: 0.21,
             partsTotal: toDecimal(selectedCase.computed?.partsTotal),
@@ -4274,7 +4286,7 @@ function App() {
           }
           const tabId = syncOps[index]?.tabId || activeTab;
           const reason = result.reason;
-          failedByTab[tabId] = reason?.message || 'Error de sincronización';
+          failedByTab[tabId] = getFriendlyErrorMessage(reason);
         });
 
         const hasFailures = Object.keys(failedByTab).length > 0;
@@ -4292,7 +4304,7 @@ function App() {
         }
 
         if (hasFailures) {
-          const failure = new Error('Falló la sincronización parcial en una o más solapas.');
+          const failure = new Error(Object.values(failedByTab).find(Boolean) || 'Falló la sincronización parcial en una o más solapas.');
           failure.failedByTab = failedByTab;
           throw failure;
         }
@@ -4332,17 +4344,18 @@ function App() {
         });
       }
       if (!silent) {
-        flash({ tone: 'success', title: 'Cambios guardados', message: 'Sincronizamos la ficha técnica con backend y refrescamos el detalle.' });
+        flash({ tone: 'success', title: 'Cambios guardados' });
       }
     } catch (error) {
+      const friendlyMessage = getFriendlyErrorMessage(error);
       if (selectedCase && error?.tabId) {
         updateCase(selectedCase.id, (draft) => {
           draft.meta = draft.meta || {};
-          draft.meta.syncErrorsByTab = { ...(draft.meta.syncErrorsByTab || {}), [error.tabId]: error.message || 'Error de sincronización' };
+          draft.meta.syncErrorsByTab = { ...(draft.meta.syncErrorsByTab || {}), [error.tabId]: friendlyMessage };
         });
       }
       if (!silent) {
-        flash({ tone: 'danger', title: 'No pudimos guardar todo', message: error?.message || 'Falló la sincronización con backend.' });
+        flash({ tone: 'danger', title: 'No pudimos guardar todo', message: friendlyMessage });
       }
     } finally {
       setIsSavingCase(false);
@@ -4375,6 +4388,33 @@ function App() {
       return true;
     } catch (error) {
       flash({ tone: 'danger', title: 'No pudimos cambiar de etapa', message: error?.message || 'Falló el cambio de etapa.' });
+      return false;
+    }
+  };
+
+  const setVisibleStateOverrideForCase = async ({ caseId, domain, stateCode = null }) => {
+    const numericCaseId = Number(caseId);
+    if (!Number.isFinite(numericCaseId)) {
+      return false;
+    }
+
+    try {
+      await readWithStoredToken(async (accessToken) => {
+        await updateAuthenticatedCaseVisibleStates(accessToken, numericCaseId, {
+          domain,
+          stateCode,
+          reason: stateCode ? 'Ajuste manual desde gestion' : 'Volver a seguimiento automatico',
+        });
+        await openAuthenticatedCaseDetail({ id: numericCaseId });
+      });
+
+      flash({
+        tone: 'success',
+        title: stateCode ? 'Estado visible actualizado' : 'Seguimiento automatico restablecido',
+      });
+      return true;
+    } catch (error) {
+      flash({ tone: 'danger', title: 'No pudimos actualizar el estado visible', message: error?.message || 'Fallo el ajuste manual.' });
       return false;
     }
   };
@@ -4453,7 +4493,7 @@ function App() {
         await openAuthenticatedCaseDetail({ id: numericCaseId });
       });
 
-      flash({ tone: 'success', title: 'Documento guardado', message: 'Sincronizamos el documento con backend y refrescamos el detalle.' });
+      flash({ tone: 'success', title: 'Cambios guardados' });
       return true;
     } catch (error) {
       flash({ tone: 'danger', title: 'No pudimos guardar documento', message: error?.message || 'Falló la sincronización del documento.' });
@@ -4869,168 +4909,107 @@ function App() {
       unreadCount={authenticatedNotificationsState.unreadCount}
       unreadCountSource={authenticatedNotificationsState.unreadCountSource}
     >
-      <aside className="sidebar">
-        <div className="sidebar-brand">
-          <span className="brand-mark">DT</span>
-          <div>
-            <strong>Delta Taller</strong>
-            <small>Seguimiento de carpetas</small>
-          </div>
-        </div>
+      <BlockingDocGateModal
+        isOpen={activeView === 'gestion' && Boolean(selectedCase) && isThirdPartyDocumentationIncomplete(selectedCase) && docGateAcceptedCaseId !== selectedCase?.id}
+        message={selectedCase ? `La carpeta sigue marcada como incompleta. Aceptá para seguir navegando y revisá la solapa ${isThirdPartyWorkshopCase(selectedCase) ? 'Documentación' : 'Gestión del trámite'}.` : ''}
+        onAccept={() => {
+          if (selectedCase) {
+            setDocGateAcceptedCaseId(selectedCase.id);
+          }
+        }}
+      />
 
-        <nav className="nav-list" aria-label="Principal">
-          {NAV_ITEMS.map((item) => (
-            <button className={`nav-item ${activeView === item.id ? 'is-active' : ''}`} key={item.id} onClick={() => openView(item.id)} type="button">
-              {item.label}
-            </button>
-          ))}
-        </nav>
+      {activeView === 'panel' ? (
+        <PanelGeneral
+          formatDate={formatDate}
+          formatDateTime={formatDateTime}
+          authenticatedCaseDetailState={authenticatedCaseDetailState}
+          authenticatedCasesState={authenticatedCasesState}
+          authenticatedNotificationsState={authenticatedNotificationsState}
+          authenticatedDocumentsCatalogsState={authenticatedDocumentsCatalogsState}
+          onOpenCase={(item, target) => { openCase(item.id, target || getGestionEntryTarget(item)); }}
+          onSaveDocument={saveCaseDocument}
+          onDownloadDocument={downloadCaseDocument}
+          onPreviewDocument={previewCaseDocument}
+          isSavingDocuments={isSavingDocuments}
+          isDownloadingDocument={isDownloadingDocument}
+          isPreviewingDocument={isPreviewingDocument}
+          onOpenAuthenticatedCaseDetail={openAuthenticatedCaseDetail}
+          onRefreshAuthenticatedCases={refreshAuthenticatedCasesPreview}
+          onRefreshAuthenticatedNotifications={refreshAuthenticatedNotificationsPreview}
+          onMarkNotificationAsRead={markNotificationAsRead}
+          pendingNotificationIds={pendingNotificationIds}
+          notificationActionStateById={notificationActionStateById}
+        />
+      ) : null}
 
-      </aside>
-
-      <main className="workspace">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">Panel</p>
-            <h2>{activeView === 'panel' ? 'Panel general' : activeView === 'carpetas' ? 'Mis carpetas' : activeView === 'agenda' ? 'Agenda de tareas' : activeView === 'nuevo' ? 'Nuevo caso' : 'Gestión de trámites'}</h2>
-          </div>
-
-          <div className="topbar-right">
-            <div className="topbar-notification-pill" role="status" aria-live="polite">
-              <span>Avisos pendientes</span>
-              <strong>{authenticatedNotificationsState.unreadCount}</strong>
-              {authenticatedNotificationsState.unreadCountSource === 'fallback-list' ? <small>estimado</small> : null}
-            </div>
-            <div className="session-badge-panel">
-              <div>
-                <span>Cuenta activa</span>
-                <strong>{getSessionLabel(backendSession)}</strong>
-              </div>
-              <button className="ghost-button" onClick={resetStoredSession} type="button">Cerrar sesión</button>
-            </div>
-          </div>
-        </header>
-
-        {notice ? (
-          <div className={`floating-notice ${notice.tone || 'info'}`} role="status" aria-live="polite">
-            <strong>{notice.title}</strong>
-            <span>{notice.message}</span>
-          </div>
-        ) : null}
-
-        {sessionExpiryNotice ? (
-          <div className="alert-banner danger-banner" role="status" aria-live="polite">
-            <strong>Sesión vencida {sessionExpirySeconds > 0 ? `(${sessionExpirySeconds})` : ''}</strong>
-            <p>{sessionExpiryNotice}</p>
-          </div>
-        ) : null}
-
-        {activeView === 'gestion' && selectedCase && isThirdPartyDocumentationIncomplete(selectedCase) && docGateAcceptedCaseId !== selectedCase.id ? (
-          <div className="blocking-modal-overlay" role="presentation">
-            <div aria-labelledby="doc-gate-title" aria-modal="true" className="blocking-modal" role="dialog">
-              <p className="eyebrow">Aviso bloqueante</p>
-              <h3 id="doc-gate-title">Carpeta con documentación pendiente</h3>
-              <p className="muted">
-                La carpeta sigue marcada como incompleta. Aceptá para seguir navegando y revisá la solapa
-                {' '}
-                {isThirdPartyWorkshopCase(selectedCase) ? 'Documentación' : 'Gestión del trámite'}.
-              </p>
-              <div className="blocking-modal-actions">
-                <button className="primary-button" onClick={() => setDocGateAcceptedCaseId(selectedCase.id)} type="button">Aceptar</button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {activeView === 'panel' ? (
-          <PanelGeneral
+      {activeView === 'carpetas' ? (
+        <div className="stack-lg">
+          <AuthenticatedCasesPreview
+            detailState={authenticatedCaseDetailState}
+            documentsCatalogs={authenticatedDocumentsCatalogsState.catalogs}
             formatDate={formatDate}
             formatDateTime={formatDateTime}
-            authenticatedCaseDetailState={authenticatedCaseDetailState}
-            authenticatedCasesState={authenticatedCasesState}
-            authenticatedNotificationsState={authenticatedNotificationsState}
-            authenticatedDocumentsCatalogsState={authenticatedDocumentsCatalogsState}
-            onOpenCase={(item) => { openCase(item.id, getGestionEntryTarget(item)); }}
-            onSaveDocument={saveCaseDocument}
-            onDownloadDocument={downloadCaseDocument}
-            onPreviewDocument={previewCaseDocument}
             isSavingDocuments={isSavingDocuments}
             isDownloadingDocument={isDownloadingDocument}
             isPreviewingDocument={isPreviewingDocument}
-            onOpenAuthenticatedCaseDetail={openAuthenticatedCaseDetail}
-            onRefreshAuthenticatedCases={refreshAuthenticatedCasesPreview}
-            onRefreshAuthenticatedNotifications={refreshAuthenticatedNotificationsPreview}
-            onMarkNotificationAsRead={markNotificationAsRead}
-            pendingNotificationIds={pendingNotificationIds}
-            notificationActionStateById={notificationActionStateById}
+            onOpenCase={(item, target) => {
+              openCase(item.id, target || getGestionEntryTarget(item));
+            }}
+            onDownloadDocument={downloadCaseDocument}
+            onPreviewDocument={previewCaseDocument}
+            onOpenDetail={openAuthenticatedCaseDetail}
+            onRefresh={refreshAuthenticatedCasesPreview}
+            onSaveDocument={saveCaseDocument}
+            state={authenticatedCasesState}
           />
-        ) : null}
+        </div>
+      ) : null}
 
-        {activeView === 'carpetas' ? (
-          <div className="stack-lg">
-              <AuthenticatedCasesPreview
-                detailState={authenticatedCaseDetailState}
-                documentsCatalogs={authenticatedDocumentsCatalogsState.catalogs}
-                isSavingDocuments={isSavingDocuments}
-                isDownloadingDocument={isDownloadingDocument}
-                isPreviewingDocument={isPreviewingDocument}
-                onOpenCase={(item) => {
-                  openCase(item.id, getGestionEntryTarget(item));
-                }}
-                onDownloadDocument={downloadCaseDocument}
-                onPreviewDocument={previewCaseDocument}
-                onOpenDetail={openAuthenticatedCaseDetail}
-                onRefresh={refreshAuthenticatedCasesPreview}
-                onSaveDocument={saveCaseDocument}
-                state={authenticatedCasesState}
-              />
-          </div>
-        ) : null}
+      {activeView === 'agenda' ? (
+        <AgendaView
+          items={agendaItems}
+          onOpenCase={openCase}
+          onUpdateTask={updateAgendaTask}
+        />
+      ) : null}
 
-        {activeView === 'agenda' ? (
-          <AgendaView
-            items={agendaItems}
-            onOpenCase={openCase}
-            onUpdateTask={updateAgendaTask}
-          />
-        ) : null}
+      {activeView === 'nuevo' ? (
+        <NuevoCaso
+          customerLookupState={customerLookupState}
+          form={newCaseForm}
+          missing={folderMissing}
+          nextCode={nextCode}
+          onChange={updateNewCaseField}
+          onCreate={createCase}
+          onSearchDocument={autofillCustomerByDocument}
+          onSearchPlate={autofillVehicleByPlate}
+          showValidation={showNewCaseValidation}
+          autofilledFields={autofilledFields}
+          vehicleLookupState={vehicleLookupState}
+        />
+      ) : null}
 
-        {activeView === 'nuevo' ? (
-          <NuevoCaso
-            customerLookupState={customerLookupState}
-            form={newCaseForm}
-            missing={folderMissing}
-            nextCode={nextCode}
-            onChange={updateNewCaseField}
-            onCreate={createCase}
-            onSearchDocument={autofillCustomerByDocument}
-            onSearchPlate={autofillVehicleByPlate}
-            showValidation={showNewCaseValidation}
-            autofilledFields={autofilledFields}
-            vehicleLookupState={vehicleLookupState}
-          />
-        ) : null}
-
-        {activeView === 'gestion' ? (
-          <GestionView
-            activeRepairTab={activeRepairTab}
-            activeTab={activeTab}
-            allCases={computedCases}
-            flash={flash}
-            item={selectedCase}
-            insuranceCatalogs={authenticatedInsuranceCatalogsState.catalogs}
-            financeCatalogs={authenticatedFinanceCatalogsState.catalogs}
-            debugCodeIssues={selectedCaseCodeIssues}
-            onChangeRepairTab={setActiveRepairTab}
-            onChangeTab={setActiveTab}
-            onSyncCase={syncSelectedCaseToBackend}
-            onRunWorkflowTransition={runWorkflowTransitionForCase}
-            isSavingCase={isSavingCase}
-            hasUnsavedChanges={hasUnsavedChanges}
-            updateCase={updateSelectedCase}
-          />
-        ) : null}
-      </main>
+      {activeView === 'gestion' ? (
+        <GestionView
+          activeRepairTab={activeRepairTab}
+          activeTab={activeTab}
+          allCases={computedCases}
+          flash={flash}
+          item={selectedCase}
+          insuranceCatalogs={authenticatedInsuranceCatalogsState.catalogs}
+          financeCatalogs={authenticatedFinanceCatalogsState.catalogs}
+          debugCodeIssues={selectedCaseCodeIssues}
+          onChangeRepairTab={setActiveRepairTab}
+          onChangeTab={setActiveTab}
+          onSyncCase={syncSelectedCaseToBackend}
+          onRunWorkflowTransition={runWorkflowTransitionForCase}
+          onSetVisibleStateOverride={setVisibleStateOverrideForCase}
+          isSavingCase={isSavingCase}
+          hasUnsavedChanges={hasUnsavedChanges}
+          updateCase={updateSelectedCase}
+        />
+      ) : null}
     </AuthenticatedAppShell>
   );
 }

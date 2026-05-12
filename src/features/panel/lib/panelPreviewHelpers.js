@@ -60,6 +60,12 @@ function formatDocumentOrigin(originCode) {
     legal: 'Gestión legal',
     finanza: 'Cobro',
     finanzas: 'Cobro',
+    sistema: 'Carga interna',
+    seed: 'Carga interna',
+    'seed local': 'Carga interna',
+    seed_local: 'Carga interna',
+    local_seed: 'Carga interna',
+    seedlocal: 'Carga interna',
   };
 
   return labels[normalized] || formatBackendState(normalized, 'Documento');

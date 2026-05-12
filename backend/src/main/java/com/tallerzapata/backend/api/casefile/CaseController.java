@@ -128,6 +128,17 @@ public class CaseController {
         return caseWorkflowService.getAvailableActions(caseId, domain);
     }
 
+    @Operation(summary = "Definir estado visible manual", description = "Permite fijar o limpiar el estado visible de tramite o reparacion")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PutMapping("/{caseId}/visible-states")
+    public void overrideVisibleState(
+            @PathVariable Long caseId,
+            @RequestBody CaseVisibleStateOverrideRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        caseWorkflowService.overrideVisibleState(caseId, request, httpRequest);
+    }
+
     @Operation(summary = "Listar eventos de auditoria", description = "Devuelve el log de auditoria de un caso con filtros opcionales")
     @ApiResponse(responseCode = "200", description = "OK")
     @GetMapping("/{caseId}/audit/events")

@@ -81,5 +81,17 @@ describe('ErrorMessages - getFriendlyErrorMessage', () => {
       const error = { httpStatus: 418 };
       expect(getFriendlyErrorMessage(error)).toContain('error');
     });
+
+    it('traduce partsautorizationcode a un mensaje entendible', () => {
+      const error = { message: 'partsautorizationcode no permitido' };
+      expect(getFriendlyErrorMessage(error)).toContain('Gestion del tramite');
+      expect(getFriendlyErrorMessage(error)).toContain('autorizacion de repuestos');
+    });
+
+    it('traduce reportstatuscode a un mensaje entendible', () => {
+      const error = { message: 'reportstatuscode' };
+      expect(getFriendlyErrorMessage(error)).toContain('Presupuesto');
+      expect(getFriendlyErrorMessage(error)).toContain('estado del informe');
+    });
   });
 });

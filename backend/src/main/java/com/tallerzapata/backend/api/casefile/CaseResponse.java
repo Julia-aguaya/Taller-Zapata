@@ -28,6 +28,8 @@ public record CaseResponse(
         String priorityCode,
         String generalObservations,
         LocalDateTime closedAt,
-        LocalDateTime archivedAt
+        LocalDateTime archivedAt,
+        CaseVisibleStateResponse visibleTramiteState,
+        CaseVisibleStateResponse visibleRepairState
 ) {
 }

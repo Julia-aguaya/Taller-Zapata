@@ -555,6 +555,50 @@ h3 {
   gap: 10px;
 }
 
+.gestion-save-bar,
+.gestion-save-bar-actions,
+.gestion-save-bar-copy {
+  display: flex;
+}
+
+.gestion-save-bar {
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px;
+  border: 1px solid rgba(157, 177, 188, 0.28);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(243, 247, 252, 0.94));
+  box-shadow: 0 14px 32px rgba(24, 37, 47, 0.08);
+}
+
+.gestion-save-bar-copy {
+  flex: 1 1 320px;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gestion-save-bar-copy strong {
+  color: var(--text);
+}
+
+.gestion-save-bar-copy small {
+  color: var(--muted);
+}
+
+.gestion-save-bar-actions {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.gestion-save-button {
+  min-width: 188px;
+}
+
 .backend-cases-search {
   max-width: 520px;
 }
@@ -3226,6 +3270,22 @@ h3 {
   align-items: end;
 }
 
+.status-toolbar-admin-row {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.admin-state-picker {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-state-picker select {
+  min-width: 220px;
+}
+
 .topbar-right,
 .status-toolbar,
 .tag-row {
@@ -3730,6 +3790,7 @@ h3 {
   .hero-panel,
   .status-toolbar,
   .section-head,
+  .gestion-save-bar,
   .backend-cases-actions,
   .notification-card-actions,
   .client-case-header,
@@ -3789,6 +3850,16 @@ h3 {
   .agenda-view-tabs {
     display: flex;
     flex-wrap: wrap;
+  }
+
+  .gestion-save-bar-actions {
+    width: 100%;
+    justify-content: flex-start;
+    align-items: stretch;
+  }
+
+  .gestion-save-button {
+    width: 100%;
   }
 
   .agenda-hero-actions {

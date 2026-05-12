@@ -3,6 +3,7 @@ package com.tallerzapata.backend.application.casefile;
 import com.tallerzapata.backend.api.casefile.CaseCreateRequest;
 import com.tallerzapata.backend.api.casefile.CaseCatalogsResponse;
 import com.tallerzapata.backend.api.casefile.CasePageResponse;
+import com.tallerzapata.backend.api.casefile.CaseVisibleStateResponse;
 import com.tallerzapata.backend.api.casefile.CaseTypeCatalogResponse;
 import com.tallerzapata.backend.api.casefile.CaseRelationCreateRequest;
 import com.tallerzapata.backend.api.casefile.CaseRelationResponse;
@@ -67,6 +68,7 @@ public class CaseService {
     private final VehicleRoleRepository vehicleRoleRepository;
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService caseAccessControlService;
+    private final CaseVisibleStateResolver caseVisibleStateResolver;
 
     public CaseService(
             CaseRepository caseRepository,
@@ -85,7 +87,8 @@ public class CaseService {
             CasePriorityRepository casePriorityRepository,
             VehicleRoleRepository vehicleRoleRepository,
             CurrentUserService currentUserService,
-            CaseAccessControlService caseAccessControlService
+            CaseAccessControlService caseAccessControlService,
+            CaseVisibleStateResolver caseVisibleStateResolver
     ) {
         this.caseRepository = caseRepository;
         this.caseTypeRepository = caseTypeRepository;
@@ -104,6 +107,7 @@ public class CaseService {
         this.vehicleRoleRepository = vehicleRoleRepository;
         this.currentUserService = currentUserService;
         this.caseAccessControlService = caseAccessControlService;
+        this.caseVisibleStateResolver = caseVisibleStateResolver;
     }
 
     @Transactional(readOnly = true)
@@ -450,6 +454,7 @@ public class CaseService {
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el estado de documentacion " + entity.getCurrentDocumentationStateId()));
         WorkflowStateEntity legalState = entity.getCurrentLegalStateId() == null ? null : workflowStateRepository.findById(entity.getCurrentLegalStateId())
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el estado legal " + entity.getCurrentLegalStateId()));
+        Map<String, CaseVisibleStateResponse> visibleStates = caseVisibleStateResolver.resolveForCase(entity);
 
         return new CaseResponse(
                 entity.getId(),
@@ -477,7 +482,9 @@ public class CaseService {
                 entity.getPriorityCode(),
                 entity.getGeneralObservations(),
                 entity.getClosedAt(),
-                entity.getArchivedAt()
+                entity.getArchivedAt(),
+                visibleStates.get("tramite"),
+                visibleStates.get("reparacion")
         );
     }
 

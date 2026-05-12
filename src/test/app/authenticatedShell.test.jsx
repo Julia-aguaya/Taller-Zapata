@@ -52,6 +52,29 @@ describe('AuthenticatedAppShell', () => {
     expect(onOpenView).toHaveBeenCalledWith('carpetas');
     expect(onLogout).toHaveBeenCalledTimes(1);
   });
+
+  it('renders a short notice without empty secondary copy', () => {
+    render(
+      <AuthenticatedAppShell
+        activeView="panel"
+        activeViewTitle={getActiveViewTitle('panel')}
+        backendSession={{ email: 'asesor@delta.com' }}
+        navItems={NAV_ITEMS}
+        notice={{ title: 'Cambios guardados', tone: 'success' }}
+        onLogout={vi.fn()}
+        onOpenView={vi.fn()}
+        sessionExpiryNotice=""
+        sessionExpirySeconds={0}
+        unreadCount={0}
+        unreadCountSource="api"
+      >
+        <section>Contenido autenticado</section>
+      </AuthenticatedAppShell>
+    );
+
+    expect(screen.getByText('Cambios guardados')).toBeInTheDocument();
+    expect(screen.queryByText('undefined')).not.toBeInTheDocument();
+  });
 });
 
 describe('BlockingDocGateModal', () => {

@@ -2,7 +2,6 @@ import CaseAppointmentsSection from '../../../components/detail/CaseAppointments
 import CaseDocumentsSection from '../../../components/detail/CaseDocumentsSection';
 import CaseWorkflowSection from '../../../components/detail/CaseWorkflowSection';
 import StatusBadge from '../../../components/ui/StatusBadge';
-import { getCaseHash } from '../../routing/lib/caseHash';
 import { formatBackendState } from '../../cases/lib/caseFormatters';
 import { getBackendBranchLabel, getBackendStatusTone } from '../../cases/lib/caseFilters';
 import { getCaseVehicleLabel, getCaseResponsibleLabel, getCaseNextTaskLabel } from '../../cases/lib/caseDisplayHelpers';
@@ -21,6 +20,7 @@ import {
 
 export default function AuthenticatedCaseDetail({
   detailState,
+  onOpenCase,
   onOpenDetail,
   onSaveDocument,
   onDownloadDocument,
@@ -117,8 +117,20 @@ export default function AuthenticatedCaseDetail({
       </div>
 
       <div className="backend-detail-primary-actions" role="group" aria-label="Acciones principales de la carpeta">
-        <a className="primary-button button-link backend-detail-action" href={getCaseHash(item.id, { tab: 'gestion' })}>Abrir gestion</a>
-        <a className="secondary-button button-link backend-detail-action" href={getCaseHash(item.id, { tab: 'documentacion' })}>Documentacion</a>
+        <button
+          className="primary-button button-link backend-detail-action"
+          onClick={() => { onOpenCase?.(item, { tab: 'gestion' }); }}
+          type="button"
+        >
+          Abrir gestion
+        </button>
+        <button
+          className="secondary-button button-link backend-detail-action"
+          onClick={() => { onOpenCase?.(item, { tab: 'documentacion' }); }}
+          type="button"
+        >
+          Documentacion
+        </button>
       </div>
 
       <div className="backend-detail-sections">

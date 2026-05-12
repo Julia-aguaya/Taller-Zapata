@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import StatusBadge from '../../../components/ui/StatusBadge';
 import StatusStepper from '../../../components/ui/StatusStepper';
 import TabButton from '../../../components/ui/TabButton';
@@ -22,8 +23,11 @@ import PagosTab from './PagosTab';
 import AbogadoTab from './AbogadoTab';
 import { money, numberValue } from '../lib/gestionUtils';
 import { todayIso } from '../../cases/lib/caseAgendaHelpers';
+import { MANUAL_VISIBLE_STATE_OPTIONS } from '../../cases/lib/backendVisibleStates';
 
-export default function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRepairTab, updateCase, flash, onSyncCase, onRunWorkflowTransition, isSavingCase = false, hasUnsavedChanges = false, insuranceCatalogs = null, financeCatalogs = null, debugCodeIssues = [], allCases = [] }) {
+export default function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRepairTab, updateCase, flash, onSyncCase, onRunWorkflowTransition, onSetVisibleStateOverride, isSavingCase = false, hasUnsavedChanges = false, insuranceCatalogs = null, financeCatalogs = null, debugCodeIssues = [], allCases = [] }) {
+  const [manualVisibleStateDraft, setManualVisibleStateDraft] = useState({ tramite: '', reparacion: '' });
+
   if (!item) {
     return (
       <div className="page-stack">
@@ -115,6 +119,7 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
   const availableWorkflowActions = item.backendWorkflow?.actions || [];
   const tramiteActionsBound = bindWorkflowActions(tramiteActions, 'tramite', availableWorkflowActions);
   const repairActionsBound = bindWorkflowActions(repairActions, 'reparacion', availableWorkflowActions);
+  const activeTabLabel = tabs.find((tab) => tab.id === activeTab)?.label || 'Ficha Tecnica';
   const lastSavedByTab = item?.meta?.lastSavedByTab || {};
   const syncErrorsByTab = item?.meta?.syncErrorsByTab || {};
   const isTabDirty = (tabId) => Boolean(item?.meta?.dirtyTabs?.[tabId]);
@@ -130,6 +135,15 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
     if (isTabDirty(tabId)) return 'warning';
     return lastSavedByTab[tabId] ? 'success' : 'info';
   };
+  const saveStatusId = `gestion-save-status-${item.id}`;
+  const activeTabSyncError = syncErrorsByTab[activeTab];
+  const saveBadgeTone = activeTabSyncError ? 'danger' : hasUnsavedChanges ? 'warning' : 'success';
+  const saveBadgeLabel = activeTabSyncError ? 'Error al guardar' : hasUnsavedChanges ? 'Cambios sin guardar' : 'Sincronizado';
+  const saveHelperText = activeTabSyncError
+    ? `${activeTabLabel}: ${activeTabSyncError}`
+    : hasUnsavedChanges
+      ? `${activeTabLabel}: tenés cambios pendientes. Guardalos para mantener la carpeta sincronizada.`
+      : `${activeTabLabel}: los datos visibles ya están sincronizados.`;
   const handleTramiteAction = async ({ label, backendAction }) => {
     const transitioned = await onRunWorkflowTransition?.({
       caseId: item.id,
@@ -308,6 +322,20 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
     });
   };
 
+  const currentVisibleTramite = item.backendVisibleStates?.tramite || null;
+  const currentVisibleRepair = item.backendVisibleStates?.reparacion || null;
+
+  const handleVisibleStateOverride = async (domain) => {
+    const selectedCode = manualVisibleStateDraft[domain] || '';
+    const success = await onSetVisibleStateOverride?.({
+      caseId: item.id,
+      domain,
+      stateCode: selectedCode || null,
+    });
+    if (!success) return;
+    setManualVisibleStateDraft((current) => ({ ...current, [domain]: '' }));
+  };
+
   return (
     <div className="page-stack">
       <section className={`hero-panel compact-hero detail-hero ${franchiseRecovery ? 'franchise-hero' : ''}`}>
@@ -343,15 +371,32 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
           )}
           <div className="status-group muted-restricted">
             <span>Administración</span>
-              <button className="ghost-button" disabled type="button">Rechazado / Desistido</button>
-              {item.computed.repairStatus === 'No debe repararse' ? <StatusBadge tone="info">No debe repararse</StatusBadge> : null}
+            <div className="status-toolbar-admin-row">
+              <label className="admin-state-picker">
+                <span>Trámite visible</span>
+                <select onChange={(event) => setManualVisibleStateDraft((current) => ({ ...current, tramite: event.target.value }))} value={manualVisibleStateDraft.tramite}>
+                  {MANUAL_VISIBLE_STATE_OPTIONS.tramite.map((option) => (
+                    <option key={option.code || 'auto-tramite'} value={option.code}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <button className="ghost-button" onClick={() => { void handleVisibleStateOverride('tramite'); }} type="button">Aplicar</button>
+              {currentVisibleTramite?.manualOverride ? <StatusBadge tone="warning">Manual: {currentVisibleTramite.label}</StatusBadge> : <StatusBadge tone="info">Automático</StatusBadge>}
             </div>
+            <div className="status-toolbar-admin-row">
+              <label className="admin-state-picker">
+                <span>Reparación visible</span>
+                <select onChange={(event) => setManualVisibleStateDraft((current) => ({ ...current, reparacion: event.target.value }))} value={manualVisibleStateDraft.reparacion}>
+                  {MANUAL_VISIBLE_STATE_OPTIONS.reparacion.map((option) => (
+                    <option key={option.code || 'auto-reparacion'} value={option.code}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <button className="ghost-button" onClick={() => { void handleVisibleStateOverride('reparacion'); }} type="button">Aplicar</button>
+              {currentVisibleRepair?.manualOverride ? <StatusBadge tone="warning">Manual: {currentVisibleRepair.label}</StatusBadge> : <StatusBadge tone="info">Automático</StatusBadge>}
+            </div>
+            {item.computed.repairStatus === 'No debe repararse' ? <StatusBadge tone="info">No debe repararse</StatusBadge> : null}
           </div>
-        <div className="backend-cases-actions gestion-sync-actions">
-          <button className="primary-button" disabled={isSavingCase} onClick={() => { void onSyncCase?.(); }} type="button">
-            {isSavingCase ? 'Guardando...' : 'Guardar cambios'}
-          </button>
-          {hasUnsavedChanges ? <StatusBadge tone="warning">Cambios sin guardar</StatusBadge> : <StatusBadge tone="success">Sincronizado</StatusBadge>}
         </div>
       </section>
 
@@ -386,6 +431,26 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
           </TabButton>
         ))}
       </div>
+
+      <section className="gestion-save-bar" aria-label="Guardado de la carpeta">
+        <div className="gestion-save-bar-copy">
+          <p className="eyebrow">Edición activa</p>
+          <strong>{activeTabLabel}</strong>
+          <small id={saveStatusId} role="status" aria-live="polite">{isSavingCase ? `Guardando cambios de ${activeTabLabel}...` : saveHelperText}</small>
+        </div>
+        <div className="gestion-save-bar-actions">
+          <StatusBadge tone={saveBadgeTone}>{isSavingCase ? 'Guardando...' : saveBadgeLabel}</StatusBadge>
+          <button
+            aria-describedby={saveStatusId}
+            className="primary-button gestion-save-button"
+            disabled={isSavingCase}
+            onClick={() => { void onSyncCase?.(); }}
+            type="button"
+          >
+            {isSavingCase ? 'Guardando...' : 'Guardar cambios'}
+          </button>
+        </div>
+      </section>
 
       <div className={`form-grid aside-layout ${['ficha', 'presupuesto', 'gestion', 'pagos'].includes(activeTab) ? 'aside-layout-full' : ''}`}>
         <div>

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tallerzapata.backend.api.casefile.CaseWorkflowActionResponse;
 import com.tallerzapata.backend.api.casefile.CaseWorkflowActionsResponse;
 import com.tallerzapata.backend.api.casefile.CaseWorkflowHistoryResponse;
+import com.tallerzapata.backend.api.casefile.CaseVisibleStateOverrideRequest;
 import com.tallerzapata.backend.api.casefile.CaseWorkflowTransitionRequest;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
@@ -42,6 +43,7 @@ public class CaseWorkflowService {
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService caseAccessControlService;
     private final ObjectMapper objectMapper;
+    private final CaseVisibleStateResolver caseVisibleStateResolver;
 
     public CaseWorkflowService(
             CaseRepository caseRepository,
@@ -51,7 +53,8 @@ public class CaseWorkflowService {
             CaseAuditService caseAuditService,
             CurrentUserService currentUserService,
             CaseAccessControlService caseAccessControlService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            CaseVisibleStateResolver caseVisibleStateResolver
     ) {
         this.caseRepository = caseRepository;
         this.workflowTransitionRepository = workflowTransitionRepository;
@@ -61,6 +64,48 @@ public class CaseWorkflowService {
         this.currentUserService = currentUserService;
         this.caseAccessControlService = caseAccessControlService;
         this.objectMapper = objectMapper;
+        this.caseVisibleStateResolver = caseVisibleStateResolver;
+    }
+
+    @Transactional
+    public void overrideVisibleState(Long caseId, CaseVisibleStateOverrideRequest request, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = caseRepository.findById(caseId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
+        caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "caso.ver");
+        caseAccessControlService.requirePermission(currentUser, "workflow.estado.visible.override");
+
+        String domain = caseVisibleStateResolver.normalizeDomain(request.domain());
+        String stateCode = caseVisibleStateResolver.normalizeCode(request.stateCode());
+        caseVisibleStateResolver.validateOverrideCode(domain, stateCode);
+
+        if ("tramite".equals(domain)) {
+            caseEntity.setVisibleCaseStateOverrideCode(stateCode);
+        } else {
+            caseEntity.setVisibleRepairStateOverrideCode(stateCode);
+        }
+        caseRepository.save(caseEntity);
+
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("domain", domain);
+        after.put("stateCode", stateCode);
+        after.put("stateLabel", stateCode == null ? null : caseVisibleStateResolver.getLabel(stateCode));
+        after.put("mode", stateCode == null ? "automatic" : "manual");
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("reason", request.reason());
+
+        caseAuditService.register(
+                currentUser.id(),
+                caseEntity.getId(),
+                "casos",
+                caseEntity.getId(),
+                "override_estado_visible",
+                null,
+                caseAuditService.toJson(after),
+                caseAuditService.toJson(metadata),
+                httpRequest
+        );
     }
 
     @Transactional

@@ -126,6 +126,7 @@ export default function AuthenticatedCasesPreview({
       {hasItems && hasFilteredItems ? (
         <AuthenticatedCaseDetail
           detailState={detailState}
+          onOpenCase={onOpenCase}
           onOpenDetail={onOpenDetail}
           onSaveDocument={onSaveDocument}
           onDownloadDocument={onDownloadDocument}

@@ -1,6 +1,45 @@
+import { normalizeLookupText } from './caseNormalizers';
+
+const TECHNICAL_FIELD_MESSAGES = {
+  partsautorizationcode: {
+    label: 'autorizacion de repuestos',
+    location: 'Gestion del tramite',
+  },
+  partsauthorizationcode: {
+    label: 'autorizacion de repuestos',
+    location: 'Gestion del tramite',
+  },
+  reportstatuscode: {
+    label: 'estado del informe',
+    location: 'Presupuesto',
+  },
+};
+
+function getTechnicalValidationMessage(rawMessage) {
+  const normalizedMessage = normalizeLookupText(rawMessage);
+  if (!normalizedMessage) return '';
+
+  const matchedEntry = Object.entries(TECHNICAL_FIELD_MESSAGES).find(([technicalField]) => normalizedMessage.includes(technicalField));
+  if (!matchedEntry) return '';
+
+  const [, metadata] = matchedEntry;
+  const invalidValuePattern = /no permitido|not allowed|invalid|invalido|incorrecto|unsupported/;
+
+  if (invalidValuePattern.test(normalizedMessage)) {
+    return `Revisa ${metadata.location}: la ${metadata.label} que intentas guardar no es valida.`;
+  }
+
+  return `Revisa ${metadata.location}: falta completar o corregir la ${metadata.label}.`;
+}
+
 export function getFriendlyErrorMessage(error) {
   if (!error) {
     return 'Ocurrió un error inesperado. Intentá nuevamente en unos instantes.';
+  }
+
+  const technicalValidationMessage = getTechnicalValidationMessage(error.message);
+  if (technicalValidationMessage) {
+    return technicalValidationMessage;
   }
 
   if (error.httpStatus === 401 || error.httpStatus === 403) {

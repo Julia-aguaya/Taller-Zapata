@@ -371,6 +371,16 @@ describe('GestionView', () => {
     expect(screen.getByText('Cliente')).toBeInTheDocument();
   });
 
+  it('muestra el guardado junto a la seccion activa con estado visible', () => {
+    render(<GestionView {...baseProps} activeTab="gestion" hasUnsavedChanges />);
+
+    expect(screen.getByText('Edición activa')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeInTheDocument();
+    expect(screen.getAllByText('Gestión de reparación').length).toBeGreaterThan(0);
+    expect(screen.getByText('Cambios sin guardar')).toBeInTheDocument();
+    expect(screen.getByText(/tenés cambios pendientes/i)).toBeInTheDocument();
+  });
+
   it('cambia de tab al hacer click en Presupuesto', async () => {
     const onChangeTab = vi.fn();
     const user = userEvent.setup();

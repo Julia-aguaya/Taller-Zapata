@@ -70,6 +70,12 @@ public class CaseEntity {
     @Column(name = "estado_legal_actual_id")
     private Long currentLegalStateId;
 
+    @Column(name = "estado_visible_tramite_override_codigo")
+    private String visibleCaseStateOverrideCode;
+
+    @Column(name = "estado_visible_reparacion_override_codigo")
+    private String visibleRepairStateOverrideCode;
+
     @Column(name = "prioridad_codigo")
     private String priorityCode;
 
@@ -126,6 +132,10 @@ public class CaseEntity {
     public void setCurrentDocumentationStateId(Long currentDocumentationStateId) { this.currentDocumentationStateId = currentDocumentationStateId; }
     public Long getCurrentLegalStateId() { return currentLegalStateId; }
     public void setCurrentLegalStateId(Long currentLegalStateId) { this.currentLegalStateId = currentLegalStateId; }
+    public String getVisibleCaseStateOverrideCode() { return visibleCaseStateOverrideCode; }
+    public void setVisibleCaseStateOverrideCode(String visibleCaseStateOverrideCode) { this.visibleCaseStateOverrideCode = visibleCaseStateOverrideCode; }
+    public String getVisibleRepairStateOverrideCode() { return visibleRepairStateOverrideCode; }
+    public void setVisibleRepairStateOverrideCode(String visibleRepairStateOverrideCode) { this.visibleRepairStateOverrideCode = visibleRepairStateOverrideCode; }
     public String getPriorityCode() { return priorityCode; }
     public void setPriorityCode(String priorityCode) { this.priorityCode = priorityCode; }
     public LocalDateTime getClosedAt() { return closedAt; }
