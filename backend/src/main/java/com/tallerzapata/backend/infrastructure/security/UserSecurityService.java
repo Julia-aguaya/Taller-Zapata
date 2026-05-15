@@ -5,6 +5,7 @@ import com.tallerzapata.backend.infrastructure.persistence.security.PermissionEn
 import com.tallerzapata.backend.infrastructure.persistence.security.PermissionRepository;
 import com.tallerzapata.backend.infrastructure.persistence.security.RolePermissionEntity;
 import com.tallerzapata.backend.infrastructure.persistence.security.RolePermissionRepository;
+import com.tallerzapata.backend.infrastructure.persistence.security.RoleRepository;
 import com.tallerzapata.backend.infrastructure.persistence.security.UserEntity;
 import com.tallerzapata.backend.infrastructure.persistence.security.UserRepository;
 import com.tallerzapata.backend.infrastructure.persistence.security.UserRoleEntity;
@@ -25,17 +26,20 @@ public class UserSecurityService {
     private final UserRoleRepository userRoleRepository;
     private final RolePermissionRepository rolePermissionRepository;
     private final PermissionRepository permissionRepository;
+    private final RoleRepository roleRepository;
 
     public UserSecurityService(
             UserRepository userRepository,
             UserRoleRepository userRoleRepository,
             RolePermissionRepository rolePermissionRepository,
-            PermissionRepository permissionRepository
+            PermissionRepository permissionRepository,
+            RoleRepository roleRepository
     ) {
         this.userRepository = userRepository;
         this.userRoleRepository = userRoleRepository;
         this.rolePermissionRepository = rolePermissionRepository;
         this.permissionRepository = permissionRepository;
+        this.roleRepository = roleRepository;
     }
 
     public Optional<UserEntity> findActiveByEmail(String email) {
@@ -68,13 +72,36 @@ public class UserSecurityService {
         Set<String> authorities = permissionIds.isEmpty()
                 ? Set.of()
                 : permissionRepository.findByIdIn(permissionIds).stream().map(PermissionEntity::getCode).collect(Collectors.toSet());
+        String primaryRole = roleIds.isEmpty()
+                ? "operador"
+                : roleRepository.findAllById(roleIds).stream()
+                .map(item -> normalizeRoleCode(item.getCode()))
+                .sorted((left, right) -> Integer.compare(rolePriority(right), rolePriority(left)))
+                .findFirst()
+                .orElse("operador");
 
         return new AuthenticatedUser(
                 user.getId(),
                 user.getUsername(),
                 buildDisplayName(user),
+                primaryRole,
                 authorities
         );
+    }
+
+    private String normalizeRoleCode(String code) {
+        String normalized = code == null ? "" : code.trim().toLowerCase();
+        if (normalized.startsWith("role_")) {
+            normalized = normalized.substring(5);
+        }
+        return normalized.isBlank() ? "operador" : normalized;
+    }
+
+    private int rolePriority(String role) {
+        if ("admin".equals(role)) return 100;
+        if ("superadmin".equals(role)) return 90;
+        if ("operador".equals(role)) return 10;
+        return 0;
     }
 
     private String buildDisplayName(UserEntity user) {

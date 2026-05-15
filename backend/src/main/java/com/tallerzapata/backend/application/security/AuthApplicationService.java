@@ -86,7 +86,7 @@ public class AuthApplicationService {
         return new AuthenticatedUserResponse(
                 user.id().toString(),
                 user.displayName(),
-                user.authorities().stream().sorted().findFirst().orElse("ROLE_USER")
+                user.role()
         );
     }
 }

@@ -1,16 +1,16 @@
 export default function CasesMetrics({
-  filteredItems,
   hasFilteredItems,
   isLoading,
   normalizedSearchTerm,
   state,
   formatDateTime,
+  visibleCount,
 }) {
   return (
     <div className="backend-cases-metrics" role="list" aria-label="Resumen de carpetas reales">
       <article className="backend-case-metric" role="listitem">
         <span>Carpetas en pantalla</span>
-        <strong>{hasFilteredItems ? filteredItems.length : 0}</strong>
+        <strong>{hasFilteredItems ? visibleCount : 0}</strong>
         <small>{normalizedSearchTerm ? 'Coincidencias con tu búsqueda actual.' : 'Vista rápida de las carpetas disponibles.'}</small>
       </article>
       <article className="backend-case-metric" role="listitem">

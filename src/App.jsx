@@ -77,7 +77,7 @@ import { useCaseDraftSync } from './features/cases/hooks/useCaseDraftSync';
 import { detectDirtyState, calculateSyncDebounceDelay, prepareSyncPayload, consolidateOperations, calculateSyncRetryDelay, shouldSyncRetry, validateDraftForSync } from './features/cases/lib/caseSyncOperations';
 import AuthenticatedAppShell from './app/AuthenticatedAppShell';
 import BlockingDocGateModal from './app/BlockingDocGateModal';
-import { NAV_ITEMS, getActiveViewTitle } from './app/authenticatedShellConfig';
+import { getNavItems, getActiveViewTitle } from './app/authenticatedShellConfig';
 import {
   clearBackendSession,
   getCaseAppointmentsUrl,
@@ -200,6 +200,7 @@ import PanelGeneral from './features/panel/components/PanelGeneral';
 import GestionView from './features/gestion/components/GestionView';
 import AgendaView from './features/agenda/components/AgendaView';
 import AuthenticatedCasesPreview from './features/panel/components/AuthenticatedCasesPreview';
+import AdminManagementView from './features/admin/components/AdminManagementView';
 import { BRANCHES, FRANCHISE_RECOVERY_TRAMITE, PAINT_TYPES, VEHICLE_TYPES, VEHICLE_USES } from './features/newCase/constants/formOptions';
 import { formatDocumentAudience, getBackendCaseDetailHeadline, getBackendCaseKey } from './features/panel/lib/panelPreviewHelpers';
 import { createEmptyForm } from './features/newCase/factories/newCaseForm';
@@ -3778,7 +3779,7 @@ function App() {
     }
   };
 
-  const syncSelectedCaseToBackend = async ({ silent = false, tabs = null } = {}) => {
+  const syncSelectedCaseToBackend = async ({ silent = false, tabs = null, changeNote = '' } = {}) => {
     if (!selectedCase) {
       if (!silent) {
         flash({ tone: 'danger', title: 'Sin carpeta seleccionada', message: 'Elegí una carpeta antes de guardar cambios.' });
@@ -3824,7 +3825,7 @@ function App() {
               dynamics: selectedCase.todoRisk?.incident?.dynamics || null,
               observations: selectedCase.todoRisk?.incident?.observations || null,
               prescriptionDate: toDate(addYears(selectedCase.todoRisk?.incident?.date || '', 3)),
-            }));
+            }, { changeNote }));
         }
 
         if ((isInsuranceWorkflowCase(selectedCase) || isFranchiseRecoveryCase(selectedCase)) && shouldSync('tramite')) {
@@ -3889,7 +3890,7 @@ function App() {
               cleasNumber: selectedCase.todoRisk?.insurance?.cleasNumber || null,
               processorCasePersonId: insuranceDetail.processorCasePersonId || null,
               inspectorCasePersonId: insuranceDetail.inspectorCasePersonId || null,
-            }));
+            }, { changeNote }));
           }
 
           pushSyncOp('tramite', updateAuthenticatedCaseFranchise(accessToken, caseId, {
@@ -3901,7 +3902,7 @@ function App() {
             exceedsFranchise: selectedCase.todoRisk?.franchise?.exceedsFranchise === 'SI',
             recoveryAmount: toDecimal(selectedCase.todoRisk?.franchise?.recoveryAmount),
             notes: selectedCase.todoRisk?.franchise?.notes || null,
-          }));
+          }, { changeNote }));
 
           pushSyncOp('tramite', updateAuthenticatedCaseCleas(accessToken, caseId, {
             scopeCode: cleasScopeCode,
@@ -3913,7 +3914,7 @@ function App() {
             companyFranchisePaymentAmount: toDecimal(selectedCase.todoRisk?.processing?.companyFranchisePaymentAmount),
             companyFranchisePaymentStatusCode: companyPaymentStatusCode,
             companyFranchisePaymentDate: toDate(selectedCase.todoRisk?.processing?.companyFranchisePaymentDate),
-          }));
+          }, { changeNote }));
 
           pushSyncOp('tramite', updateAuthenticatedCaseInsuranceProcessing(accessToken, caseId, {
             presentedAt: toDate(selectedCase.todoRisk?.processing?.presentedDate),
@@ -3931,7 +3932,7 @@ function App() {
               finalAmountForWorkshop: toDecimal(selectedCase.computed?.thirdParty?.finalInFavorTaller || selectedCase.computed?.todoRisk?.amountToInvoice),
               noRepair: Boolean(selectedCase.todoRisk?.processing?.noRepairNeeded),
               adminOverrideAppointment: Boolean(selectedCase.todoRisk?.processing?.adminTurnOverride),
-            }));
+            }, { changeNote }));
         }
 
         if ((isThirdPartyWorkshopCase(selectedCase) || isThirdPartyLawyerCase(selectedCase)) && shouldSync('tramite')) {
@@ -3947,7 +3948,7 @@ function App() {
               finalPartsTotal: toDecimal(selectedCase.computed?.thirdParty?.totalFinalParts),
               amountToBillCompany: toDecimal(selectedCase.computed?.thirdParty?.amountToInvoice),
               finalAmountForWorkshop: toDecimal(selectedCase.computed?.thirdParty?.finalInFavorTaller),
-            }));
+            }, { changeNote }));
         }
 
         if (isThirdPartyLawyerCase(selectedCase) && shouldSync('abogado')) {
@@ -3992,7 +3993,7 @@ function App() {
               totalProceedsAmount: toDecimal(selectedCase.lawyer?.closure?.totalAmount),
               observations: selectedCase.lawyer?.observations || null,
               closingNotes: selectedCase.lawyer?.closure?.notes || null,
-            }));
+            }, { changeNote }));
 
           const latestNews = (selectedCase.lawyer?.statusUpdates || []).find((entry) => entry?.detail);
           if (latestNews) {
@@ -4009,7 +4010,7 @@ function App() {
                 newsDate: toDate(latestNews.date) || todayIso(),
                 detail: latestNews.detail,
                 notifyCustomer: Boolean(latestNews.notifyClient),
-              }));
+              }, { changeNote }));
             }
           }
 
@@ -4037,7 +4038,7 @@ function App() {
                 expenseDate: toDate(latestExpense.date),
                 paidByCode,
                 financialMovementId: null,
-              }));
+              }, { changeNote }));
             }
           }
         }
@@ -4060,7 +4061,7 @@ function App() {
             estimatedDays: Number.parseInt(selectedCase.repair?.turno?.estimatedDays || '0', 10) || null,
             minimumCloseAmount: toDecimal(selectedCase.budget?.minimumLaborClose),
             observations: selectedCase.budget?.notes || null,
-          }));
+          }, { changeNote }));
 
           const existingBudgetBySignature = new Map(
             (authenticatedCaseDetailState.budgetState?.data?.items || []).map((entry) => [
@@ -4096,9 +4097,9 @@ function App() {
               pushSyncOp('presupuesto', updateAuthenticatedCaseBudgetItem(accessToken, caseId, existingItem.id, {
                 ...payload,
                 active: true,
-              }));
+              }, { changeNote }));
             } else {
-              pushSyncOp('presupuesto', createAuthenticatedCaseBudgetItem(accessToken, caseId, payload));
+              pushSyncOp('presupuesto', createAuthenticatedCaseBudgetItem(accessToken, caseId, payload, { changeNote }));
             }
           });
 
@@ -4116,7 +4117,7 @@ function App() {
               estimatedHours: null,
               laborAmount: null,
               active: false,
-            }));
+            }, { changeNote }));
           });
 
           const existingPartsBySignature = new Map(
@@ -4151,9 +4152,9 @@ function App() {
               ? { id: part.backendId }
               : existingPartsBySignature.get(signature);
             if (existingPart?.id) {
-              pushSyncOp('presupuesto', updateAuthenticatedCasePart(accessToken, caseId, existingPart.id, payload));
+              pushSyncOp('presupuesto', updateAuthenticatedCasePart(accessToken, caseId, existingPart.id, payload, { changeNote }));
             } else {
-              pushSyncOp('presupuesto', createAuthenticatedCasePart(accessToken, caseId, payload));
+              pushSyncOp('presupuesto', createAuthenticatedCasePart(accessToken, caseId, payload, { changeNote }));
             }
           });
         }
@@ -4232,7 +4233,7 @@ function App() {
               signedAt: null,
               notes: receipt.notes || null,
               documentId: null,
-            }));
+            }, { changeNote }));
           });
 
           const depositedAmount = toDecimal(selectedCase.payments?.depositedAmount);
@@ -4268,13 +4269,13 @@ function App() {
               externalReference: selectedCase.code || null,
               retentions: [],
               applications: [],
-            }));
+            }, { changeNote }));
             }
           }
         }
 
         if (syncOps.length === 0) {
-          return;
+          return true;
         }
 
         const settled = await Promise.allSettled(syncOps.map((entry) => entry.request));
@@ -4346,6 +4347,7 @@ function App() {
       if (!silent) {
         flash({ tone: 'success', title: 'Cambios guardados' });
       }
+      return true;
     } catch (error) {
       const friendlyMessage = getFriendlyErrorMessage(error);
       if (selectedCase && error?.tabId) {
@@ -4357,12 +4359,13 @@ function App() {
       if (!silent) {
         flash({ tone: 'danger', title: 'No pudimos guardar todo', message: friendlyMessage });
       }
+      return false;
     } finally {
       setIsSavingCase(false);
     }
   };
 
-  const runWorkflowTransitionForCase = async ({ caseId, domain, label, backendAction = null, availableActions = [] }) => {
+  const runWorkflowTransitionForCase = async ({ caseId, domain, label, backendAction = null, availableActions = [], changeNote = '' }) => {
     const numericCaseId = Number(caseId);
     if (!Number.isFinite(numericCaseId)) {
       return false;
@@ -4380,7 +4383,7 @@ function App() {
           actionCode: action.actionCode,
           reason: `Transición ejecutada desde ficha técnica: ${label}`,
           automatic: false,
-        });
+        }, { changeNote });
         await openAuthenticatedCaseDetail({ id: numericCaseId });
       });
 
@@ -4392,7 +4395,7 @@ function App() {
     }
   };
 
-  const setVisibleStateOverrideForCase = async ({ caseId, domain, stateCode = null }) => {
+  const setVisibleStateOverrideForCase = async ({ caseId, domain, stateCode = null, changeNote = '' }) => {
     const numericCaseId = Number(caseId);
     if (!Number.isFinite(numericCaseId)) {
       return false;
@@ -4404,7 +4407,7 @@ function App() {
           domain,
           stateCode,
           reason: stateCode ? 'Ajuste manual desde gestion' : 'Volver a seguimiento automatico',
-        });
+        }, { changeNote });
         await openAuthenticatedCaseDetail({ id: numericCaseId });
       });
 
@@ -4536,16 +4539,18 @@ function App() {
 
     setIsPreviewingDocument(true);
     try {
-      await readWithStoredToken(async (accessToken) => {
+      return await readWithStoredToken(async (accessToken) => {
         const result = await downloadAuthenticatedCaseDocument(accessToken, numericCaseId, numericDocumentId);
         const blobUrl = URL.createObjectURL(result.blob);
-        window.open(blobUrl, '_blank', 'noopener,noreferrer');
-        window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+        return {
+          blobUrl,
+          fileName: result.fileName || `documento-${numericDocumentId}`,
+          mimeType: result.blob?.type || '',
+        };
       });
-      return true;
     } catch (error) {
       flash({ tone: 'danger', title: 'No pudimos previsualizar', message: error?.message || 'Falló la apertura del documento.' });
-      return false;
+      return null;
     } finally {
       setIsPreviewingDocument(false);
     }
@@ -4900,7 +4905,7 @@ function App() {
       activeView={activeView}
       activeViewTitle={getActiveViewTitle(activeView)}
       backendSession={backendSession}
-      navItems={NAV_ITEMS}
+      navItems={getNavItems(backendSession?.user?.role || '')}
       notice={notice}
       onLogout={() => { clearSession(); setBackendSession(null); setAppAccess('guest'); setLoginForm({ email: '', password: '' }); }}
       onOpenView={openView}
@@ -4976,6 +4981,7 @@ function App() {
 
       {activeView === 'nuevo' ? (
         <NuevoCaso
+          accessToken={backendSession?.accessToken || ''}
           customerLookupState={customerLookupState}
           form={newCaseForm}
           missing={folderMissing}
@@ -4990,11 +4996,17 @@ function App() {
         />
       ) : null}
 
+      {activeView === 'admin-gestion' ? (
+        <AdminManagementView backendSession={backendSession} />
+      ) : null}
+
       {activeView === 'gestion' ? (
         <GestionView
           activeRepairTab={activeRepairTab}
           activeTab={activeTab}
           allCases={computedCases}
+          currentUserRole={backendSession?.user?.role || ''}
+          detailState={authenticatedCaseDetailState}
           flash={flash}
           item={selectedCase}
           insuranceCatalogs={authenticatedInsuranceCatalogsState.catalogs}

@@ -63,7 +63,7 @@ public class AuthController {
         return new AuthenticatedUserResponse(
                 currentUser.id().toString(),
                 currentUser.displayName(),
-                currentUser.authorities().stream().sorted().findFirst().orElse("ROLE_USER")
+                currentUser.role()
         );
     }
 }

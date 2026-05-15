@@ -1,11 +1,14 @@
+import { useEffect, useMemo, useState } from 'react';
 import { normalizeDocument, normalizePlate } from '../../cases/lib/caseNormalizers';
 import DataField from '../../../components/ui/DataField';
 import SelectField from '../../../components/ui/SelectField';
 import StatusBadge from '../../../components/ui/StatusBadge';
 import ToggleField from '../../../components/ui/ToggleField';
+import { readAuthenticatedReferralContacts } from '../../../lib/api/backend';
 import { BRANCHES, PAINT_TYPES, TRAMITE_TYPES, VEHICLE_TYPES, VEHICLE_USES } from '../constants/formOptions';
 
 export default function NuevoCaso({
+  accessToken,
   form,
   onChange,
   onCreate,
@@ -22,6 +25,48 @@ export default function NuevoCaso({
   const fieldWasAutofilled = (field) => autofilledFields.includes(field);
   const customerTone = customerLookupState.status === 'found' ? 'success' : customerLookupState.status === 'empty' ? 'danger' : 'info';
   const vehicleTone = vehicleLookupState.status === 'found' ? 'success' : vehicleLookupState.status === 'empty' ? 'danger' : 'info';
+  const [referenceSearch, setReferenceSearch] = useState('');
+  const [referralContacts, setReferralContacts] = useState([]);
+  const [referralStatus, setReferralStatus] = useState({ status: 'idle', message: '' });
+
+  useEffect(() => {
+    if (form.referenced !== 'SI' || !accessToken) {
+      setReferralStatus({ status: 'idle', message: '' });
+      return;
+    }
+
+    let ignore = false;
+    setReferralStatus({ status: 'loading', message: '' });
+    readAuthenticatedReferralContacts(accessToken)
+      .then((result) => {
+        if (ignore) return;
+        setReferralContacts(Array.isArray(result.data) ? result.data : []);
+        setReferralStatus({ status: 'success', message: '' });
+      })
+      .catch((error) => {
+        if (ignore) return;
+        setReferralStatus({ status: 'error', message: error?.message || 'No pudimos cargar referenciados.' });
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [accessToken, form.referenced]);
+
+  useEffect(() => {
+    if (form.referenced !== 'SI') {
+      setReferenceSearch('');
+    }
+  }, [form.referenced]);
+
+  const filteredReferralOptions = useMemo(() => {
+    const search = referenceSearch.trim().toLowerCase();
+    const items = search
+      ? referralContacts.filter((item) => [item?.name, item?.email, item?.phone].filter(Boolean).some((value) => String(value).toLowerCase().includes(search)))
+      : referralContacts;
+
+    return items.map((item) => ({ value: item.name, label: item.name }));
+  }, [referenceSearch, referralContacts]);
 
   return (
     <div className="page-stack">
@@ -112,11 +157,16 @@ export default function NuevoCaso({
             <SelectField highlighted={fieldWasAutofilled('vehicleType')} label="Tipo vehiculo" onChange={(value) => onChange('vehicleType', value)} options={VEHICLE_TYPES} value={form.vehicleType} />
             <SelectField highlighted={fieldWasAutofilled('vehicleUse')} label="Uso" onChange={(value) => onChange('vehicleUse', value)} options={VEHICLE_USES} value={form.vehicleUse} />
             <SelectField highlighted={fieldWasAutofilled('paint')} label="Pintura" onChange={(value) => onChange('paint', value)} options={PAINT_TYPES} value={form.paint} />
-            <ToggleField highlighted={fieldWasAutofilled('referenced')} invalid={fieldHasError('referenciado si/no')} label="Referenciado" onChange={(value) => onChange('referenced', value)} required value={form.referenced} />
-            {form.referenced === 'SI' ? (
-              <DataField highlighted={fieldWasAutofilled('referencedName')} invalid={fieldHasError('nombre del referenciado')} label="Nombre del referenciado" onChange={(value) => onChange('referencedName', value)} required value={form.referencedName} />
-            ) : null}
-          </div>
+             <ToggleField highlighted={fieldWasAutofilled('referenced')} invalid={fieldHasError('referenciado si/no')} label="Referenciado" onChange={(value) => onChange('referenced', value)} required value={form.referenced} />
+             {form.referenced === 'SI' ? (
+              <div className="stack-tight nuevo-caso-reference-picker">
+                <DataField label="Buscar referenciado" onChange={setReferenceSearch} placeholder="Buscar por nombre" value={referenceSearch} />
+                <SelectField highlighted={fieldWasAutofilled('referencedName')} invalid={fieldHasError('nombre del referenciado')} label="Nombre del referenciado" onChange={(value) => onChange('referencedName', value)} options={filteredReferralOptions} placeholder="Seleccioná" required value={form.referencedName} />
+                {referralStatus.status === 'loading' ? <small className="muted">Cargando referenciados...</small> : null}
+                {referralStatus.status === 'error' ? <small className="muted">{referralStatus.message}</small> : null}
+              </div>
+             ) : null}
+           </div>
 
           <button className="primary-button" onClick={onCreate} type="button">
             Generar carpeta {form.type || 'Particular'}

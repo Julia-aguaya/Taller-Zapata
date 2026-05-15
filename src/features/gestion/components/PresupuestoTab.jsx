@@ -23,6 +23,7 @@ import {
   syncRepairPartsWithBudget,
   createAccessoryWork,
   createBudgetLine,
+  createBudgetService,
 } from '../lib/gestionShared';
 import { money, numberValue } from '../lib/gestionUtils';
 
@@ -168,6 +169,23 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
         draft.budget.accessoryWorks = [createAccessoryWork()];
         draft.budget.accessoryWorkEnabled = 'NO';
       }
+    });
+  };
+
+  const addBudgetService = () => {
+    updateBudget((draft) => {
+      draft.budget.services = [...(draft.budget.services || []), createBudgetService(`Servicio adicional ${(draft.budget.services?.length || 0) + 1}`)];
+    });
+  };
+
+  const removeBudgetService = (serviceId) => {
+    if ((item.budget.services || []).length === 1) {
+      flash('Necesitás al menos un servicio adicional en esta sección.');
+      return;
+    }
+
+    updateBudget((draft) => {
+      draft.budget.services = (draft.budget.services || []).filter((entry) => entry.id !== serviceId);
     });
   };
 
@@ -410,20 +428,31 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
         <div className="section-head">
           <div>
             <p className="eyebrow">Servicios adicionales</p>
-            <h3></h3>
+            <h3>Servicios editables y ampliables</h3>
           </div>
-          <StatusBadge tone="info">SI / NO / A/V</StatusBadge>
+          <div className="tag-row">
+            <StatusBadge tone="info">SI / NO / A/V</StatusBadge>
+            <button className="secondary-button" onClick={addBudgetService} type="button">Agregar servicio</button>
+          </div>
         </div>
 
         <div className="budget-services-grid">
           {item.budget.services.map((service) => (
             <div className="nested-card budget-service-card" key={service.id}>
               <div className="section-head small-gap">
-                <strong>{service.label}</strong>
+                <strong>{service.label || 'Servicio adicional'}</strong>
                 <StatusBadge tone={service.status === 'SI' ? 'success' : service.status === 'A/V' ? 'info' : 'danger'}>
                   {service.status || 'NO'}
                 </StatusBadge>
               </div>
+              <DataField
+                label="Nombre del servicio"
+                onChange={(value) => updateBudget((draft) => {
+                  const target = draft.budget.services.find((entry) => entry.id === service.id);
+                  target.label = value;
+                })}
+                value={service.label}
+              />
               <SelectField
                 label="Aplica"
                 onChange={(value) => updateBudget((draft) => {
@@ -445,6 +474,7 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
                 placeholder="Detalle interno"
                 value={service.detail}
               />
+              <button className="ghost-button" onClick={() => removeBudgetService(service.id)} type="button">Quitar servicio</button>
             </div>
           ))}
         </div>
@@ -590,4 +620,3 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
     </div>
   );
 }
-

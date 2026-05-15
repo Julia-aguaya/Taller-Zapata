@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import StatusBadge from '../../../components/ui/StatusBadge';
 import StatusStepper from '../../../components/ui/StatusStepper';
 import TabButton from '../../../components/ui/TabButton';
@@ -25,8 +25,19 @@ import { money, numberValue } from '../lib/gestionUtils';
 import { todayIso } from '../../cases/lib/caseAgendaHelpers';
 import { MANUAL_VISIBLE_STATE_OPTIONS } from '../../cases/lib/backendVisibleStates';
 
-export default function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRepairTab, updateCase, flash, onSyncCase, onRunWorkflowTransition, onSetVisibleStateOverride, isSavingCase = false, hasUnsavedChanges = false, insuranceCatalogs = null, financeCatalogs = null, debugCodeIssues = [], allCases = [] }) {
+function isAdminRole(role) {
+  const normalized = String(role || '').trim().toLowerCase();
+  return ['admin', 'administrador', 'administrator', 'superadmin'].includes(normalized);
+}
+
+export default function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRepairTab, updateCase, flash, onSyncCase, onRunWorkflowTransition, onSetVisibleStateOverride, isSavingCase = false, hasUnsavedChanges = false, insuranceCatalogs = null, financeCatalogs = null, debugCodeIssues = [], allCases = [], currentUserRole = '', detailState = null }) {
   const [manualVisibleStateDraft, setManualVisibleStateDraft] = useState({ tramite: '', reparacion: '' });
+  const [changeNoteDraft, setChangeNoteDraft] = useState('');
+  const [visibleAuditCount, setVisibleAuditCount] = useState(3);
+
+  useEffect(() => {
+    setVisibleAuditCount(3);
+  }, [item?.id]);
 
   if (!item) {
     return (
@@ -40,6 +51,10 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
   }
 
   const franchiseRecovery = isFranchiseRecoveryCase(item);
+  const canManageAdministrativeStates = isAdminRole(currentUserRole);
+  const auditEventsState = detailState?.item?.id === item?.id ? (detailState?.auditEventsState || { status: 'idle', items: [], total: 0, detail: '' }) : { status: 'idle', items: [], total: 0, detail: '' };
+  const visibleAuditItems = Array.isArray(auditEventsState.items) ? auditEventsState.items.slice(0, visibleAuditCount) : [];
+  const remainingAuditCount = Math.max((auditEventsState.total || 0) - visibleAuditItems.length, 0);
   const franchiseEnablesRepair = franchiseRecovery ? item.franchiseRecovery?.enablesRepair !== 'NO' : true;
   const supportsTramiteTab = isInsuranceWorkflowCase(item) || franchiseRecovery;
   const tabs = isThirdPartyLawyerCase(item)
@@ -146,13 +161,17 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
       : `${activeTabLabel}: los datos visibles ya están sincronizados.`;
   const handleTramiteAction = async ({ label, backendAction }) => {
     const transitioned = await onRunWorkflowTransition?.({
+      changeNote: changeNoteDraft,
       caseId: item.id,
       domain: 'tramite',
       label,
       backendAction,
       availableActions: item.backendWorkflow?.actions || [],
     });
-    if (transitioned) return;
+    if (transitioned) {
+      setChangeNoteDraft('');
+      return;
+    }
 
     const today = todayIso();
 
@@ -227,13 +246,17 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
 
   const handleRepairAction = async ({ label, backendAction }) => {
     const transitioned = await onRunWorkflowTransition?.({
+      changeNote: changeNoteDraft,
       caseId: item.id,
       domain: 'reparacion',
       label,
       backendAction,
       availableActions: item.backendWorkflow?.actions || [],
     });
-    if (transitioned) return;
+    if (transitioned) {
+      setChangeNoteDraft('');
+      return;
+    }
 
     const today = todayIso();
 
@@ -329,11 +352,20 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
     const selectedCode = manualVisibleStateDraft[domain] || '';
     const success = await onSetVisibleStateOverride?.({
       caseId: item.id,
+      changeNote: changeNoteDraft,
       domain,
       stateCode: selectedCode || null,
     });
     if (!success) return;
+    setChangeNoteDraft('');
     setManualVisibleStateDraft((current) => ({ ...current, [domain]: '' }));
+  };
+
+  const handleSaveChanges = async () => {
+    const success = await onSyncCase?.({ changeNote: changeNoteDraft });
+    if (success) {
+      setChangeNoteDraft('');
+    }
   };
 
   return (
@@ -350,53 +382,74 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
         </div>
 
         <div className="status-toolbar status-toolbar-expanded">
-          {hasInteractiveInsuranceControls ? (
+          {canManageAdministrativeStates && hasInteractiveInsuranceControls ? (
             <>
               <StatusActionBar label="Trámite" actions={tramiteActionsBound} onSelect={handleTramiteAction} />
               <StatusActionBar label="Reparación" actions={repairActionsBound} onSelect={handleRepairAction} />
             </>
           ) : (
-            <>
-              <StatusStepper
-                activeValue={tramiteStepper.activeValue}
-                items={tramiteStepper.items}
-                label="Trámite"
-              />
-              <StatusStepper
-                activeValue={repairStepper.activeValue}
-                items={repairStepper.items}
-                label="Reparación"
-              />
-            </>
+            canManageAdministrativeStates ? (
+              <>
+                <StatusStepper
+                  activeValue={tramiteStepper.activeValue}
+                  items={tramiteStepper.items}
+                  label="Trámite"
+                />
+                <StatusStepper
+                  activeValue={repairStepper.activeValue}
+                  items={repairStepper.items}
+                  label="Reparación"
+                />
+              </>
+            ) : (
+              <div className="status-toolbar-readonly-shell">
+                <div className="status-toolbar-readonly-copy">
+                  <span>Estado de tu carpeta</span>
+                  <strong>Seguimiento actual</strong>
+                </div>
+                <div className="status-toolbar-readonly" role="list" aria-label="Estados actuales del caso">
+                  <article className="status-summary-card" role="listitem">
+                    <span>Trámite actual</span>
+                    <strong>{item.computed.tramiteStatus || 'Sin dato'}</strong>
+                  </article>
+                  <article className="status-summary-card" role="listitem">
+                    <span>Reparación actual</span>
+                    <strong>{item.computed.repairStatus || 'Sin dato'}</strong>
+                  </article>
+                </div>
+              </div>
+            )
           )}
-          <div className="status-group muted-restricted">
-            <span>Administración</span>
-            <div className="status-toolbar-admin-row">
-              <label className="admin-state-picker">
-                <span>Trámite visible</span>
-                <select onChange={(event) => setManualVisibleStateDraft((current) => ({ ...current, tramite: event.target.value }))} value={manualVisibleStateDraft.tramite}>
-                  {MANUAL_VISIBLE_STATE_OPTIONS.tramite.map((option) => (
-                    <option key={option.code || 'auto-tramite'} value={option.code}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
-              <button className="ghost-button" onClick={() => { void handleVisibleStateOverride('tramite'); }} type="button">Aplicar</button>
-              {currentVisibleTramite?.manualOverride ? <StatusBadge tone="warning">Manual: {currentVisibleTramite.label}</StatusBadge> : <StatusBadge tone="info">Automático</StatusBadge>}
+          {canManageAdministrativeStates ? (
+            <div className="status-group muted-restricted">
+              <span>Administración</span>
+              <div className="status-toolbar-admin-row">
+                <label className="admin-state-picker">
+                  <span>Trámite visible</span>
+                  <select onChange={(event) => setManualVisibleStateDraft((current) => ({ ...current, tramite: event.target.value }))} value={manualVisibleStateDraft.tramite}>
+                    {MANUAL_VISIBLE_STATE_OPTIONS.tramite.map((option) => (
+                      <option key={option.code || 'auto-tramite'} value={option.code}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <button className="ghost-button" onClick={() => { void handleVisibleStateOverride('tramite'); }} type="button">Aplicar</button>
+                {currentVisibleTramite?.manualOverride ? <StatusBadge tone="warning">Manual: {currentVisibleTramite.label}</StatusBadge> : <StatusBadge tone="info">Automático</StatusBadge>}
+              </div>
+              <div className="status-toolbar-admin-row">
+                <label className="admin-state-picker">
+                  <span>Reparación visible</span>
+                  <select onChange={(event) => setManualVisibleStateDraft((current) => ({ ...current, reparacion: event.target.value }))} value={manualVisibleStateDraft.reparacion}>
+                    {MANUAL_VISIBLE_STATE_OPTIONS.reparacion.map((option) => (
+                      <option key={option.code || 'auto-reparacion'} value={option.code}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <button className="ghost-button" onClick={() => { void handleVisibleStateOverride('reparacion'); }} type="button">Aplicar</button>
+                {currentVisibleRepair?.manualOverride ? <StatusBadge tone="warning">Manual: {currentVisibleRepair.label}</StatusBadge> : <StatusBadge tone="info">Automático</StatusBadge>}
+              </div>
+              {item.computed.repairStatus === 'No debe repararse' ? <StatusBadge tone="info">No debe repararse</StatusBadge> : null}
             </div>
-            <div className="status-toolbar-admin-row">
-              <label className="admin-state-picker">
-                <span>Reparación visible</span>
-                <select onChange={(event) => setManualVisibleStateDraft((current) => ({ ...current, reparacion: event.target.value }))} value={manualVisibleStateDraft.reparacion}>
-                  {MANUAL_VISIBLE_STATE_OPTIONS.reparacion.map((option) => (
-                    <option key={option.code || 'auto-reparacion'} value={option.code}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
-              <button className="ghost-button" onClick={() => { void handleVisibleStateOverride('reparacion'); }} type="button">Aplicar</button>
-              {currentVisibleRepair?.manualOverride ? <StatusBadge tone="warning">Manual: {currentVisibleRepair.label}</StatusBadge> : <StatusBadge tone="info">Automático</StatusBadge>}
-            </div>
-            {item.computed.repairStatus === 'No debe repararse' ? <StatusBadge tone="info">No debe repararse</StatusBadge> : null}
-          </div>
+          ) : null}
         </div>
       </section>
 
@@ -437,6 +490,10 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
           <p className="eyebrow">Edición activa</p>
           <strong>{activeTabLabel}</strong>
           <small id={saveStatusId} role="status" aria-live="polite">{isSavingCase ? `Guardando cambios de ${activeTabLabel}...` : saveHelperText}</small>
+          <label className="field gestion-save-note-field">
+            <span>Nota del cambio (opcional)</span>
+            <textarea onChange={(event) => setChangeNoteDraft(event.target.value)} placeholder="Ej: actualicé estado, corregí datos del seguro, registré pago, etc." value={changeNoteDraft} />
+          </label>
         </div>
         <div className="gestion-save-bar-actions">
           <StatusBadge tone={saveBadgeTone}>{isSavingCase ? 'Guardando...' : saveBadgeLabel}</StatusBadge>
@@ -444,7 +501,7 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
             aria-describedby={saveStatusId}
             className="primary-button gestion-save-button"
             disabled={isSavingCase}
-            onClick={() => { void onSyncCase?.(); }}
+            onClick={() => { void handleSaveChanges(); }}
             type="button"
           >
             {isSavingCase ? 'Guardando...' : 'Guardar cambios'}
@@ -452,12 +509,12 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
         </div>
       </section>
 
-      <div className={`form-grid aside-layout ${['ficha', 'presupuesto', 'gestion', 'pagos'].includes(activeTab) ? 'aside-layout-full' : ''}`}>
+      <div className="form-grid aside-layout aside-layout-full">
         <div>
           {activeTab === 'ficha' ? <FichaTecnicaTab item={item} updateCase={updateCase} /> : null}
-              {activeTab === 'tramite' ? <GestionTramiteTab allCases={allCases} flash={flash} insuranceCatalogs={insuranceCatalogs} item={item} updateCase={updateCase} /> : null}
-              {activeTab === 'documentacion' ? <DocumentacionTab flash={flash} item={item} updateCase={updateCase} /> : null}
-              {activeTab === 'presupuesto' ? <PresupuestoTab flash={flash} item={item} updateCase={updateCase} /> : null}
+          {activeTab === 'tramite' ? <GestionTramiteTab allCases={allCases} flash={flash} insuranceCatalogs={insuranceCatalogs} item={item} updateCase={updateCase} /> : null}
+          {activeTab === 'documentacion' ? <DocumentacionTab flash={flash} item={item} updateCase={updateCase} /> : null}
+          {activeTab === 'presupuesto' ? <PresupuestoTab flash={flash} item={item} updateCase={updateCase} /> : null}
           {activeTab === 'gestion' ? (
             <GestionReparacionTab
               activeRepairTab={activeRepairTab}
@@ -467,10 +524,64 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
               updateCase={updateCase}
             />
           ) : null}
-              {activeTab === 'pagos' ? <PagosTab financeCatalogs={financeCatalogs} flash={flash} insuranceCatalogs={insuranceCatalogs} item={item} updateCase={updateCase} /> : null}
-              {activeTab === 'abogado' ? <AbogadoTab flash={flash} insuranceCatalogs={insuranceCatalogs} item={item} updateCase={updateCase} /> : null}
+          {activeTab === 'pagos' ? <PagosTab financeCatalogs={financeCatalogs} flash={flash} insuranceCatalogs={insuranceCatalogs} item={item} updateCase={updateCase} /> : null}
+          {activeTab === 'abogado' ? <AbogadoTab flash={flash} insuranceCatalogs={insuranceCatalogs} item={item} updateCase={updateCase} /> : null}
         </div>
       </div>
+
+      <details className="card inner-card collapsible-card">
+        <summary className="collapsible-summary">
+          <div className="collapsible-summary-copy">
+            <span className="collapsible-summary-kicker">Actividad</span>
+            <strong>Historial</strong>
+            <small>Últimos cambios de la carpeta con fecha, usuario y nota opcional.</small>
+          </div>
+          <div className="collapsible-summary-meta">
+            <StatusBadge tone="info">{auditEventsState.total || 0} evento(s)</StatusBadge>
+          </div>
+        </summary>
+
+        {auditEventsState.status === 'loading' ? (
+          <div className="backend-cases-empty" role="status" aria-live="polite">
+            <strong>Estamos cargando el historial.</strong>
+            <p>{auditEventsState.detail || 'En unos instantes vas a ver los últimos cambios.'}</p>
+          </div>
+        ) : auditEventsState.status === 'success' ? (
+          <div className="backend-timeline gestion-history-list" role="list" aria-label="Historial reciente de la carpeta">
+            {visibleAuditItems.map((event, index) => (
+              <article className="backend-timeline-item gestion-history-item" key={event.id || `${event.createdAt || 'audit'}-${index}`} role="listitem">
+                <div className="backend-document-card-head">
+                  <div className="stack-tight">
+                    <span className="client-case-kicker">{formatBackendState(event.domain || 'Seguimiento')}</span>
+                    <strong>{formatBackendState(event.actionCode || 'Cambio')}</strong>
+                  </div>
+                  <StatusBadge tone="info">{formatDateTime(event.createdAt)}</StatusBadge>
+                </div>
+                {event.changeNote ? <p className="backend-audit-note">Nota: {event.changeNote}</p> : null}
+                <small>{event.actorDisplayName || 'Registro automático del sistema'}</small>
+              </article>
+            ))}
+
+            {remainingAuditCount > 0 ? (
+              <div className="actions-row gestion-history-actions">
+                <button className="secondary-button gestion-history-load-more" onClick={() => setVisibleAuditCount((current) => current + 3)} type="button">
+                  Cargar más ({remainingAuditCount} restante/s)
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : auditEventsState.status === 'error' ? (
+          <div className="backend-cases-empty" role="status">
+            <strong>No pudimos mostrar el historial.</strong>
+            <p>{auditEventsState.detail || 'Intentá nuevamente en unos instantes.'}</p>
+          </div>
+        ) : (
+          <div className="backend-cases-empty" role="status">
+            <strong>Todavía no vemos historial para esta carpeta.</strong>
+            <p>{auditEventsState.detail || 'Cuando se registren cambios, van a aparecer acá.'}</p>
+          </div>
+        )}
+      </details>
 
       <aside className="side-panel">
         <article className="card inner-card">
@@ -498,4 +609,3 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
     </div>
   );
 }
-

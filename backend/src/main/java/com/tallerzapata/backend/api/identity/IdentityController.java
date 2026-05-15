@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -45,6 +46,27 @@ public class IdentityController {
     @GetMapping("/branches")
     public List<BranchResponse> listBranches(@RequestParam(name = "organizationId", required = false) Long organizationId) {
         return identityAdminService.listBranches(organizationId);
+    }
+
+    @Operation(summary = "Listar roles", description = "Devuelve el listado de roles activos para gestion administrativa")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @GetMapping("/roles")
+    public List<RoleSummaryResponse> listRoles() {
+        return identityAdminService.listRoles();
+    }
+
+    @Operation(summary = "Listar usuarios", description = "Devuelve usuarios activos dentro del alcance administrable")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @GetMapping("/users")
+    public List<UserSummaryResponse> listUsers() {
+        return identityAdminService.listUsers();
+    }
+
+    @Operation(summary = "Crear usuario", description = "Crea un nuevo usuario con una asignacion inicial de rol y sucursal")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PostMapping("/users")
+    public UserSummaryResponse createUser(@Valid @RequestBody UserCreateRequest request) {
+        return identityAdminService.createUser(request);
     }
 
     @Operation(summary = "Listar roles de usuario", description = "Devuelve los roles asignados a un usuario especifico")

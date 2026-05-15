@@ -36,6 +36,7 @@ export default function AuditEventsDetailBlock({
                 <StatusBadge tone="info">{formatDateTime(event.occurredAt || event.createdAt)}</StatusBadge>
               </div>
               {event.description || event.summary || event.detail ? <p>{event.description || event.summary || event.detail}</p> : null}
+              {event.changeNote ? <p className="backend-audit-note">Nota: {event.changeNote}</p> : null}
               <small>{event.actorDisplayName || event.actorName || event.createdBy || 'Registro automático del sistema'}</small>
             </article>
           ))}

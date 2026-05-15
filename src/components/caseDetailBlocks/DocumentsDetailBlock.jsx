@@ -30,6 +30,7 @@ export default function DocumentsDetailBlock({
     visualOrder: '1',
   });
   const [editingDocumentId, setEditingDocumentId] = useState(null);
+  const [previewDocument, setPreviewDocument] = useState(null);
   const [replacementFileByDocId, setReplacementFileByDocId] = useState({});
   const [draftMeta, setDraftMeta] = useState({
     categoryId: '1',
@@ -54,6 +55,13 @@ export default function DocumentsDetailBlock({
     ),
   );
   const requiresDateForUploadCategory = Boolean(categories.find((entry) => String(entry.id) === String(uploadMeta.categoryId))?.requiresDate);
+
+  const closePreviewDocument = () => {
+    if (previewDocument?.blobUrl) {
+      URL.revokeObjectURL(previewDocument.blobUrl);
+    }
+    setPreviewDocument(null);
+  };
 
   return (
     <section className="backend-detail-section backend-section-documents">
@@ -208,7 +216,7 @@ export default function DocumentsDetailBlock({
                         {documentDateLabel ? <small>{documentDateLabel}</small> : null}
                         {documentSizeLabel ? <small>{documentSizeLabel}</small> : null}
                       </div>
-                      <div className="notification-card-actions" style={{ marginTop: 8 }}>
+                      <div className="notification-card-actions backend-document-actions" style={{ marginTop: 8 }}>
                         <button
                           className="ghost-button"
                           disabled={isSavingDocuments}
@@ -234,25 +242,31 @@ export default function DocumentsDetailBlock({
                         </button>
                         {canPreview ? (
                           <button
-                            className="ghost-button"
+                            className="secondary-button"
                             disabled={isPreviewingDocument}
-                            onClick={() => {
-                              void onPreviewDocument?.({ caseId, documentId: document.documentId });
+                            onClick={async () => {
+                              const preview = await onPreviewDocument?.({ caseId, documentId: document.documentId });
+                              if (preview?.blobUrl) {
+                                setPreviewDocument({
+                                  ...preview,
+                                  description: document.fileName || `Documento ${document.documentId}`,
+                                });
+                              }
                             }}
                             type="button"
                           >
-                            {isPreviewingDocument ? 'Abriendo...' : 'Previsualizar'}
+                            {isPreviewingDocument ? 'Abriendo...' : 'Vista previa'}
                           </button>
                         ) : null}
                         <button
-                          className="ghost-button"
+                          className="ghost-button backend-document-download"
                           disabled={isDownloadingDocument}
                           onClick={() => {
                             void onDownloadDocument?.({ caseId, documentId: document.documentId });
                           }}
                           type="button"
                         >
-                          {isDownloadingDocument ? 'Descargando...' : 'Descargar'}
+                          {isDownloadingDocument ? 'Descargando...' : 'Descargar archivo'}
                         </button>
                         <button
                           className="ghost-button"
@@ -452,6 +466,30 @@ export default function DocumentsDetailBlock({
 
       {documentsState.detail && documentsState.status !== 'error' ? (
         <div className="backend-detail-notice" role="status"><p>{documentsState.detail}</p></div>
+      ) : null}
+
+      {previewDocument ? (
+        <div className="media-overlay" onClick={closePreviewDocument} role="presentation">
+          <div aria-label={`Vista previa de ${previewDocument.fileName}`} aria-modal="true" className="media-modal document-preview-modal" onClick={(event) => event.stopPropagation()} role="dialog">
+            <div className="media-modal-head">
+              <div>
+                <strong>{previewDocument.fileName}</strong>
+                <p>Previsualización del archivo sin descargarlo a tu PC.</p>
+              </div>
+              <button className="ghost-button" onClick={closePreviewDocument} type="button">Cerrar</button>
+            </div>
+
+            {String(previewDocument.mimeType || '').includes('pdf') ? (
+              <iframe className="document-preview-frame" src={previewDocument.blobUrl} title={previewDocument.fileName} />
+            ) : (
+              <img alt={previewDocument.fileName} src={previewDocument.blobUrl} />
+            )}
+
+            <div className="media-preview-actions">
+              <a className="secondary-button button-link" href={previewDocument.blobUrl} rel="noreferrer" target="_blank">Abrir en pestaña nueva</a>
+            </div>
+          </div>
+        </div>
       ) : null}
     </section>
   );

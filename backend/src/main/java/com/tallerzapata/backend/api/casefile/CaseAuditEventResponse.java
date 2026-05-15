@@ -5,11 +5,13 @@ import java.time.LocalDateTime;
 public record CaseAuditEventResponse(
         Long id,
         Long userId,
+        String actorDisplayName,
         Long caseId,
         String entityType,
         Long entityId,
         String actionCode,
         String domain,
+        String changeNote,
         String beforeJson,
         String afterJson,
         String metadataJson,

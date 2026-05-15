@@ -235,7 +235,6 @@ export default function AgendaView({ items, onOpenCase, onUpdateTask }) {
               <h3>Calendario</h3>
               <p className="muted">Vista mensual simple con concentración de vencimientos por día.</p>
             </div>
-            <StatusBadge tone="info">Demo simple</StatusBadge>
           </div>
           <div className="agenda-calendar-weekdays">
             {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((day) => <span key={day}>{day}</span>)}

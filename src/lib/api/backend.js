@@ -15,6 +15,11 @@ const INSURANCE_COMPANIES_PATH = '/insurance/companies';
 const CASES_CATALOGS_PATH = '/cases/catalogs';
 const PERSONS_PATH = '/persons';
 const VEHICLES_PATH = '/vehicles';
+const ORGANIZATIONS_PATH = '/organizations';
+const BRANCHES_PATH = '/branches';
+const ROLES_PATH = '/roles';
+const USERS_PATH = '/users';
+const REFERRAL_CONTACTS_PATH = '/referral-contacts';
 const SESSION_STORAGE_KEY = 'tallerDemo.backendSession';
 
 function buildCaseDetailPath(caseId) {
@@ -269,6 +274,30 @@ export function getPersonsUrl() {
 
 export function getVehiclesUrl() {
   return buildApiUrl(buildVehiclesPath());
+}
+
+export function getOrganizationsUrl() {
+  return buildApiUrl(ORGANIZATIONS_PATH);
+}
+
+export function getBranchesUrl() {
+  return buildApiUrl(BRANCHES_PATH);
+}
+
+export function getRolesUrl() {
+  return buildApiUrl(ROLES_PATH);
+}
+
+export function getUsersUrl() {
+  return buildApiUrl(USERS_PATH);
+}
+
+export function getReferralContactsUrl() {
+  return buildApiUrl(REFERRAL_CONTACTS_PATH);
+}
+
+export function getUserRolesUrl(userId) {
+  return buildApiUrl(`/users/${userId}/roles`);
 }
 
 export function getInsuranceCompanyContactsUrl(companyId) {
@@ -1414,6 +1443,235 @@ export async function createAuthenticatedPerson(accessToken, body, options = {})
   };
 }
 
+export async function updateAuthenticatedPerson(accessToken, personId, body, options = {}) {
+  const endpoint = `${getPersonsUrl()}/${personId}`;
+  const response = await fetch(endpoint, {
+    method: 'PUT',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude actualizar la persona.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedOrganizations(accessToken, options = {}) {
+  const endpoint = getOrganizationsUrl();
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer las organizaciones.', payload);
+  }
+
+  return { data: payload, endpoint: endpoint.toString(), httpStatus: response.status };
+}
+
+export async function readAuthenticatedBranches(accessToken, filters = {}, options = {}) {
+  const endpoint = new URL(getBranchesUrl());
+  if (Number.isInteger(filters.organizationId)) {
+    endpoint.searchParams.set('organizationId', String(filters.organizationId));
+  }
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer las sucursales.', payload);
+  }
+
+  return { data: payload, endpoint: endpoint.toString(), httpStatus: response.status };
+}
+
+export async function readAuthenticatedRoles(accessToken, options = {}) {
+  const endpoint = getRolesUrl();
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer los roles.', payload);
+  }
+
+  return { data: payload, endpoint: endpoint.toString(), httpStatus: response.status };
+}
+
+export async function readAuthenticatedUsers(accessToken, options = {}) {
+  const endpoint = getUsersUrl();
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer los usuarios.', payload);
+  }
+
+  return { data: payload, endpoint: endpoint.toString(), httpStatus: response.status };
+}
+
+export async function createAuthenticatedUser(accessToken, body, options = {}) {
+  const endpoint = getUsersUrl();
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude crear el usuario.', payload);
+  }
+
+  return { data: payload, endpoint: endpoint.toString(), httpStatus: response.status };
+}
+
+export async function readAuthenticatedUserRoles(accessToken, userId, options = {}) {
+  const endpoint = getUserRolesUrl(userId);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer los roles del usuario.', payload);
+  }
+
+  return { data: payload, endpoint: endpoint.toString(), httpStatus: response.status };
+}
+
+export async function updateAuthenticatedUserRoles(accessToken, userId, body, options = {}) {
+  const endpoint = getUserRolesUrl(userId);
+  const response = await fetch(endpoint, {
+    method: 'PUT',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude actualizar los roles del usuario.', payload);
+  }
+
+  return { data: payload, endpoint: endpoint.toString(), httpStatus: response.status };
+}
+
+export async function readAuthenticatedReferralContacts(accessToken, filters = {}, options = {}) {
+  const endpoint = new URL(getReferralContactsUrl());
+  if (filters.q) {
+    endpoint.searchParams.set('q', String(filters.q));
+  }
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer los referenciados.', payload);
+  }
+
+  return { data: payload, endpoint: endpoint.toString(), httpStatus: response.status };
+}
+
+export async function createAuthenticatedReferralContact(accessToken, body, options = {}) {
+  const endpoint = getReferralContactsUrl();
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude crear el referenciado.', payload);
+  }
+
+  return { data: payload, endpoint: endpoint.toString(), httpStatus: response.status };
+}
+
+export async function updateAuthenticatedReferralContact(accessToken, referralId, body, options = {}) {
+  const endpoint = `${getReferralContactsUrl()}/${referralId}`;
+  const response = await fetch(endpoint, {
+    method: 'PUT',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude actualizar el referenciado.', payload);
+  }
+
+  return { data: payload, endpoint: endpoint.toString(), httpStatus: response.status };
+}
+
 export async function searchAuthenticatedVehicles(accessToken, filters = {}, options = {}) {
   const endpoint = new URL(getVehiclesUrl());
 
@@ -1566,13 +1824,17 @@ export async function markAuthenticatedNotificationAsRead(accessToken, notificat
 }
 
 async function putAuthenticatedCaseResource(accessToken, endpoint, body, fallbackMessage, options = {}) {
+  const headers = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${accessToken}`,
+  };
+  if (options.changeNote?.trim()) {
+    headers['X-Change-Note'] = options.changeNote.trim();
+  }
   const response = await fetch(endpoint, {
     method: 'PUT',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
+    headers,
     body: JSON.stringify(body),
     signal: options.signal,
   });
@@ -1590,13 +1852,17 @@ async function putAuthenticatedCaseResource(accessToken, endpoint, body, fallbac
 }
 
 async function postAuthenticatedCaseResource(accessToken, endpoint, body, fallbackMessage, options = {}) {
+  const headers = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${accessToken}`,
+  };
+  if (options.changeNote?.trim()) {
+    headers['X-Change-Note'] = options.changeNote.trim();
+  }
   const response = await fetch(endpoint, {
     method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
+    headers,
     body: JSON.stringify(body),
     signal: options.signal,
   });

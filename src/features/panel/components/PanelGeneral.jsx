@@ -29,6 +29,7 @@ export default function PanelGeneral({
         documentsCatalogs={authenticatedDocumentsCatalogsState.catalogs}
         formatDate={formatDate}
         formatDateTime={formatDateTime}
+        initialVisibleCases={8}
         isSavingDocuments={isSavingDocuments}
         isDownloadingDocument={isDownloadingDocument}
         isPreviewingDocument={isPreviewingDocument}
@@ -38,6 +39,8 @@ export default function PanelGeneral({
         onOpenDetail={onOpenAuthenticatedCaseDetail}
         onRefresh={onRefreshAuthenticatedCases}
         onSaveDocument={onSaveDocument}
+        prioritizeForUser
+        showLoadMore={false}
         state={authenticatedCasesState}
       />
 

@@ -10,13 +10,19 @@ import com.tallerzapata.backend.infrastructure.persistence.audit.AuditEventEntit
 import com.tallerzapata.backend.infrastructure.persistence.audit.AuditEventRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
+import com.tallerzapata.backend.infrastructure.persistence.security.UserRepository;
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
 import com.tallerzapata.backend.infrastructure.security.CurrentUserService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 public class CaseAuditService {
@@ -26,19 +32,22 @@ public class CaseAuditService {
     private final CaseRepository caseRepository;
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService caseAccessControlService;
+    private final UserRepository userRepository;
 
     public CaseAuditService(
             AuditEventRepository auditEventRepository,
             ObjectMapper objectMapper,
             CaseRepository caseRepository,
             CurrentUserService currentUserService,
-            CaseAccessControlService caseAccessControlService
+            CaseAccessControlService caseAccessControlService,
+            UserRepository userRepository
     ) {
         this.auditEventRepository = auditEventRepository;
         this.objectMapper = objectMapper;
         this.caseRepository = caseRepository;
         this.currentUserService = currentUserService;
         this.caseAccessControlService = caseAccessControlService;
+        this.userRepository = userRepository;
     }
 
     public void register(
@@ -60,7 +69,7 @@ public class CaseAuditService {
         entity.setActionCode(actionCode);
         entity.setBeforeJson(beforeJson);
         entity.setAfterJson(afterJson);
-        entity.setMetadataJson(metadataJson);
+        entity.setMetadataJson(enrichMetadataWithChangeNote(metadataJson, request));
         entity.setSourceIp(request == null ? null : request.getRemoteAddr());
         entity.setUserAgent(request == null ? null : request.getHeader("User-Agent"));
         auditEventRepository.save(entity);
@@ -94,7 +103,7 @@ public class CaseAuditService {
         int normalizedPage = Math.max(page, 0);
         int normalizedSize = Math.min(Math.max(size, 1), 200);
 
-        return auditEventRepository.findByCaseIdOrderByIdDesc(caseId, PageRequest.of(normalizedPage, normalizedSize))
+        List<AuditEventEntity> events = auditEventRepository.findByCaseIdOrderByIdDesc(caseId, PageRequest.of(normalizedPage, normalizedSize))
                 .stream()
                 .filter(event -> actionCode == null || event.getActionCode().equals(actionCode))
                 .filter(event -> userId == null || userId.equals(event.getUserId()))
@@ -105,26 +114,59 @@ public class CaseAuditService {
                     String extracted = extractDomain(event);
                     return domain.equals(extracted);
                 })
-                .map(this::toResponse)
+                .toList();
+
+        Map<Long, String> userDisplayNames = userRepository.findAllById(
+                        events.stream().map(AuditEventEntity::getUserId).filter(java.util.Objects::nonNull).collect(Collectors.toSet())
+                ).stream()
+                .collect(Collectors.toMap(item -> item.getId(), item -> buildDisplayName(item.getFirstName(), item.getLastName())));
+
+        return events.stream()
+                .map(event -> toResponse(event, userDisplayNames))
                 .toList();
     }
 
-    private CaseAuditEventResponse toResponse(AuditEventEntity event) {
+    private CaseAuditEventResponse toResponse(AuditEventEntity event, Map<Long, String> userDisplayNames) {
+        String metadataJson = event.getMetadataJson();
         return new CaseAuditEventResponse(
                 event.getId(),
                 event.getUserId(),
+                userDisplayNames.getOrDefault(event.getUserId(), null),
                 event.getCaseId(),
                 event.getEntityType(),
                 event.getEntityId(),
                 event.getActionCode(),
                 extractDomain(event),
+                extractChangeNote(metadataJson),
                 event.getBeforeJson(),
                 event.getAfterJson(),
-                event.getMetadataJson(),
+                metadataJson,
                 event.getSourceIp(),
                 event.getUserAgent(),
                 event.getCreatedAt()
         );
+    }
+
+    private String enrichMetadataWithChangeNote(String metadataJson, HttpServletRequest request) {
+        String changeNote = request == null ? null : blankToNull(request.getHeader("X-Change-Note"));
+        if (changeNote == null) {
+            return metadataJson;
+        }
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        if (metadataJson != null && !metadataJson.isBlank()) {
+            try {
+                JsonNode node = objectMapper.readTree(metadataJson);
+                if (node.isObject()) {
+                    node.fields().forEachRemaining(entry -> metadata.put(entry.getKey(), objectMapper.convertValue(entry.getValue(), Object.class)));
+                }
+            } catch (Exception ignored) {
+                metadata.put("rawMetadata", metadataJson);
+            }
+        }
+
+        metadata.put("changeNote", changeNote);
+        return toJson(metadata);
     }
 
     private String extractDomain(AuditEventEntity event) {
@@ -153,5 +195,40 @@ public class CaseAuditService {
         } catch (Exception exception) {
             return null;
         }
+    }
+
+    private String extractChangeNote(String metadataJson) {
+        if (metadataJson == null || metadataJson.isBlank()) {
+          return null;
+        }
+
+        try {
+            JsonNode node = objectMapper.readTree(metadataJson);
+            if (!node.has("changeNote") || node.get("changeNote").isNull()) {
+                return null;
+            }
+            return blankToNull(node.get("changeNote").asText());
+        } catch (Exception exception) {
+            return null;
+        }
+    }
+
+    private String buildDisplayName(String firstName, String lastName) {
+        String normalizedFirst = blankToNull(firstName);
+        String normalizedLast = blankToNull(lastName);
+        if (normalizedFirst == null) {
+            return normalizedLast;
+        }
+        if (normalizedLast == null) {
+            return normalizedFirst;
+        }
+        return normalizedFirst + " " + normalizedLast;
+    }
+
+    private String blankToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 }

@@ -159,7 +159,7 @@ export function patchCaseWithBackendDetail(localCase, detailState) {
       label: entry.description || entry.name || `Item ${index + 1}`,
       amount: String(entry.amount ?? entry.total ?? ''),
       status: 'SI',
-      observations: entry.notes || '',
+      detail: entry.notes || entry.observations || '',
     }));
   }
 
