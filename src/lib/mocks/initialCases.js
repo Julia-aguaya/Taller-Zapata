@@ -24,10 +24,11 @@ import {
   createSettlement,
   createTodoRiskInvoice,
 } from '../../features/gestion/lib/gestionShared';
+import { createUuid } from '../utils/id';
 
 function createMediaItem(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     type: 'image',
     label: 'Vista general',
     description: '',
@@ -40,7 +41,7 @@ function createMediaItem(overrides = {}) {
 export function initialCases() {
   return [
     {
-      id: crypto.randomUUID(),
+      id: createUuid(),
       code: '0001PZ',
       counter: 1,
       claimNumber: '833612',
@@ -186,7 +187,7 @@ export function initialCases() {
       },
     },
     {
-      id: crypto.randomUUID(),
+      id: createUuid(),
       code: '0002PC',
       counter: 2,
       claimNumber: '43285410',
@@ -304,7 +305,7 @@ export function initialCases() {
       },
     },
     {
-      id: crypto.randomUUID(),
+      id: createUuid(),
       code: '0003PZ',
       counter: 3,
       claimNumber: '0101024480',
@@ -394,7 +395,7 @@ export function initialCases() {
       },
     },
     {
-      id: crypto.randomUUID(),
+      id: createUuid(),
       code: '0004TZ',
       counter: 4,
       tramiteType: 'Todo Riesgo',
@@ -564,7 +565,7 @@ export function initialCases() {
       },
     },
     {
-      id: crypto.randomUUID(),
+      id: createUuid(),
       code: '0005RZ',
       counter: 5,
       tramiteType: 'Reclamo de Tercero - Taller',
@@ -718,7 +719,7 @@ export function initialCases() {
       },
     },
     {
-      id: crypto.randomUUID(),
+      id: createUuid(),
       code: '006RAZ',
       counter: 6,
       tramiteType: 'Reclamo de Tercero - Abogado',
@@ -932,7 +933,7 @@ export function initialCases() {
       },
     },
     {
-      id: crypto.randomUUID(),
+      id: createUuid(),
       code: '0008CZ',
       counter: 8,
       tramiteType: 'CLEAS / Terceros / Franquicia',
@@ -1134,7 +1135,7 @@ export function initialCases() {
       },
     },
     {
-      id: crypto.randomUUID(),
+      id: createUuid(),
       code: '0007FZ',
       counter: 7,
       tramiteType: FRANCHISE_RECOVERY_TRAMITE,

@@ -14,6 +14,7 @@ import { todayIso } from '../../cases/lib/caseAgendaHelpers';
 import { getFolderDisplayName } from '../../cases/lib/caseDomainCheckers';
 import { numberValue } from './gestionUtils';
 import { createTodoRiskTask } from '../../cases/lib/caseFactories';
+import { createUuid } from '../../../lib/utils/id';
 
 export { createTodoRiskTask };
 
@@ -23,7 +24,7 @@ export { createTodoRiskTask };
 
 export function createBudgetLine(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     backendId: null,
     piece: '',
     task: '',
@@ -37,7 +38,7 @@ export function createBudgetLine(overrides = {}) {
 
 export function createBudgetService(label, overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     label,
     status: 'NO',
     detail: '',
@@ -47,7 +48,7 @@ export function createBudgetService(label, overrides = {}) {
 
 export function createIngresoItem(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     type: 'Otro',
     detail: '',
     media: 'Carpeta',
@@ -57,7 +58,7 @@ export function createIngresoItem(overrides = {}) {
 
 export function createRepairPart(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     backendId: null,
     name: '',
     provider: '',
@@ -77,7 +78,7 @@ export function createRepairPart(overrides = {}) {
 
 export function createAccessoryWork(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     detail: '',
     amount: '',
     includesReplacement: 'NO',
@@ -89,7 +90,7 @@ export function createAccessoryWork(overrides = {}) {
 
 export function createSettlement(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     backendId: null,
     kind: 'Parcial',
     amount: '',
@@ -108,7 +109,7 @@ export function createSettlement(overrides = {}) {
 
 export function createRepairQuoteRow(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     piece: '',
     provider1: '',
     provider2: '',
@@ -124,7 +125,7 @@ export function createRepairQuoteRow(overrides = {}) {
 
 export function createTodoRiskInvoice(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     backendId: null,
     invoiceNumber: '',
     amount: '',
@@ -136,7 +137,7 @@ export function createTodoRiskInvoice(overrides = {}) {
 
 export function createLawyerStatusUpdate(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     detail: '',
     date: '',
     notifyClient: false,
@@ -146,7 +147,7 @@ export function createLawyerStatusUpdate(overrides = {}) {
 
 export function createLawyerExpense(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     concept: '',
     amount: '',
     date: '',
@@ -157,7 +158,7 @@ export function createLawyerExpense(overrides = {}) {
 
 export function createLawyerClosureItem(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     concept: '',
     amount: '',
     paymentDate: '',
@@ -169,7 +170,7 @@ export function createLawyerClosureItem(overrides = {}) {
 
 export function createLawyerInjured(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     injuredRole: 'otro',
     firstName: '',
     lastName: '',

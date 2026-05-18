@@ -2,6 +2,7 @@ import {
   AUTHORIZER_OPTIONS,
   TODO_RIESGO_ASSIGNABLE_USERS,
 } from '../../gestion/constants/gestionOptions';
+import { createUuid } from '../../../lib/utils/id';
 import { todayIso } from './caseAgendaHelpers';
 import {
   createAccessoryWork,
@@ -15,7 +16,7 @@ import {
 
 export function createRepairPart(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     backendId: null,
     name: '',
     provider: '',
@@ -34,7 +35,7 @@ export function createRepairPart(overrides = {}) {
 
 export function createTodoRiskDocument(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     category: 'Personal',
     name: '',
     uploadedAt: '',
@@ -45,7 +46,7 @@ export function createTodoRiskDocument(overrides = {}) {
 
 export function createTodoRiskTask(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     title: '',
     description: '',
     scheduledAt: '',
@@ -67,7 +68,7 @@ export function createTodoRiskTask(overrides = {}) {
 
 export function createRegistryOwner(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     firstName: '',
     lastName: '',
     phone: '',
@@ -86,7 +87,7 @@ export function createRegistryOwner(overrides = {}) {
 
 export function createThirdPartyParticipant(overrides = {}) {
   return {
-    id: crypto.randomUUID(),
+    id: createUuid(),
     driverName: '',
     driverDocument: '',
     driverPhone: '',

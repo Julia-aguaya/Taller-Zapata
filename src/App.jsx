@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createUuid } from './lib/utils/id';
 import { getCaseHash, getCaseRouteFromHash, CASE_TABS, REPAIR_TABS } from './features/routing/lib/caseHash';
 import { normalizeDocument, normalizePlate, normalizeLookupText } from './features/cases/lib/caseNormalizers';
 import { formatBackendState, formatCaseNumber, formatDate, formatDateTime, formatCurrency } from './features/cases/lib/caseFormatters';
@@ -1167,7 +1168,7 @@ function buildLocalCaseFromBackend(item, nextCounter) {
   const holderParts = holder.split(/\s+/).filter(Boolean);
 
   return {
-    id: String(item?.id ?? crypto.randomUUID()),
+    id: String(item?.id ?? createUuid()),
     code: getBackendCaseKey(item),
     counter: nextCounter,
     tramiteType,
