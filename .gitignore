@@ -14,3 +14,5 @@ nul
 
 # Java build artifacts
 backend/target/
+backend/run.log
+backend/run.err

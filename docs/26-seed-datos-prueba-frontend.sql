@@ -462,4 +462,4 @@ COMMIT;
 
 -- Credenciales utiles ya documentadas en el repo:
 -- - admin@tallerzapata.local / password  (ver docs/20-onboarding-backend.md)
--- - admin@demo.com existe por migracion V30; la clave depende de tu entorno local.
+-- - admin@demo.com / password

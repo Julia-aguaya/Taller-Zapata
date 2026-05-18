@@ -1,4 +1,4 @@
-const DEFAULT_API_BASE_URL = 'http://localhost:8081/api/v1';
+const DEFAULT_API_BASE_URL = '/api/v1';
 const CONNECTIVITY_PROBE_PATH = '/cases';
 const LOGIN_PATH = '/auth/login';
 const CURRENT_USER_PATH = '/auth/me';
@@ -184,6 +184,17 @@ function buildVehiclesPath() {
 
 function buildApiUrl(path) {
   return `${getApiBaseUrl()}${path}`;
+}
+
+function buildApiUrlObject(path) {
+  const endpoint = buildApiUrl(path);
+
+  if (/^https?:\/\//.test(endpoint)) {
+    return new URL(endpoint);
+  }
+
+  const baseOrigin = typeof window === 'undefined' ? 'http://localhost' : window.location.origin;
+  return new URL(endpoint, baseOrigin);
 }
 
 function getStorage() {
@@ -550,7 +561,7 @@ export async function readCurrentUser(accessToken, options = {}) {
 }
 
 export async function readAuthenticatedCases(accessToken, options = {}) {
-  const endpoint = new URL(getConnectivityProbeUrl());
+  const endpoint = buildApiUrlObject(CONNECTIVITY_PROBE_PATH);
 
   if (Number.isInteger(options.page)) {
     endpoint.searchParams.set('page', String(options.page));
@@ -950,7 +961,7 @@ export async function readAuthenticatedCaseBudget(accessToken, caseId, options =
 }
 
 export async function readAuthenticatedCaseDocuments(accessToken, caseId, options = {}) {
-  const endpoint = new URL(getCaseDocumentsUrl(caseId));
+  const endpoint = buildApiUrlObject(buildCaseDocumentsPath(caseId));
 
   if (typeof options.visibleToCustomer === 'boolean') {
     endpoint.searchParams.set('visibleToCustomer', String(options.visibleToCustomer));
@@ -1387,7 +1398,7 @@ export async function readAuthenticatedCasesCatalogs(accessToken, options = {}) 
 }
 
 export async function searchAuthenticatedPersons(accessToken, filters = {}, options = {}) {
-  const endpoint = new URL(getPersonsUrl());
+  const endpoint = buildApiUrlObject(buildPersonsPath());
 
   if (filters.document) {
     endpoint.searchParams.set('document', String(filters.document));
@@ -1673,7 +1684,7 @@ export async function updateAuthenticatedReferralContact(accessToken, referralId
 }
 
 export async function searchAuthenticatedVehicles(accessToken, filters = {}, options = {}) {
-  const endpoint = new URL(getVehiclesUrl());
+  const endpoint = buildApiUrlObject(buildVehiclesPath());
 
   if (filters.plate) {
     endpoint.searchParams.set('plate', String(filters.plate));

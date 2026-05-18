@@ -1,8 +1,40 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || 'http://backend:8080';
+
 export default defineConfig({
   plugins: [react()],
+  server: {
+    host: '0.0.0.0',
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: apiProxyTarget,
+        changeOrigin: true,
+      },
+      '/swagger-ui': {
+        target: apiProxyTarget,
+        changeOrigin: true,
+      },
+      '/swagger-ui.html': {
+        target: apiProxyTarget,
+        changeOrigin: true,
+      },
+      '/v3/api-docs': {
+        target: apiProxyTarget,
+        changeOrigin: true,
+      },
+      '/actuator': {
+        target: apiProxyTarget,
+        changeOrigin: true,
+      },
+    },
+  },
+  preview: {
+    host: '0.0.0.0',
+    port: 4173,
+  },
   test: {
     globals: true,
     environment: 'jsdom',
