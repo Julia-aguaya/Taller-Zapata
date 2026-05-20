@@ -182,6 +182,14 @@ function buildVehiclesPath() {
   return VEHICLES_PATH;
 }
 
+function buildPersonPath(personId) {
+  return `${PERSONS_PATH}/${personId}`;
+}
+
+function buildVehiclePath(vehicleId) {
+  return `${VEHICLES_PATH}/${vehicleId}`;
+}
+
 function buildApiUrl(path) {
   return `${getApiBaseUrl()}${path}`;
 }
@@ -309,6 +317,14 @@ export function getReferralContactsUrl() {
 
 export function getUserRolesUrl(userId) {
   return buildApiUrl(`/users/${userId}/roles`);
+}
+
+export function getPersonUrl(personId) {
+  return buildApiUrl(buildPersonPath(personId));
+}
+
+export function getVehicleUrl(vehicleId) {
+  return buildApiUrl(buildVehiclePath(vehicleId));
 }
 
 export function getInsuranceCompanyContactsUrl(companyId) {
@@ -1479,6 +1495,29 @@ export async function updateAuthenticatedPerson(accessToken, personId, body, opt
   };
 }
 
+export async function readAuthenticatedPerson(accessToken, personId, options = {}) {
+  const endpoint = getPersonUrl(personId);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer la persona.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
 export async function readAuthenticatedOrganizations(accessToken, options = {}) {
   const endpoint = getOrganizationsUrl();
   const response = await fetch(endpoint, {
@@ -1682,7 +1721,6 @@ export async function updateAuthenticatedReferralContact(accessToken, referralId
 
   return { data: payload, endpoint: endpoint.toString(), httpStatus: response.status };
 }
-
 export async function searchAuthenticatedVehicles(accessToken, filters = {}, options = {}) {
   const endpoint = buildApiUrlObject(buildVehiclesPath());
 
@@ -1731,6 +1769,29 @@ export async function createAuthenticatedVehicle(accessToken, body, options = {}
 
   if (!response.ok) {
     throw buildHttpError(response, 'No pude crear el vehículo.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedVehicle(accessToken, vehicleId, options = {}) {
+  const endpoint = getVehicleUrl(vehicleId);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer el vehículo.', payload);
   }
 
   return {

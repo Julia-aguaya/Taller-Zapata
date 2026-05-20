@@ -166,6 +166,8 @@ import {
   readAuthenticatedInsuranceCompanyContacts,
   readAuthenticatedUnreadNotificationsCount,
   readBackendSession,
+  readAuthenticatedPerson,
+  readAuthenticatedVehicle,
   readCurrentUser,
   replaceAuthenticatedDocument,
   searchAuthenticatedPersons,
@@ -294,6 +296,7 @@ import {
   createTodoRiskTask,
 } from './features/cases/lib/caseFactories';
 import { patchCaseWithBackendDetail, ensureCaseStructure, pickFirstNonEmpty } from './features/cases/lib/patchCaseWithBackendDetail';
+import { hydrateBackendCaseDetail } from './features/cases/lib/backendCaseHydration';
 import { applyBackendVisibleStatesToCase } from './features/cases/lib/backendVisibleStates';
 import { money, numberValue, maxDate } from './features/gestion/lib/gestionUtils';
 import { lineIsComplete, lineNeedsReplacementDecision, buildBudgetParts, buildThirdPartyBudgetParts, triggerBlobDownload, triggerDownload, escapeHtml } from './features/gestion/lib/gestionShared';
@@ -1164,8 +1167,10 @@ function buildLocalCaseFromBackend(item, nextCounter) {
   const isThirdPartyWorkshop = tramiteType === 'Reclamo de Tercero - Taller';
   const isThirdPartyLawyer = tramiteType === 'Reclamo de Tercero - Abogado';
   const isFranchiseRecovery = tramiteType === FRANCHISE_RECOVERY_TRAMITE;
-  const holder = String(item?.holderName || item?.customerName || '').trim();
+  const holder = String(item?.holderName || item?.customerName || item?.client?.fullName || '').trim();
   const holderParts = holder.split(/\s+/).filter(Boolean);
+  const client = item?.client || item?.customer || {};
+  const vehicle = item?.vehicle || {};
 
   return {
     id: String(item?.id ?? createUuid()),
@@ -1177,13 +1182,13 @@ function buildLocalCaseFromBackend(item, nextCounter) {
     createdAt: String(item?.createdAt || item?.creationDate || item?.openedAt || todayIso()).slice(0, 10),
     folderCreated: true,
     customer: {
-      firstName: item?.firstName || holderParts.slice(0, -1).join(' ') || holder || 'Cliente',
-      lastName: item?.lastName || holderParts.slice(-1).join(' ') || '',
-      phone: item?.phone || '',
-      document: item?.dni || item?.document || '',
+      firstName: item?.firstName || client?.firstName || holderParts.slice(0, -1).join(' ') || holder || 'Cliente',
+      lastName: item?.lastName || client?.lastName || holderParts.slice(-1).join(' ') || '',
+      phone: item?.phone || client?.phone || client?.telephone || '',
+      document: item?.dni || item?.document || client?.document || client?.numeroDocumento || '',
       birthDate: '',
       locality: '',
-      email: item?.email || '',
+      email: item?.email || client?.email || '',
       street: '',
       streetNumber: '',
       addressExtra: '',
@@ -1193,17 +1198,17 @@ function buildLocalCaseFromBackend(item, nextCounter) {
       referencedName: '',
     },
     vehicle: {
-      brand: item?.brand || item?.vehicleBrand || '',
-      model: item?.model || item?.vehicleModel || '',
-      plate: item?.plate || item?.patent || item?.licensePlate || '',
+      brand: item?.brand || item?.vehicleBrand || vehicle?.brand || vehicle?.marca || '',
+      model: item?.model || item?.vehicleModel || vehicle?.model || vehicle?.modelo || '',
+      plate: item?.plate || item?.patent || item?.licensePlate || vehicle?.plate || vehicle?.patent || vehicle?.licensePlate || vehicle?.domain || '',
       type: '',
       usage: '',
       paint: '',
-      year: '',
-      color: '',
-      chassis: '',
-      engine: '',
-      transmission: '',
+      year: vehicle?.year || vehicle?.anio || '',
+      color: vehicle?.color || '',
+      chassis: vehicle?.chassis || vehicle?.chasis || '',
+      engine: vehicle?.engine || vehicle?.motor || '',
+      transmission: vehicle?.transmission || '',
       mileage: '',
       observations: '',
     },
@@ -1523,6 +1528,7 @@ function App() {
   const [notice, setNotice] = useState(null);
   const [newCaseForm, setNewCaseForm] = useState(createEmptyForm);
   const [showNewCaseValidation, setShowNewCaseValidation] = useState(false);
+  const [isCreatingCase, setIsCreatingCase] = useState(false);
   const [customerLookupState, setCustomerLookupState] = useState({ status: 'idle', message: '', detail: '' });
   const [vehicleLookupState, setVehicleLookupState] = useState({ status: 'idle', message: '', detail: '' });
   const [autofilledFields, setAutofilledFields] = useState([]);
@@ -2712,6 +2718,7 @@ function App() {
       return;
     }
 
+    const summaryItem = authenticatedCasesState.items.find((entry) => String(entry?.id) === String(item.id));
     const endpoint = getCaseDetailUrl(item.id);
     const relationsEndpoint = getCaseRelationsUrl(item.id);
     const insuranceEndpoint = getCaseInsuranceUrl(item.id);
@@ -2888,7 +2895,7 @@ function App() {
     });
 
     try {
-      const [detailResult, historyResult, actionsResult, auditEventsResult, relationsResult, insuranceResult, insuranceProcessingResult, insuranceProcessingDocumentsResult, cleasResult, thirdPartyResult, legalResult, legalNewsResult, legalExpensesResult, franchiseRecoveryResult, franchiseResult, budgetResult, appointmentsResult, documentsResult, financeSummaryResult, financialMovementsResult, receiptsResult, vehicleIntakesResult, vehicleOutcomesResult] = await Promise.allSettled([
+      const [detailResult, historyResult, actionsResult, auditEventsResult, relationsResult, insuranceResult, insuranceProcessingResult, insuranceProcessingDocumentsResult, cleasResult, thirdPartyResult, legalResult, legalNewsResult, legalExpensesResult, franchiseRecoveryResult, franchiseResult, budgetResult, appointmentsResult, documentsResult, financeSummaryResult, financialMovementsResult, receiptsResult, vehicleIntakesResult, vehicleOutcomesResult, personResult, vehicleResult] = await Promise.allSettled([
         readAuthenticatedCaseDetail(backendSession.accessToken, item.id),
         readAuthenticatedCaseWorkflowHistory(backendSession.accessToken, item.id),
         readAuthenticatedCaseWorkflowActions(backendSession.accessToken, item.id),
@@ -2912,11 +2919,23 @@ function App() {
         readAuthenticatedCaseReceipts(backendSession.accessToken, item.id),
         readAuthenticatedCaseVehicleIntakes(backendSession.accessToken, item.id),
         readAuthenticatedCaseVehicleOutcomes(backendSession.accessToken, item.id),
+        summaryItem?.principalCustomerPersonId
+          ? readAuthenticatedPerson(backendSession.accessToken, summaryItem.principalCustomerPersonId)
+          : Promise.resolve(null),
+        summaryItem?.principalVehicleId
+          ? readAuthenticatedVehicle(backendSession.accessToken, summaryItem.principalVehicleId)
+          : Promise.resolve(null),
       ]);
 
       if (detailResult.status === 'rejected') {
         throw detailResult.reason;
       }
+
+      const hydratedDetail = hydrateBackendCaseDetail(
+        detailResult.value.data,
+        personResult.status === 'fulfilled' ? personResult.value?.data || null : null,
+        vehicleResult.status === 'fulfilled' ? vehicleResult.value?.data || null : null,
+      );
 
       const workflowHistory = historyResult.status === 'fulfilled'
         ? getWorkflowHistoryItems(historyResult.value.data)
@@ -3059,18 +3078,24 @@ function App() {
         vehicleOutcomesResult.status === 'rejected' && vehicleOutcomesResult.reason?.httpStatus !== 404
           ? 'Abrimos la carpeta, pero la entrega del vehículo no pudo mostrarse ahora.'
           : '',
+        personResult.status === 'rejected' && personResult.reason?.httpStatus !== 404
+          ? 'Abrimos la carpeta, pero los datos del cliente no pudieron mostrarse ahora.'
+          : '',
+        vehicleResult.status === 'rejected' && vehicleResult.reason?.httpStatus !== 404
+          ? 'Abrimos la carpeta, pero los datos del vehículo no pudieron mostrarse ahora.'
+          : '',
       ]);
 
       setAuthenticatedCaseDetailState({
         status: 'success',
         tone: 'success',
         title: 'Detalle actualizado',
-        detail: `Abrimos la carpeta ${getBackendCaseDetailHeadline(detailResult.value.data)} con informacion real del backend.`,
+        detail: `Abrimos la carpeta ${getBackendCaseDetailHeadline(hydratedDetail)} con informacion real del backend.`,
         endpoint: detailResult.value.endpoint,
         checkedAt: new Date().toISOString(),
         httpStatus: detailResult.value.httpStatus,
         item,
-        data: detailResult.value.data,
+        data: hydratedDetail,
         workflowHistory,
         workflowActions,
         auditEventsState,
@@ -4558,6 +4583,10 @@ function App() {
   };
 
   const createCase = async () => {
+    if (isCreatingCase) {
+      return;
+    }
+
     setShowNewCaseValidation(true);
 
     if (folderMissing.length) {
@@ -4565,134 +4594,140 @@ function App() {
       return;
     }
 
-    await readWithStoredToken(async (accessToken) => {
-      const catalogsResponse = await readAuthenticatedCasesCatalogs(accessToken);
-      const caseTypes = Array.isArray(catalogsResponse.data?.caseTypes) ? catalogsResponse.data.caseTypes : [];
-      const customerRoles = Array.isArray(catalogsResponse.data?.customerRoleCodes) ? catalogsResponse.data.customerRoleCodes : [];
-      const vehicleRoles = Array.isArray(catalogsResponse.data?.principalVehicleRoleCodes) ? catalogsResponse.data.principalVehicleRoleCodes : [];
+    setIsCreatingCase(true);
 
-      const typeMap = {
-        Particular: ['particular'],
-        'Todo Riesgo': ['todo riesgo', 'todo_riesgo'],
-        'CLEAS / Terceros / Franquicia': ['cleas', 'terceros', 'franquicia'],
-        'Reclamo de Tercero - Taller': ['tercero', 'taller'],
-        'Reclamo de Tercero - Abogado': ['tercero', 'abogado'],
-        [FRANCHISE_RECOVERY_TRAMITE]: ['recupero', 'franquicia'],
-      };
+    try {
+      await readWithStoredToken(async (accessToken) => {
+        const catalogsResponse = await readAuthenticatedCasesCatalogs(accessToken);
+        const caseTypes = Array.isArray(catalogsResponse.data?.caseTypes) ? catalogsResponse.data.caseTypes : [];
+        const customerRoles = Array.isArray(catalogsResponse.data?.customerRoleCodes) ? catalogsResponse.data.customerRoleCodes : [];
+        const vehicleRoles = Array.isArray(catalogsResponse.data?.principalVehicleRoleCodes) ? catalogsResponse.data.principalVehicleRoleCodes : [];
 
-      const typeNeedles = typeMap[newCaseForm.type] || [newCaseForm.type];
-      const selectedCaseType = caseTypes.find((item) => {
-        const name = normalizeLookupText(item?.name);
-        const code = normalizeLookupText(item?.code);
-        return typeNeedles.some((needle) => name.includes(normalizeLookupText(needle)) || code.includes(normalizeLookupText(needle)));
-      });
+        const typeMap = {
+          Particular: ['particular'],
+          'Todo Riesgo': ['todo riesgo', 'todo_riesgo'],
+          'CLEAS / Terceros / Franquicia': ['cleas', 'terceros', 'franquicia'],
+          'Reclamo de Tercero - Taller': ['tercero', 'taller'],
+          'Reclamo de Tercero - Abogado': ['tercero', 'abogado'],
+          [FRANCHISE_RECOVERY_TRAMITE]: ['recupero', 'franquicia'],
+        };
 
-      if (!selectedCaseType?.id) {
-        throw new Error('No pudimos resolver el tipo de trámite en los catálogos de casos.');
-      }
-
-      const customerRoleCode = customerRoles.find((item) => normalizeLookupText(item?.code) === 'cliente')?.code || customerRoles[0]?.code;
-      const principalVehicleRoleCode = vehicleRoles.find((item) => normalizeLookupText(item?.code) === 'principal')?.code || vehicleRoles[0]?.code;
-
-      if (!customerRoleCode || !principalVehicleRoleCode) {
-        throw new Error('Faltan roles de cliente/vehículo principal en catálogos.');
-      }
-
-      const branchCode = getBranchCode(newCaseForm.branch);
-      const orgId = authenticatedCasesState.items.find((item) => item?.organizationId)?.organizationId || 1;
-      const branchId = authenticatedCasesState.items.find((item) => normalizeLookupText(item?.branchCode) === normalizeLookupText(branchCode))?.branchId
-        || authenticatedCasesState.items.find((item) => item?.branchId)?.branchId
-        || 1;
-
-      const document = normalizeDocument(newCaseForm.document);
-      const foundPersons = await searchAuthenticatedPersons(accessToken, { document });
-      let person = Array.isArray(foundPersons.data)
-        ? foundPersons.data.find((item) => normalizeDocument(item?.numeroDocumento) === document)
-        : null;
-
-      if (!person) {
-        const createdPerson = await createAuthenticatedPerson(accessToken, {
-          tipoPersona: 'fisica',
-          nombre: newCaseForm.firstName.trim(),
-          apellido: newCaseForm.lastName.trim(),
-          razonSocial: null,
-          tipoDocumentoCodigo: 'DNI',
-          numeroDocumento: document,
-          cuitCuil: null,
-          fechaNacimiento: null,
-          telefonoPrincipal: newCaseForm.phone.trim() || null,
-          emailPrincipal: null,
-          ocupacion: null,
-          observaciones: null,
-          activo: true,
+        const typeNeedles = typeMap[newCaseForm.type] || [newCaseForm.type];
+        const selectedCaseType = caseTypes.find((item) => {
+          const name = normalizeLookupText(item?.name);
+          const code = normalizeLookupText(item?.code);
+          return typeNeedles.some((needle) => name.includes(normalizeLookupText(needle)) || code.includes(normalizeLookupText(needle)));
         });
-        person = createdPerson.data;
-      }
 
-      const plate = normalizePlate(newCaseForm.plate);
-      const foundVehicles = await searchAuthenticatedVehicles(accessToken, { plate });
-      let vehicle = Array.isArray(foundVehicles.data)
-        ? foundVehicles.data.find((item) => normalizePlate(item?.plate) === plate)
-        : null;
+        if (!selectedCaseType?.id) {
+          throw new Error('No pudimos resolver el tipo de trámite en los catálogos de casos.');
+        }
 
-      if (!vehicle) {
-        const createdVehicle = await createAuthenticatedVehicle(accessToken, {
-          brandId: null,
-          modelId: null,
-          brandText: newCaseForm.brand.trim(),
-          modelText: newCaseForm.model.trim(),
-          plate,
-          year: null,
-          vehicleTypeCode: null,
-          usageCode: null,
-          color: null,
-          paintCode: null,
-          chasis: null,
-          motor: null,
-          transmissionCode: null,
-          mileage: null,
-          observaciones: null,
-          activo: true,
+        const customerRoleCode = customerRoles.find((item) => normalizeLookupText(item?.code) === 'cliente')?.code || customerRoles[0]?.code;
+        const principalVehicleRoleCode = vehicleRoles.find((item) => normalizeLookupText(item?.code) === 'principal')?.code || vehicleRoles[0]?.code;
+
+        if (!customerRoleCode || !principalVehicleRoleCode) {
+          throw new Error('Faltan roles de cliente/vehículo principal en catálogos.');
+        }
+
+        const branchCode = getBranchCode(newCaseForm.branch);
+        const orgId = authenticatedCasesState.items.find((item) => item?.organizationId)?.organizationId || 1;
+        const branchId = authenticatedCasesState.items.find((item) => normalizeLookupText(item?.branchCode) === normalizeLookupText(branchCode))?.branchId
+          || authenticatedCasesState.items.find((item) => item?.branchId)?.branchId
+          || 1;
+
+        const document = normalizeDocument(newCaseForm.document);
+        const foundPersons = await searchAuthenticatedPersons(accessToken, { document });
+        let person = Array.isArray(foundPersons.data)
+          ? foundPersons.data.find((item) => normalizeDocument(item?.numeroDocumento) === document)
+          : null;
+
+        if (!person) {
+          const createdPerson = await createAuthenticatedPerson(accessToken, {
+            tipoPersona: 'fisica',
+            nombre: newCaseForm.firstName.trim(),
+            apellido: newCaseForm.lastName.trim(),
+            razonSocial: null,
+            tipoDocumentoCodigo: 'DNI',
+            numeroDocumento: document,
+            cuitCuil: null,
+            fechaNacimiento: null,
+            telefonoPrincipal: newCaseForm.phone.trim() || null,
+            emailPrincipal: null,
+            ocupacion: null,
+            observaciones: null,
+            activo: true,
+          });
+          person = createdPerson.data;
+        }
+
+        const plate = normalizePlate(newCaseForm.plate);
+        const foundVehicles = await searchAuthenticatedVehicles(accessToken, { plate });
+        let vehicle = Array.isArray(foundVehicles.data)
+          ? foundVehicles.data.find((item) => normalizePlate(item?.plate) === plate)
+          : null;
+
+        if (!vehicle) {
+          const createdVehicle = await createAuthenticatedVehicle(accessToken, {
+            brandId: null,
+            modelId: null,
+            brandText: newCaseForm.brand.trim(),
+            modelText: newCaseForm.model.trim(),
+            plate,
+            year: null,
+            vehicleTypeCode: null,
+            usageCode: null,
+            color: null,
+            paintCode: null,
+            chasis: null,
+            motor: null,
+            transmissionCode: null,
+            mileage: null,
+            observaciones: null,
+            activo: true,
+          });
+          vehicle = createdVehicle.data;
+        }
+
+        const createdCaseResponse = await createAuthenticatedCase(accessToken, {
+          caseTypeId: selectedCaseType.id,
+          organizationId: orgId,
+          branchId,
+          principalVehicleId: vehicle.id,
+          principalCustomerPersonId: person.id,
+          referenced: newCaseForm.referenced === 'SI',
+          referredByPersonId: null,
+          referredByText: newCaseForm.referencedName.trim() || null,
+          priorityCode: 'ALTA',
+          generalObservations: null,
+          incidentDate: null,
+          incidentTime: null,
+          incidentPlace: null,
+          incidentDynamics: null,
+          incidentObservations: null,
+          prescriptionDate: null,
+          daysInProcess: null,
+          customerRoleCode,
+          principalVehicleRoleCode,
         });
-        vehicle = createdVehicle.data;
-      }
 
-      const createdCaseResponse = await createAuthenticatedCase(accessToken, {
-        caseTypeId: selectedCaseType.id,
-        organizationId: orgId,
-        branchId,
-        principalVehicleId: vehicle.id,
-        principalCustomerPersonId: person.id,
-        referenced: newCaseForm.referenced === 'SI',
-        referredByPersonId: null,
-        referredByText: newCaseForm.referencedName.trim() || null,
-        priorityCode: 'ALTA',
-        generalObservations: null,
-        incidentDate: null,
-        incidentTime: null,
-        incidentPlace: null,
-        incidentDynamics: null,
-        incidentObservations: null,
-        prescriptionDate: null,
-        daysInProcess: null,
-        customerRoleCode,
-        principalVehicleRoleCode,
+        await runAuthenticatedCasesRead(accessToken);
+
+        const createdCaseId = createdCaseResponse.data?.id;
+        if (createdCaseId) {
+          openCase(String(createdCaseId), { tab: 'ficha' });
+        }
+
+        setNewCaseForm(createEmptyForm());
+        setShowNewCaseValidation(false);
+        setCustomerLookupState({ status: 'idle', message: '', detail: '' });
+        setVehicleLookupState({ status: 'idle', message: '', detail: '' });
+        setAutofilledFields([]);
+        flash({ tone: 'success', title: 'Alta exitosa', message: `Carpeta ${createdCaseResponse.data?.folderCode || ''} creada con éxito` });
       });
-
-      await runAuthenticatedCasesRead(accessToken);
-
-      const createdCaseId = createdCaseResponse.data?.id;
-      if (createdCaseId) {
-        openCase(String(createdCaseId), { tab: 'ficha' });
-      }
-
-      setNewCaseForm(createEmptyForm());
-      setShowNewCaseValidation(false);
-      setCustomerLookupState({ status: 'idle', message: '', detail: '' });
-      setVehicleLookupState({ status: 'idle', message: '', detail: '' });
-      setAutofilledFields([]);
-      flash({ tone: 'success', title: 'Alta exitosa', message: `Carpeta ${createdCaseResponse.data?.folderCode || ''} creada con éxito` });
-    });
+    } finally {
+      setIsCreatingCase(false);
+    }
   };
 
   const refreshAuthenticatedCasesPreview = async () => {
@@ -4983,6 +5018,7 @@ function App() {
       {activeView === 'nuevo' ? (
         <NuevoCaso
           accessToken={backendSession?.accessToken || ''}
+          isCreating={isCreatingCase}
           customerLookupState={customerLookupState}
           form={newCaseForm}
           missing={folderMissing}

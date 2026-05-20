@@ -12,6 +12,7 @@ export default function NuevoCaso({
   form,
   onChange,
   onCreate,
+  isCreating = false,
   nextCode,
   missing,
   showValidation,
@@ -168,9 +169,20 @@ export default function NuevoCaso({
              ) : null}
            </div>
 
-          <button className="primary-button" onClick={onCreate} type="button">
-            Generar carpeta {form.type || 'Particular'}
-          </button>
+          <div className="nuevo-caso-actions">
+            <button
+              aria-busy={isCreating ? 'true' : 'false'}
+              className="primary-button"
+              disabled={isCreating}
+              onClick={onCreate}
+              type="button"
+            >
+              {isCreating ? 'Generando carpeta...' : `Generar carpeta ${form.type || 'Particular'}`}
+            </button>
+            <p className="nuevo-caso-submit-hint" role="status" aria-live="polite">
+              {isCreating ? 'Estamos generando la carpeta. Bloqueamos el boton para evitar duplicados.' : 'Cuando generes la carpeta, vas a ver la confirmacion apenas termine el alta.'}
+            </p>
+          </div>
         </article>
       </section>
     </div>

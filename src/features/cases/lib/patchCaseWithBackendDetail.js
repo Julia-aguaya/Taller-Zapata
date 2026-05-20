@@ -66,6 +66,8 @@ export function patchCaseWithBackendDetail(localCase, detailState) {
   Object.assign(localCase, normalized);
 
   const detail = detailState?.data || {};
+  const detailClient = detail.client || detail.customer || {};
+  const detailVehicle = detail.vehicle || {};
   const budget = detailState?.budgetState?.data || {};
   const documents = Array.isArray(detailState?.documentsState?.items) ? detailState.documentsState.items : [];
   const appointments = Array.isArray(detailState?.appointmentsState?.items) ? detailState.appointmentsState.items : [];
@@ -100,15 +102,20 @@ export function patchCaseWithBackendDetail(localCase, detailState) {
   };
 
   localCase.claimNumber = pickFirstNonEmpty(localCase.claimNumber, detail.claimNumber, detail.claimCode, detail.externalReference);
-  localCase.customer.firstName = pickFirstNonEmpty(localCase.customer.firstName, detail.firstName, detail.customerFirstName, detail.holderFirstName);
-  localCase.customer.lastName = pickFirstNonEmpty(localCase.customer.lastName, detail.lastName, detail.customerLastName, detail.holderLastName, detail.holderName);
-  localCase.customer.phone = pickFirstNonEmpty(localCase.customer.phone, detail.phone, detail.customerPhone, detail.holderPhone);
-  localCase.customer.document = pickFirstNonEmpty(localCase.customer.document, detail.dni, detail.document, detail.customerDocument, detail.holderDocument);
-  localCase.customer.email = pickFirstNonEmpty(localCase.customer.email, detail.email, detail.customerEmail, detail.holderEmail);
+  localCase.customer.firstName = pickFirstNonEmpty(localCase.customer.firstName, detail.firstName, detail.customerFirstName, detail.holderFirstName, detailClient.firstName);
+  localCase.customer.lastName = pickFirstNonEmpty(localCase.customer.lastName, detail.lastName, detail.customerLastName, detail.holderLastName, detail.holderName, detailClient.lastName, detailClient.fullName);
+  localCase.customer.phone = pickFirstNonEmpty(localCase.customer.phone, detail.phone, detail.customerPhone, detail.holderPhone, detailClient.phone, detailClient.telephone);
+  localCase.customer.document = pickFirstNonEmpty(localCase.customer.document, detail.dni, detail.document, detail.customerDocument, detail.holderDocument, detailClient.document, detailClient.numeroDocumento);
+  localCase.customer.email = pickFirstNonEmpty(localCase.customer.email, detail.email, detail.customerEmail, detail.holderEmail, detailClient.email);
 
-  localCase.vehicle.brand = pickFirstNonEmpty(localCase.vehicle.brand, detail.brand, detail.brandText, detail.vehicleBrand);
-  localCase.vehicle.model = pickFirstNonEmpty(localCase.vehicle.model, detail.model, detail.modelText, detail.vehicleModel);
-  localCase.vehicle.plate = pickFirstNonEmpty(localCase.vehicle.plate, detail.plate, detail.licensePlate, detail.patent, detail.domain);
+  localCase.vehicle.brand = pickFirstNonEmpty(localCase.vehicle.brand, detail.brand, detail.brandText, detail.vehicleBrand, detailVehicle.brand, detailVehicle.marca);
+  localCase.vehicle.model = pickFirstNonEmpty(localCase.vehicle.model, detail.model, detail.modelText, detail.vehicleModel, detailVehicle.model, detailVehicle.modelo);
+  localCase.vehicle.plate = pickFirstNonEmpty(localCase.vehicle.plate, detail.plate, detail.licensePlate, detail.patent, detail.domain, detailVehicle.plate, detailVehicle.licensePlate, detailVehicle.patent, detailVehicle.domain);
+  localCase.vehicle.year = pickFirstNonEmpty(localCase.vehicle.year, detail.vehicleYear, detailVehicle.year, detailVehicle.anio);
+  localCase.vehicle.color = pickFirstNonEmpty(localCase.vehicle.color, detail.vehicleColor, detailVehicle.color);
+  localCase.vehicle.chassis = pickFirstNonEmpty(localCase.vehicle.chassis, detail.vehicleChassis, detailVehicle.chassis, detailVehicle.chasis);
+  localCase.vehicle.engine = pickFirstNonEmpty(localCase.vehicle.engine, detail.vehicleEngine, detailVehicle.engine, detailVehicle.motor);
+  localCase.vehicle.transmission = pickFirstNonEmpty(localCase.vehicle.transmission, detail.vehicleTransmission, detailVehicle.transmission);
 
   localCase.todoRisk = localCase.todoRisk || createTodoRiskDefaults({
     insurance: { company: '' },
