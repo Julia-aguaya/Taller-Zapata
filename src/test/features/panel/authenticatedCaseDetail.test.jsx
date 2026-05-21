@@ -28,6 +28,14 @@ const documentItem = {
   visualOrder: 1,
 };
 
+const secondDocumentItem = {
+  ...documentItem,
+  relationId: 2,
+  documentId: 11,
+  fileName: 'foto.jpg',
+  mimeType: 'image/jpeg',
+};
+
 const baseDetailState = {
   status: 'success',
   item: { id: 99 },
@@ -58,7 +66,7 @@ const baseDetailState = {
 };
 
 describe('AuthenticatedCaseDetail', () => {
-  it('abre gestion y documentacion desde ver detalle usando la apertura del caso', async () => {
+  it('abre gestión y documentación desde ver detalle usando la apertura del caso', async () => {
     const user = userEvent.setup();
     const onOpenCase = vi.fn();
 
@@ -76,8 +84,8 @@ describe('AuthenticatedCaseDetail', () => {
       />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Abrir gestion' }));
-    await user.click(screen.getByRole('button', { name: 'Documentacion' }));
+    await user.click(screen.getByRole('button', { name: 'Abrir gestión' }));
+    await user.click(screen.getByRole('button', { name: 'Documentación' }));
 
     expect(onOpenCase).toHaveBeenNthCalledWith(1, baseDetailState.data, { tab: 'gestion' });
     expect(onOpenCase).toHaveBeenNthCalledWith(2, baseDetailState.data, { tab: 'documentacion' });
@@ -123,5 +131,45 @@ describe('DocumentsDetailBlock copy', () => {
 
     expect(screen.getByText('Edicion rapida del documento')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeInTheDocument();
+  });
+
+  it('bloquea solo el documento que esta ejecutando una accion', () => {
+    render(
+      <DocumentsDetailBlock
+        documentsState={{
+          status: 'success',
+          items: [documentItem, secondDocumentItem],
+          visibleCount: 2,
+          total: 2,
+        }}
+        documentGroups={[
+          {
+            origin: 'Carga interna',
+            items: [documentItem, secondDocumentItem],
+          },
+        ]}
+        formatDate={formatDate}
+        formatDateTime={formatDateTime}
+        formatDocumentSize={formatDocumentSize}
+        formatDocumentDescriptor={formatDocumentDescriptor}
+        formatDocumentAudience={formatDocumentAudience}
+        onSaveDocument={vi.fn().mockResolvedValue(true)}
+        onDownloadDocument={vi.fn()}
+        onPreviewDocument={vi.fn()}
+        isSavingDocuments={{ upload: false, byId: { 10: 'update-relation' } }}
+        isDownloadingDocument={{ byId: { 10: true } }}
+        isPreviewingDocument={{ byId: { 10: true } }}
+        caseId={99}
+        documentsCatalogs={{ categories: [{ id: 1, name: 'General', requiresDate: false }] }}
+        StatusBadge={StatusBadge}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Guardando visibilidad...' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Descargando archivo...' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Abriendo vista previa...' })).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: 'Editar documento' })[0]).toBeEnabled();
+    expect(screen.getAllByRole('button', { name: 'Vista previa' })[0]).toBeEnabled();
+    expect(screen.getAllByRole('button', { name: 'Descargar archivo' })[0]).toBeEnabled();
   });
 });

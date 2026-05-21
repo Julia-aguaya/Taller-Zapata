@@ -54,7 +54,7 @@ export default function FichaTecnicaTab({ item, updateCase }) {
             <DataField label="N° siniestro" onChange={(value) => updateCase((draft) => { draft.claimNumber = value; })} value={item.claimNumber || ''} />
             <DataField label="Fecha nacimiento" onChange={(value) => updateCase((draft) => { draft.customer.birthDate = value; })} type="date" value={item.customer.birthDate || ''} />
             <SelectField label="Estado civil" onChange={(value) => updateCase((draft) => { draft.customer.civilStatus = value; })} options={CIVIL_STATUS_OPTIONS} placeholder="Seleccioná" value={item.customer.civilStatus || ''} />
-            <DataField label="Telefono" onChange={(value) => updateCase((draft) => { draft.customer.phone = value; })} value={item.customer.phone} />
+            <DataField label="Teléfono" onChange={(value) => updateCase((draft) => { draft.customer.phone = value; })} value={item.customer.phone} />
             <DataField label="Localidad" onChange={(value) => updateCase((draft) => { draft.customer.locality = value; })} value={item.customer.locality} />
             <DataField label="Email" onChange={(value) => updateCase((draft) => { draft.customer.email = value; })} value={item.customer.email} />
             <DataField label="Ocupación" onChange={(value) => updateCase((draft) => { draft.customer.occupation = value; })} value={item.customer.occupation || ''} />
@@ -95,7 +95,7 @@ export default function FichaTecnicaTab({ item, updateCase }) {
                     <DataField label="Apellido" onChange={(value) => updateCase((draft) => { draft.thirdParty.clientRegistry.owners[index].lastName = value; })} value={owner.lastName} />
                     <DataField label="Documento" onChange={(value) => updateCase((draft) => { draft.thirdParty.clientRegistry.owners[index].document = value; })} value={owner.document} />
                     <DataField label="Fecha nacimiento" onChange={(value) => updateCase((draft) => { draft.thirdParty.clientRegistry.owners[index].birthDate = value; })} type="date" value={owner.birthDate || ''} />
-                    <DataField label="Telefono" onChange={(value) => updateCase((draft) => { draft.thirdParty.clientRegistry.owners[index].phone = value; })} value={owner.phone || ''} />
+                    <DataField label="Teléfono" onChange={(value) => updateCase((draft) => { draft.thirdParty.clientRegistry.owners[index].phone = value; })} value={owner.phone || ''} />
                     <DataField label="Localidad" onChange={(value) => updateCase((draft) => { draft.thirdParty.clientRegistry.owners[index].locality = value; })} value={owner.locality || ''} />
                   </div>
                 </div>
@@ -106,14 +106,14 @@ export default function FichaTecnicaTab({ item, updateCase }) {
 
         <article className="card inner-card">
           <div className="section-head small-gap">
-            <h3>Vehiculo</h3>
+            <h3>Vehículo</h3>
             <StatusBadge tone="info">{item.vehicle.plate}</StatusBadge>
           </div>
           <div className="form-grid two-columns compact-grid">
             <SelectField label="Marca" onChange={(value) => updateCase((draft) => { draft.vehicle.brand = value; })} options={VEHICLE_BRAND_OPTIONS} placeholder="Seleccioná" value={item.vehicle.brand} />
             <DataField label="Modelo" onChange={(value) => updateCase((draft) => { draft.vehicle.model = value; })} value={item.vehicle.model} />
             <DataField label="Dominio" onChange={(value) => updateCase((draft) => { draft.vehicle.plate = value.toUpperCase(); })} value={item.vehicle.plate} />
-            <DataField label="Ano" onChange={(value) => updateCase((draft) => { draft.vehicle.year = value; })} value={item.vehicle.year} />
+            <DataField label="Año" onChange={(value) => updateCase((draft) => { draft.vehicle.year = value; })} value={item.vehicle.year} />
             <SelectField label="Tipo" onChange={(value) => updateCase((draft) => { draft.vehicle.type = value; })} options={VEHICLE_TYPES} value={item.vehicle.type} />
             <SelectField label="Uso" onChange={(value) => updateCase((draft) => { draft.vehicle.usage = value; })} options={VEHICLE_USES} value={item.vehicle.usage} />
             <SelectField label="Pintura" onChange={(value) => updateCase((draft) => { draft.vehicle.paint = value; })} options={PAINT_TYPES} value={item.vehicle.paint} />
@@ -133,7 +133,7 @@ export default function FichaTecnicaTab({ item, updateCase }) {
       <div className="form-grid two-columns ficha-summary-grid">
         <article className="card inner-card">
           <div className="section-head small-gap">
-            <h3>Resumen Reparacion</h3>
+            <h3>Resumen Reparación</h3>
             <StatusBadge tone={!repairEnabled ? 'info' : item.computed.partsStatus === 'Recibido' ? 'success' : 'danger'}>{!repairEnabled ? 'No aplica' : item.computed.partsStatus}</StatusBadge>
           </div>
           <div className="summary-stack">
@@ -141,7 +141,7 @@ export default function FichaTecnicaTab({ item, updateCase }) {
             <div className="summary-row"><span>Presupuestó</span><strong>{item.budget.authorizer || 'Pendiente'} · {item.budget.partsQuotedDate ? formatDate(item.budget.partsQuotedDate) : 'sin fecha'}</strong></div>
             <div className="summary-row"><span>Habilita reparación</span><strong>{repairEnabled ? 'SI' : 'NO'}</strong></div>
             <div className="summary-row"><span>Turno</span><strong>{repairEnabled ? (item.repair.turno.date ? `${formatDate(item.repair.turno.date)} · ${item.repair.turno.state}` : 'Sin agendar') : 'Oculto por trámite'}</strong></div>
-            <div className="summary-row"><span>Anotaciones turno</span><strong>{repairEnabled ? (item.repair.turno.notes || 'Sin notas de turno') : 'Gestión reparación deshabilitada'}</strong></div>
+            <div className="summary-row"><span>Anotaciones del turno</span><strong>{repairEnabled ? (item.repair.turno.notes || 'Sin notas de turno') : 'Gestión de reparación deshabilitada'}</strong></div>
             <div className="summary-row"><span>Mano de obra resumen</span><strong>{money(laborSummary)} · comprobante {item.payments.comprobante}</strong></div>
             <div className="summary-row"><span>Ingreso</span><strong>{repairEnabled ? ingresoSummary : 'No aplica'}</strong></div>
             <div className="summary-row"><span>Egreso</span><strong>{repairEnabled ? egresoSummary : 'No aplica'}</strong></div>
@@ -151,12 +151,12 @@ export default function FichaTecnicaTab({ item, updateCase }) {
 
         <article className="card inner-card">
           <div className="section-head small-gap">
-            <h3>Resumen Pagos</h3>
+            <h3>Resumen de pagos</h3>
             <StatusBadge tone={getStatusTone(item.computed.paymentState)}>{item.computed.paymentState}</StatusBadge>
           </div>
           <div className="summary-stack">
             <div className="summary-row"><span>Total cotizado</span><strong>{money(item.computed.totalQuoted)}</strong></div>
-            <div className="summary-row"><span>{isThirdParty ? 'Cobro compañía' : 'Senia'}</span><strong>{isThirdParty ? money(item.computed.paidAmount) : item.payments.hasSena === 'SI' ? money(item.payments.senaAmount) : 'No'}</strong></div>
+            <div className="summary-row"><span>{isThirdParty ? 'Cobro compañía' : 'Seña'}</span><strong>{isThirdParty ? money(item.computed.paidAmount) : item.payments.hasSena === 'SI' ? money(item.payments.senaAmount) : 'No'}</strong></div>
             <div className="summary-row"><span>{isThirdParty ? 'Cobro extras cliente' : 'Cobrado'}</span><strong>{isThirdParty ? money(item.computed.thirdParty.clientPaymentsTotal) : money(item.computed.paidAmount)}</strong></div>
             <div className="summary-row"><span>{isThirdParty ? 'Saldo extras cliente' : 'Saldo deudor'}</span><strong>{isThirdParty ? money(item.computed.thirdParty.clientExtrasBalance) : money(item.computed.balance)}</strong></div>
             <div className="summary-row"><span>Último cobro</span><strong>{latestSettlement ? formatDate(latestSettlement) : 'Sin cobros'}</strong></div>

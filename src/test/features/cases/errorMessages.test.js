@@ -84,8 +84,8 @@ describe('ErrorMessages - getFriendlyErrorMessage', () => {
 
     it('traduce partsautorizationcode a un mensaje entendible', () => {
       const error = { message: 'partsautorizationcode no permitido' };
-      expect(getFriendlyErrorMessage(error)).toContain('Gestion del tramite');
-      expect(getFriendlyErrorMessage(error)).toContain('autorizacion de repuestos');
+      expect(getFriendlyErrorMessage(error)).toContain('Gestión del trámite');
+      expect(getFriendlyErrorMessage(error)).toContain('autorización de repuestos');
     });
 
     it('traduce reportstatuscode a un mensaje entendible', () => {

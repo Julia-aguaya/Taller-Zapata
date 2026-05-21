@@ -26,6 +26,8 @@ export default function NuevoCaso({
   const fieldWasAutofilled = (field) => autofilledFields.includes(field);
   const customerTone = customerLookupState.status === 'found' ? 'success' : customerLookupState.status === 'empty' ? 'danger' : 'info';
   const vehicleTone = vehicleLookupState.status === 'found' ? 'success' : vehicleLookupState.status === 'empty' ? 'danger' : 'info';
+  const isSearchingCustomer = customerLookupState.status === 'loading';
+  const isSearchingVehicle = vehicleLookupState.status === 'loading';
   const [referenceSearch, setReferenceSearch] = useState('');
   const [referralContacts, setReferralContacts] = useState([]);
   const [referralStatus, setReferralStatus] = useState({ status: 'idle', message: '' });
@@ -87,7 +89,7 @@ export default function NuevoCaso({
         <article className="card nuevo-caso-card">
           <div className="section-head nuevo-caso-head">
             <div className="stack-tight nuevo-caso-title-group">
-              <p className="eyebrow">Minimos obligatorios</p>
+              <p className="eyebrow">Mínimos obligatorios</p>
               <h2>Datos para generar carpeta</h2>
             </div>
             <StatusBadge tone={missing.length ? 'danger' : 'success'}>
@@ -113,7 +115,15 @@ export default function NuevoCaso({
                   value={form.document}
                   inputMode="numeric"
                 />
-                <button className="secondary-button" onClick={onSearchDocument} type="button">Buscar DNI</button>
+                <button
+                  aria-busy={isSearchingCustomer ? 'true' : 'false'}
+                  className="secondary-button"
+                  disabled={isSearchingCustomer}
+                  onClick={onSearchDocument}
+                  type="button"
+                >
+                  {isSearchingCustomer ? 'Buscando cliente por DNI...' : 'Buscar DNI'}
+                </button>
               </div>
               {customerLookupState.detail ? <p className="lookup-detail">{customerLookupState.detail}</p> : null}
             </div>
@@ -135,7 +145,15 @@ export default function NuevoCaso({
                   value={form.plate}
                   invalid={fieldHasError('dominio')}
                 />
-                <button className="secondary-button" onClick={onSearchPlate} type="button">Buscar patente</button>
+                <button
+                  aria-busy={isSearchingVehicle ? 'true' : 'false'}
+                  className="secondary-button"
+                  disabled={isSearchingVehicle}
+                  onClick={onSearchPlate}
+                  type="button"
+                >
+                  {isSearchingVehicle ? 'Buscando vehículo por patente...' : 'Buscar patente'}
+                </button>
               </div>
               {vehicleLookupState.detail ? <p className="lookup-detail">{vehicleLookupState.detail}</p> : null}
             </div>
@@ -147,15 +165,15 @@ export default function NuevoCaso({
           </div>
 
           <div className="form-grid three-columns nuevo-caso-form">
-            <SelectField invalid={fieldHasError('tipo de tramite')} label="Tipo de tramite" onChange={(value) => onChange('type', value)} options={TRAMITE_TYPES} required value={form.type} />
+            <SelectField invalid={fieldHasError('tipo de tramite')} label="Tipo de trámite" onChange={(value) => onChange('type', value)} options={TRAMITE_TYPES} required value={form.type} />
             <SelectField label="Sucursal" onChange={(value) => onChange('branch', value)} options={BRANCHES.map((branch) => branch.label)} value={form.branch} />
             <DataField label="N° siniestro" onChange={(value) => onChange('claimNumber', value)} value={form.claimNumber} />
             <DataField highlighted={fieldWasAutofilled('firstName')} invalid={fieldHasError('nombre')} label="Nombre" onChange={(value) => onChange('firstName', value)} required value={form.firstName} />
             <DataField highlighted={fieldWasAutofilled('lastName')} invalid={fieldHasError('apellido')} label="Apellido" onChange={(value) => onChange('lastName', value)} required value={form.lastName} />
-            <DataField highlighted={fieldWasAutofilled('phone')} label="Telefono" onChange={(value) => onChange('phone', value)} value={form.phone} />
+            <DataField highlighted={fieldWasAutofilled('phone')} label="Teléfono" onChange={(value) => onChange('phone', value)} value={form.phone} />
             <DataField highlighted={fieldWasAutofilled('brand')} invalid={fieldHasError('marca')} label="Marca" onChange={(value) => onChange('brand', value)} required value={form.brand} />
             <DataField highlighted={fieldWasAutofilled('model')} invalid={fieldHasError('modelo')} label="Modelo" onChange={(value) => onChange('model', value)} required value={form.model} />
-            <SelectField highlighted={fieldWasAutofilled('vehicleType')} label="Tipo vehiculo" onChange={(value) => onChange('vehicleType', value)} options={VEHICLE_TYPES} value={form.vehicleType} />
+            <SelectField highlighted={fieldWasAutofilled('vehicleType')} label="Tipo de vehículo" onChange={(value) => onChange('vehicleType', value)} options={VEHICLE_TYPES} value={form.vehicleType} />
             <SelectField highlighted={fieldWasAutofilled('vehicleUse')} label="Uso" onChange={(value) => onChange('vehicleUse', value)} options={VEHICLE_USES} value={form.vehicleUse} />
             <SelectField highlighted={fieldWasAutofilled('paint')} label="Pintura" onChange={(value) => onChange('paint', value)} options={PAINT_TYPES} value={form.paint} />
              <ToggleField highlighted={fieldWasAutofilled('referenced')} invalid={fieldHasError('referenciado si/no')} label="Referenciado" onChange={(value) => onChange('referenced', value)} required value={form.referenced} />
@@ -180,7 +198,7 @@ export default function NuevoCaso({
               {isCreating ? 'Generando carpeta...' : `Generar carpeta ${form.type || 'Particular'}`}
             </button>
             <p className="nuevo-caso-submit-hint" role="status" aria-live="polite">
-              {isCreating ? 'Estamos generando la carpeta. Bloqueamos el boton para evitar duplicados.' : 'Cuando generes la carpeta, vas a ver la confirmacion apenas termine el alta.'}
+              {isCreating ? 'Estamos generando la carpeta. Bloqueamos el botón para evitar duplicados.' : 'Cuando generes la carpeta, vas a ver la confirmación apenas termine el alta.'}
             </p>
           </div>
         </article>

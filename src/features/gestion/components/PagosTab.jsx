@@ -26,11 +26,19 @@ import {
   collectPaymentEvents,
   createSettlement,
   createTodoRiskInvoice,
-  escapeHtml,
 } from '../lib/gestionShared';
 import { getStatusTone, money } from '../lib/gestionUtils';
 
-export default function PagosTab({ item, updateCase, flash, financeCatalogs = null, insuranceCatalogs = null }) {
+function HonestPendingAction({ helperText, label }) {
+  return (
+    <div className="honest-action-group" role="note">
+      <button className="secondary-button" disabled type="button">{label}</button>
+      <p className="muted honest-action-note">{helperText}</p>
+    </div>
+  );
+}
+
+export default function PagosTab({ item, updateCase, financeCatalogs = null, insuranceCatalogs = null }) {
   const receiptTypeOptions = getCatalogSelectOptions(financeCatalogs, 'receiptTypeCodes', COMPROBANTES);
   const paymentMethodOptions = getCatalogSelectOptions(financeCatalogs, 'paymentMethodCodes', PAYMENT_MODES);
   const insurancePaymentStatusOptions = getCatalogSelectOptions(insuranceCatalogs, 'paymentStatusCodes', CLEAS_PAYMENT_STATUS_OPTIONS);
@@ -240,7 +248,10 @@ export default function PagosTab({ item, updateCase, flash, financeCatalogs = nu
               </div>
             ))}
           </div>
-          <button className="secondary-button" onClick={() => flash('Documentación de pagos: acá podés abrir recibos, transferencias o respaldos del convenio y extras.')} type="button">Documentación pagos</button>
+          <HonestPendingAction
+            helperText="Los respaldos del convenio y de los extras todavía no se pueden abrir desde esta pantalla."
+            label="Adjuntos contables pendientes"
+          />
         </article>
       </div>
     );
@@ -467,7 +478,10 @@ export default function PagosTab({ item, updateCase, flash, financeCatalogs = nu
           {item.computed.thirdParty.hasExtraWorks && !item.thirdParty.payments.clientPayments.length ? (
             <div className="inline-alert danger-banner">Las tareas extras impactan en el cierre económico: registrá el cobro particular para llevar el saldo a cero.</div>
           ) : null}
-          <button className="secondary-button" onClick={() => flash('Documentación de pagos: acá podés abrir recibos, transferencias o respaldos contables del tramo mixto.')} type="button">Documentación pagos</button>
+          <HonestPendingAction
+            helperText="Los comprobantes reales del tramo mixto todavía no están disponibles para consulta desde Pagos."
+            label="Adjuntos contables pendientes"
+          />
         </article>
       </div>
     );
@@ -579,7 +593,10 @@ export default function PagosTab({ item, updateCase, flash, financeCatalogs = nu
             <StatusBadge tone={item.computed.todoRisk.paymentsReady ? 'success' : 'danger'}>{item.computed.todoRisk.paymentsReady ? 'Pagos en azul/verde operativo' : 'Pagos todavía no cierra'}</StatusBadge>
             <small>{cleasClientChargeFlow ? 'Condición: fecha de pago + monto + retenciones definidas si corresponde + pago cliente cancelado cuando aplica CLEAS sobre franquicia.' : 'Condición: fecha de pago + monto + retenciones definidas si corresponde + franquicia no pendiente.'}</small>
           </div>
-          <button className="secondary-button" onClick={() => flash('Documentación de pagos: acá podés abrir la carpeta o adjuntos contables.') } type="button">Documentación pagos</button>
+          <HonestPendingAction
+            helperText="La carpeta contable todavía no tiene visor ni descarga real dentro de esta vista."
+            label="Adjuntos contables pendientes"
+          />
         </article> : null}
       </div>
     );
@@ -592,68 +609,6 @@ export default function PagosTab({ item, updateCase, flash, financeCatalogs = nu
   };
 
   const paymentEvents = collectPaymentEvents([item]);
-
-  const openReceiptDemo = () => {
-    const printable = window.open('', '_blank', 'noopener,noreferrer,width=980,height=860');
-
-    if (!printable) {
-      return;
-    }
-
-    printable.document.write(`<!doctype html>
-      <html lang="es">
-        <head>
-          <meta charset="utf-8" />
-          <title>Recibo ${escapeHtml(item.code)}</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 28px; color: #18252f; }
-            h1, h2, p { margin: 0; }
-            .stack { display: grid; gap: 12px; }
-            .card { border: 1px solid #c9d5dc; border-radius: 12px; padding: 16px; margin-top: 16px; }
-            .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-            .row { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid #eef2f4; padding: 8px 0; }
-            small { color: #5f7481; }
-          </style>
-        </head>
-        <body>
-          <div class="stack">
-            <div>
-              <h1>Recibo Particular</h1>
-              <p>${escapeHtml(item.code)} - ${escapeHtml(`${item.customer.lastName}, ${item.customer.firstName}`)}</p>
-            </div>
-            <div class="card grid">
-              <div>
-                <small>Vehículo</small>
-                <p>${escapeHtml(`${item.vehicle.brand} ${item.vehicle.model} - ${item.vehicle.plate}`)}</p>
-              </div>
-              <div>
-                <small>Comprobante</small>
-                <p>${escapeHtml(item.payments.comprobante)}</p>
-              </div>
-              <div>
-                <small>Total cotizado</small>
-                <p>${escapeHtml(money(item.computed.totalQuoted))}</p>
-              </div>
-              <div>
-                <small>Saldo deudor</small>
-                <p>${escapeHtml(money(item.computed.balance))}</p>
-              </div>
-            </div>
-            <div class="card">
-              <h2>Movimientos</h2>
-              ${paymentEvents.map((event) => `
-                <div class="row">
-                  <span>${escapeHtml(event.type)} - ${escapeHtml(formatDate(event.date))}</span>
-                  <strong>${escapeHtml(money(event.amount))}</strong>
-                </div>`).join('') || '<p>Sin movimientos registrados.</p>'}
-            </div>
-          </div>
-        </body>
-      </html>`);
-    printable.document.close();
-    printable.focus();
-    printable.print();
-  };
 
   return (
     <div className="tab-layout pagos-tab-layout ops-tab-layout">
@@ -669,7 +624,7 @@ export default function PagosTab({ item, updateCase, flash, financeCatalogs = nu
         <div className="receipt-grid">
           <div className="summary-stack">
             <div className="summary-row"><span>Cliente</span><strong>{getFolderDisplayName(item)}</strong></div>
-            <div className="summary-row"><span>Vehiculo</span><strong>{item.vehicle.brand} {item.vehicle.model} - {item.vehicle.plate}</strong></div>
+            <div className="summary-row"><span>Vehículo</span><strong>{item.vehicle.brand} {item.vehicle.model} - {item.vehicle.plate}</strong></div>
             <div className="summary-row"><span>Repuestos</span><strong>{money(item.computed.partsTotal)}</strong></div>
             <div className="summary-row"><span>Mano de obra</span><strong>{money(item.payments.comprobante === 'A' ? item.computed.laborWithVat : item.computed.laborWithoutVat)}</strong></div>
             <div className="summary-row"><span>Total cotizado</span><strong>{money(item.computed.totalQuoted)}</strong></div>
@@ -682,16 +637,16 @@ export default function PagosTab({ item, updateCase, flash, financeCatalogs = nu
             <ToggleField label="Seña" onChange={(value) => updateCase((draft) => { draft.payments.hasSena = value; if (value !== 'SI') { draft.payments.senaAmount = ''; draft.payments.senaDate = ''; draft.payments.senaModeDetail = ''; } })} value={item.payments.hasSena} />
           </div>
 
-          <div className="receipt-status-row" aria-label="Estado de facturacion y senia">
-            <span className={`status-badge ${item.payments.invoice === 'SI' ? 'success' : 'neutral'}`}>Factura: {item.payments.invoice === 'SI' ? 'Si' : 'No'}</span>
-            <span className={`status-badge ${item.payments.hasSena === 'SI' ? 'info' : 'neutral'}`}>Seña: {item.payments.hasSena === 'SI' ? 'Si' : 'No'}</span>
+          <div className="receipt-status-row" aria-label="Estado de facturación y seña">
+             <span className={`status-badge ${item.payments.invoice === 'SI' ? 'success' : 'neutral'}`}>Factura: {item.payments.invoice === 'SI' ? 'Sí' : 'No'}</span>
+             <span className={`status-badge ${item.payments.hasSena === 'SI' ? 'info' : 'neutral'}`}>Seña: {item.payments.hasSena === 'SI' ? 'Sí' : 'No'}</span>
           </div>
         </div>
 
         {item.payments.hasSena === 'SI' ? (
           <div className="form-grid four-columns compact-grid">
-            <DataField label="Monto senia" onChange={(value) => updateCase((draft) => { draft.payments.senaAmount = value; })} value={item.payments.senaAmount} />
-            <DataField label="Fecha senia" onChange={(value) => updateCase((draft) => { draft.payments.senaDate = value; })} type="date" value={item.payments.senaDate} />
+            <DataField label="Monto seña" onChange={(value) => updateCase((draft) => { draft.payments.senaAmount = value; })} value={item.payments.senaAmount} />
+            <DataField label="Fecha seña" onChange={(value) => updateCase((draft) => { draft.payments.senaDate = value; })} type="date" value={item.payments.senaDate} />
             <SelectField label="Modo" onChange={(value) => updateCase((draft) => { draft.payments.senaMode = value; if (value !== 'OTRO' && value !== 'Otro') draft.payments.senaModeDetail = ''; })} options={paymentMethodOptions} value={resolveCatalogCode(item.payments.senaMode, getCatalogEntries(financeCatalogs, 'paymentMethodCodes'), PAYMENT_MODES) || item.payments.senaMode} />
             {item.payments.senaMode === 'Otro' ? (
               <DataField label="Detalle modo otro" onChange={(value) => updateCase((draft) => { draft.payments.senaModeDetail = value; })} value={item.payments.senaModeDetail} />
@@ -711,10 +666,10 @@ export default function PagosTab({ item, updateCase, flash, financeCatalogs = nu
         <div className="section-head">
           <div>
             <p className="eyebrow">Cancelaciones</p>
-            <h3>Parcial, total o bonificacion</h3>
+            <h3>Parcial, total o bonificación</h3>
           </div>
           <div className="tag-row">
-            <button className="secondary-button" onClick={openReceiptDemo} type="button">Recibo / PDF</button>
+            <button className="secondary-button" disabled type="button">PDF no disponible</button>
             <button className="secondary-button" onClick={addSettlement} type="button">+ Agregar pago</button>
           </div>
         </div>
@@ -766,7 +721,7 @@ export default function PagosTab({ item, updateCase, flash, financeCatalogs = nu
               ) : null}
 
               {settlement.kind === 'Bonificacion' ? (
-                <DataField label="Motivo bonificacion" onChange={(value) => updateCase((draft) => {
+                  <DataField label="Motivo bonificación" onChange={(value) => updateCase((draft) => {
                   const target = draft.payments.settlements.find((entry) => entry.id === settlement.id);
                   target.reason = value;
                 })} value={settlement.reason} />
@@ -823,6 +778,8 @@ export default function PagosTab({ item, updateCase, flash, financeCatalogs = nu
             <strong>{money(item.computed.balance)}</strong>
           </div>
         </div>
+
+        <div className="inline-alert info-banner honest-action-banner">Esta vista resume el recibo para control interno. La emisión de PDF real todavía no está integrada y por eso queda deshabilitada.</div>
       </article>
 
       <article className="card inner-card">

@@ -35,7 +35,7 @@ export function getCaseVehicleLabel(item) {
   if (compact && plate) return `${compact} · ${plate}`;
   if (compact) return compact;
   if (plate) return plate;
-  return 'Vehiculo no informado';
+  return 'Vehículo no informado';
 }
 
 /**

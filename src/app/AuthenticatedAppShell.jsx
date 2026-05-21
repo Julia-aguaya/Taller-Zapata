@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { getSessionLabel } from '../features/auth/lib/authMessages';
 
 function FloatingNotice({ notice }) {
@@ -40,9 +41,15 @@ export default function AuthenticatedAppShell({
   unreadCount,
   unreadCountSource,
 }) {
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+
+  useEffect(() => {
+    setIsMobileNavOpen(false);
+  }, [activeView]);
+
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <aside className={`sidebar ${isMobileNavOpen ? 'is-mobile-open' : ''}`}>
         <div className="sidebar-brand">
           <span className="brand-mark">DT</span>
           <div>
@@ -51,7 +58,9 @@ export default function AuthenticatedAppShell({
           </div>
         </div>
 
-        <nav className="nav-list" aria-label="Principal">
+        <p className="nav-helper-copy">Menu principal de trabajo. En mobile se despliega desde el boton superior.</p>
+
+        <nav className="nav-list" aria-label="Principal" id="primary-navigation">
           {navItems.map((item) => (
             <button className={`nav-item ${activeView === item.id ? 'is-active' : ''}`} key={item.id} onClick={() => onOpenView(item.id)} type="button">
               {item.label}
@@ -62,9 +71,18 @@ export default function AuthenticatedAppShell({
 
       <main className="workspace">
         <header className="topbar">
-          <div>
+          <div className="topbar-heading">
             <p className="eyebrow">Panel</p>
             <h2>{activeViewTitle}</h2>
+            <button
+              aria-controls="primary-navigation"
+              aria-expanded={isMobileNavOpen}
+              className="secondary-button mobile-nav-toggle"
+              onClick={() => setIsMobileNavOpen((current) => !current)}
+              type="button"
+            >
+              {isMobileNavOpen ? 'Cerrar menu' : 'Menu principal'}
+            </button>
           </div>
 
           <div className="topbar-right">

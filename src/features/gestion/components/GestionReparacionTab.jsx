@@ -19,6 +19,7 @@ import {
   THIRD_PARTY_ORDER_STATE_OPTIONS,
   THIRD_PARTY_PARTS_PROVIDER_OPTIONS,
   THIRD_PARTY_PAYMENT_OPTIONS,
+  TODO_RIESGO_ASSIGNABLE_USERS,
   TURNO_STATE_OPTIONS,
   YES_NO_AV_OPTIONS,
 } from '../constants/gestionOptions';
@@ -576,7 +577,7 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
             </div>
 
             <div className="inline-alert info-banner">
-              Esta sub-solapa replica automáticamente las lineas con REEMPLAZAR. Podés sacar items acá sin tocar el origen del presupuesto.
+              Esta sub-solapa replica automáticamente las líneas con REEMPLAZAR. Podés sacar ítems acá sin tocar el origen del presupuesto.
             </div>
 
             {item.computed.budgetParts.length ? (
@@ -595,7 +596,7 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
                       <strong>{money(part.amount)}</strong>
                     </div>
                     <div className="part-source-row">
-                      <small>{part.replacementDecision || 'Sin decision interna'}</small>
+                      <small>{part.replacementDecision || 'Sin decisión interna'}</small>
                       {removedBudgetLineIds.includes(part.lineId) ? <StatusBadge tone="danger">Quitado en Repuestos</StatusBadge> : null}
                     </div>
                   </div>
@@ -716,9 +717,9 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
             <small>La salida estimada se calcula en días hábiles desde la fecha elegida.</small>
           </div>
 
-          <div className="form-grid four-columns compact-grid">
-            <DataField label="Fecha" onChange={(value) => updateCase((draft) => { draft.repair.turno.date = value; })} type="date" value={item.repair.turno.date} />
-            <DataField label="Dias estimados" onChange={(value) => updateCase((draft) => { draft.repair.turno.estimatedDays = value; })} type="number" value={item.repair.turno.estimatedDays} />
+            <div className="form-grid four-columns compact-grid">
+              <DataField label="Fecha" onChange={(value) => updateCase((draft) => { draft.repair.turno.date = value; })} type="date" value={item.repair.turno.date} />
+              <DataField label="Días estimados" onChange={(value) => updateCase((draft) => { draft.repair.turno.estimatedDays = value; })} type="number" value={item.repair.turno.estimatedDays} />
             <DataField label="Salida estimada" onChange={() => {}} type="date" value={item.computed.turnoEstimatedExit} />
             <SelectField label="Estado" onChange={(value) => updateCase((draft) => { draft.repair.turno.state = value; })} options={TURNO_STATE_OPTIONS} value={item.repair.turno.state} />
           </div>
@@ -747,7 +748,7 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
           <div className="form-grid three-columns compact-grid">
             <DataField label="Ingreso real" onChange={(value) => updateCase((draft) => { draft.repair.ingreso.realDate = value; })} type="date" value={item.repair.ingreso.realDate} />
             <DataField label="Salida estimada" onChange={() => {}} type="date" value={item.computed.turnoEstimatedExit} />
-            <ToggleField label="Observacion en ingreso" onChange={(value) => updateCase((draft) => {
+            <ToggleField label="Observación en ingreso" onChange={(value) => updateCase((draft) => {
               draft.repair.ingreso.hasObservation = value;
               if (value !== 'SI') {
                 draft.repair.ingreso.observation = '';
@@ -823,7 +824,7 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
               Egreso definitivo
             </button>
             <button className={`toggle-button ${item.repair.egreso.repairedPhotos ? 'is-on' : ''}`} onClick={() => updateCase((draft) => { draft.repair.egreso.repairedPhotos = !draft.repair.egreso.repairedPhotos; })} type="button">
-              Fotos vehiculo reparado
+              Fotos vehículo reparado
             </button>
           </div>
 
@@ -837,7 +838,7 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
               <h4>Turno reingreso</h4>
               <div className="form-grid three-columns compact-grid">
                 <DataField label="Fecha reingreso" onChange={(value) => updateCase((draft) => { draft.repair.egreso.reentryDate = value; })} type="date" value={item.repair.egreso.reentryDate} />
-                <DataField label="Dias estimados" onChange={(value) => updateCase((draft) => { draft.repair.egreso.reentryEstimatedDays = value; })} type="number" value={item.repair.egreso.reentryEstimatedDays} />
+                <DataField label="Días estimados" onChange={(value) => updateCase((draft) => { draft.repair.egreso.reentryEstimatedDays = value; })} type="number" value={item.repair.egreso.reentryEstimatedDays} />
                 <DataField label="Salida reingreso" onChange={() => {}} type="date" value={item.computed.reentryEstimatedExit} />
                 <SelectField label="Estado reingreso" onChange={(value) => updateCase((draft) => { draft.repair.egreso.reentryState = value; })} options={TURNO_STATE_OPTIONS} value={item.repair.egreso.reentryState} />
               </div>

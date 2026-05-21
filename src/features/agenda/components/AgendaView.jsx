@@ -152,7 +152,7 @@ export default function AgendaView({ items, onOpenCase, onUpdateTask }) {
                 <thead>
                   <tr>
                     <th>Tarea</th>
-                    <th>Vinculo</th>
+                    <th>Vínculo</th>
                     <th>Prioridad</th>
                     <th>Estado</th>
                     <th>Responsable</th>
@@ -170,7 +170,7 @@ export default function AgendaView({ items, onOpenCase, onUpdateTask }) {
                           <small>{task.description || 'Sin descripción operativa.'}</small>
                         </div>
                       </td>
-                      <td data-label="Vinculo">
+                      <td data-label="Vínculo">
                         <div className="agenda-task-linkage">
                           <strong>{task.caseCode}</strong>
                           <small>{task.sourceLabel}</small>
@@ -186,21 +186,21 @@ export default function AgendaView({ items, onOpenCase, onUpdateTask }) {
                         />
                       </td>
                       <td data-label="Responsable">{task.assignee}</td>
-                      <td data-label="Fecha limite">
+                      <td data-label="Fecha límite">
                         <div className="agenda-task-due">
                           <strong>{formatDate(task.scheduledAt)}</strong>
                           <small>{task.dueMeta.label}</small>
                         </div>
                       </td>
                       {activeAgendaTab === 'resueltas' ? (
-                        <td data-label="Fecha resolucion">
+                        <td data-label="Fecha resolución">
                           <div className="agenda-task-due">
                             <strong>{formatDate(task.resolvedAt || task.scheduledAt)}</strong>
                             <small>{task.resolvedAt ? 'Resuelta' : 'Sin fecha de cierre'}</small>
                           </div>
                         </td>
                       ) : null}
-                      <td data-label="Accion">
+                      <td data-label="Acción">
                         <div className="agenda-action-group">
                           <button
                             className="secondary-button"

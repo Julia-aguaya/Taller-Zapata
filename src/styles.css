@@ -159,6 +159,11 @@ tr:focus-visible {
   align-content: start;
 }
 
+.topbar-heading {
+  display: grid;
+  gap: 10px;
+}
+
 .topbar,
 .hero-panel,
 .card {
@@ -184,6 +189,17 @@ tr:focus-visible {
 
 .sidebar-brand {
   align-items: center;
+}
+
+.nav-helper-copy,
+.mobile-nav-toggle {
+  display: none;
+}
+
+.nav-helper-copy {
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: rgba(247, 251, 255, 0.8);
 }
 
 .topbar-right {
@@ -1760,6 +1776,21 @@ h3 {
 
 .tab-strip {
   grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.honest-action-group {
+  display: grid;
+  gap: 8px;
+}
+
+.honest-action-note {
+  max-width: 38ch;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.honest-action-banner {
+  margin-top: 14px;
 }
 
 .tab-button {
@@ -3943,7 +3974,24 @@ h3 {
   }
 
   .sidebar {
-    order: 2;
+    gap: 14px;
+  }
+
+  .nav-helper-copy,
+  .mobile-nav-toggle {
+    display: inline-flex;
+  }
+
+  .mobile-nav-toggle {
+    width: fit-content;
+  }
+
+  .nav-list {
+    display: none;
+  }
+
+  .sidebar.is-mobile-open .nav-list {
+    display: grid;
   }
 
   .tab-strip,
@@ -4038,6 +4086,11 @@ h3 {
   .auth-panel-form .auth-demo-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .mobile-nav-toggle {
+    width: 100%;
+    justify-content: center;
   }
 
   .status-toolbar-readonly {

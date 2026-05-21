@@ -1,18 +1,12 @@
 import DataField from '../../../components/ui/DataField';
 import SelectField from '../../../components/ui/SelectField';
 import StatusBadge from '../../../components/ui/StatusBadge';
-import ToggleField from '../../../components/ui/ToggleField';
 import { isThirdPartyWorkshopCase } from '../../cases/lib/caseDomainCheckers';
 import { createTodoRiskDocument } from '../../cases/lib/caseFactories';
-import {
-  THIRD_PARTY_BILLING_OPTIONS,
-  THIRD_PARTY_ORDER_STATE_OPTIONS,
-  THIRD_PARTY_PARTS_PROVIDER_OPTIONS,
-  THIRD_PARTY_PAYMENT_OPTIONS,
-} from '../constants/gestionOptions';
+import { TODO_RIESGO_DOC_CATEGORY_OPTIONS } from '../constants/gestionOptions';
 import { maxDate } from '../lib/gestionUtils';
 
-export default function DocumentacionTab({ item, updateCase, flash }) {
+export default function DocumentacionTab({ item, updateCase }) {
   if (!isThirdPartyWorkshopCase(item)) {
     return null;
   }
@@ -61,13 +55,14 @@ export default function DocumentacionTab({ item, updateCase, flash }) {
         <div className="section-head">
           <div>
             <h3>Documentos cargados</h3>
-            <p className="muted">Demo manual con descarga masiva y edición simple por fila.</p>
+            <p className="muted">Podés mantener la carpeta al día desde esta tabla. La descarga del legajo todavía no está disponible en esta vista.</p>
           </div>
           <div className="tag-row">
             <button className="secondary-button" onClick={addDocumentItem} type="button">Agregar ítem</button>
-            <button className="secondary-button" onClick={() => flash('Descargar todo: se preparará un paquete único con toda la documentación del reclamo.')} type="button">Descargar todo</button>
+            <button className="secondary-button" disabled type="button">Descarga no disponible</button>
           </div>
         </div>
+        <div className="inline-alert info-banner honest-action-banner">Por ahora, los documentos se consultan desde esta tabla. Cuando la descarga del legajo esté disponible, se va a habilitar desde este sector.</div>
         <div className="table-wrap">
           <table className="data-table compact-table">
             <thead>

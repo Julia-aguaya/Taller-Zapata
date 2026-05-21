@@ -45,6 +45,7 @@ describe('AuthenticatedAppShell', () => {
     expect(screen.getByText('Listo')).toBeInTheDocument();
     expect(screen.getByText('Tu sesion esta por vencer.')).toBeInTheDocument();
     expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Menu principal' })).toHaveAttribute('aria-expanded', 'false');
 
     await user.click(screen.getByRole('button', { name: 'Carpetas' }));
     await user.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
@@ -74,6 +75,35 @@ describe('AuthenticatedAppShell', () => {
 
     expect(screen.getByText('Cambios guardados')).toBeInTheDocument();
     expect(screen.queryByText('undefined')).not.toBeInTheDocument();
+  });
+
+  it('toggles the mobile menu affordance state', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <AuthenticatedAppShell
+        activeView="panel"
+        activeViewTitle={getActiveViewTitle('panel')}
+        backendSession={{ email: 'asesor@delta.com' }}
+        navItems={NAV_ITEMS}
+        notice={null}
+        onLogout={vi.fn()}
+        onOpenView={vi.fn()}
+        sessionExpiryNotice=""
+        sessionExpirySeconds={0}
+        unreadCount={0}
+        unreadCountSource="api"
+      >
+        <section>Contenido autenticado</section>
+      </AuthenticatedAppShell>
+    );
+
+    const menuButton = screen.getByRole('button', { name: 'Menu principal' });
+    expect(menuButton).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(menuButton);
+
+    expect(screen.getByRole('button', { name: 'Cerrar menu' })).toHaveAttribute('aria-expanded', 'true');
   });
 });
 

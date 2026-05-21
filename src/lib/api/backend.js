@@ -201,7 +201,9 @@ function buildApiUrlObject(path) {
     return new URL(endpoint);
   }
 
-  const baseOrigin = typeof window === 'undefined' ? 'http://localhost' : window.location.origin;
+  const baseOrigin = typeof window === 'undefined'
+    ? 'http://localhost'
+    : window.location?.origin || window.location?.href || 'http://localhost';
   return new URL(endpoint, baseOrigin);
 }
 
@@ -1538,7 +1540,7 @@ export async function readAuthenticatedOrganizations(accessToken, options = {}) 
 }
 
 export async function readAuthenticatedBranches(accessToken, filters = {}, options = {}) {
-  const endpoint = new URL(getBranchesUrl());
+  const endpoint = buildApiUrlObject(BRANCHES_PATH);
   if (Number.isInteger(filters.organizationId)) {
     endpoint.searchParams.set('organizationId', String(filters.organizationId));
   }
@@ -1659,7 +1661,7 @@ export async function updateAuthenticatedUserRoles(accessToken, userId, body, op
 }
 
 export async function readAuthenticatedReferralContacts(accessToken, filters = {}, options = {}) {
-  const endpoint = new URL(getReferralContactsUrl());
+  const endpoint = buildApiUrlObject(REFERRAL_CONTACTS_PATH);
   if (filters.q) {
     endpoint.searchParams.set('q', String(filters.q));
   }

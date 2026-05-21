@@ -59,7 +59,7 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
   const supportsTramiteTab = isInsuranceWorkflowCase(item) || franchiseRecovery;
   const tabs = isThirdPartyLawyerCase(item)
     ? [
-      { id: 'ficha', label: 'Ficha Tecnica' },
+      { id: 'ficha', label: 'Ficha Técnica' },
       { id: 'tramite', label: 'Gestión del trámite' },
       { id: 'presupuesto', label: 'Presupuesto' },
       { id: 'gestion', label: 'Gestión de reparación' },
@@ -68,7 +68,7 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
     ]
     : isThirdPartyWorkshopCase(item)
     ? [
-      { id: 'ficha', label: 'Ficha Tecnica' },
+      { id: 'ficha', label: 'Ficha Técnica' },
       { id: 'tramite', label: 'Gestión del trámite' },
       { id: 'presupuesto', label: 'Presupuesto' },
       { id: 'documentacion', label: 'Documentación' },
@@ -77,21 +77,21 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
     ]
     : franchiseRecovery
     ? [
-      { id: 'ficha', label: 'Ficha Tecnica' },
+      { id: 'ficha', label: 'Ficha Técnica' },
       { id: 'tramite', label: 'Gestión del trámite' },
       ...(franchiseEnablesRepair ? [{ id: 'presupuesto', label: 'Presupuesto' }, { id: 'gestion', label: 'Gestión de reparación' }] : []),
       { id: 'pagos', label: 'Pagos' },
     ]
     : isInsuranceWorkflowCase(item)
     ? [
-      { id: 'ficha', label: 'Ficha Tecnica' },
+      { id: 'ficha', label: 'Ficha Técnica' },
       { id: 'tramite', label: 'Gestión del trámite' },
       { id: 'presupuesto', label: 'Presupuesto' },
       { id: 'gestion', label: 'Gestión de reparación' },
       { id: 'pagos', label: 'Pagos' },
     ]
     : [
-      { id: 'ficha', label: 'Ficha Tecnica' },
+      { id: 'ficha', label: 'Ficha Técnica' },
       { id: 'presupuesto', label: 'Presupuesto' },
       { id: 'gestion', label: 'Gestión de reparación' },
       { id: 'pagos', label: 'Pagos' },
@@ -134,7 +134,7 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
   const availableWorkflowActions = item.backendWorkflow?.actions || [];
   const tramiteActionsBound = bindWorkflowActions(tramiteActions, 'tramite', availableWorkflowActions);
   const repairActionsBound = bindWorkflowActions(repairActions, 'reparacion', availableWorkflowActions);
-  const activeTabLabel = tabs.find((tab) => tab.id === activeTab)?.label || 'Ficha Tecnica';
+  const activeTabLabel = tabs.find((tab) => tab.id === activeTab)?.label || 'Ficha Técnica';
   const lastSavedByTab = item?.meta?.lastSavedByTab || {};
   const syncErrorsByTab = item?.meta?.syncErrorsByTab || {};
   const isTabDirty = (tabId) => Boolean(item?.meta?.dirtyTabs?.[tabId]);

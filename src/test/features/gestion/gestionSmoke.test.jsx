@@ -2,7 +2,7 @@
  * Smoke tests de integración para componentes del bundle de gestión.
  * No usa MSW — los componentes reciben props directamente.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -12,6 +12,7 @@ import GestionTramiteTab from '../../../features/gestion/components/GestionTrami
 import PresupuestoTab from '../../../features/gestion/components/PresupuestoTab';
 import PagosTab from '../../../features/gestion/components/PagosTab';
 import DocumentacionTab from '../../../features/gestion/components/DocumentacionTab';
+import GestionReparacionTab from '../../../features/gestion/components/GestionReparacionTab';
 
 // ---------------------------------------------------------------------------
 // MOCK DATA
@@ -326,6 +327,73 @@ const mockCase = {
   },
 };
 
+const todoRiskCase = {
+  ...structuredClone(mockCase),
+  id: 'test-tr-1',
+  code: '0009TZ',
+  tramiteType: 'Todo Riesgo',
+  todoRisk: {
+    ...structuredClone(mockCase.todoRisk),
+    insurance: {
+      ...structuredClone(mockCase.todoRisk.insurance),
+      company: 'Sancor Seguros',
+    },
+    processing: {
+      ...structuredClone(mockCase.todoRisk.processing),
+      presentedDate: '2026-03-15',
+      modality: 'Presencial',
+      quoteStatus: 'Acordada',
+      quoteDate: '2026-03-18',
+      agreedAmount: '450000',
+    },
+  },
+  repair: {
+    ...structuredClone(mockCase.repair),
+    turno: {
+      ...structuredClone(mockCase.repair.turno),
+      estimatedDays: '3',
+      state: 'Confirmado',
+    },
+    parts: [
+      {
+        id: 'part-tr-1',
+        name: 'Óptica delantera',
+        provider: 'Proveedor Norte',
+        amount: '120000',
+        budgetAmount: '120000',
+        state: 'Pendiente',
+        authorized: 'SI',
+        source: 'budget',
+        sourceLineId: 'line-1',
+        purchaseBy: 'Taller',
+        paymentStatus: 'Pendiente',
+      },
+    ],
+  },
+  computed: {
+    ...structuredClone(mockCase.computed),
+    budgetReady: true,
+    hasReplacementParts: true,
+    turnoReady: true,
+    reportClosed: true,
+    repairStatus: 'Con Turno',
+    tabs: {
+      ...structuredClone(mockCase.computed.tabs),
+      tramite: 'advanced',
+      gestion: 'advanced',
+    },
+    todoRisk: {
+      ...structuredClone(mockCase.computed.todoRisk),
+      canProgressFromPresentation: true,
+      canCompleteProcessingCore: true,
+      quoteAgreed: true,
+      managementAdvanced: true,
+      daysProcessing: 5,
+      amountToInvoice: 450000,
+    },
+  },
+};
+
 // ---------------------------------------------------------------------------
 // GESTIONVIEW (orquestador principal)
 // ---------------------------------------------------------------------------
@@ -358,11 +426,11 @@ describe('GestionView', () => {
     render(<GestionView {...baseProps} />);
     // El heading incluye el código de caso
     expect(screen.getByText(/0001PZ/)).toBeInTheDocument();
-    // Debe mostrar los tabs: Ficha Tecnica, Presupuesto, Gestion, Pagos
-    expect(screen.getByText(/Ficha Tecnica/)).toBeInTheDocument();
-    expect(screen.getByText(/Presupuesto/)).toBeInTheDocument();
-    expect(screen.getByText(/Gestión de reparación/)).toBeInTheDocument();
-    expect(screen.getByText(/^Pagos/)).toBeInTheDocument();
+    // Debe mostrar los tabs: Ficha Técnica, Presupuesto, Gestión, Pagos
+    expect(screen.getByRole('button', { name: /Ficha Técnica/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Presupuesto/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Gestión de reparación/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Pagos/ })).toBeInTheDocument();
   });
 
   it('renderiza el tab activo (ficha por defecto)', () => {
@@ -412,8 +480,7 @@ describe('FichaTecnicaTab', () => {
     expect(screen.getByDisplayValue('Juan')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Perez')).toBeInTheDocument();
 
-    // Sección vehículo (el DOM tiene "Vehiculo" sin tilde)
-    expect(screen.getByText('Vehiculo')).toBeInTheDocument();
+    expect(screen.getByText('Vehículo')).toBeInTheDocument();
     expect(screen.getByDisplayValue('ABC123')).toBeInTheDocument();
     expect(screen.getByDisplayValue('Toyota')).toBeInTheDocument();
   });
@@ -421,9 +488,8 @@ describe('FichaTecnicaTab', () => {
   it('renderiza resumen de reparación y pagos', () => {
     render(<FichaTecnicaTab {...baseProps} />);
 
-    // DOM sin tildes: "Resumen Reparacion", "Resumen Pagos"
-    expect(screen.getByText('Resumen Reparacion')).toBeInTheDocument();
-    expect(screen.getByText('Resumen Pagos')).toBeInTheDocument();
+    expect(screen.getByText('Resumen Reparación')).toBeInTheDocument();
+    expect(screen.getByText('Resumen de pagos')).toBeInTheDocument();
     expect(screen.getByText('Lectura consolidada')).toBeInTheDocument();
   });
 });
@@ -493,8 +559,8 @@ describe('PresupuestoTab', () => {
     render(<PresupuestoTab {...baseProps} />);
 
     expect(screen.getByText('Tareas a realizar')).toBeInTheDocument();
-    // Debe mostrar el botón "Agregar linea"
-    expect(screen.getByText('Agregar linea')).toBeInTheDocument();
+    // Debe mostrar el botón "Agregar línea"
+    expect(screen.getByText('Agregar línea')).toBeInTheDocument();
   });
 
   it('renderiza la sección de servicios adicionales', () => {
@@ -526,11 +592,6 @@ describe('PagosTab', () => {
     insuranceCatalogs: null,
   };
 
-  beforeEach(() => {
-    // Mock window.open para el botón de recibo demo
-    vi.spyOn(window, 'open').mockImplementation(() => null);
-  });
-
   it('renderiza cabecera de pagos con tipo de comprobante', () => {
     render(<PagosTab {...baseProps} />);
 
@@ -555,8 +616,15 @@ describe('PagosTab', () => {
   it('renderiza el botón de recibo y agregar pago', () => {
     render(<PagosTab {...baseProps} />);
 
-    expect(screen.getByText('Recibo / PDF')).toBeInTheDocument();
+    expect(screen.getByText('PDF no disponible')).toBeInTheDocument();
     expect(screen.getByText('+ Agregar pago')).toBeInTheDocument();
+  });
+
+  it('muestra mensajes honestos para acciones no integradas', () => {
+    render(<PagosTab {...baseProps} />);
+
+    expect(screen.getByText('PDF no disponible')).toBeDisabled();
+    expect(screen.getByText(/La emisión de PDF real todavía no está integrada/i)).toBeInTheDocument();
   });
 
   it('muestra los settlements existentes', () => {
@@ -657,6 +725,35 @@ describe('DocumentacionTab', () => {
     expect(screen.getByDisplayValue('Denuncia administrativa')).toBeInTheDocument();
     // Debe mostrar los botones de acción
     expect(screen.getByText('Agregar ítem')).toBeInTheDocument();
-    expect(screen.getByText('Descargar todo')).toBeInTheDocument();
+    expect(screen.getByText('Descarga no disponible')).toBeDisabled();
+    expect(screen.getByText(/La descarga del legajo todavía no está disponible en esta vista/i)).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GESTIONREPARACIONTAB
+// ---------------------------------------------------------------------------
+
+describe('GestionReparacionTab', () => {
+  it('permite crear una tarea de seguimiento desde Todo Riesgo sin romper la vista', async () => {
+    const user = userEvent.setup();
+    const updateCase = vi.fn((updater) => {
+      const draft = structuredClone(todoRiskCase);
+      updater(draft);
+    });
+
+    render(
+      <GestionReparacionTab
+        activeRepairTab="turno"
+        flash={vi.fn()}
+        item={todoRiskCase}
+        onChangeRepairTab={vi.fn()}
+        updateCase={updateCase}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Crear tarea' }));
+
+    expect(updateCase).toHaveBeenCalled();
   });
 });

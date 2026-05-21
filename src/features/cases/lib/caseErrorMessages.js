@@ -2,12 +2,12 @@ import { normalizeLookupText } from './caseNormalizers';
 
 const TECHNICAL_FIELD_MESSAGES = {
   partsautorizationcode: {
-    label: 'autorizacion de repuestos',
-    location: 'Gestion del tramite',
+    label: 'autorización de repuestos',
+    location: 'Gestión del trámite',
   },
   partsauthorizationcode: {
-    label: 'autorizacion de repuestos',
-    location: 'Gestion del tramite',
+    label: 'autorización de repuestos',
+    location: 'Gestión del trámite',
   },
   reportstatuscode: {
     label: 'estado del informe',
@@ -26,10 +26,10 @@ function getTechnicalValidationMessage(rawMessage) {
   const invalidValuePattern = /no permitido|not allowed|invalid|invalido|incorrecto|unsupported/;
 
   if (invalidValuePattern.test(normalizedMessage)) {
-    return `Revisa ${metadata.location}: la ${metadata.label} que intentas guardar no es valida.`;
+    return `Revisá ${metadata.location}: la ${metadata.label} que intentás guardar no es válida.`;
   }
 
-  return `Revisa ${metadata.location}: falta completar o corregir la ${metadata.label}.`;
+  return `Revisá ${metadata.location}: falta completar o corregir la ${metadata.label}.`;
 }
 
 export function getFriendlyErrorMessage(error) {

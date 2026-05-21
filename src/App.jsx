@@ -429,7 +429,7 @@ function formatNotificationType(typeCode) {
   }
 
   const labels = {
-    documentacion_vencida: 'Documentacion',
+    documentacion_vencida: 'Documentación',
     turno_proximo: 'Turno',
     caso_actualizado: 'Carpeta',
     pago_acreditado: 'Cobro',
@@ -459,7 +459,7 @@ function getNotificationTone(typeCode) {
 
 function getWorkflowActionAudienceCopy(action) {
   if (!action?.targetStateName) {
-    return 'Proximo paso disponible';
+    return 'Próximo paso disponible';
   }
 
   return `${formatWorkflowDomain(action.domain)}: ${action.targetStateName}`;
@@ -474,8 +474,8 @@ function formatDocumentOrigin(originCode) {
 
   const labels = {
     operacion: 'Seguimiento',
-    tramite: 'Tramite',
-    documentacion: 'Documentacion',
+    tramite: 'Trámite',
+    documentacion: 'Documentación',
     seguro: 'Seguro',
     legal: 'Gestión legal',
     finanza: 'Cobro',
@@ -1517,9 +1517,9 @@ function App() {
   const [activeView, setActiveView] = useState('panel');
   const [selectedCaseId, setSelectedCaseId] = useState('');
   const [isSavingCase, setIsSavingCase] = useState(false);
-  const [isSavingDocuments, setIsSavingDocuments] = useState(false);
-  const [isDownloadingDocument, setIsDownloadingDocument] = useState(false);
-  const [isPreviewingDocument, setIsPreviewingDocument] = useState(false);
+  const [isSavingDocuments, setIsSavingDocuments] = useState({ upload: false, byId: {} });
+  const [isDownloadingDocument, setIsDownloadingDocument] = useState({ byId: {} });
+  const [isPreviewingDocument, setIsPreviewingDocument] = useState({ byId: {} });
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [dirtyTabs, setDirtyTabs] = useState(new Set());
   const [activeTab, setActiveTab] = useState('ficha');
@@ -3585,6 +3585,10 @@ function App() {
   };
 
   const autofillCustomerByDocument = async () => {
+    if (customerLookupState.status === 'loading') {
+      return;
+    }
+
     const document = normalizeDocument(newCaseForm.document);
 
     if (!document) {
@@ -3598,6 +3602,7 @@ function App() {
     }
 
     try {
+      setCustomerLookupState({ status: 'loading', message: 'Buscando cliente', detail: `Estamos buscando el cliente con DNI ${document}.` });
       const result = await searchAuthenticatedPersons(backendSession.accessToken, { document });
       const person = Array.isArray(result.data) ? result.data[0] : null;
 
@@ -3630,6 +3635,10 @@ function App() {
   };
 
   const autofillVehicleByPlate = async () => {
+    if (vehicleLookupState.status === 'loading') {
+      return;
+    }
+
     const plate = normalizePlate(newCaseForm.plate);
 
     if (!plate) {
@@ -3643,6 +3652,7 @@ function App() {
     }
 
     try {
+      setVehicleLookupState({ status: 'loading', message: 'Buscando vehículo', detail: `Estamos buscando el vehículo con patente ${plate}.` });
       const result = await searchAuthenticatedVehicles(backendSession.accessToken, { plate });
       const vehicle = Array.isArray(result.data) ? result.data[0] : null;
 
@@ -3684,7 +3694,7 @@ function App() {
   const exportPanelExcel = (items) => {
     const rows = buildPanelExportRows(items);
     const csv = [
-      ['Carpeta', 'Cliente', 'Vehiculo', 'Dominio', 'Estado del tramite', 'Estado de reparacion', 'Pagos', 'Tareas pendientes', 'Fecha estimada', 'Saldo', 'Total cotizado']
+      ['Carpeta', 'Cliente', 'Vehículo', 'Dominio', 'Estado del trámite', 'Estado de reparación', 'Pagos', 'Tareas pendientes', 'Fecha estimada', 'Saldo', 'Total cotizado']
         .map(escapeCsvValue)
         .join(','),
       ...rows.map((row) => [
@@ -4450,12 +4460,51 @@ function App() {
 
   const saveCaseDocument = async ({ caseId, documentId = null, relationId = null, file = null, fileName = '', categoryId = null, subcategoryCode = '', documentDate = '', originCode = 'CLIENTE', observations = '', visibleToCustomer = true, principal = false, visualOrder = 1 }) => {
     const numericCaseId = Number(caseId);
+    const numericDocumentId = Number(documentId);
+    const hasDocumentTarget = Number.isFinite(numericDocumentId);
+    const actionType = hasDocumentTarget
+      ? file
+        ? 'replace-file'
+        : relationId
+          ? 'update-relation'
+          : 'update-document'
+      : 'upload';
     if (!Number.isFinite(numericCaseId)) {
       flash({ tone: 'danger', title: 'Carpeta inválida', message: 'No pudimos identificar la carpeta para guardar el documento.' });
       return false;
     }
 
-    setIsSavingDocuments(true);
+    if (hasDocumentTarget) {
+      let shouldContinue = true;
+      setIsSavingDocuments((current) => {
+        if (current.byId[numericDocumentId]) {
+          shouldContinue = false;
+          return current;
+        }
+        return {
+          ...current,
+          byId: {
+            ...current.byId,
+            [numericDocumentId]: actionType,
+          },
+        };
+      });
+      if (!shouldContinue) {
+        return false;
+      }
+    } else {
+      let shouldContinue = true;
+      setIsSavingDocuments((current) => {
+        if (current.upload) {
+          shouldContinue = false;
+          return current;
+        }
+        return { ...current, upload: true };
+      });
+      if (!shouldContinue) {
+        return false;
+      }
+    }
 
     try {
       await readWithStoredToken(async (accessToken) => {
@@ -4528,7 +4577,14 @@ function App() {
       flash({ tone: 'danger', title: 'No pudimos guardar documento', message: error?.message || 'Falló la sincronización del documento.' });
       return false;
     } finally {
-      setIsSavingDocuments(false);
+      setIsSavingDocuments((current) => {
+        if (hasDocumentTarget) {
+          const nextById = { ...current.byId };
+          delete nextById[numericDocumentId];
+          return { ...current, byId: nextById };
+        }
+        return { ...current, upload: false };
+      });
     }
   };
 
@@ -4540,7 +4596,24 @@ function App() {
       return false;
     }
 
-    setIsDownloadingDocument(true);
+    let shouldContinue = true;
+    setIsDownloadingDocument((current) => {
+      if (current.byId[numericDocumentId]) {
+        shouldContinue = false;
+        return current;
+      }
+      return {
+        ...current,
+        byId: {
+          ...current.byId,
+          [numericDocumentId]: true,
+        },
+      };
+    });
+    if (!shouldContinue) {
+      return false;
+    }
+
     try {
       await readWithStoredToken(async (accessToken) => {
         const result = await downloadAuthenticatedCaseDocument(accessToken, numericCaseId, numericDocumentId);
@@ -4551,7 +4624,11 @@ function App() {
       flash({ tone: 'danger', title: 'No pudimos descargar', message: error?.message || 'Falló la descarga del documento.' });
       return false;
     } finally {
-      setIsDownloadingDocument(false);
+      setIsDownloadingDocument((current) => {
+        const nextById = { ...current.byId };
+        delete nextById[numericDocumentId];
+        return { ...current, byId: nextById };
+      });
     }
   };
 
@@ -4563,7 +4640,24 @@ function App() {
       return false;
     }
 
-    setIsPreviewingDocument(true);
+    let shouldContinue = true;
+    setIsPreviewingDocument((current) => {
+      if (current.byId[numericDocumentId]) {
+        shouldContinue = false;
+        return current;
+      }
+      return {
+        ...current,
+        byId: {
+          ...current.byId,
+          [numericDocumentId]: true,
+        },
+      };
+    });
+    if (!shouldContinue) {
+      return null;
+    }
+
     try {
       return await readWithStoredToken(async (accessToken) => {
         const result = await downloadAuthenticatedCaseDocument(accessToken, numericCaseId, numericDocumentId);
@@ -4578,7 +4672,11 @@ function App() {
       flash({ tone: 'danger', title: 'No pudimos previsualizar', message: error?.message || 'Falló la apertura del documento.' });
       return null;
     } finally {
-      setIsPreviewingDocument(false);
+      setIsPreviewingDocument((current) => {
+        const nextById = { ...current.byId };
+        delete nextById[numericDocumentId];
+        return { ...current, byId: nextById };
+      });
     }
   };
 

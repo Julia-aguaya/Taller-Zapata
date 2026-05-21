@@ -76,11 +76,11 @@ describe('caseDisplayHelpers', () => {
 
     it('debería retornar mensaje por defecto si no hay datos', () => {
       const item = {};
-      expect(getCaseVehicleLabel(item)).toBe('Vehiculo no informado');
+      expect(getCaseVehicleLabel(item)).toBe('Vehículo no informado');
     });
 
     it('debería retornar mensaje por defecto para null', () => {
-      expect(getCaseVehicleLabel(null)).toBe('Vehiculo no informado');
+      expect(getCaseVehicleLabel(null)).toBe('Vehículo no informado');
     });
   });
 

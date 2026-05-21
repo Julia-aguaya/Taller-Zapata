@@ -53,7 +53,7 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
     const current = item.budget.lines.at(-1);
 
     if (current && !lineIsComplete(current)) {
-      flash('No se permite nueva linea si la actual no tiene pieza afectada, tarea a ejecutar y nivel de dano.');
+      flash('No se permite una nueva línea si la actual no tiene pieza afectada, tarea a ejecutar y nivel de daño.');
       return;
     }
 
@@ -64,7 +64,7 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
 
   const removeLine = (lineId) => {
     if (item.budget.lines.length === 1) {
-      flash('Necesitas al menos una linea de presupuesto.');
+      flash('Necesitás al menos una línea de presupuesto.');
       return;
     }
 
@@ -97,11 +97,11 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
       }
       if (!item.computed.hasVehicleData) {
         const missing = item.computed.vehicleMissingFields.join(', ');
-        flash(`No se puede cerrar el informe: falta ${missing || 'completar la ficha tecnica del vehiculo'}.`);
+        flash(`No se puede cerrar el informe: falta ${missing || 'completar la ficha técnica del vehículo'}.`);
         return;
       }
       if (item.computed.pendingReplacementDecision) {
-        flash(`Defini la decision interna de repuesto para ${item.computed.pendingReplacementDecision.piece || 'las lineas con REEMPLAZAR'} antes de cerrar.`);
+        flash(`Definí la decisión interna de repuesto para ${item.computed.pendingReplacementDecision.piece || 'las líneas con REEMPLAZAR'} antes de cerrar.`);
         return;
       }
     }
@@ -120,7 +120,7 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
   const vehicleSummary = [
     { label: 'Dominio', value: item.vehicle.plate || 'Pendiente' },
     { label: 'Marca / modelo', value: `${item.vehicle.brand || 'Pendiente'} ${item.vehicle.model || ''}`.trim() },
-    { label: 'Ano', value: item.vehicle.year || 'Pendiente' },
+    { label: 'Año', value: item.vehicle.year || 'Pendiente' },
     { label: 'Tipo', value: item.vehicle.type || 'Pendiente' },
     { label: 'Uso', value: item.vehicle.usage || 'Pendiente' },
     { label: 'Pintura', value: item.vehicle.paint || 'Pendiente' },
@@ -141,7 +141,7 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
     ? 'Los reemplazos ya quedaron sincronizados en Repuestos.'
     : item.computed.canGenerateBudget
       ? 'Al generar, los reemplazos se sincronizan en Repuestos.'
-      : 'Completá taller, vehiculo, lineas, decision de reemplazo y mano de obra.';
+      : 'Completá taller, vehículo, líneas, decisión de reemplazo y mano de obra.';
 
   const markMediaThumbFailed = (mediaId) => {
     setFailedMediaIds((current) => (current.includes(mediaId) ? current : [...current, mediaId]));
@@ -237,14 +237,14 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
           <div className="vehicle-summary-card">
             <div className="vehicle-summary-head">
               <div>
-                <span>Vehiculo desde Ficha Tecnica</span>
+                <span>Vehículo desde Ficha Técnica</span>
                 <strong>{item.vehicle.brand || 'Pendiente'} {item.vehicle.model || ''}</strong>
-                <small>Se espejan los datos del vehiculo; las observaciones quedan fuera de esta cabecera.</small>
+                <small>Se reflejan los datos del vehículo; las observaciones quedan fuera de esta cabecera.</small>
               </div>
               <div className="vehicle-summary-owner">
                 <span>Cliente</span>
                 <strong>{customerDisplayName}</strong>
-                <small>{item.customer.phone || 'Telefono pendiente'}</small>
+                <small>{item.customer.phone || 'Teléfono pendiente'}</small>
               </div>
             </div>
             <div className="vehicle-meta-grid">
@@ -257,7 +257,7 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
             </div>
             {!item.computed.hasVehicleData ? (
               <div className="inline-alert danger-banner">
-                No podés cerrar el informe hasta completar en Ficha Tecnica: {item.computed.vehicleMissingFields.join(', ')}.
+                No podés cerrar el informe hasta completar en Ficha Técnica: {item.computed.vehicleMissingFields.join(', ')}.
               </div>
             ) : null}
           </div>
@@ -325,7 +325,7 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
           </div>
         ) : (
           <div className="empty-media" role="status">
-            Cargá las fotos en Ficha Técnica &gt; Ingreso para verlas acá mientras presupuestás.
+            Cargá las fotos en Ficha Técnica &gt; Ingreso para verlas acá mientras preparás el presupuesto.
           </div>
         )}
       </article>
@@ -335,7 +335,7 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
           <div>
             <h3>Tareas a realizar</h3>
           </div>
-          <button className="secondary-button" onClick={addLine} type="button">Agregar linea</button>
+          <button className="secondary-button" onClick={addLine} type="button">Agregar línea</button>
         </div>
 
         <div className="budget-lines checklist-lines">
@@ -346,7 +346,7 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
             return (
             <div className="budget-line budget-line-extended" key={line.id}>
               <div className="budget-line-header">
-                <strong>Linea {index + 1}</strong>
+                <strong>Línea {index + 1}</strong>
                 <small>{line.action || 'Tarea sin definir'}</small>
               </div>
               <DataField label="Pieza afectada" onChange={(value) => updateBudgetLine(line.id, (target) => {
@@ -407,16 +407,16 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
               <div className="budget-line-footer">
                 <div className="budget-line-meta">
                   <StatusBadge tone={lineIsComplete(line) ? 'success' : 'danger'}>
-                    {lineIsComplete(line) ? 'Linea completa' : 'Falta completar'}
+                     {lineIsComplete(line) ? 'Línea completa' : 'Falta completar'}
                   </StatusBadge>
                   {isReplacementLine ? (
                     <StatusBadge tone={line.replacementDecision ? 'info' : 'danger'}>
-                      {line.replacementDecision || 'Sin decision'}
+                      {line.replacementDecision || 'Sin decisión'}
                     </StatusBadge>
                   ) : null}
                   <small>{line.action || 'Tarea sin definir'}</small>
                 </div>
-                <button className="ghost-button" onClick={() => removeLine(line.id)} type="button">Eliminar linea</button>
+                 <button className="ghost-button" onClick={() => removeLine(line.id)} type="button">Eliminar línea</button>
               </div>
             </div>
             );
@@ -518,7 +518,7 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
           ) : null}
 
           <label className="field">
-            <span>Anotaciones accesorios</span>
+            <span>Anotaciones de accesorios</span>
             <textarea onChange={(event) => updateBudget((draft) => { draft.budget.accessoryNotes = event.target.value; })} value={item.budget.accessoryNotes || ''} />
           </label>
         </article>
@@ -535,8 +535,8 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
         <div className="form-grid three-columns compact-grid">
           <DataField label="Fecha cotización repuestos" onChange={(value) => updateBudget((draft) => { draft.budget.partsQuotedDate = value; })} type="date" value={item.budget.partsQuotedDate} />
           <DataField label="Proveedor repuestos" onChange={(value) => updateBudget((draft) => { draft.budget.partsProvider = value; })} value={item.budget.partsProvider} />
-          <DataField label="Dias de trabajo estimados" onChange={(value) => updateBudget((draft) => { draft.budget.estimatedWorkDays = value; })} type="number" value={item.budget.estimatedWorkDays} />
-          <DataField label="Monto minimo cierre MO" inputMode="numeric" onChange={(value) => updateBudget((draft) => { draft.budget.minimumLaborClose = value; })} value={item.budget.minimumLaborClose} />
+          <DataField label="Días de trabajo estimados" onChange={(value) => updateBudget((draft) => { draft.budget.estimatedWorkDays = value; })} type="number" value={item.budget.estimatedWorkDays} />
+          <DataField label="Monto mínimo cierre MO" inputMode="numeric" onChange={(value) => updateBudget((draft) => { draft.budget.minimumLaborClose = value; })} value={item.budget.minimumLaborClose} />
           <DataField label="Mano de obra s/IVA" inputMode="numeric" onChange={(value) => updateBudget((draft) => { draft.budget.laborWithoutVat = value; })} value={item.budget.laborWithoutVat} />
           <DataField label="IVA 21% MO" onChange={() => {}} readOnly value={item.computed.laborVat} />
         </div>
@@ -588,7 +588,7 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
             <div className="media-modal-head">
               <div>
                 <strong>{previewMedia.label}</strong>
-                <p>{previewMedia.description || (previewMedia.type === 'video' ? 'Video adjunto desde Ficha Tecnica.' : 'Foto adjunta desde Ficha Tecnica.')}</p>
+                <p>{previewMedia.description || (previewMedia.type === 'video' ? 'Video adjunto desde Ficha Técnica.' : 'Foto adjunta desde Ficha Técnica.')}</p>
               </div>
               <button className="ghost-button" onClick={() => setPreviewMedia(null)} type="button">Cerrar</button>
             </div>

@@ -9,7 +9,7 @@ export function formatNotificationType(typeCode) {
   }
 
   const labels = {
-    documentacion_vencida: 'Documentacion',
+    documentacion_vencida: 'Documentación',
     turno_proximo: 'Turno',
     caso_actualizado: 'Carpeta',
     pago_acreditado: 'Cobro',
@@ -39,7 +39,7 @@ export function getNotificationTone(typeCode) {
 
 export function getWorkflowActionAudienceCopy(action) {
   if (!action?.targetStateName) {
-    return 'Proximo paso disponible';
+    return 'Próximo paso disponible';
   }
 
   return `${formatWorkflowDomain(action.domain)}: ${action.targetStateName}`;
@@ -54,8 +54,8 @@ function formatDocumentOrigin(originCode) {
 
   const labels = {
     operacion: 'Seguimiento',
-    tramite: 'Tramite',
-    documentacion: 'Documentacion',
+    tramite: 'Trámite',
+    documentacion: 'Documentación',
     seguro: 'Seguro',
     legal: 'Gestión legal',
     finanza: 'Cobro',

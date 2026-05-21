@@ -1,7 +1,5 @@
 ALTER TABLE casos
-    ADD COLUMN estado_visible_tramite_override_codigo VARCHAR(40) NULL;
-
-ALTER TABLE casos
+    ADD COLUMN estado_visible_tramite_override_codigo VARCHAR(40) NULL,
     ADD COLUMN estado_visible_reparacion_override_codigo VARCHAR(40) NULL;
 
 INSERT IGNORE INTO permisos (codigo, nombre, modulo, descripcion)

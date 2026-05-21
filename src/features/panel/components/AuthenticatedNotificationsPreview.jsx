@@ -88,7 +88,7 @@ export default function AuthenticatedNotificationsPreview({
               ? 'Actualizando...'
               : actionHasError
                 ? 'Reintentar'
-                : 'Marcar leida';
+                : 'Marcar leída';
 
             return (
               <article className="notification-card" key={notification.id} role="listitem">

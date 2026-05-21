@@ -27,9 +27,9 @@ export default function AuthenticatedCaseDetail({
   onPreviewDocument,
   formatDate,
   formatDateTime,
-  isSavingDocuments = false,
-  isDownloadingDocument = false,
-  isPreviewingDocument = false,
+  isSavingDocuments = { upload: false, byId: {} },
+  isDownloadingDocument = { byId: {} },
+  isPreviewingDocument = { byId: {} },
   documentsCatalogs = null,
 }) {
   if (detailState.status === 'idle') {
@@ -73,7 +73,7 @@ export default function AuthenticatedCaseDetail({
   const documentsState = detailState.documentsState;
   const documentGroups = groupDocumentsByOrigin(documentsState.items);
   const mainStateLabel = formatBackendState(item.currentCaseStateCode);
-  const priorityLabel = formatBackendState(item.priorityCode, 'Estandar');
+  const priorityLabel = formatBackendState(item.priorityCode, 'Estándar');
   const priorityTone = getBackendStatusTone(priorityLabel);
   const pendingCount = item?.pendingTasksCount ?? item?.computed?.pendingTasksCount ?? workflowActions.length;
   const nextTaskLabel = getCaseNextTaskLabel(workflowActions);
@@ -93,9 +93,9 @@ export default function AuthenticatedCaseDetail({
       </div>
 
       <div className="backend-detail-grid" role="list" aria-label="Resumen de la carpeta seleccionada">
-        <div className="backend-detail-row" role="listitem"><span>Codigo</span><strong>{getBackendCaseDetailHeadline(item)}</strong></div>
+        <div className="backend-detail-row" role="listitem"><span>Código</span><strong>{getBackendCaseDetailHeadline(item)}</strong></div>
         <div className="backend-detail-row" role="listitem"><span>Cliente</span><strong>{getCaseClientLabel(item)}</strong></div>
-        <div className="backend-detail-row" role="listitem"><span>Vehiculo</span><strong>{getCaseVehicleLabel(item)}</strong></div>
+        <div className="backend-detail-row" role="listitem"><span>Vehículo</span><strong>{getCaseVehicleLabel(item)}</strong></div>
         <div className="backend-detail-row" role="listitem"><span>Estado actual</span><StatusBadge tone={getBackendStatusTone(mainStateLabel)}>{mainStateLabel}</StatusBadge></div>
         <div className="backend-detail-row" role="listitem"><span>Prioridad</span><StatusBadge tone={priorityTone}>{priorityLabel}</StatusBadge></div>
         <div className="backend-detail-row" role="listitem"><span>Responsable</span><strong>{responsibleLabel}</strong></div>
@@ -103,7 +103,7 @@ export default function AuthenticatedCaseDetail({
         <div className="backend-detail-row" role="listitem"><span>Vencimiento</span><strong>{dueAt ? formatDate(dueAt) : 'Sin fecha'}</strong></div>
       </div>
 
-      <div className="backend-detail-highlights" role="list" aria-label="Resumen rapido del estado de la carpeta">
+      <div className="backend-detail-highlights" role="list" aria-label="Resumen rápido del estado de la carpeta">
         <article className="backend-detail-highlight" role="listitem">
           <span>Pendientes</span>
           <strong>{pendingCount}</strong>
@@ -122,14 +122,14 @@ export default function AuthenticatedCaseDetail({
           onClick={() => { onOpenCase?.(item, { tab: 'gestion' }); }}
           type="button"
         >
-          Abrir gestion
+          Abrir gestión
         </button>
         <button
           className="secondary-button button-link backend-detail-action"
           onClick={() => { onOpenCase?.(item, { tab: 'documentacion' }); }}
           type="button"
         >
-          Documentacion
+          Documentación
         </button>
       </div>
 

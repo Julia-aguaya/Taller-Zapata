@@ -18,10 +18,10 @@ export function formatWorkflowDomain(domain, fallback = 'Seguimiento') {
   }
 
   const labels = {
-    tramite: 'Tramite',
-    reparacion: 'Reparacion',
+    tramite: 'Trámite',
+    reparacion: 'Reparación',
     pago: 'Cobro',
-    documentacion: 'Documentacion',
+    documentacion: 'Documentación',
     legal: 'Gestión legal',
   };
 

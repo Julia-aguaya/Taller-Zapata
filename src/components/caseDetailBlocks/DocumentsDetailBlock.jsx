@@ -18,6 +18,15 @@ export default function DocumentsDetailBlock({
   documentsCatalogs,
   StatusBadge,
 }) {
+  const saveState = typeof isSavingDocuments === 'object' && isSavingDocuments !== null
+    ? { upload: Boolean(isSavingDocuments.upload), byId: isSavingDocuments.byId || {} }
+    : { upload: Boolean(isSavingDocuments), byId: {} };
+  const downloadState = typeof isDownloadingDocument === 'object' && isDownloadingDocument !== null
+    ? { byId: isDownloadingDocument.byId || {} }
+    : { byId: {} };
+  const previewState = typeof isPreviewingDocument === 'object' && isPreviewingDocument !== null
+    ? { byId: isPreviewingDocument.byId || {} }
+    : { byId: {} };
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploadMeta, setUploadMeta] = useState({
     categoryId: '1',
@@ -148,7 +157,7 @@ export default function DocumentsDetailBlock({
           </button>
           <button
             className="secondary-button"
-            disabled={!selectedFile || isSavingDocuments || (requiresDateForUploadCategory && !uploadMeta.documentDate)}
+            disabled={!selectedFile || saveState.upload || (requiresDateForUploadCategory && !uploadMeta.documentDate)}
             onClick={() => {
               if (requiresDateForUploadCategory && !uploadMeta.documentDate) {
                 window.alert('La categoría seleccionada exige fecha de documento.');
@@ -183,7 +192,7 @@ export default function DocumentsDetailBlock({
             }}
             type="button"
           >
-            {isSavingDocuments ? 'Guardando...' : 'Subir documento'}
+            {saveState.upload ? 'Subiendo documento...' : 'Subir documento'}
           </button>
         </div>
       </div>
@@ -199,6 +208,10 @@ export default function DocumentsDetailBlock({
               <div className="backend-document-group-head"><strong>{group.origin}</strong><small>{group.items.length} archivo{group.items.length === 1 ? '' : 's'}</small></div>
               <div className="backend-document-list backend-item-list-horizontal" role="list" aria-label={`Documentos ${group.origin.toLowerCase()} de la carpeta`}>
                 {group.items.map((document) => {
+                  const itemSaveAction = saveState.byId[document.documentId] || '';
+                  const isSavingCurrentDocument = Boolean(itemSaveAction);
+                  const isDownloadingCurrentDocument = Boolean(downloadState.byId[document.documentId]);
+                  const isPreviewingCurrentDocument = Boolean(previewState.byId[document.documentId]);
                   const documentDateLabel = document.documentDate ? `Fecha ${formatDate(document.documentDate)}` : document.createdAt ? `Compartido ${formatDateTime(document.createdAt)}` : '';
                   const documentSizeLabel = formatDocumentSize(document.sizeBytes);
                   const lowerName = String(document.fileName || '').toLowerCase();
@@ -219,7 +232,7 @@ export default function DocumentsDetailBlock({
                       <div className="notification-card-actions backend-document-actions" style={{ marginTop: 8 }}>
                         <button
                           className="ghost-button"
-                          disabled={isSavingDocuments}
+                          disabled={isSavingCurrentDocument}
                           onClick={() => {
                             setEditingDocumentId((current) => {
                               if (current === document.documentId) return null;
@@ -238,12 +251,20 @@ export default function DocumentsDetailBlock({
                           }}
                           type="button"
                         >
-                          {editingDocumentId === document.documentId ? 'Cancelar edicion' : 'Editar documento'}
+                          {isSavingCurrentDocument
+                            ? itemSaveAction === 'replace-file'
+                              ? 'Reemplazando archivo...'
+                              : itemSaveAction === 'update-relation'
+                                ? 'Actualizando documento...'
+                                : 'Guardando documento...'
+                            : editingDocumentId === document.documentId
+                              ? 'Cancelar edicion'
+                              : 'Editar documento'}
                         </button>
                         {canPreview ? (
                           <button
                             className="secondary-button"
-                            disabled={isPreviewingDocument}
+                            disabled={isPreviewingCurrentDocument}
                             onClick={async () => {
                               const preview = await onPreviewDocument?.({ caseId, documentId: document.documentId });
                               if (preview?.blobUrl) {
@@ -255,22 +276,22 @@ export default function DocumentsDetailBlock({
                             }}
                             type="button"
                           >
-                            {isPreviewingDocument ? 'Abriendo...' : 'Vista previa'}
+                            {isPreviewingCurrentDocument ? 'Abriendo vista previa...' : 'Vista previa'}
                           </button>
                         ) : null}
                         <button
                           className="ghost-button backend-document-download"
-                          disabled={isDownloadingDocument}
+                          disabled={isDownloadingCurrentDocument}
                           onClick={() => {
                             void onDownloadDocument?.({ caseId, documentId: document.documentId });
                           }}
                           type="button"
                         >
-                          {isDownloadingDocument ? 'Descargando...' : 'Descargar archivo'}
+                          {isDownloadingCurrentDocument ? 'Descargando archivo...' : 'Descargar archivo'}
                         </button>
                         <button
                           className="ghost-button"
-                          disabled={isSavingDocuments}
+                          disabled={isSavingCurrentDocument}
                           onClick={() => {
                             void onSaveDocument?.({
                               caseId,
@@ -287,7 +308,11 @@ export default function DocumentsDetailBlock({
                           }}
                           type="button"
                         >
-                          {document.visibleToCustomer ? 'Ocultar a cliente' : 'Mostrar a cliente'}
+                          {isSavingCurrentDocument
+                            ? 'Guardando visibilidad...'
+                            : document.visibleToCustomer
+                              ? 'Ocultar a cliente'
+                              : 'Mostrar a cliente'}
                         </button>
                       </div>
                       {editingDocumentId === document.documentId ? (
@@ -360,7 +385,7 @@ export default function DocumentsDetailBlock({
                             ) : null}
                             <button
                               className="secondary-button"
-                              disabled={isSavingDocuments}
+                              disabled={isSavingCurrentDocument}
                               onClick={() => {
                                 if (Boolean(categories.find((entry) => String(entry.id) === String(draftMeta.categoryId))?.requiresDate) && !draftMeta.documentDate) {
                                   window.alert('La categoría seleccionada exige fecha de documento.');
@@ -385,7 +410,7 @@ export default function DocumentsDetailBlock({
                               }}
                               type="button"
                             >
-                              Guardar cambios
+                              {isSavingCurrentDocument ? 'Guardando cambios...' : 'Guardar cambios'}
                             </button>
                             <button
                               className="ghost-button"
@@ -411,7 +436,7 @@ export default function DocumentsDetailBlock({
                             />
                             <button
                               className="ghost-button"
-                              disabled={!replacementFileByDocId[document.documentId] || isSavingDocuments}
+                              disabled={!replacementFileByDocId[document.documentId] || isSavingCurrentDocument}
                               onClick={() => {
                                 if (Boolean(categories.find((entry) => String(entry.id) === String(draftMeta.categoryId))?.requiresDate) && !draftMeta.documentDate) {
                                   window.alert('La categoría seleccionada exige fecha de documento.');
@@ -443,7 +468,7 @@ export default function DocumentsDetailBlock({
                               }}
                               type="button"
                             >
-                              Reemplazar archivo
+                              {isSavingCurrentDocument ? 'Reemplazando archivo...' : 'Reemplazar archivo'}
                             </button>
                           </div>
                         </div>

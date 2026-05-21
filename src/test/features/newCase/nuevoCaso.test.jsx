@@ -39,12 +39,12 @@ function buildProps(overrides = {}) {
 }
 
 describe('NuevoCaso', () => {
-  it('muestra el boton bloqueado con feedback visible durante la creacion', () => {
+  it('muestra el botón bloqueado con feedback visible durante la creación', () => {
     render(<NuevoCaso {...buildProps({ isCreating: true })} />);
 
     expect(screen.getByRole('button', { name: /generando carpeta/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /generando carpeta/i })).toHaveAttribute('aria-busy', 'true');
-    expect(screen.getByText(/bloqueamos el boton para evitar duplicados/i)).toBeInTheDocument();
+    expect(screen.getByText(/bloqueamos el botón para evitar duplicados/i)).toBeInTheDocument();
   });
 
   it('evita el doble click cuando el flujo padre pasa a estado de carga', async () => {
@@ -72,5 +72,29 @@ describe('NuevoCaso', () => {
 
     expect(onCreate).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: /generando carpeta/i })).toBeDisabled();
+  });
+
+  it('muestra feedback especifico mientras busca cliente o vehiculo', () => {
+    render(
+      <NuevoCaso
+        {...buildProps({
+          customerLookupState: {
+            status: 'loading',
+            message: 'Buscando cliente',
+            detail: 'Estamos buscando el cliente con DNI 30111888.',
+          },
+          vehicleLookupState: {
+            status: 'loading',
+            message: 'Buscando vehículo',
+            detail: 'Estamos buscando el vehículo con patente AA123BB.',
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: /buscando cliente por dni/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /buscando vehículo por patente/i })).toBeDisabled();
+    expect(screen.getByText(/estamos buscando el cliente con dni 30111888/i)).toBeInTheDocument();
+    expect(screen.getByText(/estamos buscando el vehículo con patente aa123bb/i)).toBeInTheDocument();
   });
 });

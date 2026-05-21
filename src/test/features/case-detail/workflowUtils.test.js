@@ -24,12 +24,12 @@ describe('caseWorkflowUtils', () => {
 
     it('debería formatear tramite correctamente', () => {
       const result = formatWorkflowDomain('tramite');
-      expect(result).toBe('Tramite');
+      expect(result).toBe('Trámite');
     });
 
     it('debería formatear reparacion correctamente', () => {
       const result = formatWorkflowDomain('reparacion');
-      expect(result).toBe('Reparacion');
+      expect(result).toBe('Reparación');
     });
 
     it('debería formatear pago correctamente', () => {
@@ -39,7 +39,7 @@ describe('caseWorkflowUtils', () => {
 
     it('debería formatear documentacion correctamente', () => {
       const result = formatWorkflowDomain('documentacion');
-      expect(result).toBe('Documentacion');
+      expect(result).toBe('Documentación');
     });
 
     it('debería formatear legal correctamente', () => {
@@ -49,7 +49,7 @@ describe('caseWorkflowUtils', () => {
 
     it('debería ser case insensitive', () => {
       const result = formatWorkflowDomain('TRAMITE');
-      expect(result).toBe('Tramite');
+      expect(result).toBe('Trámite');
     });
 
     it('debería usar fallback personalizado cuando hay match en labels', () => {
@@ -68,7 +68,7 @@ describe('caseWorkflowUtils', () => {
 
     it('debería trimhear espacios', () => {
       const result = formatWorkflowDomain('  tramite  ');
-      expect(result).toBe('Tramite');
+      expect(result).toBe('Trámite');
     });
   });
 
