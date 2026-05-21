@@ -588,6 +588,19 @@ export async function readCurrentUser(accessToken, options = {}) {
 
 export async function readAuthenticatedCases(accessToken, options = {}) {
   const endpoint = buildApiUrlObject(CONNECTIVITY_PROBE_PATH);
+  const stringFilters = [
+    'folderStatus',
+    'openedFrom',
+    'openedTo',
+    'paidFrom',
+    'paidTo',
+    'caseTypeCode',
+    'opinionCode',
+    'managerCode',
+    'visibleTramiteState',
+    'visibleRepairState',
+    'paymentStateCode',
+  ];
 
   if (Number.isInteger(options.page)) {
     endpoint.searchParams.set('page', String(options.page));
@@ -597,12 +610,18 @@ export async function readAuthenticatedCases(accessToken, options = {}) {
     endpoint.searchParams.set('size', String(options.size));
   }
 
-  if (typeof options.paidFrom === 'string' && options.paidFrom.trim()) {
-    endpoint.searchParams.set('paidFrom', options.paidFrom.trim());
+  stringFilters.forEach((key) => {
+    if (typeof options[key] === 'string' && options[key].trim()) {
+      endpoint.searchParams.set(key, options[key].trim());
+    }
+  });
+
+  if (typeof options.hasPendingTasks === 'boolean') {
+    endpoint.searchParams.set('hasPendingTasks', String(options.hasPendingTasks));
   }
 
-  if (typeof options.paidTo === 'string' && options.paidTo.trim()) {
-    endpoint.searchParams.set('paidTo', options.paidTo.trim());
+  if (Number.isInteger(options.pendingTaskAssignedUserId)) {
+    endpoint.searchParams.set('pendingTaskAssignedUserId', String(options.pendingTaskAssignedUserId));
   }
 
   const response = await fetch(endpoint, {

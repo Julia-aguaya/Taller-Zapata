@@ -5064,6 +5064,7 @@ function App() {
           formatDateTime={formatDateTime}
           authenticatedCaseDetailState={authenticatedCaseDetailState}
           authenticatedCasesState={authenticatedCasesState}
+          authenticatedInsuranceCatalogsState={authenticatedInsuranceCatalogsState}
           authenticatedNotificationsState={authenticatedNotificationsState}
           authenticatedDocumentsCatalogsState={authenticatedDocumentsCatalogsState}
           onOpenCase={(item, target) => { openCase(item.id, target || getGestionEntryTarget(item)); }}
@@ -5089,6 +5090,7 @@ function App() {
             documentsCatalogs={authenticatedDocumentsCatalogsState.catalogs}
             formatDate={formatDate}
             formatDateTime={formatDateTime}
+            insuranceCatalogs={authenticatedInsuranceCatalogsState.catalogs}
             isSavingDocuments={isSavingDocuments}
             isDownloadingDocument={isDownloadingDocument}
             isPreviewingDocument={isPreviewingDocument}

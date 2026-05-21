@@ -713,6 +713,54 @@ h3 {
   color: var(--text);
 }
 
+.backend-advanced-filters {
+  display: grid;
+  gap: 16px;
+  border-color: rgba(157, 177, 188, 0.24);
+  background:
+    radial-gradient(circle at top right, rgba(42, 109, 178, 0.12), transparent 24%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(243, 247, 252, 0.94));
+}
+
+.backend-advanced-filters-body,
+.backend-active-filters {
+  display: flex;
+}
+
+.backend-advanced-filters-body {
+  flex-direction: column;
+  gap: 16px;
+}
+
+.backend-advanced-filters-intro {
+  display: flex;
+}
+
+.backend-advanced-filters-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.backend-advanced-filters-intro small,
+.backend-advanced-filters .field small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.backend-advanced-filter-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.backend-active-filters {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .backend-case-metric {
   min-width: min(100%, 200px);
   flex: 1 1 200px;
@@ -1476,6 +1524,10 @@ h3 {
 .simple-filter-grid {
   grid-template-columns: minmax(0, 1.6fr) minmax(220px, 0.7fr);
   align-items: end;
+}
+
+.backend-advanced-filter-grid .field {
+  align-self: start;
 }
 
 .filters-grid {
@@ -3914,6 +3966,7 @@ h3 {
   .priority-grid,
   .agenda-content-grid,
   .simple-filter-grid,
+  .backend-advanced-filter-grid,
   .backend-cases-head,
   .lookup-grid,
   .lookup-form,
@@ -4315,6 +4368,7 @@ h3 {
 
    .priority-grid,
    .simple-filter-grid,
+   .backend-advanced-filter-grid,
    .priority-detail-grid,
    .lookup-grid,
     .lookup-form,

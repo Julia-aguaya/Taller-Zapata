@@ -4,6 +4,7 @@ import AuthenticatedNotificationsPreview from './AuthenticatedNotificationsPrevi
 export default function PanelGeneral({
   authenticatedCaseDetailState,
   authenticatedCasesState,
+  authenticatedInsuranceCatalogsState,
   authenticatedNotificationsState,
   authenticatedDocumentsCatalogsState,
   onOpenCase,
@@ -30,6 +31,7 @@ export default function PanelGeneral({
         formatDate={formatDate}
         formatDateTime={formatDateTime}
         initialVisibleCases={8}
+        insuranceCatalogs={authenticatedInsuranceCatalogsState.catalogs}
         isSavingDocuments={isSavingDocuments}
         isDownloadingDocument={isDownloadingDocument}
         isPreviewingDocument={isPreviewingDocument}
