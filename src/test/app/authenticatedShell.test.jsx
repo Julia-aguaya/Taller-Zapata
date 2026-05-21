@@ -45,7 +45,8 @@ describe('AuthenticatedAppShell', () => {
     expect(screen.getByText('Listo')).toBeInTheDocument();
     expect(screen.getByText('Tu sesion esta por vencer.')).toBeInTheDocument();
     expect(screen.getByText('3')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Menu principal' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: 'Abrir menu principal' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Menu principal de trabajo. En mobile se despliega desde el boton superior.')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Carpetas' }));
     await user.click(screen.getByRole('button', { name: 'Cerrar sesión' }));
@@ -98,12 +99,12 @@ describe('AuthenticatedAppShell', () => {
       </AuthenticatedAppShell>
     );
 
-    const menuButton = screen.getByRole('button', { name: 'Menu principal' });
+    const menuButton = screen.getByRole('button', { name: 'Abrir menu principal' });
     expect(menuButton).toHaveAttribute('aria-expanded', 'false');
 
     await user.click(menuButton);
 
-    expect(screen.getByRole('button', { name: 'Cerrar menu' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: 'Cerrar menu principal' })).toHaveAttribute('aria-expanded', 'true');
   });
 });
 

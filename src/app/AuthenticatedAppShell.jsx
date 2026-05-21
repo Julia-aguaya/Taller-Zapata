@@ -58,8 +58,6 @@ export default function AuthenticatedAppShell({
           </div>
         </div>
 
-        <p className="nav-helper-copy">Menu principal de trabajo. En mobile se despliega desde el boton superior.</p>
-
         <nav className="nav-list" aria-label="Principal" id="primary-navigation">
           {navItems.map((item) => (
             <button className={`nav-item ${activeView === item.id ? 'is-active' : ''}`} key={item.id} onClick={() => onOpenView(item.id)} type="button">
@@ -75,13 +73,18 @@ export default function AuthenticatedAppShell({
             <p className="eyebrow">Panel</p>
             <h2>{activeViewTitle}</h2>
             <button
+              aria-label={isMobileNavOpen ? 'Cerrar menu principal' : 'Abrir menu principal'}
               aria-controls="primary-navigation"
               aria-expanded={isMobileNavOpen}
-              className="secondary-button mobile-nav-toggle"
+              className={`secondary-button mobile-nav-toggle ${isMobileNavOpen ? 'is-open' : ''}`}
               onClick={() => setIsMobileNavOpen((current) => !current)}
               type="button"
             >
-              {isMobileNavOpen ? 'Cerrar menu' : 'Menu principal'}
+              <span aria-hidden="true" className="mobile-nav-toggle-box">
+                <span className="mobile-nav-toggle-line" />
+                <span className="mobile-nav-toggle-line" />
+                <span className="mobile-nav-toggle-line" />
+              </span>
             </button>
           </div>
 

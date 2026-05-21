@@ -90,6 +90,38 @@ describe('AuthenticatedCaseDetail', () => {
     expect(onOpenCase).toHaveBeenNthCalledWith(1, baseDetailState.data, { tab: 'gestion' });
     expect(onOpenCase).toHaveBeenNthCalledWith(2, baseDetailState.data, { tab: 'documentacion' });
   });
+
+  it('prioriza el nombre real del cliente hidratado sobre el placeholder del detalle', () => {
+    render(
+      <AuthenticatedCaseDetail
+        detailState={{
+          ...baseDetailState,
+          data: {
+            ...baseDetailState.data,
+            customerName: 'CLIENTE',
+            client: {
+              firstName: 'Juan',
+              lastName: 'Perez',
+            },
+          },
+        }}
+        onOpenCase={vi.fn()}
+        onOpenDetail={vi.fn()}
+        onSaveDocument={vi.fn()}
+        onDownloadDocument={vi.fn()}
+        onPreviewDocument={vi.fn()}
+        formatDate={formatDate}
+        formatDateTime={formatDateTime}
+        documentsCatalogs={{ categories: [] }}
+      />,
+    );
+
+    const clientRow = screen.getByText('Cliente').closest('.backend-detail-row');
+
+    expect(screen.getByText('Perez, Juan')).toBeInTheDocument();
+    expect(clientRow).toHaveTextContent('Perez, Juan');
+    expect(clientRow).not.toHaveTextContent('CLIENTE');
+  });
 });
 
 describe('DocumentsDetailBlock copy', () => {

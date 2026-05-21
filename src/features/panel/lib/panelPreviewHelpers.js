@@ -180,7 +180,17 @@ export function getBackendCaseDetailHeadline(item) {
 }
 
 export function getCaseClientLabel(item) {
-  const directName = item?.customerName || item?.claimantName || item?.insuredName || item?.holderName || item?.ownerName;
+  const client = item?.client || item?.customer || {};
+  const clientFullName = [client?.lastName, client?.firstName].filter(Boolean).join(', ')
+    || client?.fullName
+    || [client?.firstName, client?.lastName].filter(Boolean).join(' ');
+  if (clientFullName) return clientFullName;
+
+  const directName = [item?.customerName, item?.claimantName, item?.insuredName, item?.holderName, item?.ownerName]
+    .find((value) => {
+      const normalized = String(value || '').trim().toUpperCase();
+      return normalized && normalized !== 'CLIENTE';
+    });
   if (directName) return directName;
 
   const parts = [item?.lastName, item?.firstName].filter(Boolean);

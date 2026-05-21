@@ -1182,7 +1182,7 @@ function buildLocalCaseFromBackend(item, nextCounter) {
     createdAt: String(item?.createdAt || item?.creationDate || item?.openedAt || todayIso()).slice(0, 10),
     folderCreated: true,
     customer: {
-      firstName: item?.firstName || client?.firstName || holderParts.slice(0, -1).join(' ') || holder || 'Cliente',
+      firstName: item?.firstName || client?.firstName || holderParts.slice(0, -1).join(' ') || holder || '',
       lastName: item?.lastName || client?.lastName || holderParts.slice(-1).join(' ') || '',
       phone: item?.phone || client?.phone || client?.telephone || '',
       document: item?.dni || item?.document || client?.document || client?.numeroDocumento || '',

@@ -66,4 +66,40 @@ describe('patchCaseWithBackendDetail', () => {
       transmission: 'Manual',
     });
   });
+
+  it('reemplaza el placeholder Cliente cuando el detalle trae el nombre real', () => {
+    const localCase = {
+      id: 'case-456',
+      customer: {
+        firstName: 'Cliente',
+        lastName: '',
+        phone: '',
+        document: '',
+        email: '',
+      },
+      vehicle: {
+        brand: '',
+        model: '',
+        plate: '',
+        year: '',
+        color: '',
+        chassis: '',
+        engine: '',
+        transmission: '',
+      },
+      budget: { amount: '', lines: [], services: [] },
+    };
+
+    patchCaseWithBackendDetail(localCase, {
+      data: {
+        client: {
+          firstName: 'Juan',
+          lastName: 'Perez',
+        },
+      },
+    });
+
+    expect(localCase.customer.firstName).toBe('Juan');
+    expect(localCase.customer.lastName).toBe('Perez');
+  });
 });

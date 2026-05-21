@@ -17,6 +17,28 @@ export function pickFirstNonEmpty(...values) {
   return '';
 }
 
+function isCustomerPlaceholder(value) {
+  const normalized = String(value || '').trim().toUpperCase();
+  return normalized === 'CLIENTE' || normalized === 'CLIENTE NO INFORMADO' || normalized === 'SIN TITULAR';
+}
+
+function pickCustomerNameValue(...values) {
+  for (const value of values) {
+    if (value == null) {
+      continue;
+    }
+
+    const normalized = String(value).trim();
+    if (!normalized || isCustomerPlaceholder(normalized)) {
+      continue;
+    }
+
+    return value;
+  }
+
+  return '';
+}
+
 export function ensureCaseStructure(caseItem) {
   const draft = structuredClone(caseItem || {});
 
@@ -102,8 +124,8 @@ export function patchCaseWithBackendDetail(localCase, detailState) {
   };
 
   localCase.claimNumber = pickFirstNonEmpty(localCase.claimNumber, detail.claimNumber, detail.claimCode, detail.externalReference);
-  localCase.customer.firstName = pickFirstNonEmpty(localCase.customer.firstName, detail.firstName, detail.customerFirstName, detail.holderFirstName, detailClient.firstName);
-  localCase.customer.lastName = pickFirstNonEmpty(localCase.customer.lastName, detail.lastName, detail.customerLastName, detail.holderLastName, detail.holderName, detailClient.lastName, detailClient.fullName);
+  localCase.customer.firstName = pickCustomerNameValue(localCase.customer.firstName, detail.firstName, detail.customerFirstName, detail.holderFirstName, detailClient.firstName);
+  localCase.customer.lastName = pickCustomerNameValue(localCase.customer.lastName, detail.lastName, detail.customerLastName, detail.holderLastName, detail.holderName, detailClient.lastName, detailClient.fullName);
   localCase.customer.phone = pickFirstNonEmpty(localCase.customer.phone, detail.phone, detail.customerPhone, detail.holderPhone, detailClient.phone, detailClient.telephone);
   localCase.customer.document = pickFirstNonEmpty(localCase.customer.document, detail.dni, detail.document, detail.customerDocument, detail.holderDocument, detailClient.document, detailClient.numeroDocumento);
   localCase.customer.email = pickFirstNonEmpty(localCase.customer.email, detail.email, detail.customerEmail, detail.holderEmail, detailClient.email);
