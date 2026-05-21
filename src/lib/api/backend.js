@@ -597,6 +597,14 @@ export async function readAuthenticatedCases(accessToken, options = {}) {
     endpoint.searchParams.set('size', String(options.size));
   }
 
+  if (typeof options.paidFrom === 'string' && options.paidFrom.trim()) {
+    endpoint.searchParams.set('paidFrom', options.paidFrom.trim());
+  }
+
+  if (typeof options.paidTo === 'string' && options.paidTo.trim()) {
+    endpoint.searchParams.set('paidTo', options.paidTo.trim());
+  }
+
   const response = await fetch(endpoint, {
     method: 'GET',
     headers: {

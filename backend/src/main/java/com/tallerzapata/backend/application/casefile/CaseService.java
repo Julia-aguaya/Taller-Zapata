@@ -27,9 +27,16 @@ import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeEnti
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseVehicleEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseVehicleRepository;
+import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementEntity;
+import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseLegalRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingRepository;
 import com.tallerzapata.backend.infrastructure.persistence.organization.BranchEntity;
 import com.tallerzapata.backend.infrastructure.persistence.organization.BranchRepository;
+import com.tallerzapata.backend.infrastructure.persistence.operation.OperationalTaskEntity;
+import com.tallerzapata.backend.infrastructure.persistence.operation.OperationalTaskRepository;
 import com.tallerzapata.backend.infrastructure.persistence.person.PersonRepository;
+import com.tallerzapata.backend.infrastructure.persistence.recovery.FranchiseRecoveryRepository;
 import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleRepository;
 import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleRoleRepository;
 import com.tallerzapata.backend.infrastructure.persistence.workflow.CaseStateHistoryEntity;
@@ -43,10 +50,13 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.text.Normalizer;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Locale;
 
 @Service
 public class CaseService {
@@ -66,6 +76,11 @@ public class CaseService {
     private final CaseRoleRepository caseRoleRepository;
     private final CasePriorityRepository casePriorityRepository;
     private final VehicleRoleRepository vehicleRoleRepository;
+    private final FinancialMovementRepository financialMovementRepository;
+    private final InsuranceProcessingRepository insuranceProcessingRepository;
+    private final FranchiseRecoveryRepository franchiseRecoveryRepository;
+    private final CaseLegalRepository caseLegalRepository;
+    private final OperationalTaskRepository operationalTaskRepository;
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService caseAccessControlService;
     private final CaseVisibleStateResolver caseVisibleStateResolver;
@@ -86,6 +101,11 @@ public class CaseService {
             CaseRoleRepository caseRoleRepository,
             CasePriorityRepository casePriorityRepository,
             VehicleRoleRepository vehicleRoleRepository,
+            FinancialMovementRepository financialMovementRepository,
+            InsuranceProcessingRepository insuranceProcessingRepository,
+            FranchiseRecoveryRepository franchiseRecoveryRepository,
+            CaseLegalRepository caseLegalRepository,
+            OperationalTaskRepository operationalTaskRepository,
             CurrentUserService currentUserService,
             CaseAccessControlService caseAccessControlService,
             CaseVisibleStateResolver caseVisibleStateResolver
@@ -105,6 +125,11 @@ public class CaseService {
         this.caseRoleRepository = caseRoleRepository;
         this.casePriorityRepository = casePriorityRepository;
         this.vehicleRoleRepository = vehicleRoleRepository;
+        this.financialMovementRepository = financialMovementRepository;
+        this.insuranceProcessingRepository = insuranceProcessingRepository;
+        this.franchiseRecoveryRepository = franchiseRecoveryRepository;
+        this.caseLegalRepository = caseLegalRepository;
+        this.operationalTaskRepository = operationalTaskRepository;
         this.currentUserService = currentUserService;
         this.caseAccessControlService = caseAccessControlService;
         this.caseVisibleStateResolver = caseVisibleStateResolver;
@@ -149,17 +174,27 @@ public class CaseService {
     }
 
     @Transactional(readOnly = true)
-    public CasePageResponse list(int page, int size, Long organizationId, Long branchId) {
+    public CasePageResponse list(int page, int size, Long organizationId, Long branchId, CaseListFilters filters) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         caseAccessControlService.requirePermission(currentUser, "caso.ver");
         int normalizedPage = Math.max(page, 0);
         int normalizedSize = Math.min(Math.max(size, 1), 100);
+        List<OperationalTaskEntity> pendingTasks = shouldEvaluatePendingTasks(filters)
+                ? operationalTaskRepository.findAll(Sort.by(Sort.Direction.DESC, "id")).stream()
+                .filter(task -> !Boolean.TRUE.equals(task.getResolved()))
+                .toList()
+                : List.of();
+        List<FinancialMovementEntity> financialMovements = shouldEvaluatePaidDate(filters)
+                ? financialMovementRepository.findAll(Sort.by(Sort.Direction.DESC, "movementAt").and(Sort.by(Sort.Direction.DESC, "id")))
+                : List.of();
 
         List<CaseResponse> scopedItems = caseRepository.findAll(Sort.by(Sort.Direction.DESC, "id")).stream()
                 .filter(item -> hasScope(currentUser, item))
                 .filter(item -> organizationId == null || item.getOrganizationId().equals(organizationId))
                 .filter(item -> branchId == null || item.getBranchId().equals(branchId))
-                .map(this::toResponse)
+                .map(item -> new CaseListItem(item, toResponse(item)))
+                .filter(item -> matchesFilters(item, filters, pendingTasks, financialMovements))
+                .map(CaseListItem::response)
                 .toList();
 
         long totalElements = scopedItems.size();
@@ -439,6 +474,200 @@ public class CaseService {
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
     }
 
+    private boolean matchesFilters(CaseListItem item, CaseListFilters filters, List<OperationalTaskEntity> pendingTasks, List<FinancialMovementEntity> financialMovements) {
+        if (filters == null) {
+            return true;
+        }
+
+        return matchesFolderStatus(item.response(), filters.folderStatus())
+                && matchesOpenedAt(item.entity(), filters.openedFrom(), filters.openedTo())
+                && matchesPaidAt(item.response(), item.entity(), filters.paidFrom(), filters.paidTo(), financialMovements)
+                && matchesCaseType(item.response(), filters.caseTypeCode())
+                && matchesOpinion(item.entity(), filters.opinionCode())
+                && matchesManager(item.entity(), filters.managerCode())
+                && matchesVisibleState(item.response().visibleTramiteState(), filters.visibleTramiteState())
+                && matchesVisibleState(item.response().visibleRepairState(), filters.visibleRepairState())
+                && matchesPaymentState(item.response(), filters.paymentStateCode())
+                && matchesPendingTasks(item.entity(), filters, pendingTasks);
+    }
+
+    private boolean matchesFolderStatus(CaseResponse response, String filterValue) {
+        if (filterValue == null || filterValue.isBlank()) {
+            return true;
+        }
+
+        String normalized = normalizeText(filterValue);
+        return switch (normalized) {
+            case "ABIERTA", "ABIERTAS", "OPEN", "OPENED" -> response.closedAt() == null && response.archivedAt() == null;
+            case "CERRADA", "CERRADAS", "CLOSED" -> response.closedAt() != null && response.archivedAt() == null;
+            case "ARCHIVADA", "ARCHIVADAS", "ARCHIVED" -> response.archivedAt() != null;
+            default -> throw new ConflictException("folderStatus no soportado: " + filterValue);
+        };
+    }
+
+    private boolean matchesOpenedAt(CaseEntity entity, LocalDate openedFrom, LocalDate openedTo) {
+        if (openedFrom == null && openedTo == null) {
+            return true;
+        }
+
+        LocalDate openedAt = resolveOpenedAt(entity.getId());
+        if (openedAt == null) {
+            return false;
+        }
+
+        if (openedFrom != null && openedAt.isBefore(openedFrom)) {
+            return false;
+        }
+
+        return openedTo == null || !openedAt.isAfter(openedTo);
+    }
+
+    private boolean matchesPaidAt(CaseResponse response, CaseEntity entity, LocalDate paidFrom, LocalDate paidTo, List<FinancialMovementEntity> financialMovements) {
+        if (paidFrom == null && paidTo == null) {
+            return true;
+        }
+
+        if (!"PAGADO".equals(normalizeText(response.currentPaymentStateCode()))) {
+            return false;
+        }
+
+        LocalDate paidAt = resolvePaidAt(entity.getId(), financialMovements);
+        if (paidAt == null) {
+            return false;
+        }
+
+        if (paidFrom != null && paidAt.isBefore(paidFrom)) {
+            return false;
+        }
+
+        return paidTo == null || !paidAt.isAfter(paidTo);
+    }
+
+    private LocalDate resolvePaidAt(Long caseId, List<FinancialMovementEntity> financialMovements) {
+        return financialMovements.stream()
+                .filter(movement -> caseId.equals(movement.getCaseId()))
+                .map(movement -> movement.getMovementAt().toLocalDate())
+                .findFirst()
+                .orElse(null);
+    }
+
+    private LocalDate resolveOpenedAt(Long caseId) {
+        List<CaseStateHistoryEntity> history = caseStateHistoryRepository.findByCaseIdOrderByStateDateDescIdDesc(caseId);
+        if (history.isEmpty()) {
+            return null;
+        }
+        return history.get(history.size() - 1).getStateDate().toLocalDate();
+    }
+
+    private boolean matchesCaseType(CaseResponse response, String caseTypeCode) {
+        if (caseTypeCode == null || caseTypeCode.isBlank()) {
+            return true;
+        }
+        return normalizeText(response.caseTypeCode()).equals(normalizeText(caseTypeCode));
+    }
+
+    private boolean matchesOpinion(CaseEntity entity, String opinionCode) {
+        if (opinionCode == null || opinionCode.isBlank()) {
+            return true;
+        }
+
+        return normalizeText(resolveOpinionCode(entity.getId())).equals(normalizeText(opinionCode));
+    }
+
+    private String resolveOpinionCode(Long caseId) {
+        String insuranceOpinion = insuranceProcessingRepository.findByCaseId(caseId)
+                .map(item -> item.getOpinionCode())
+                .orElse(null);
+        if (insuranceOpinion != null && !insuranceOpinion.isBlank()) {
+            return insuranceOpinion;
+        }
+
+        String recoveryOpinion = franchiseRecoveryRepository.findByCaseId(caseId)
+                .map(item -> item.getOpinionCode())
+                .orElse(null);
+        if (recoveryOpinion != null && !recoveryOpinion.isBlank()) {
+            return recoveryOpinion;
+        }
+
+        return null;
+    }
+
+    private boolean matchesManager(CaseEntity entity, String managerCode) {
+        if (managerCode == null || managerCode.isBlank()) {
+            return true;
+        }
+
+        return normalizeText(resolveManagerCode(entity.getId())).equals(normalizeText(managerCode));
+    }
+
+    private String resolveManagerCode(Long caseId) {
+        String recoveryManager = franchiseRecoveryRepository.findByCaseId(caseId)
+                .map(item -> item.getManagerCode())
+                .orElse(null);
+        if (recoveryManager != null && !recoveryManager.isBlank()) {
+            return recoveryManager;
+        }
+
+        String legalManager = caseLegalRepository.findByCaseId(caseId)
+                .map(item -> item.getProcessorCode())
+                .orElse(null);
+        if (legalManager != null && !legalManager.isBlank()) {
+            return legalManager;
+        }
+
+        return null;
+    }
+
+    private boolean matchesVisibleState(CaseVisibleStateResponse state, String expectedValue) {
+        if (expectedValue == null || expectedValue.isBlank()) {
+            return true;
+        }
+
+        return normalizeText(state == null ? null : state.code()).equals(normalizeText(expectedValue))
+                || normalizeText(state == null ? null : state.label()).equals(normalizeText(expectedValue));
+    }
+
+    private boolean matchesPaymentState(CaseResponse response, String paymentStateCode) {
+        if (paymentStateCode == null || paymentStateCode.isBlank()) {
+            return true;
+        }
+
+        return normalizeText(response.currentPaymentStateCode()).equals(normalizeText(paymentStateCode));
+    }
+
+    private boolean matchesPendingTasks(CaseEntity entity, CaseListFilters filters, List<OperationalTaskEntity> pendingTasks) {
+        if (!shouldEvaluatePendingTasks(filters)) {
+            return true;
+        }
+
+        List<OperationalTaskEntity> casePendingTasks = pendingTasks.stream()
+                .filter(task -> entity.getId().equals(task.getCaseId()))
+                .toList();
+
+        if (filters.pendingTaskAssignedUserId() != null) {
+            boolean assignedMatch = casePendingTasks.stream()
+                    .anyMatch(task -> filters.pendingTaskAssignedUserId().equals(task.getAssignedUserId()));
+            if (Boolean.FALSE.equals(filters.hasPendingTasks())) {
+                return false;
+            }
+            return assignedMatch;
+        }
+
+        if (filters.hasPendingTasks() == null) {
+            return true;
+        }
+
+        return filters.hasPendingTasks() ? !casePendingTasks.isEmpty() : casePendingTasks.isEmpty();
+    }
+
+    private boolean shouldEvaluatePendingTasks(CaseListFilters filters) {
+        return filters != null && (filters.hasPendingTasks() != null || filters.pendingTaskAssignedUserId() != null);
+    }
+
+    private boolean shouldEvaluatePaidDate(CaseListFilters filters) {
+        return filters != null && (filters.paidFrom() != null || filters.paidTo() != null);
+    }
+
     private CaseResponse toResponse(CaseEntity entity) {
         CaseTypeEntity caseType = caseTypeRepository.findById(entity.getCaseTypeId())
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el tipo de tramite " + entity.getCaseTypeId()));
@@ -518,6 +747,19 @@ public class CaseService {
         return code.trim().toUpperCase();
     }
 
+    private String normalizeText(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+
+        String normalized = Normalizer.normalize(value, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "")
+                .replace('_', ' ')
+                .trim()
+                .toUpperCase(Locale.ROOT);
+        return normalized.replaceAll("\\s+", " ");
+    }
+
     private boolean hasScope(AuthenticatedUser currentUser, CaseEntity caseEntity) {
         return caseAccessControlService.hasOrganizationScope(currentUser, caseEntity.getOrganizationId(), caseEntity.getBranchId());
     }
@@ -530,5 +772,8 @@ public class CaseService {
                 entity.getRelationTypeCode(),
                 entity.getDescription()
         );
+    }
+
+    private record CaseListItem(CaseEntity entity, CaseResponse response) {
     }
 }

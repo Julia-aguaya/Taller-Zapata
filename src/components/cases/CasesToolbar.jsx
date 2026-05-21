@@ -3,9 +3,13 @@ export default function CasesToolbar({
   caseStateOptions,
   isLoading,
   onRefresh,
+  paidFrom,
+  paidTo,
   searchTerm,
   selectedBranch,
   selectedCaseState,
+  setPaidFrom,
+  setPaidTo,
   setSearchTerm,
   setSelectedBranch,
   setSelectedCaseState,
@@ -26,7 +30,17 @@ export default function CasesToolbar({
 
         <div className="backend-cases-actions">
           <StatusBadge tone={statusTone}>{statusLabel}</StatusBadge>
-          <button className="secondary-button" disabled={isLoading} onClick={() => { void onRefresh(); }} type="button">
+          <button
+            className="secondary-button"
+            disabled={isLoading}
+            onClick={() => {
+              void onRefresh({
+                paidFrom: paidFrom || undefined,
+                paidTo: paidTo || undefined,
+              });
+            }}
+            type="button"
+          >
             {isLoading ? 'Actualizando...' : 'Actualizar'}
           </button>
         </div>
@@ -72,6 +86,26 @@ export default function CasesToolbar({
               <option key={option} value={option}>{option}</option>
             ))}
           </select>
+        </label>
+
+        <label className="field" htmlFor="backend-cases-paid-from-filter">
+          <span>Pagado desde</span>
+          <input
+            id="backend-cases-paid-from-filter"
+            onChange={(event) => setPaidFrom(event.target.value)}
+            type="date"
+            value={paidFrom}
+          />
+        </label>
+
+        <label className="field" htmlFor="backend-cases-paid-to-filter">
+          <span>Pagado hasta</span>
+          <input
+            id="backend-cases-paid-to-filter"
+            onChange={(event) => setPaidTo(event.target.value)}
+            type="date"
+            value={paidTo}
+          />
         </label>
       </div>
     </>

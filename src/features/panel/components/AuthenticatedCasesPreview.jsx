@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import CasesList from '../../../components/cases/CasesList';
 import CasesMetrics from '../../../components/cases/CasesMetrics';
 import CasesToolbar from '../../../components/cases/CasesToolbar';
@@ -10,6 +10,7 @@ import AuthenticatedCaseDetail from './AuthenticatedCaseDetail';
 
 const INITIAL_VISIBLE_CASES = 12;
 const LOAD_MORE_CASES_STEP = 12;
+const FILTER_REFRESH_DEBOUNCE_MS = 350;
 
 function getPriorityWeight(item) {
   const normalized = String(item?.priorityCode || item?.priority || '').trim().toLowerCase();
@@ -101,7 +102,10 @@ export default function AuthenticatedCasesPreview({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCaseState, setSelectedCaseState] = useState('all');
   const [selectedBranch, setSelectedBranch] = useState('all');
+  const [paidFrom, setPaidFrom] = useState('');
+  const [paidTo, setPaidTo] = useState('');
   const [visibleCasesCount, setVisibleCasesCount] = useState(initialVisibleCases);
+  const hasMountedPaidFiltersRef = useRef(false);
   const normalizedSearchTerm = searchTerm.trim().toLowerCase();
   const caseStateOptions = useMemo(() => {
     const values = Array.from(new Set(
@@ -161,6 +165,22 @@ export default function AuthenticatedCasesPreview({
     setVisibleCasesCount(initialVisibleCases);
   }, [initialVisibleCases, normalizedSearchTerm, selectedCaseState, selectedBranch, state.items]);
 
+  useEffect(() => {
+    if (!hasMountedPaidFiltersRef.current) {
+      hasMountedPaidFiltersRef.current = true;
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void onRefresh({
+        paidFrom: paidFrom || undefined,
+        paidTo: paidTo || undefined,
+      });
+    }, FILTER_REFRESH_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [onRefresh, paidFrom, paidTo]);
+
   const handleLoadMore = () => {
     setVisibleCasesCount((current) => current + loadMoreStep);
   };
@@ -172,9 +192,13 @@ export default function AuthenticatedCasesPreview({
         caseStateOptions={caseStateOptions}
         isLoading={isLoading}
         onRefresh={onRefresh}
+        paidFrom={paidFrom}
+        paidTo={paidTo}
         searchTerm={searchTerm}
         selectedBranch={selectedBranch}
         selectedCaseState={selectedCaseState}
+        setPaidFrom={setPaidFrom}
+        setPaidTo={setPaidTo}
         setSearchTerm={setSearchTerm}
         setSelectedBranch={setSelectedBranch}
         setSelectedCaseState={setSelectedCaseState}
@@ -240,6 +264,7 @@ export default function AuthenticatedCasesPreview({
           <strong>No encontramos carpetas con estos filtros.</strong>
           <p>
             {`Búsqueda: ${searchTerm.trim() || 'sin texto'} · Estado: ${selectedCaseState === 'all' ? 'Todos' : selectedCaseState} · Sucursal: ${selectedBranch === 'all' ? 'Todos' : selectedBranch}.`}
+            {paidFrom || paidTo ? ` Pago: ${paidFrom || 'inicio'} a ${paidTo || 'hoy'}.` : ''}
             {' '}Probá ajustar los filtros para volver a ver resultados.
           </p>
         </div>

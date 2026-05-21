@@ -2118,7 +2118,7 @@ function App() {
     }
   };
 
-  const runAuthenticatedCasesRead = async (accessToken, signal) => {
+  const runAuthenticatedCasesRead = async (accessToken, signal, filters = {}) => {
     setAuthenticatedCasesState({
       status: 'loading',
       tone: 'info',
@@ -2209,7 +2209,7 @@ function App() {
           }));
 
     try {
-      const result = await readAuthenticatedCases(accessToken, { page: 0, size: 200, signal });
+      const result = await readAuthenticatedCases(accessToken, { page: 0, size: 200, signal, ...filters });
       const summary = summarizeCasesPayload(result.data);
       const normalized = normalizeAuthenticatedCasesPayload(result.data);
 
@@ -4828,9 +4828,9 @@ function App() {
     }
   };
 
-  const refreshAuthenticatedCasesPreview = async () => {
+  const refreshAuthenticatedCasesPreview = async (filters = {}) => {
     await readWithStoredToken(async (accessToken) => {
-      await runAuthenticatedCasesRead(accessToken);
+      await runAuthenticatedCasesRead(accessToken, undefined, filters);
     });
   };
 

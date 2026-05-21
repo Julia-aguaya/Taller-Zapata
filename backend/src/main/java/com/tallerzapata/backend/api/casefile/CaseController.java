@@ -2,12 +2,14 @@ package com.tallerzapata.backend.api.casefile;
 
 import com.tallerzapata.backend.application.casefile.CaseService;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
+import com.tallerzapata.backend.application.casefile.CaseListFilters;
 import com.tallerzapata.backend.application.casefile.CaseWorkflowService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.time.LocalDate;
 
 @RestController
 @RequestMapping("/api/v1/cases")
@@ -45,9 +48,42 @@ public class CaseController {
             @RequestParam(name = "page", defaultValue = "0") int page,
             @RequestParam(name = "size", defaultValue = "50") int size,
             @RequestParam(name = "organizationId", required = false) Long organizationId,
-            @RequestParam(name = "branchId", required = false) Long branchId
+            @RequestParam(name = "branchId", required = false) Long branchId,
+            @RequestParam(name = "folderStatus", required = false) String folderStatus,
+            @RequestParam(name = "openedFrom", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate openedFrom,
+            @RequestParam(name = "openedTo", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate openedTo,
+            @RequestParam(name = "paidFrom", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate paidFrom,
+            @RequestParam(name = "paidTo", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate paidTo,
+            @RequestParam(name = "caseTypeCode", required = false) String caseTypeCode,
+            @RequestParam(name = "opinionCode", required = false) String opinionCode,
+            @RequestParam(name = "managerCode", required = false) String managerCode,
+            @RequestParam(name = "visibleTramiteState", required = false) String visibleTramiteState,
+            @RequestParam(name = "visibleRepairState", required = false) String visibleRepairState,
+            @RequestParam(name = "paymentStateCode", required = false) String paymentStateCode,
+            @RequestParam(name = "hasPendingTasks", required = false) Boolean hasPendingTasks,
+            @RequestParam(name = "pendingTaskAssignedUserId", required = false) Long pendingTaskAssignedUserId
     ) {
-        return caseService.list(page, size, organizationId, branchId);
+        return caseService.list(
+                page,
+                size,
+                organizationId,
+                branchId,
+                new CaseListFilters(
+                        folderStatus,
+                        openedFrom,
+                        openedTo,
+                        paidFrom,
+                        paidTo,
+                        caseTypeCode,
+                        opinionCode,
+                        managerCode,
+                        visibleTramiteState,
+                        visibleRepairState,
+                        paymentStateCode,
+                        hasPendingTasks,
+                        pendingTaskAssignedUserId
+                )
+        );
     }
 
     @Operation(summary = "Listar catalogos de casos", description = "Devuelve los catalogos necesarios para crear/editar casos")
