@@ -14,8 +14,13 @@ jobs:
           host: ${{ secrets.DO_HOST }}
           username: ${{ secrets.DO_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
+          command_timeout: 15m
           script: |
-            cd ~/Taller-Zapata
-            git pull
+            set -x
+            cd ~/Taller-Zapata || exit 1
+            git status
+            git stash
+            git pull origin main || exit 1
+            git stash pop 2>/dev/null || true
             chmod +x deploy.sh
             ./deploy.sh
