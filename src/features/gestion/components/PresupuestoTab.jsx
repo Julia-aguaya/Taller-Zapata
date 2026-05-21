@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import DataField from '../../../components/ui/DataField';
 import SelectField from '../../../components/ui/SelectField';
 import StatusBadge from '../../../components/ui/StatusBadge';
 import ToggleField from '../../../components/ui/ToggleField';
+import { readBackendSession } from '../../../lib/api/backend';
 import { isThirdPartyClaimCase } from '../../cases/lib/caseDomainCheckers';
 import { formatDate } from '../../cases/lib/caseFormatters';
 import {
@@ -24,14 +25,37 @@ import {
   createBudgetLine,
   createBudgetService,
 } from '../lib/gestionShared';
-import { getWorkshopOptions, readWorkshopCatalog } from '../lib/workshopCatalog';
+import { getWorkshopOptions, readWorkshopCatalog, readWorkshopCatalogFromBackend } from '../lib/workshopCatalog';
 import { money, numberValue } from '../lib/gestionUtils';
 
 export default function PresupuestoTab({ item, updateCase, flash }) {
   const [previewMedia, setPreviewMedia] = useState(null);
   const [failedMediaIds, setFailedMediaIds] = useState([]);
   const [brokenPreviewIds, setBrokenPreviewIds] = useState([]);
-  const [workshops] = useState(() => readWorkshopCatalog());
+  const [workshops, setWorkshops] = useState(() => readWorkshopCatalog());
+
+  useEffect(() => {
+    const session = readBackendSession();
+    const accessToken = session?.accessToken || '';
+
+    if (!accessToken) {
+      return undefined;
+    }
+
+    let active = true;
+
+    void readWorkshopCatalogFromBackend(accessToken)
+      .then((catalog) => {
+        if (active) {
+          setWorkshops(catalog);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const updateBudget = (mutator, { syncParts = false } = {}) => {
     updateCase((draft) => {

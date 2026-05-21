@@ -1,9 +1,11 @@
 /**
  * Smoke tests de integración para componentes del bundle de gestión.
- * No usa MSW — los componentes reciben props directamente.
+ * Los componentes reciben props directas y, cuando hace falta,
+ * se mockean lecturas puntuales al backend con MSW.
  */
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
 import userEvent from '@testing-library/user-event';
 
 import GestionView from '../../../features/gestion/components/GestionView';
@@ -14,6 +16,8 @@ import PagosTab from '../../../features/gestion/components/PagosTab';
 import DocumentacionTab from '../../../features/gestion/components/DocumentacionTab';
 import GestionReparacionTab from '../../../features/gestion/components/GestionReparacionTab';
 import { WORKSHOP_STORAGE_KEY } from '../../../features/gestion/lib/workshopCatalog';
+import { storeBackendSession } from '../../../lib/api/backend';
+import { server } from '../../setupTests';
 
 // ---------------------------------------------------------------------------
 // MOCK DATA
@@ -633,6 +637,44 @@ describe('PresupuestoTab', () => {
 
     expect(screen.getByText('Catálogo Admin SRL')).toBeInTheDocument();
     expect(screen.getByText('30-00000000-1 · Responsable Inscripto')).toBeInTheDocument();
+  });
+
+  it('hidrata el catálogo de talleres desde backend cuando existe sesión autenticada', async () => {
+    storeBackendSession({
+      accessToken: 'mock-access-token-12345',
+      refreshToken: 'mock-refresh-token-67890',
+      expiresInSeconds: 3600,
+      user: { role: 'admin' },
+    });
+
+    server.use(
+      http.get('*/api/v1/system/parameters/WORKSHOP_CATALOG', () => HttpResponse.json({
+        code: 'WORKSHOP_CATALOG',
+        value: JSON.stringify([
+          {
+            id: 'zapata',
+            label: 'Taller Zapata',
+            legalName: 'Catálogo Global Backend SRL',
+            taxId: '30-99999999-9',
+            taxCondition: 'Responsable Inscripto',
+            address: 'Backend 456',
+            phone: '3419999999',
+            email: 'backend@test.com',
+            logo: '',
+          },
+        ]),
+        dataTypeCode: 'JSON',
+        description: 'Catalogo compartido de talleres para presupuesto',
+        editable: true,
+        visible: false,
+        moduleCode: 'GESTION',
+      })),
+    );
+
+    render(<PresupuestoTab {...baseProps} />);
+
+    expect(await screen.findByText('Catálogo Global Backend SRL')).toBeInTheDocument();
+    expect(screen.getByText('30-99999999-9 · Responsable Inscripto')).toBeInTheDocument();
   });
 });
 

@@ -26,6 +26,10 @@ function buildCaseDetailPath(caseId) {
   return `/cases/${caseId}`;
 }
 
+function buildSystemParameterPath(code) {
+  return `/system/parameters/${encodeURIComponent(code)}`;
+}
+
 function buildCaseRelationsPath(caseId) {
   return `/cases/${caseId}/relations`;
 }
@@ -259,6 +263,10 @@ export function getNotificationsUrl() {
 
 export function getSystemParametersUrl() {
   return buildApiUrl(SYSTEM_PARAMETERS_PATH);
+}
+
+export function getSystemParameterUrl(code) {
+  return buildApiUrl(buildSystemParameterPath(code));
 }
 
 export function getOperationCatalogsUrl() {
@@ -1245,6 +1253,54 @@ export async function readAuthenticatedSystemParameters(accessToken, options = {
 
   if (!response.ok) {
     throw buildHttpError(response, 'No pude leer los parámetros del sistema.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedSystemParameter(accessToken, code, options = {}) {
+  const endpoint = getSystemParameterUrl(code);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer el parámetro del sistema.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function upsertAuthenticatedSystemParameter(accessToken, code, body, options = {}) {
+  const endpoint = getSystemParameterUrl(code);
+  const response = await fetch(endpoint, {
+    method: 'PUT',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude guardar el parámetro del sistema.', payload);
   }
 
   return {

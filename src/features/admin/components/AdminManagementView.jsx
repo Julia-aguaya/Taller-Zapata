@@ -2,7 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import DataField from '../../../components/ui/DataField';
 import SelectField from '../../../components/ui/SelectField';
 import StatusBadge from '../../../components/ui/StatusBadge';
-import { getDefaultWorkshops, readWorkshopCatalog, saveWorkshopCatalog } from '../../gestion/lib/workshopCatalog';
+import {
+  getDefaultWorkshops,
+  readWorkshopCatalog,
+  readWorkshopCatalogFromBackend,
+  saveWorkshopCatalog,
+  saveWorkshopCatalogToBackend,
+} from '../../gestion/lib/workshopCatalog';
 import {
   createAuthenticatedReferralContact,
   createAuthenticatedUser,
@@ -87,6 +93,20 @@ export default function AdminManagementView({ backendSession }) {
     return referralContacts.filter((item) => [item.name, item.email, item.phone].filter(Boolean).some((value) => String(value).toLowerCase().includes(search)));
   }, [referralContacts, referralSearch]);
 
+  const loadWorkshops = async () => {
+    if (!accessToken || !isAdminRole(currentRole)) {
+      setWorkshops(readWorkshopCatalog());
+      return;
+    }
+
+    try {
+      const catalog = await readWorkshopCatalogFromBackend(accessToken);
+      setWorkshops(catalog);
+    } catch {
+      setWorkshops(readWorkshopCatalog());
+    }
+  };
+
   const loadAdminData = async () => {
     if (!accessToken || !isAdminRole(currentRole)) {
       return;
@@ -136,8 +156,8 @@ export default function AdminManagementView({ backendSession }) {
   }, [accessToken, currentRole]);
 
   useEffect(() => {
-    setWorkshops(readWorkshopCatalog());
-  }, []);
+    void loadWorkshops();
+  }, [accessToken, currentRole]);
 
   const handleCreateUser = async () => {
     const selectedBranch = branches.find((branch) => String(branch.id) === String(userForm.branchId));
@@ -226,7 +246,7 @@ export default function AdminManagementView({ backendSession }) {
     }
   };
 
-  const handleSaveWorkshop = () => {
+  const handleSaveWorkshop = async () => {
     if (!workshopForm.id) {
       setSavingState({ users: false, referrals: false, message: 'Seleccioná primero qué taller querés editar.' });
       return;
@@ -253,9 +273,19 @@ export default function AdminManagementView({ backendSession }) {
         : workshop
     ));
 
-    setWorkshops(saveWorkshopCatalog(nextWorkshops));
-    setWorkshopForm(emptyWorkshopForm());
-    setSavingState({ users: false, referrals: false, message: 'Datos del taller guardados para la plantilla de presupuesto.' });
+    setSavingState({ users: false, referrals: true, message: '' });
+
+    try {
+      const savedCatalog = accessToken && isAdminRole(currentRole)
+        ? await saveWorkshopCatalogToBackend(accessToken, nextWorkshops)
+        : saveWorkshopCatalog(nextWorkshops);
+
+      setWorkshops(savedCatalog);
+      setWorkshopForm(emptyWorkshopForm());
+      setSavingState({ users: false, referrals: false, message: 'Datos del taller guardados para la plantilla de presupuesto.' });
+    } catch (error) {
+      setSavingState({ users: false, referrals: false, message: error?.message || 'No pudimos guardar los datos del taller.' });
+    }
   };
 
   const handleResetWorkshops = () => {
