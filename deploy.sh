@@ -8,6 +8,8 @@ FRONTEND_DIR="$APP_DIR/frontend"
 BACKEND_SERVICE="${BACKEND_SERVICE:-taller-zapata-backend}"
 NGINX_SERVICE="${NGINX_SERVICE:-nginx}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:8080/actuator/health}"
+HEALTH_RETRIES="${HEALTH_RETRIES:-18}"
+HEALTH_SLEEP_SECONDS="${HEALTH_SLEEP_SECONDS:-5}"
 
 log() {
   printf '\n[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1"
@@ -67,8 +69,22 @@ deploy_frontend() {
 
 verify_deploy() {
   log "Checking backend health"
-  curl --fail --silent --show-error "$HEALTH_URL"
-  printf '\n'
+  local attempt
+
+  for attempt in $(seq 1 "$HEALTH_RETRIES"); do
+    if curl --fail --silent --show-error "$HEALTH_URL"; then
+      printf '\n'
+      break
+    fi
+
+    if [[ "$attempt" -eq "$HEALTH_RETRIES" ]]; then
+      printf '\nBackend health check failed after %s attempts\n' "$HEALTH_RETRIES" >&2
+      exit 1
+    fi
+
+    printf '\nBackend not ready yet (attempt %s/%s). Waiting %ss...\n' "$attempt" "$HEALTH_RETRIES" "$HEALTH_SLEEP_SECONDS"
+    sleep "$HEALTH_SLEEP_SECONDS"
+  done
 
   log "Checking frontend bundle for stale localhost:8081"
   if grep -R -q 'localhost:8081' "$FRONTEND_DIR"; then
