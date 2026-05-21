@@ -53,6 +53,12 @@ const baseDetailState = {
   },
   workflowHistory: [],
   workflowActions: [],
+  auditEventsState: {
+    status: 'empty',
+    items: [],
+    total: 0,
+    detail: '',
+  },
   appointmentsState: {
     items: [],
     nextAppointment: null,
@@ -121,6 +127,43 @@ describe('AuthenticatedCaseDetail', () => {
     expect(screen.getByText('Perez, Juan')).toBeInTheDocument();
     expect(clientRow).toHaveTextContent('Perez, Juan');
     expect(clientRow).not.toHaveTextContent('CLIENTE');
+  });
+
+  it('muestra cambios guardados usando eventos de auditoria aunque no haya workflow history', () => {
+    render(
+      <AuthenticatedCaseDetail
+        detailState={{
+          ...baseDetailState,
+          auditEventsState: {
+            status: 'success',
+            total: 1,
+            detail: 'Actividad reciente',
+            items: [
+              {
+                id: 'evt-1',
+                actionCode: 'actualizar_siniestro_caso',
+                domain: 'casefile',
+                changeNote: 'Actualizamos la fecha del siniestro',
+                actorDisplayName: 'Usuario Test',
+                createdAt: '2026-05-10T12:00:00Z',
+              },
+            ],
+          },
+        }}
+        onOpenCase={vi.fn()}
+        onOpenDetail={vi.fn()}
+        onSaveDocument={vi.fn()}
+        onDownloadDocument={vi.fn()}
+        onPreviewDocument={vi.fn()}
+        formatDate={formatDate}
+        formatDateTime={formatDateTime}
+        documentsCatalogs={{ categories: [] }}
+      />,
+    );
+
+    expect(screen.getByText('Actualizar Siniestro Caso')).toBeInTheDocument();
+    expect(screen.getByText('Actualizamos la fecha del siniestro')).toBeInTheDocument();
+    expect(screen.getByText('2026-05-10T12:00:00Z · Usuario Test')).toBeInTheDocument();
   });
 });
 

@@ -460,6 +460,37 @@ describe('GestionView', () => {
 
     expect(onChangeTab).toHaveBeenCalledWith('presupuesto');
   });
+
+  it('muestra historial cuando el detalle viene con id numerico y la carpeta local usa id string', () => {
+    render(
+      <GestionView
+        {...baseProps}
+        detailState={{
+          item: { id: 1 },
+          auditEventsState: {
+            status: 'success',
+            items: [
+              {
+                id: 'evt-1',
+                domain: 'casefile',
+                actionCode: 'actualizar_siniestro_caso',
+                changeNote: 'Actualizamos la fecha del siniestro',
+                actorDisplayName: 'Usuario Test',
+                createdAt: '2026-05-10T12:00:00Z',
+              },
+            ],
+            total: 1,
+            detail: 'Actividad reciente',
+          },
+        }}
+        item={{ ...mockCase, id: '1' }}
+      />,
+    );
+
+    expect(screen.getByText('Actualizar Siniestro Caso')).toBeInTheDocument();
+    expect(screen.getByText('Nota: Actualizamos la fecha del siniestro')).toBeInTheDocument();
+    expect(screen.getByText('Usuario Test')).toBeInTheDocument();
+  });
 });
 
 // ---------------------------------------------------------------------------

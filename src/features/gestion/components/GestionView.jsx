@@ -12,7 +12,7 @@ import {
   isThirdPartyWorkshopCase,
   isTodoRiesgoCase,
 } from '../../cases/lib/caseDomainCheckers';
-import { formatDate, formatDateTime } from '../../cases/lib/caseFormatters';
+import { formatBackendState, formatDate, formatDateTime } from '../../cases/lib/caseFormatters';
 import { getTramiteStepperConfig, getRepairStepperConfig, bindWorkflowActions } from '../lib/gestionHelpers';
 import FichaTecnicaTab from './FichaTecnicaTab';
 import GestionTramiteTab from './GestionTramiteTab';
@@ -52,7 +52,10 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
 
   const franchiseRecovery = isFranchiseRecoveryCase(item);
   const canManageAdministrativeStates = isAdminRole(currentUserRole);
-  const auditEventsState = detailState?.item?.id === item?.id ? (detailState?.auditEventsState || { status: 'idle', items: [], total: 0, detail: '' }) : { status: 'idle', items: [], total: 0, detail: '' };
+  const detailMatchesSelectedCase = detailState?.item?.id != null
+    && item?.id != null
+    && String(detailState.item.id) === String(item.id);
+  const auditEventsState = detailMatchesSelectedCase ? (detailState?.auditEventsState || { status: 'idle', items: [], total: 0, detail: '' }) : { status: 'idle', items: [], total: 0, detail: '' };
   const visibleAuditItems = Array.isArray(auditEventsState.items) ? auditEventsState.items.slice(0, visibleAuditCount) : [];
   const remainingAuditCount = Math.max((auditEventsState.total || 0) - visibleAuditItems.length, 0);
   const franchiseEnablesRepair = franchiseRecovery ? item.franchiseRecovery?.enablesRepair !== 'NO' : true;

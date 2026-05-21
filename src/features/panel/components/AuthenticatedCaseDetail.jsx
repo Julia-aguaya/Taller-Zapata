@@ -69,6 +69,7 @@ export default function AuthenticatedCaseDetail({
   const item = detailState.data;
   const workflowHistory = detailState.workflowHistory;
   const workflowActions = detailState.workflowActions;
+  const auditEventsState = detailState.auditEventsState || { status: 'empty', items: [], total: 0, detail: '' };
   const appointmentsState = detailState.appointmentsState;
   const documentsState = detailState.documentsState;
   const documentGroups = groupDocumentsByOrigin(documentsState.items);
@@ -135,6 +136,7 @@ export default function AuthenticatedCaseDetail({
 
       <div className="backend-detail-sections">
         <CaseWorkflowSection
+          auditEventsState={auditEventsState}
           workflowHistory={workflowHistory}
           workflowActions={workflowActions}
           formatBackendState={formatBackendState}
