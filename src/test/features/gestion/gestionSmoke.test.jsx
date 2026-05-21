@@ -2,7 +2,7 @@
  * Smoke tests de integración para componentes del bundle de gestión.
  * No usa MSW — los componentes reciben props directamente.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -13,6 +13,7 @@ import PresupuestoTab from '../../../features/gestion/components/PresupuestoTab'
 import PagosTab from '../../../features/gestion/components/PagosTab';
 import DocumentacionTab from '../../../features/gestion/components/DocumentacionTab';
 import GestionReparacionTab from '../../../features/gestion/components/GestionReparacionTab';
+import { WORKSHOP_STORAGE_KEY } from '../../../features/gestion/lib/workshopCatalog';
 
 // ---------------------------------------------------------------------------
 // MOCK DATA
@@ -569,6 +570,10 @@ describe('GestionTramiteTab', () => {
 // ---------------------------------------------------------------------------
 
 describe('PresupuestoTab', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
   const baseProps = {
     item: mockCase,
     updateCase: vi.fn(),
@@ -581,7 +586,7 @@ describe('PresupuestoTab', () => {
     // El eyebrow dice "Presupuesto Particular"
     expect(screen.getByText('Presupuesto Particular')).toBeInTheDocument();
     // Debe mostrar el nombre del taller
-    expect(screen.getByText('Taller Zapata')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Taller Zapata' })).toBeInTheDocument();
     // Debe mostrar sección de fotos
     expect(screen.getByText('Fotos y videos')).toBeInTheDocument();
   });
@@ -607,6 +612,27 @@ describe('PresupuestoTab', () => {
     expect(screen.getByText('Totales y condiciones para emitir')).toBeInTheDocument();
     expect(screen.getByText('Generar presupuesto')).toBeInTheDocument();
     expect(screen.getByText('Total presupuesto')).toBeInTheDocument();
+  });
+
+  it('usa el catálogo editable de talleres para la cabecera del presupuesto', () => {
+    window.localStorage.setItem(WORKSHOP_STORAGE_KEY, JSON.stringify([
+      {
+        id: 'zapata',
+        label: 'Taller Zapata',
+        legalName: 'Catálogo Admin SRL',
+        taxId: '30-00000000-1',
+        taxCondition: 'Responsable Inscripto',
+        address: 'Rosario 123',
+        phone: '3410000000',
+        email: 'admin@test.com',
+        logo: '',
+      },
+    ]));
+
+    render(<PresupuestoTab {...baseProps} />);
+
+    expect(screen.getByText('Catálogo Admin SRL')).toBeInTheDocument();
+    expect(screen.getByText('30-00000000-1 · Responsable Inscripto')).toBeInTheDocument();
   });
 });
 

@@ -35,7 +35,7 @@ export const REPORT_STATUS_OPTIONS = ['Informe cerrado', 'Informe abierto'];
 export const YES_NO_AV_OPTIONS = ['SI', 'NO', 'A/V'];
 
 // ── Workshop options ──
-export const WORKSHOP_OPTIONS = ['Talleres Zapata', 'Taller Casablanca', 'Taller Repararte'];
+export const WORKSHOP_OPTIONS = ['Taller Zapata', 'Taller Casablanca', 'Taller Repararte'];
 
 export const WORKSHOPS = [
   {

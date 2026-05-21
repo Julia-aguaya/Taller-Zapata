@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import DataField from '../../../components/ui/DataField';
 import SelectField from '../../../components/ui/SelectField';
 import StatusBadge from '../../../components/ui/StatusBadge';
+import { getDefaultWorkshops, readWorkshopCatalog, saveWorkshopCatalog } from '../../gestion/lib/workshopCatalog';
 import {
   createAuthenticatedReferralContact,
   createAuthenticatedUser,
@@ -42,6 +43,20 @@ function isAdminRole(role) {
   return ['admin', 'administrador', 'administrator', 'superadmin'].includes(normalized);
 }
 
+function emptyWorkshopForm() {
+  return {
+    id: '',
+    label: '',
+    legalName: '',
+    taxId: '',
+    taxCondition: '',
+    address: '',
+    phone: '',
+    email: '',
+    logo: '',
+  };
+}
+
 export default function AdminManagementView({ backendSession }) {
   const accessToken = backendSession?.accessToken || '';
   const currentRole = backendSession?.user?.role || '';
@@ -54,7 +69,9 @@ export default function AdminManagementView({ backendSession }) {
   const [savingState, setSavingState] = useState({ users: false, referrals: false, message: '' });
   const [userForm, setUserForm] = useState(emptyUserForm());
   const [referralForm, setReferralForm] = useState(emptyReferralForm());
+  const [workshopForm, setWorkshopForm] = useState(emptyWorkshopForm());
   const [referralSearch, setReferralSearch] = useState('');
+  const [workshops, setWorkshops] = useState(() => readWorkshopCatalog());
 
   const branchOptions = useMemo(
     () => branches.map((branch) => ({ value: String(branch.id), label: `${branch.name} (${branch.code})` })),
@@ -117,6 +134,10 @@ export default function AdminManagementView({ backendSession }) {
   useEffect(() => {
     void loadAdminData();
   }, [accessToken, currentRole]);
+
+  useEffect(() => {
+    setWorkshops(readWorkshopCatalog());
+  }, []);
 
   const handleCreateUser = async () => {
     const selectedBranch = branches.find((branch) => String(branch.id) === String(userForm.branchId));
@@ -205,6 +226,45 @@ export default function AdminManagementView({ backendSession }) {
     }
   };
 
+  const handleSaveWorkshop = () => {
+    if (!workshopForm.id) {
+      setSavingState({ users: false, referrals: false, message: 'Seleccioná primero qué taller querés editar.' });
+      return;
+    }
+
+    if (!workshopForm.label.trim()) {
+      setSavingState({ users: false, referrals: false, message: 'El nombre visible del taller es obligatorio.' });
+      return;
+    }
+
+    const nextWorkshops = workshops.map((workshop) => (
+      workshop.id === workshopForm.id
+        ? {
+          ...workshop,
+          label: workshopForm.label,
+          legalName: workshopForm.legalName,
+          taxId: workshopForm.taxId,
+          taxCondition: workshopForm.taxCondition,
+          address: workshopForm.address,
+          phone: workshopForm.phone,
+          email: workshopForm.email,
+          logo: workshopForm.logo,
+        }
+        : workshop
+    ));
+
+    setWorkshops(saveWorkshopCatalog(nextWorkshops));
+    setWorkshopForm(emptyWorkshopForm());
+    setSavingState({ users: false, referrals: false, message: 'Datos del taller guardados para la plantilla de presupuesto.' });
+  };
+
+  const handleResetWorkshops = () => {
+    const defaults = getDefaultWorkshops();
+    setWorkshops(saveWorkshopCatalog(defaults));
+    setWorkshopForm(emptyWorkshopForm());
+    setSavingState({ users: false, referrals: false, message: 'Se restauró el catálogo original de talleres.' });
+  };
+
   if (!isAdminRole(currentRole)) {
     return (
       <div className="page-stack">
@@ -221,8 +281,8 @@ export default function AdminManagementView({ backendSession }) {
       <section className="hero-panel compact-hero">
         <div className="stack-tight">
           <p className="eyebrow">Gestión</p>
-          <h1>Administración de usuarios y referenciados</h1>
-          <p className="muted">Asigná usuarios a sucursales y mantené el catálogo general de referenciados reutilizable en Nuevo caso.</p>
+          <h1>Administración de usuarios, referenciados y talleres</h1>
+          <p className="muted">Asigná usuarios a sucursales y mantené los catálogos generales reutilizables en Nuevo caso y Presupuesto.</p>
         </div>
         <div className="tag-row">
           <StatusBadge tone="info">Solo admin</StatusBadge>
@@ -232,6 +292,58 @@ export default function AdminManagementView({ backendSession }) {
 
       {screenState.status === 'error' ? <div className="alert-banner danger-banner">{screenState.message}</div> : null}
       {savingState.message ? <div className="alert-banner info-banner">{savingState.message}</div> : null}
+
+      <section className="card simple-panel-section">
+        <div className="section-head small-gap">
+          <div>
+            <p className="eyebrow">Talleres</p>
+            <h2>Cabecera de presupuesto</h2>
+          </div>
+          <StatusBadge tone="info">{workshops.length} taller(es)</StatusBadge>
+        </div>
+
+        <div className="form-grid three-columns">
+          <SelectField
+            label="Taller"
+            onChange={(value) => {
+              const selectedWorkshop = workshops.find((workshop) => workshop.id === value);
+              setWorkshopForm(selectedWorkshop ? { ...selectedWorkshop } : emptyWorkshopForm());
+            }}
+            options={workshops.map((workshop) => ({ value: workshop.id, label: workshop.label }))}
+            placeholder="Seleccioná"
+            value={workshopForm.id}
+          />
+          <DataField label="Nombre visible" onChange={(value) => setWorkshopForm((current) => ({ ...current, label: value }))} value={workshopForm.label} />
+          <DataField label="Razón social" onChange={(value) => setWorkshopForm((current) => ({ ...current, legalName: value }))} value={workshopForm.legalName} />
+          <DataField label="CUIT" onChange={(value) => setWorkshopForm((current) => ({ ...current, taxId: value }))} value={workshopForm.taxId} />
+          <DataField label="Condición impositiva" onChange={(value) => setWorkshopForm((current) => ({ ...current, taxCondition: value }))} value={workshopForm.taxCondition} />
+          <DataField label="Dirección" onChange={(value) => setWorkshopForm((current) => ({ ...current, address: value }))} value={workshopForm.address} />
+          <DataField label="Teléfono" onChange={(value) => setWorkshopForm((current) => ({ ...current, phone: value }))} value={workshopForm.phone} />
+          <DataField label="Mail" onChange={(value) => setWorkshopForm((current) => ({ ...current, email: value }))} value={workshopForm.email} />
+          <DataField label="Logo URL" onChange={(value) => setWorkshopForm((current) => ({ ...current, logo: value }))} value={workshopForm.logo} />
+        </div>
+
+        <div className="actions-row">
+          <button className="primary-button" onClick={handleSaveWorkshop} type="button">Guardar taller</button>
+          <button className="ghost-button" onClick={handleResetWorkshops} type="button">Restaurar catálogo</button>
+        </div>
+
+        <div className="notification-list">
+          {workshops.map((item) => (
+            <article className="notification-card" key={item.id}>
+              <div className="stack-tight">
+                <strong>{item.label}</strong>
+                <small>{item.legalName || 'Razón social pendiente'}</small>
+                <small>{[item.taxId, item.taxCondition].filter(Boolean).join(' · ') || 'CUIT y condición impositiva pendientes'}</small>
+                <small>{[item.address, item.phone, item.email].filter(Boolean).join(' · ') || 'Contacto pendiente'}</small>
+              </div>
+              <div className="notification-card-actions">
+                <button className="secondary-button compact-button" onClick={() => setWorkshopForm({ ...item })} type="button">Editar</button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <section className="card simple-panel-section">
         <div className="section-head small-gap">

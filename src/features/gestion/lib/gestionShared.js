@@ -8,8 +8,8 @@ import {
   TASK_PRIORITY_OPTIONS,
   TASK_STATUS_OPTIONS,
   TODO_RIESGO_ASSIGNABLE_USERS,
-  WORKSHOPS,
 } from '../constants/gestionOptions';
+import { findWorkshopByLabel, readWorkshopCatalog } from './workshopCatalog';
 import { todayIso } from '../../cases/lib/caseAgendaHelpers';
 import { getFolderDisplayName } from '../../cases/lib/caseDomainCheckers';
 import { numberValue } from './gestionUtils';
@@ -191,8 +191,8 @@ export function createLawyerInjured(overrides = {}) {
 // BUDGET / REPAIR HELPERS
 // ══════════════════════════════════════════════════════════
 
-export function getWorkshopInfo(label) {
-  return WORKSHOPS.find((workshop) => workshop.label === label);
+export function getWorkshopInfo(label, workshops = null) {
+  return findWorkshopByLabel(label, workshops || readWorkshopCatalog());
 }
 
 export function lineIsComplete(line) {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import DataField from '../../../components/ui/DataField';
 import SelectField from '../../../components/ui/SelectField';
 import StatusBadge from '../../../components/ui/StatusBadge';
@@ -11,7 +11,6 @@ import {
   BUDGET_PART_DECISION_OPTIONS,
   BUDGET_TASK_OPTIONS,
   REPORT_STATUS_OPTIONS,
-  WORKSHOP_OPTIONS,
   YES_NO_AV_OPTIONS,
 } from '../constants/gestionOptions';
 import {
@@ -25,12 +24,14 @@ import {
   createBudgetLine,
   createBudgetService,
 } from '../lib/gestionShared';
+import { getWorkshopOptions, readWorkshopCatalog } from '../lib/workshopCatalog';
 import { money, numberValue } from '../lib/gestionUtils';
 
 export default function PresupuestoTab({ item, updateCase, flash }) {
   const [previewMedia, setPreviewMedia] = useState(null);
   const [failedMediaIds, setFailedMediaIds] = useState([]);
   const [brokenPreviewIds, setBrokenPreviewIds] = useState([]);
+  const [workshops] = useState(() => readWorkshopCatalog());
 
   const updateBudget = (mutator, { syncParts = false } = {}) => {
     updateCase((draft) => {
@@ -115,7 +116,8 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
   };
 
   const highlightLineErrors = item.budget.reportStatus === 'Informe cerrado';
-  const workshopInfo = getWorkshopInfo(item.budget.workshop);
+  const workshopInfo = getWorkshopInfo(item.budget.workshop, workshops);
+  const workshopOptions = useMemo(() => getWorkshopOptions(workshops), [workshops]);
   const mediaItems = item.vehicleMedia ?? [];
   const vehicleSummary = [
     { label: 'Dominio', value: item.vehicle.plate || 'Pendiente' },
@@ -203,7 +205,7 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
                 invalid={!item.budget.workshop && item.budget.reportStatus === 'Informe cerrado'}
                 label="Taller"
                 onChange={(value) => updateBudget((draft) => { draft.budget.workshop = value; })}
-                options={WORKSHOP_OPTIONS}
+                options={workshopOptions}
                 placeholder="Seleccioná un taller"
                 required
                 value={item.budget.workshop}
