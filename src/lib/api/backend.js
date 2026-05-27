@@ -174,6 +174,10 @@ function buildCasePartPath(caseId, partId) {
   return `/cases/${caseId}/parts/${partId}`;
 }
 
+function buildCasePartQuotesPath(caseId, partId) {
+  return `/cases/${caseId}/parts/${partId}/quotes`;
+}
+
 function buildNotificationReadPath(notificationId) {
   return `/notifications/${notificationId}/read`;
 }
@@ -411,6 +415,10 @@ export function getCaseBudgetUrl(caseId) {
 
 export function getCasePartsUrl(caseId) {
   return buildApiUrl(buildCasePartsPath(caseId));
+}
+
+export function getCasePartQuotesUrl(caseId, partId) {
+  return buildApiUrl(buildCasePartQuotesPath(caseId, partId));
 }
 
 export function getCaseDocumentsUrl(caseId) {
@@ -2199,4 +2207,58 @@ export async function createAuthenticatedDocumentRelation(accessToken, documentI
 export async function updateAuthenticatedDocumentRelation(accessToken, relationId, body, options = {}) {
   const endpoint = buildApiUrl(buildDocumentRelationPath(relationId));
   return putAuthenticatedCaseResource(accessToken, endpoint, body, 'No pude actualizar la relación del documento.', options);
+}
+
+export async function readAuthenticatedCasePartQuotes(accessToken, caseId, partId, options = {}) {
+  const endpoint = getCasePartQuotesUrl(caseId, partId);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+
+  if (response.status === 404) {
+    return [];
+  }
+
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, `No pudimos cargar las cotizaciones de los repuestos para el caso ${caseId}.`, payload);
+  }
+
+  return payload;
+}
+
+export async function createAuthenticatedPartSupplierQuote(accessToken, caseId, partId, body, options = {}) {
+  const endpoint = getCasePartQuotesUrl(caseId, partId);
+  return postAuthenticatedCaseResource(accessToken, endpoint, body, `No pudimos guardar la cotización del repuesto para el caso ${caseId}.`, options);
+}
+
+export async function deleteAuthenticatedPartSupplierQuote(accessToken, caseId, partId, quoteId, options = {}) {
+  const endpoint = `${getCasePartQuotesUrl(caseId, partId)}/${quoteId}`;
+  const headers = {
+    Accept: 'application/json',
+    Authorization: `Bearer ${accessToken}`,
+  };
+  if (options.changeNote?.trim()) {
+    headers['X-Change-Note'] = options.changeNote.trim();
+  }
+  const response = await fetch(endpoint, {
+    method: 'DELETE',
+    headers,
+    signal: options.signal,
+  });
+
+  if (response.status === 404) {
+    return;
+  }
+
+  if (!response.ok) {
+    const payload = await readJson(response);
+    throw buildHttpError(response, `No pudimos eliminar la cotización del repuesto para el caso ${caseId}.`, payload);
+  }
 }

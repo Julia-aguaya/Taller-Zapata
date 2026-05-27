@@ -123,6 +123,8 @@ import {
   createAuthenticatedCaseLegalNews,
   createAuthenticatedCasePart,
   createAuthenticatedCaseReceipt,
+  createAuthenticatedPartSupplierQuote,
+  deleteAuthenticatedPartSupplierQuote,
   createAuthenticatedCaseWorkflowTransition,
   createAuthenticatedDocumentRelation,
   createAuthenticatedPerson,
@@ -134,6 +136,7 @@ import {
   readAuthenticatedCaseAuditEvents,
   readAuthenticatedCaseBudget,
   readAuthenticatedCaseParts,
+  readAuthenticatedCasePartQuotes,
   readAuthenticatedCaseDetail,
   readAuthenticatedCaseDocuments,
   downloadAuthenticatedCaseDocument,
@@ -4326,6 +4329,53 @@ function App() {
               applications: [],
             }, { changeNote }));
             }
+          }
+        }
+
+        if (shouldSync('presupuesto') && (selectedCase.repair?.quoteRows || []).length > 0) {
+          const quoteOps = [];
+          for (const part of (selectedCase.repair?.parts || [])) {
+            if (!part.backendId) continue;
+            const quoteRow = (selectedCase.repair.quoteRows || []).find(r => r.sourceLineId === part.sourceLineId);
+            if (!quoteRow) continue;
+
+            // Fetch existing quotes from backend
+            let existingQuotes = [];
+            try {
+              const quotesResult = await readAuthenticatedCasePartQuotes(accessToken, caseId, part.backendId);
+              existingQuotes = quotesResult || [];
+            } catch {
+              continue;
+            }
+
+            // Delete all existing quotes for this part (simple V1: recreate all)
+            for (const existing of existingQuotes) {
+              if (existing.id) {
+                quoteOps.push(deleteAuthenticatedPartSupplierQuote(accessToken, caseId, part.backendId, existing.id));
+              }
+            }
+
+            // Create quotes from providers
+            const providers = [
+              { key: 'provider1', label: 'Proveedor 1' },
+              { key: 'provider2', label: 'Proveedor 2' },
+              { key: 'provider3', label: 'Proveedor 3' },
+              { key: 'provider4', label: 'Proveedor 4' },
+            ];
+            for (const { key, label } of providers) {
+              const amount = quoteRow[key];
+              if (!amount || amount === '' || amount === '0') continue;
+              quoteOps.push(createAuthenticatedPartSupplierQuote(accessToken, caseId, part.backendId, {
+                supplier: label,
+                amount: toDecimal(amount),
+                billingCode: quoteRow.billing || 'A',
+                paymentMethodCode: quoteRow.paymentMethod || 'CONTADO',
+              }, { changeNote }));
+            }
+          }
+
+          if (quoteOps.length > 0) {
+            await Promise.allSettled(quoteOps);
           }
         }
 
