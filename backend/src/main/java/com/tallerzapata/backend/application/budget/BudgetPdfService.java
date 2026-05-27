@@ -24,32 +24,28 @@ public class BudgetPdfService {
             PdfWriter.getInstance(document, out);
             document.open();
 
-            // Fonts
             Font titleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 16);
             Font headerFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12);
             Font normalFont = FontFactory.getFont(FontFactory.HELVETICA, 10);
             Font smallFont = FontFactory.getFont(FontFactory.HELVETICA, 8);
 
-            // Title
             Paragraph title = new Paragraph("PRESUPUESTO", titleFont);
             title.setAlignment(Element.ALIGN_CENTER);
             title.setSpacingAfter(20);
             document.add(title);
 
-            // Case info table
             PdfPTable infoTable = new PdfPTable(2);
             infoTable.setWidthPercentage(100);
             infoTable.setSpacingAfter(15);
             float[] infoWidths = {1f, 2f};
             infoTable.setWidths(infoWidths);
 
-            addInfoRow(infoTable, "Carpeta:", folderCode, headerFont, normalFont);
+            addInfoRow(infoTable, "Carpeta:", nullToStr(folderCode), headerFont, normalFont);
             addInfoRow(infoTable, "Fecha:", budget.getBudgetDate() != null ? budget.getBudgetDate().format(DATE_FMT) : "-", headerFont, normalFont);
             addInfoRow(infoTable, "Estado:", budget.getReportStatusCode() != null ? budget.getReportStatusCode() : "-", headerFont, normalFont);
             addInfoRow(infoTable, "Dias estimados:", budget.getEstimatedDays() != null ? String.valueOf(budget.getEstimatedDays()) : "-", headerFont, normalFont);
             document.add(infoTable);
 
-            // Items table
             Paragraph itemsTitle = new Paragraph("Detalle de intervenciones", headerFont);
             itemsTitle.setSpacingAfter(10);
             document.add(itemsTitle);
@@ -59,20 +55,21 @@ public class BudgetPdfService {
             itemsTable.setSpacingAfter(15);
             float[] colWidths = {1.5f, 1.5f, 1.5f, 1.5f, 1f, 1f, 1f};
             itemsTable.setWidths(colWidths);
+            itemsTable.setHeaderRows(1);
 
-            // Headers
             String[] headers = {"Pieza", "Tarea", "Danio", "Decision", "Horas", "MO ($)", "Repuesto ($)"};
             for (String h : headers) {
                 PdfPCell cell = new PdfPCell(new Phrase(h, smallFont));
-                cell.setBackgroundColor(new java.awt.Color(220, 220, 220));
+                cell.setBackgroundColor(new RGBColor(220, 220, 220));
                 cell.setHorizontalAlignment(Element.ALIGN_CENTER);
                 cell.setPadding(4);
                 itemsTable.addCell(cell);
             }
 
-            // Item rows (only active items)
+            boolean hasActive = false;
             for (BudgetItemEntity item : items) {
                 if (!Boolean.TRUE.equals(item.getActive())) continue;
+                hasActive = true;
                 itemsTable.addCell(createCell(nullToStr(item.getAffectedPiece()), normalFont));
                 itemsTable.addCell(createCell(nullToStr(item.getTaskCode()), normalFont));
                 itemsTable.addCell(createCell(nullToStr(item.getDamageLevelCode()), normalFont));
@@ -82,7 +79,7 @@ public class BudgetPdfService {
                 itemsTable.addCell(createCell(formatDecimal(item.getPartValue()), normalFont));
             }
 
-            if (items.stream().noneMatch(i -> Boolean.TRUE.equals(i.getActive()))) {
+            if (!hasActive) {
                 PdfPCell emptyCell = new PdfPCell(new Phrase("Sin items", normalFont));
                 emptyCell.setColspan(7);
                 emptyCell.setHorizontalAlignment(Element.ALIGN_CENTER);
@@ -92,7 +89,6 @@ public class BudgetPdfService {
 
             document.add(itemsTable);
 
-            // Totals table
             PdfPTable totalsTable = new PdfPTable(2);
             totalsTable.setWidthPercentage(60);
             totalsTable.setHorizontalAlignment(Element.ALIGN_RIGHT);
@@ -101,13 +97,13 @@ public class BudgetPdfService {
             totalsTable.setWidths(totalWidths);
 
             addTotalRow(totalsTable, "Mano de obra (sin IVA):", formatDecimal(budget.getLaborWithoutVat()), normalFont);
-            addTotalRow(totalsTable, "IVA (" + formatDecimal(budget.getVatRate()) + "%):", formatDecimal(budget.getLaborVat()), normalFont);
+            String vatLabel = budget.getVatRate() != null ? "IVA (" + formatDecimal(budget.getVatRate()) + "%):" : "IVA:";
+            addTotalRow(totalsTable, vatLabel, formatDecimal(budget.getLaborVat()), normalFont);
             addTotalRow(totalsTable, "Mano de obra (con IVA):", formatDecimal(budget.getLaborWithVat()), normalFont);
             addTotalRow(totalsTable, "Total repuestos:", formatDecimal(budget.getPartsTotal()), normalFont);
             addTotalRow(totalsTable, "TOTAL COTIZADO:", formatDecimal(budget.getTotalQuoted()), headerFont);
             document.add(totalsTable);
 
-            // Observations
             if (budget.getObservations() != null && !budget.getObservations().isBlank()) {
                 Paragraph obsTitle = new Paragraph("Observaciones", headerFont);
                 obsTitle.setSpacingBefore(20);
@@ -115,10 +111,10 @@ public class BudgetPdfService {
                 document.add(obsTitle);
                 document.add(new Paragraph(budget.getObservations(), normalFont));
             }
-
-            document.close();
-        } catch (Exception e) {
-            throw new RuntimeException("Error al generar PDF de presupuesto", e);
+        } finally {
+            if (document != null && document.isOpen()) {
+                document.close();
+            }
         }
         return out.toByteArray();
     }

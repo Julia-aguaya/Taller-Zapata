@@ -99,6 +99,8 @@ public class BudgetController {
 
     @Operation(summary = "Descargar PDF del presupuesto", description = "Genera y devuelve el PDF del presupuesto. Requiere que el presupuesto este CERRADO.")
     @ApiResponse(responseCode = "200", description = "PDF generado")
+    @ApiResponse(responseCode = "404", description = "Caso o presupuesto no encontrado")
+    @ApiResponse(responseCode = "409", description = "El presupuesto no esta CERRADO")
     @PreAuthorize("hasAuthority('presupuesto.ver')")
     @GetMapping("/cases/{caseId}/budget/pdf")
     public ResponseEntity<byte[]> downloadBudgetPdf(@PathVariable Long caseId) {

@@ -72,6 +72,11 @@ public class BudgetService {
 
     @Transactional(readOnly = true)
     public byte[] generatePdf(Long caseId) {
+        var data = loadPdfData(caseId);
+        return budgetPdfService.generate(data.budget(), data.items(), data.folderCode());
+    }
+
+    private PdfData loadPdfData(Long caseId) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "presupuesto.ver");
@@ -81,8 +86,10 @@ public class BudgetService {
             throw new ConflictException("El presupuesto debe estar en estado CERRADO para generar el PDF. Estado actual: " + budget.getReportStatusCode());
         }
         List<BudgetItemEntity> items = budgetItemRepository.findByBudgetIdOrderByVisualOrderAsc(budget.getId());
-        return budgetPdfService.generate(budget, items, caseEntity.getFolderCode());
+        return new PdfData(budget, items, caseEntity.getFolderCode());
     }
+
+    private record PdfData(BudgetEntity budget, List<BudgetItemEntity> items, String folderCode) {}
 
     @Transactional
     public BudgetResponse upsertBudget(Long caseId, BudgetUpsertRequest request, HttpServletRequest httpRequest) {
