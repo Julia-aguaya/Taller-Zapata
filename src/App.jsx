@@ -84,6 +84,7 @@ import {
   getCaseAppointmentsUrl,
   getCaseAuditEventsUrl,
   getCaseBudgetUrl,
+  getCasePartsUrl,
   getCaseDetailUrl,
   getCaseFinanceSummaryUrl,
   getCaseFinancialMovementsUrl,
@@ -132,6 +133,7 @@ import {
   readAuthenticatedCaseAppointments,
   readAuthenticatedCaseAuditEvents,
   readAuthenticatedCaseBudget,
+  readAuthenticatedCaseParts,
   readAuthenticatedCaseDetail,
   readAuthenticatedCaseDocuments,
   downloadAuthenticatedCaseDocument,
@@ -590,6 +592,14 @@ function buildCaseDetailSupportNotice(parts) {
   }
 
   return `${filtered.slice(0, -1).join(' ')} ${filtered[filtered.length - 1]}`;
+}
+
+function buildCasePartsState(data) {
+  return { status: 'success', items: Array.isArray(data) ? data : [], total: Array.isArray(data) ? data.length : 0, detail: '' };
+}
+
+function buildRejectedCasePartsState(reason) {
+  return { status: 'rejected', items: [], total: 0, detail: reason?.httpStatus !== 404 ? 'No pudimos cargar los repuestos.' : '' };
 }
 
 function normalizeAuthenticatedCasesPayload(payload) {
@@ -2732,6 +2742,7 @@ function App() {
     const legalExpensesEndpoint = getCaseLegalExpensesUrl(item.id);
     const franchiseRecoveryEndpoint = getCaseFranchiseRecoveryUrl(item.id);
     const budgetEndpoint = getCaseBudgetUrl(item.id);
+    const partsEndpoint = getCasePartsUrl(item.id);
     const auditEventsEndpoint = getCaseAuditEventsUrl(item.id);
     const appointmentsEndpoint = getCaseAppointmentsUrl(item.id);
     const financeSummaryEndpoint = getCaseFinanceSummaryUrl(item.id);
@@ -2895,7 +2906,7 @@ function App() {
     });
 
     try {
-      const [detailResult, historyResult, actionsResult, auditEventsResult, relationsResult, insuranceResult, insuranceProcessingResult, insuranceProcessingDocumentsResult, cleasResult, thirdPartyResult, legalResult, legalNewsResult, legalExpensesResult, franchiseRecoveryResult, franchiseResult, budgetResult, appointmentsResult, documentsResult, financeSummaryResult, financialMovementsResult, receiptsResult, vehicleIntakesResult, vehicleOutcomesResult, personResult, vehicleResult] = await Promise.allSettled([
+      const [detailResult, historyResult, actionsResult, auditEventsResult, relationsResult, insuranceResult, insuranceProcessingResult, insuranceProcessingDocumentsResult, cleasResult, thirdPartyResult, legalResult, legalNewsResult, legalExpensesResult, franchiseRecoveryResult, franchiseResult, budgetResult, partsResult, appointmentsResult, documentsResult, financeSummaryResult, financialMovementsResult, receiptsResult, vehicleIntakesResult, vehicleOutcomesResult, personResult, vehicleResult] = await Promise.allSettled([
         readAuthenticatedCaseDetail(backendSession.accessToken, item.id),
         readAuthenticatedCaseWorkflowHistory(backendSession.accessToken, item.id),
         readAuthenticatedCaseWorkflowActions(backendSession.accessToken, item.id),
@@ -2912,6 +2923,7 @@ function App() {
         readAuthenticatedCaseFranchiseRecovery(backendSession.accessToken, item.id),
         readAuthenticatedCaseFranchise(backendSession.accessToken, item.id),
         readAuthenticatedCaseBudget(backendSession.accessToken, item.id),
+        readAuthenticatedCaseParts(backendSession.accessToken, item.id),
         readAuthenticatedCaseAppointments(backendSession.accessToken, item.id),
         readAuthenticatedCaseDocuments(backendSession.accessToken, item.id),
         readAuthenticatedCaseFinanceSummary(backendSession.accessToken, item.id),
@@ -2982,6 +2994,9 @@ function App() {
       const budgetState = budgetResult.status === 'fulfilled'
         ? buildCaseBudgetState(budgetResult.value.data)
         : buildRejectedCaseBudgetState(budgetResult.reason);
+      const partsState = partsResult.status === 'fulfilled'
+        ? buildCasePartsState(partsResult.value.data)
+        : buildRejectedCasePartsState(partsResult.reason);
       const appointmentsState = appointmentsResult.status === 'fulfilled'
         ? buildCaseAppointmentsState(appointmentsResult.value.data)
           : {
@@ -3023,6 +3038,9 @@ function App() {
           : '',
         budgetResult.status === 'rejected' && budgetResult.reason?.httpStatus !== 404
           ? 'Abrimos la carpeta, pero el presupuesto no pudo mostrarse ahora.'
+          : '',
+        partsResult.status === 'rejected' && partsResult.reason?.httpStatus !== 404
+          ? 'Los repuestos del caso no pudieron cargarse.'
           : '',
         historyResult.status === 'rejected' || actionsResult.status === 'rejected'
           ? 'Abrimos la carpeta, pero algunas novedades de seguimiento no pudieron mostrarse ahora.'
@@ -3111,6 +3129,7 @@ function App() {
         legalExpensesState,
         franchiseRecoveryState,
         budgetState,
+        partsState,
         appointmentsState,
         documentsState,
         financeSummaryState,
@@ -4176,7 +4195,7 @@ function App() {
               finalSupplier: part.provider || null,
               authorizationCode: part.authorization || null,
               statusCode: part.state || null,
-              purchasedByCode: part.purchasedBy || null,
+              purchasedByCode: part.purchaseBy || null,
               paymentStatusCode: part.paymentStatus || null,
               budgetedPrice: toDecimal(part.budgetAmount),
               finalPrice: toDecimal(part.amount),

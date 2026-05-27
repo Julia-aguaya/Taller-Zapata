@@ -409,6 +409,10 @@ export function getCaseBudgetUrl(caseId) {
   return buildApiUrl(buildCaseBudgetPath(caseId));
 }
 
+export function getCasePartsUrl(caseId) {
+  return buildApiUrl(buildCasePartsPath(caseId));
+}
+
 export function getCaseDocumentsUrl(caseId) {
   return buildApiUrl(buildCaseDocumentsPath(caseId));
 }
@@ -1004,6 +1008,29 @@ export async function readAuthenticatedCaseBudget(accessToken, caseId, options =
 
   if (!response.ok) {
     throw buildHttpError(response, 'No pude leer el presupuesto de la carpeta.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function readAuthenticatedCaseParts(accessToken, caseId, options = {}) {
+  const endpoint = getCasePartsUrl(caseId);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer los repuestos de la carpeta.', payload);
   }
 
   return {
