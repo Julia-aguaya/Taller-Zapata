@@ -116,8 +116,8 @@ public class PartSupplierQuoteService {
     @Transactional(readOnly = true)
     public QuoteCatalogsResponse getCatalogs() {
         currentUserService.requireCurrentUser();
-        var billings = billingRepository.findAll().stream().filter(b -> Boolean.TRUE.equals(b.getActive())).map(b -> new CodeCatalogResponse(b.getCode(), b.getName())).toList();
-        var payments = paymentMethodRepository.findAll().stream().filter(p -> Boolean.TRUE.equals(p.getActive())).map(p -> new CodeCatalogResponse(p.getCode(), p.getName())).toList();
+        var billings = billingRepository.findByActiveTrueOrderByCodeAsc().stream().map(b -> new CodeCatalogResponse(b.getCode(), b.getName())).toList();
+        var payments = paymentMethodRepository.findByActiveTrueOrderByCodeAsc().stream().map(p -> new CodeCatalogResponse(p.getCode(), p.getName())).toList();
         return new QuoteCatalogsResponse(billings, payments);
     }
 

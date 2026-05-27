@@ -158,7 +158,9 @@ class PartSupplierQuoteIntegrationTest {
         mockMvc.perform(get("/api/v1/cases/100/parts/quotes/best-subtotal")
                         .header("X-User-Id", "3"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.bestSubtotal").value(800.0));
+                .andExpect(jsonPath("$.bestSubtotal").value(800.0))
+                .andExpect(jsonPath("$.partsWithQuotes").value(2))
+                .andExpect(jsonPath("$.partsWithoutQuotes").value(0));
     }
 
     @Test
@@ -293,6 +295,12 @@ class PartSupplierQuoteIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.billingTypes.length()").value(3))
                 .andExpect(jsonPath("$.paymentMethods.length()").value(4));
+    }
+
+    @Test
+    void shouldReturnUnauthorizedForCatalogsWithoutAuth() throws Exception {
+        mockMvc.perform(get("/api/v1/budget/quote-catalogs"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test

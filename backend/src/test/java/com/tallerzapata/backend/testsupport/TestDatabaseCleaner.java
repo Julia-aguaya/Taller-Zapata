@@ -67,6 +67,7 @@ public class TestDatabaseCleaner {
             // Presupuestos y repuestos
             "presupuesto_items",
             "presupuestos",
+            "cotizaciones_repuesto",
             "repuestos_caso",
 
             // Caso
