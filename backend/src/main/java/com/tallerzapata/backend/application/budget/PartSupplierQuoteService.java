@@ -16,9 +16,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class PartSupplierQuoteService {
@@ -92,19 +91,31 @@ public class PartSupplierQuoteService {
         CaseEntity caseEntity = caseRepository.findById(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
         accessControlService.requireCaseAccess(user, caseEntity, "presupuesto.ver");
         List<CasePartEntity> parts = casePartRepository.findByCaseIdOrderByIdAsc(caseId);
+        if (parts.isEmpty()) {
+            return new PartQuotesBestSubtotalResponse(BigDecimal.ZERO, 0, 0);
+        }
+        List<Long> partIds = parts.stream().map(CasePartEntity::getId).toList();
+        Map<Long, List<PartSupplierQuoteEntity>> quotesByPart = quoteRepository.findByPartIdIn(partIds)
+                .stream().collect(Collectors.groupingBy(PartSupplierQuoteEntity::getPartId));
         BigDecimal subtotal = BigDecimal.ZERO;
+        int withQuotes = 0;
+        int withoutQuotes = 0;
         for (CasePartEntity part : parts) {
-            List<PartSupplierQuoteEntity> quotes = quoteRepository.findByPartIdOrderByIdAsc(part.getId());
+            List<PartSupplierQuoteEntity> quotes = quotesByPart.getOrDefault(part.getId(), List.of());
             if (!quotes.isEmpty()) {
+                withQuotes++;
                 BigDecimal bestAmount = quotes.stream().map(PartSupplierQuoteEntity::getAmount).min(Comparator.naturalOrder()).orElse(BigDecimal.ZERO);
                 subtotal = subtotal.add(bestAmount);
+            } else {
+                withoutQuotes++;
             }
         }
-        return new PartQuotesBestSubtotalResponse(subtotal);
+        return new PartQuotesBestSubtotalResponse(subtotal, withQuotes, withoutQuotes);
     }
 
     @Transactional(readOnly = true)
     public QuoteCatalogsResponse getCatalogs() {
+        currentUserService.requireCurrentUser();
         var billings = billingRepository.findAll().stream().filter(b -> Boolean.TRUE.equals(b.getActive())).map(b -> new CodeCatalogResponse(b.getCode(), b.getName())).toList();
         var payments = paymentMethodRepository.findAll().stream().filter(p -> Boolean.TRUE.equals(p.getActive())).map(p -> new CodeCatalogResponse(p.getCode(), p.getName())).toList();
         return new QuoteCatalogsResponse(billings, payments);

@@ -59,7 +59,7 @@ class PartSupplierQuoteIntegrationTest {
                 .andExpect(status().isOk());
 
         // Find the part ID
-        String partId = jdbcTemplate.queryForObject("SELECT id FROM repuestos_caso WHERE caso_id = 100", String.class);
+        Long partId = jdbcTemplate.queryForObject("SELECT id FROM repuestos_caso WHERE caso_id = 100 ORDER BY id ASC LIMIT 1", Long.class);
 
         // Create a quote
         mockMvc.perform(post("/api/v1/cases/100/parts/" + partId + "/quotes")
@@ -125,8 +125,8 @@ class PartSupplierQuoteIntegrationTest {
                         ))))
                 .andExpect(status().isOk());
 
-        String part1Id = jdbcTemplate.queryForObject("SELECT id FROM repuestos_caso WHERE caso_id = 100 AND descripcion = 'Faro izquierdo'", String.class);
-        String part2Id = jdbcTemplate.queryForObject("SELECT id FROM repuestos_caso WHERE caso_id = 100 AND descripcion = 'Faro derecho'", String.class);
+        Long part1Id = jdbcTemplate.queryForObject("SELECT id FROM repuestos_caso WHERE caso_id = 100 AND descripcion = 'Faro izquierdo' ORDER BY id ASC LIMIT 1", Long.class);
+        Long part2Id = jdbcTemplate.queryForObject("SELECT id FROM repuestos_caso WHERE caso_id = 100 AND descripcion = 'Faro derecho' ORDER BY id ASC LIMIT 1", Long.class);
 
         // Quote part1
         mockMvc.perform(post("/api/v1/cases/100/parts/" + part1Id + "/quotes")
@@ -183,7 +183,7 @@ class PartSupplierQuoteIntegrationTest {
                         ))))
                 .andExpect(status().isOk());
 
-        String partId = jdbcTemplate.queryForObject("SELECT id FROM repuestos_caso WHERE caso_id = 100", String.class);
+        Long partId = jdbcTemplate.queryForObject("SELECT id FROM repuestos_caso WHERE caso_id = 100 ORDER BY id ASC LIMIT 1", Long.class);
 
         String response = mockMvc.perform(post("/api/v1/cases/100/parts/" + partId + "/quotes")
                         .header("X-User-Id", "3")
@@ -228,7 +228,7 @@ class PartSupplierQuoteIntegrationTest {
                         ))))
                 .andExpect(status().isOk());
 
-        String partId = jdbcTemplate.queryForObject("SELECT id FROM repuestos_caso WHERE caso_id = 100", String.class);
+        Long partId = jdbcTemplate.queryForObject("SELECT id FROM repuestos_caso WHERE caso_id = 100 ORDER BY id ASC LIMIT 1", Long.class);
 
         mockMvc.perform(post("/api/v1/cases/100/parts/" + partId + "/quotes")
                         .header("X-User-Id", "3")
@@ -237,6 +237,93 @@ class PartSupplierQuoteIntegrationTest {
                                 "Prov", new BigDecimal("100.00"), "INEXISTENTE", "CONTADO"
                         ))))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldReturn404ForNonExistentCase() throws Exception {
+        mockMvc.perform(get("/api/v1/cases/99999/parts/1/quotes")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void shouldReturn404ForNonExistentPart() throws Exception {
+        mockMvc.perform(get("/api/v1/cases/100/parts/99999/quotes")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void shouldRejectNegativeAmount() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/budget")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(
+                                LocalDate.of(2026, 4, 20), "BORRADOR",
+                                new BigDecimal("1000.00"), new BigDecimal("21.00"),
+                                new BigDecimal("500.00"), 5, null, null
+                        ))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/cases/100/parts")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CasePartCreateRequest(
+                                null, "Paragolpes", null, null, null,
+                                "PENDIENTE", null, null,
+                                new BigDecimal("300.00"), null, null, false, false
+                        ))))
+                .andExpect(status().isOk());
+
+        Long partId = jdbcTemplate.queryForObject("SELECT id FROM repuestos_caso WHERE caso_id = 100 ORDER BY id ASC LIMIT 1", Long.class);
+
+        mockMvc.perform(post("/api/v1/cases/100/parts/" + partId + "/quotes")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new PartSupplierQuoteCreateRequest(
+                                "Prov", new BigDecimal("-500.00"), "A", "CONTADO"
+                        ))))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void shouldGetCatalogs() throws Exception {
+        mockMvc.perform(get("/api/v1/budget/quote-catalogs")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.billingTypes.length()").value(3))
+                .andExpect(jsonPath("$.paymentMethods.length()").value(4));
+    }
+
+    @Test
+    void shouldGetBestSubtotalWithPartsWithoutQuotes() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/budget")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(
+                                LocalDate.of(2026, 4, 20), "BORRADOR",
+                                new BigDecimal("1000.00"), new BigDecimal("21.00"),
+                                new BigDecimal("500.00"), 5, null, null
+                        ))))
+                .andExpect(status().isOk());
+
+        // Create a part without adding quotes
+        mockMvc.perform(post("/api/v1/cases/100/parts")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CasePartCreateRequest(
+                                null, "Paragolpes", null, null, null,
+                                "PENDIENTE", null, null,
+                                new BigDecimal("300.00"), null, null, false, false
+                        ))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100/parts/quotes/best-subtotal")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.bestSubtotal").value(0.0))
+                .andExpect(jsonPath("$.partsWithQuotes").value(0))
+                .andExpect(jsonPath("$.partsWithoutQuotes").value(1));
     }
 
     private void seedBaseData() {

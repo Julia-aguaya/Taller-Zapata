@@ -31,6 +31,8 @@ public class PartSupplierQuoteController {
 
     @Operation(summary = "Crear cotizacion", description = "Agrega una cotizacion de proveedor a un repuesto")
     @ApiResponse(responseCode = "200", description = "OK")
+    @ApiResponse(responseCode = "400", description = "Datos invalidos (amount negativo, campos vacios)")
+    @ApiResponse(responseCode = "403", description = "No tiene permiso presupuesto.crear")
     @ApiResponse(responseCode = "409", description = "Codigo de catalogo invalido")
     @PreAuthorize("hasAuthority('presupuesto.crear')")
     @PostMapping("/cases/{caseId}/parts/{partId}/quotes")

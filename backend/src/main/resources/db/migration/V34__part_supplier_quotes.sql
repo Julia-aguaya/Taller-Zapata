@@ -35,6 +35,8 @@ CREATE TABLE cotizaciones_repuesto (
     medio_pago_codigo VARCHAR(40) NOT NULL,
     PRIMARY KEY (id),
     CONSTRAINT fk_cotizaciones_repuesto_repuesto FOREIGN KEY (repuesto_id) REFERENCES repuestos_caso(id) ON DELETE CASCADE,
-    CONSTRAINT fk_cotizaciones_facturacion FOREIGN KEY (facturacion_codigo) REFERENCES facturacion_cotizacion(codigo),
-    CONSTRAINT fk_cotizaciones_medio_pago FOREIGN KEY (medio_pago_codigo) REFERENCES medio_pago_cotizacion(codigo)
+    CONSTRAINT fk_cotizaciones_facturacion FOREIGN KEY (facturacion_codigo) REFERENCES facturacion_cotizacion(codigo) ON DELETE RESTRICT,
+    CONSTRAINT fk_cotizaciones_medio_pago FOREIGN KEY (medio_pago_codigo) REFERENCES medio_pago_cotizacion(codigo) ON DELETE RESTRICT
 );
+
+CREATE INDEX idx_cotizaciones_repuesto_repuesto_id ON cotizaciones_repuesto (repuesto_id);
