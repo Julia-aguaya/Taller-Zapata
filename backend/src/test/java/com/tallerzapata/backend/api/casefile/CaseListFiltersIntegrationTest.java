@@ -196,4 +196,66 @@ class CaseListFiltersIntegrationTest {
                 2000L, "00000000-0000-0000-0000-000000005000", 102L, "INGRESO", "CLIENTE", "CAJA", LocalDateTime.of(2026, 3, 12, 11, 0), 1000, 1000, "TRANSFERENCIA", 1L, false, false
         );
     }
+
+    @Test
+    void shouldSearchCasesByFolderCode() throws Exception {
+        mockMvc.perform(get("/api/v1/cases")
+                        .header("X-User-Id", "1")
+                        .param("q", "0101TZ"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(101))
+                .andExpect(jsonPath("$.items[0].folderCode").value("0101TZ"));
+    }
+
+    @Test
+    void shouldSearchCasesByClientName() throws Exception {
+        mockMvc.perform(get("/api/v1/cases")
+                        .header("X-User-Id", "1")
+                        .param("q", "Beto"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(101))
+                .andExpect(jsonPath("$.items[0].principalCustomerName").value("Beto Dos"));
+    }
+
+    @Test
+    void shouldSearchCasesByOrderNumber() throws Exception {
+        mockMvc.perform(get("/api/v1/cases")
+                        .header("X-User-Id", "1")
+                        .param("q", "100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(100));
+    }
+
+    @Test
+    void shouldSearchCasesByVehiclePlate() throws Exception {
+        mockMvc.perform(get("/api/v1/cases")
+                        .header("X-User-Id", "1")
+                        .param("q", "BB222"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(101));
+    }
+
+    @Test
+    void shouldReturnEmptyWhenNoMatch() throws Exception {
+        mockMvc.perform(get("/api/v1/cases")
+                        .header("X-User-Id", "1")
+                        .param("q", "ZAPATILLA"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(0));
+    }
+
+    @Test
+    void shouldCombineTextSearchWithOtherFilters() throws Exception {
+        mockMvc.perform(get("/api/v1/cases")
+                        .header("X-User-Id", "1")
+                        .param("q", "TZ")
+                        .param("folderStatus", "Abiertas"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(101));
+    }
 }

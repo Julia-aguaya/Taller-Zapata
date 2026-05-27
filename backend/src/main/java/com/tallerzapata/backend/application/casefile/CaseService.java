@@ -35,8 +35,10 @@ import com.tallerzapata.backend.infrastructure.persistence.organization.BranchEn
 import com.tallerzapata.backend.infrastructure.persistence.organization.BranchRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.OperationalTaskEntity;
 import com.tallerzapata.backend.infrastructure.persistence.operation.OperationalTaskRepository;
+import com.tallerzapata.backend.infrastructure.persistence.person.PersonEntity;
 import com.tallerzapata.backend.infrastructure.persistence.person.PersonRepository;
 import com.tallerzapata.backend.infrastructure.persistence.recovery.FranchiseRecoveryRepository;
+import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleEntity;
 import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleRepository;
 import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleRoleRepository;
 import com.tallerzapata.backend.infrastructure.persistence.workflow.CaseStateHistoryEntity;
@@ -46,6 +48,7 @@ import com.tallerzapata.backend.infrastructure.persistence.workflow.WorkflowStat
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
 import com.tallerzapata.backend.infrastructure.security.CurrentUserService;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,10 +56,12 @@ import org.springframework.transaction.annotation.Transactional;
 import java.text.Normalizer;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Locale;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class CaseService {
@@ -188,11 +193,48 @@ public class CaseService {
                 ? financialMovementRepository.findAll(Sort.by(Sort.Direction.DESC, "movementAt").and(Sort.by(Sort.Direction.DESC, "id")))
                 : List.of();
 
-        List<CaseResponse> scopedItems = caseRepository.findAll(Sort.by(Sort.Direction.DESC, "id")).stream()
+        boolean hasTextSearch = filters != null && filters.q() != null && !filters.q().isBlank();
+        List<CaseEntity> allCases;
+        if (hasTextSearch) {
+            String normalizedQuery = filters.q().trim().toLowerCase(Locale.ROOT);
+            allCases = caseRepository.searchAutocomplete(
+                    normalizedQuery,
+                    normalizedQuery,
+                    PageRequest.of(0, 500)
+            );
+        } else {
+            allCases = caseRepository.findAll(Sort.by(Sort.Direction.DESC, "id"));
+        }
+
+        Map<Long, PersonEntity> personsById;
+        Map<Long, VehicleEntity> vehiclesById;
+        if (!allCases.isEmpty()) {
+            List<Long> personIds = allCases.stream()
+                    .map(CaseEntity::getPrincipalCustomerPersonId)
+                    .filter(id -> id != null)
+                    .distinct()
+                    .toList();
+            personsById = personIds.isEmpty() ? Map.of() :
+                    personRepository.findAllById(personIds).stream()
+                            .collect(Collectors.toMap(PersonEntity::getId, p -> p));
+            List<Long> vehicleIds = allCases.stream()
+                    .map(CaseEntity::getPrincipalVehicleId)
+                    .filter(id -> id != null)
+                    .distinct()
+                    .toList();
+            vehiclesById = vehicleIds.isEmpty() ? Map.of() :
+                    vehicleRepository.findAllById(vehicleIds).stream()
+                            .collect(Collectors.toMap(VehicleEntity::getId, v -> v));
+        } else {
+            personsById = Map.of();
+            vehiclesById = Map.of();
+        }
+
+        List<CaseResponse> scopedItems = allCases.stream()
                 .filter(item -> hasScope(currentUser, item))
                 .filter(item -> organizationId == null || item.getOrganizationId().equals(organizationId))
                 .filter(item -> branchId == null || item.getBranchId().equals(branchId))
-                .map(item -> new CaseListItem(item, toResponse(item)))
+                .map(item -> new CaseListItem(item, toResponse(item, personsById, vehiclesById)))
                 .filter(item -> matchesFilters(item, filters, pendingTasks, financialMovements))
                 .map(CaseListItem::response)
                 .toList();
@@ -685,6 +727,19 @@ public class CaseService {
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el estado legal " + entity.getCurrentLegalStateId()));
         Map<String, CaseVisibleStateResponse> visibleStates = caseVisibleStateResolver.resolveForCase(entity);
 
+        String principalCustomerName = null;
+        if (entity.getPrincipalCustomerPersonId() != null) {
+            principalCustomerName = personRepository.findById(entity.getPrincipalCustomerPersonId())
+                    .map(PersonEntity::getNombreMostrar)
+                    .orElse(null);
+        }
+        String principalVehiclePlate = null;
+        if (entity.getPrincipalVehicleId() != null) {
+            principalVehiclePlate = vehicleRepository.findById(entity.getPrincipalVehicleId())
+                    .map(VehicleEntity::getPlate)
+                    .orElse(null);
+        }
+
         return new CaseResponse(
                 entity.getId(),
                 entity.getPublicId(),
@@ -713,7 +768,71 @@ public class CaseService {
                 entity.getClosedAt(),
                 entity.getArchivedAt(),
                 visibleStates.get("tramite"),
-                visibleStates.get("reparacion")
+                visibleStates.get("reparacion"),
+                principalCustomerName,
+                principalVehiclePlate
+        );
+    }
+
+    private CaseResponse toResponse(CaseEntity entity, Map<Long, PersonEntity> personsById, Map<Long, VehicleEntity> vehiclesById) {
+        CaseTypeEntity caseType = caseTypeRepository.findById(entity.getCaseTypeId())
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el tipo de tramite " + entity.getCaseTypeId()));
+        BranchEntity branch = branchRepository.findById(entity.getBranchId())
+                .orElseThrow(() -> new ResourceNotFoundException("No existe la sucursal " + entity.getBranchId()));
+        WorkflowStateEntity caseState = entity.getCurrentCaseStateId() == null ? null : workflowStateRepository.findById(entity.getCurrentCaseStateId())
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el estado de tramite " + entity.getCurrentCaseStateId()));
+        WorkflowStateEntity repairState = entity.getCurrentRepairStateId() == null ? null : workflowStateRepository.findById(entity.getCurrentRepairStateId())
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el estado de reparacion " + entity.getCurrentRepairStateId()));
+        WorkflowStateEntity paymentState = entity.getCurrentPaymentStateId() == null ? null : workflowStateRepository.findById(entity.getCurrentPaymentStateId())
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el estado de pago " + entity.getCurrentPaymentStateId()));
+        WorkflowStateEntity documentationState = entity.getCurrentDocumentationStateId() == null ? null : workflowStateRepository.findById(entity.getCurrentDocumentationStateId())
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el estado de documentacion " + entity.getCurrentDocumentationStateId()));
+        WorkflowStateEntity legalState = entity.getCurrentLegalStateId() == null ? null : workflowStateRepository.findById(entity.getCurrentLegalStateId())
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el estado legal " + entity.getCurrentLegalStateId()));
+        Map<String, CaseVisibleStateResponse> visibleStates = caseVisibleStateResolver.resolveForCase(entity);
+
+        String principalCustomerName = null;
+        if (entity.getPrincipalCustomerPersonId() != null) {
+            PersonEntity person = personsById.get(entity.getPrincipalCustomerPersonId());
+            principalCustomerName = person != null ? person.getNombreMostrar() : null;
+        }
+        String principalVehiclePlate = null;
+        if (entity.getPrincipalVehicleId() != null) {
+            VehicleEntity vehicle = vehiclesById.get(entity.getPrincipalVehicleId());
+            principalVehiclePlate = vehicle != null ? vehicle.getPlate() : null;
+        }
+
+        return new CaseResponse(
+                entity.getId(),
+                entity.getPublicId(),
+                entity.getFolderCode(),
+                entity.getOrderNumber(),
+                entity.getCaseTypeId(),
+                caseType.getCode(),
+                entity.getOrganizationId(),
+                entity.getBranchId(),
+                branch.getCode(),
+                entity.getPrincipalVehicleId(),
+                entity.getPrincipalCustomerPersonId(),
+                entity.getReferenced(),
+                entity.getCurrentCaseStateId(),
+                caseState == null ? null : caseState.getCode(),
+                entity.getCurrentRepairStateId(),
+                repairState == null ? null : repairState.getCode(),
+                entity.getCurrentPaymentStateId(),
+                paymentState == null ? null : paymentState.getCode(),
+                entity.getCurrentDocumentationStateId(),
+                documentationState == null ? null : documentationState.getCode(),
+                entity.getCurrentLegalStateId(),
+                legalState == null ? null : legalState.getCode(),
+                entity.getPriorityCode(),
+                entity.getGeneralObservations(),
+                entity.getClosedAt(),
+                entity.getArchivedAt(),
+                visibleStates.get("tramite"),
+                visibleStates.get("reparacion"),
+                principalCustomerName,
+                principalVehiclePlate
         );
     }
 

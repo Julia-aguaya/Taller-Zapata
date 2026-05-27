@@ -30,6 +30,8 @@ public record CaseResponse(
         LocalDateTime closedAt,
         LocalDateTime archivedAt,
         CaseVisibleStateResponse visibleTramiteState,
-        CaseVisibleStateResponse visibleRepairState
+        CaseVisibleStateResponse visibleRepairState,
+        String principalCustomerName,
+        String principalVehiclePlate
 ) {
 }

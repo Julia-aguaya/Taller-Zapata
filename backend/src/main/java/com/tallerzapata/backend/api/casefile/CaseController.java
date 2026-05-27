@@ -61,7 +61,8 @@ public class CaseController {
             @RequestParam(name = "visibleRepairState", required = false) String visibleRepairState,
             @RequestParam(name = "paymentStateCode", required = false) String paymentStateCode,
             @RequestParam(name = "hasPendingTasks", required = false) Boolean hasPendingTasks,
-            @RequestParam(name = "pendingTaskAssignedUserId", required = false) Long pendingTaskAssignedUserId
+            @RequestParam(name = "pendingTaskAssignedUserId", required = false) Long pendingTaskAssignedUserId,
+            @RequestParam(name = "q", required = false) String q
     ) {
         return caseService.list(
                 page,
@@ -81,7 +82,8 @@ public class CaseController {
                         visibleRepairState,
                         paymentStateCode,
                         hasPendingTasks,
-                        pendingTaskAssignedUserId
+                        pendingTaskAssignedUserId,
+                        q
                 )
         );
     }

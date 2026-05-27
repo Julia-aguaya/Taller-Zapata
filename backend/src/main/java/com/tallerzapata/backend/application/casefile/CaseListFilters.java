@@ -15,6 +15,7 @@ public record CaseListFilters(
         String visibleRepairState,
         String paymentStateCode,
         Boolean hasPendingTasks,
-        Long pendingTaskAssignedUserId
+        Long pendingTaskAssignedUserId,
+        String q
 ) {
 }
