@@ -38,8 +38,9 @@ public class BudgetService {
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService accessControlService;
     private final CaseAuditService caseAuditService;
+    private final BudgetPdfService budgetPdfService;
 
-    public BudgetService(BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CasePartRepository casePartRepository, CaseRepository caseRepository, BudgetReportStatusRepository budgetReportStatusRepository, BudgetTaskRepository budgetTaskRepository, DamageLevelRepository damageLevelRepository, PartDecisionRepository partDecisionRepository, BudgetActionRepository budgetActionRepository, PartStatusRepository partStatusRepository, PartPurchaserRepository partPurchaserRepository, PartPaymentStatusRepository partPaymentStatusRepository, InsurancePartsAuthorizationRepository insurancePartsAuthorizationRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService) {
+    public BudgetService(BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CasePartRepository casePartRepository, CaseRepository caseRepository, BudgetReportStatusRepository budgetReportStatusRepository, BudgetTaskRepository budgetTaskRepository, DamageLevelRepository damageLevelRepository, PartDecisionRepository partDecisionRepository, BudgetActionRepository budgetActionRepository, PartStatusRepository partStatusRepository, PartPurchaserRepository partPurchaserRepository, PartPaymentStatusRepository partPaymentStatusRepository, InsurancePartsAuthorizationRepository insurancePartsAuthorizationRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, BudgetPdfService budgetPdfService) {
         this.budgetRepository = budgetRepository;
         this.budgetItemRepository = budgetItemRepository;
         this.casePartRepository = casePartRepository;
@@ -56,6 +57,7 @@ public class BudgetService {
         this.currentUserService = currentUserService;
         this.accessControlService = accessControlService;
         this.caseAuditService = caseAuditService;
+        this.budgetPdfService = budgetPdfService;
     }
 
     @Transactional(readOnly = true)
@@ -66,6 +68,20 @@ public class BudgetService {
         BudgetEntity budget = budgetRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe presupuesto para el caso " + caseId));
         List<BudgetItemResponse> items = budgetItemRepository.findByBudgetIdOrderByVisualOrderAsc(budget.getId()).stream().map(this::toBudgetItemResponse).toList();
         return toBudgetResponse(budget, items);
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] generatePdf(Long caseId) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "presupuesto.ver");
+        BudgetEntity budget = budgetRepository.findByCaseId(caseId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe presupuesto para el caso " + caseId));
+        if (!"CERRADO".equals(budget.getReportStatusCode())) {
+            throw new ConflictException("El presupuesto debe estar en estado CERRADO para generar el PDF. Estado actual: " + budget.getReportStatusCode());
+        }
+        List<BudgetItemEntity> items = budgetItemRepository.findByBudgetIdOrderByVisualOrderAsc(budget.getId());
+        return budgetPdfService.generate(budget, items, caseEntity.getFolderCode());
     }
 
     @Transactional

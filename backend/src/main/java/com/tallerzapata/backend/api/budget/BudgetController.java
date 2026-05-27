@@ -6,6 +6,10 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -91,5 +95,18 @@ public class BudgetController {
     @PutMapping("/cases/{caseId}/parts/{partId}")
     public CasePartResponse updateCasePart(@PathVariable Long caseId, @PathVariable Long partId, @Valid @RequestBody CasePartUpdateRequest request, HttpServletRequest httpRequest) {
         return budgetService.updateCasePart(caseId, partId, request, httpRequest);
+    }
+
+    @Operation(summary = "Descargar PDF del presupuesto", description = "Genera y devuelve el PDF del presupuesto. Requiere que el presupuesto este CERRADO.")
+    @ApiResponse(responseCode = "200", description = "PDF generado")
+    @PreAuthorize("hasAuthority('presupuesto.ver')")
+    @GetMapping("/cases/{caseId}/budget/pdf")
+    public ResponseEntity<byte[]> downloadBudgetPdf(@PathVariable Long caseId) {
+        byte[] pdfBytes = budgetService.generatePdf(caseId);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
+        headers.setContentDisposition(ContentDisposition.inline().filename("presupuesto-" + caseId + ".pdf").build());
+        headers.setContentLength(pdfBytes.length);
+        return ResponseEntity.ok().headers(headers).body(pdfBytes);
     }
 }

@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -260,6 +261,66 @@ class BudgetIntegrationTest {
                                 new BigDecimal("0.00"), new BigDecimal("3.50"), new BigDecimal("350.00")
                         ))))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldGeneratePdfWhenBudgetIsClosed() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/budget")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(
+                                LocalDate.of(2026, 4, 20), "BORRADOR",
+                                new BigDecimal("1000.00"), new BigDecimal("21.00"),
+                                new BigDecimal("500.00"), 5, null, null
+                        ))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/cases/100/budget/items")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new BudgetItemCreateRequest(
+                                1, "Paragolpes delantero", "CHAPA", "MEDIO",
+                                "REPARAR", "DESABOLLAR", false,
+                                new BigDecimal("0.00"), new BigDecimal("3.50"), new BigDecimal("350.00")
+                        ))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/cases/100/budget/close")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new BudgetCloseRequest("CERRADO", null))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100/budget/pdf")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("inline")))
+                .andExpect(header().exists("Content-Length"));
+    }
+
+    @Test
+    void shouldRejectPdfWhenBudgetNotClosed() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/budget")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(
+                                LocalDate.of(2026, 4, 20), "BORRADOR",
+                                new BigDecimal("1000.00"), new BigDecimal("21.00"),
+                                new BigDecimal("500.00"), 5, null, null
+                        ))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100/budget/pdf")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldReturn404WhenNoBudget() throws Exception {
+        mockMvc.perform(get("/api/v1/cases/100/budget/pdf")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isNotFound());
     }
 
     private void seedBaseData() {
