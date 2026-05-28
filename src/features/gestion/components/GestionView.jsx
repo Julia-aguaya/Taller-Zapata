@@ -21,7 +21,7 @@ import PresupuestoTab from './PresupuestoTab';
 import GestionReparacionTab from './GestionReparacionTab';
 import PagosTab from './PagosTab';
 import AbogadoTab from './AbogadoTab';
-import { money, numberValue } from '../lib/gestionUtils';
+import { money, numberValue, TODO_RIESGO_TURNO_WARNING_MESSAGE } from '../lib/gestionUtils';
 import { todayIso } from '../../cases/lib/caseAgendaHelpers';
 import { MANUAL_VISIBLE_STATE_OPTIONS } from '../../cases/lib/backendVisibleStates';
 
@@ -30,7 +30,7 @@ function isAdminRole(role) {
   return ['admin', 'administrador', 'administrator', 'superadmin'].includes(normalized);
 }
 
-export default function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRepairTab, updateCase, flash, onSyncCase, onRunWorkflowTransition, onSetVisibleStateOverride, isSavingCase = false, hasUnsavedChanges = false, insuranceCatalogs = null, financeCatalogs = null, debugCodeIssues = [], allCases = [], currentUserRole = '', detailState = null }) {
+export default function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRepairTab, updateCase, flash, onSyncCase, onRunWorkflowTransition, onSetVisibleStateOverride, onPreviewBudgetPdf, onDownloadBudgetPdf, isSavingCase = false, hasUnsavedChanges = false, insuranceCatalogs = null, financeCatalogs = null, debugCodeIssues = [], allCases = [], currentUserRole = '', detailState = null, isPreviewingBudgetPdf = false, isDownloadingBudgetPdf = false }) {
   const [manualVisibleStateDraft, setManualVisibleStateDraft] = useState({ tramite: '', reparacion: '' });
   const [changeNoteDraft, setChangeNoteDraft] = useState('');
   const [visibleAuditCount, setVisibleAuditCount] = useState(3);
@@ -122,9 +122,9 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
       {
         label: 'Faltan repuestos / Dar Turno',
         active: ['Faltan repuestos', 'Dar Turno'].includes(item.computed.repairStatus),
-        disabled: !item.computed.todoRisk.quoteAgreed,
+        disabled: false,
       },
-      { label: 'Con Turno', active: item.computed.repairStatus === 'Con Turno', disabled: !item.computed.todoRisk.quoteAgreed },
+      { label: 'Con Turno', active: item.computed.repairStatus === 'Con Turno', disabled: false },
       { label: 'Debe reingresar', active: item.computed.repairStatus === 'Debe reingresar', disabled: false },
       { label: 'Reparado', active: item.computed.repairStatus === 'Reparado', disabled: false },
       {
@@ -305,11 +305,6 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
       return;
     }
 
-    if (!item.computed.todoRisk.quoteAgreed) {
-      flash('Primero necesitás cotización acordada con fecha y monto.');
-      return;
-    }
-
     if (label === 'Faltan repuestos / Dar Turno') {
       updateCase((draft) => {
         draft.todoRisk.processing.noRepairNeeded = false;
@@ -332,6 +327,9 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
         draft.repair.turno.date = '';
         draft.repair.turno.state = 'Pendiente programar';
       });
+      if (item.computed.todoRisk.turnWarningRequired) {
+        flash(`Advertencia: ${TODO_RIESGO_TURNO_WARNING_MESSAGE}`);
+      }
       return;
     }
 
@@ -346,6 +344,10 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
       draft.repair.turno.estimatedDays = draft.repair.turno.estimatedDays || draft.budget.estimatedWorkDays || '3';
       draft.repair.turno.state = 'Confirmado';
     });
+
+    if (item.computed.todoRisk.turnWarningRequired) {
+      flash(`Advertencia: ${TODO_RIESGO_TURNO_WARNING_MESSAGE}`);
+    }
   };
 
   const currentVisibleTramite = item.backendVisibleStates?.tramite || null;
@@ -474,10 +476,6 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
               if (tab.id === 'documentacion' && !isInsuranceWorkflowCase(item) && !isThirdPartyWorkshopCase(item)) {
                 return;
               }
-              if (tab.id === 'gestion' && !item.computed.budgetReady) {
-                flash('Bloqueado: Presupuesto sigue en rojo. Cerralo, completalo y generá el presupuesto para habilitar Gestión reparación.');
-                return;
-              }
               onChangeTab(tab.id);
             }}
             state={item.computed.tabs[tab.id]}
@@ -517,7 +515,19 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
           {activeTab === 'ficha' ? <FichaTecnicaTab item={item} updateCase={updateCase} /> : null}
           {activeTab === 'tramite' ? <GestionTramiteTab allCases={allCases} flash={flash} insuranceCatalogs={insuranceCatalogs} item={item} updateCase={updateCase} /> : null}
           {activeTab === 'documentacion' ? <DocumentacionTab flash={flash} item={item} updateCase={updateCase} /> : null}
-          {activeTab === 'presupuesto' ? <PresupuestoTab flash={flash} item={item} updateCase={updateCase} /> : null}
+          {activeTab === 'presupuesto' ? (
+            <PresupuestoTab
+              flash={flash}
+              isDownloadingBudgetPdf={isDownloadingBudgetPdf}
+              isPreviewingBudgetPdf={isPreviewingBudgetPdf}
+              isSavingQuote={isSavingCase && activeTab === 'presupuesto'}
+              item={item}
+              onDownloadBudgetPdf={onDownloadBudgetPdf}
+              onPreviewBudgetPdf={onPreviewBudgetPdf}
+              onSaveQuote={() => onSyncCase?.({ tabs: ['presupuesto'], changeNote: changeNoteDraft })}
+              updateCase={updateCase}
+            />
+          ) : null}
           {activeTab === 'gestion' ? (
             <GestionReparacionTab
               activeRepairTab={activeRepairTab}

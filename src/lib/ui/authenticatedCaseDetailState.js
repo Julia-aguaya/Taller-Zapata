@@ -89,6 +89,12 @@ export function createAuthenticatedCaseDetailInitialState() {
       total: 0,
       detail: '',
     },
+    partQuotesState: {
+      status: 'idle',
+      items: [],
+      total: 0,
+      detail: '',
+    },
     appointmentsState: {
       status: 'idle',
       items: [],

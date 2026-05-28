@@ -19,7 +19,8 @@ import {
   isThirdPartyWorkshopCase,
   isTodoRiesgoCase,
 } from '../../cases/lib/caseDomainCheckers';
-import { getCatalogEntries, getCatalogSelectOptions, resolveCatalogCode } from '../../cases/lib/caseCatalogHelpers';
+import { getCatalogEntries, getCatalogSelectOptions, resolveCatalogCode, resolveCatalogLabel } from '../../cases/lib/caseCatalogHelpers';
+import { normalizeLookupText } from '../../cases/lib/caseNormalizers';
 import { formatDate } from '../../cases/lib/caseFormatters';
 import {
   CLEAS_DICTAMEN_OPTIONS,
@@ -49,6 +50,98 @@ import {
 } from '../../cases/lib/caseFactories';
 import { getStatusTone, money, numberValue } from '../lib/gestionUtils';
 
+const RECOVERY_OPTION_LABELS = {
+  third_company: 'Cia Del 3ero',
+  customer_pays: 'Abona Cliente',
+  third_party_individual: '3ero particular',
+  own_company: 'Propia Cia',
+  'cia. del 3ero': 'Cia Del 3ero',
+  'cia del 3ero': 'Cia Del 3ero',
+  'cia del 3ro': 'Cia Del 3ero',
+  'abona cliente': 'Abona Cliente',
+  '3ero particular': '3ero particular',
+  'propia cia.': 'Propia Cia',
+  'propia cia': 'Propia Cia',
+};
+
+const FRANCHISE_STATUS_LABELS = {
+  sin_franquicia: 'Sin Franquicia',
+  'sin franquicia': 'Sin Franquicia',
+  pendiente: 'Pendiente',
+  cobrada: 'Cobrada',
+  bonificada: 'Bonificada',
+};
+
+const ALLOWED_FRANCHISE_STATUS_CODES = new Set(['sin_franquicia', 'pendiente', 'cobrada', 'bonificada']);
+const ALLOWED_RECOVERY_CODES = new Set(['third_company', 'customer_pays', 'third_party_individual', 'own_company']);
+
+const FRANCHISE_STATUS_CODE_ALIASES = {
+  sin_franquicia: 'sin_franquicia',
+  'sin franquicia': 'sin_franquicia',
+  pendiente: 'pendiente',
+  cobrada: 'cobrada',
+  bonificada: 'bonificada',
+};
+
+const RECOVERY_CODE_ALIASES = {
+  third_company: 'third_company',
+  'cia. del 3ero': 'third_company',
+  'cia del 3ero': 'third_company',
+  'cia del 3ro': 'third_company',
+  customer_pays: 'customer_pays',
+  'abona cliente': 'customer_pays',
+  third_party_individual: 'third_party_individual',
+  '3ero particular': 'third_party_individual',
+  own_company: 'own_company',
+  'propia cia.': 'own_company',
+  'propia cia': 'own_company',
+};
+
+const FORCED_FRANCHISE_STATUS_OPTIONS = [
+  { value: 'sin_franquicia', label: 'Sin Franquicia' },
+  { value: 'pendiente', label: 'Pendiente' },
+  { value: 'cobrada', label: 'Cobrada' },
+  { value: 'bonificada', label: 'Bonificada' },
+];
+
+const FORCED_RECOVERY_TYPE_OPTIONS = [
+  { value: 'third_company', label: 'Cia Del 3ero' },
+  { value: 'customer_pays', label: 'Abona Cliente' },
+  { value: 'third_party_individual', label: '3ero particular' },
+  { value: 'own_company', label: 'Propia Cia' },
+];
+
+function mapOptionLabels(options, labelsMap, filterOption = () => true) {
+  return options
+    .filter(filterOption)
+    .map((option) => {
+      const normalizedLabel = normalizeLookupText(option?.label);
+      const normalizedValue = normalizeLookupText(option?.value);
+      const mappedLabel = labelsMap[normalizedLabel] || labelsMap[normalizedValue];
+      if (!mappedLabel) return option;
+      return { ...option, label: mappedLabel };
+    });
+}
+
+function keepAllowedCodes(options, allowedCodes, aliasesMap) {
+  return options.filter((option) => {
+    const valueKey = normalizeLookupText(option?.value);
+    const labelKey = normalizeLookupText(option?.label);
+    const canonicalValueCode = aliasesMap[valueKey] || valueKey;
+    const canonicalLabelCode = aliasesMap[labelKey] || labelKey;
+    return allowedCodes.has(canonicalValueCode) || allowedCodes.has(canonicalLabelCode);
+  });
+}
+
+function ensureForcedOptions(options, forcedOptions) {
+  return options.length ? options : forcedOptions;
+}
+
+function getRecoveryKind(value) {
+  const normalized = normalizeLookupText(value);
+  return RECOVERY_CODE_ALIASES[normalized] || '';
+}
+
 export default function GestionTramiteTab({ item, updateCase, flash, insuranceCatalogs = null, allCases = [] }) {
   const todoRisk = item.todoRisk;
   const thirdParty = item.thirdParty;
@@ -58,20 +151,40 @@ export default function GestionTramiteTab({ item, updateCase, flash, insuranceCa
   const isThirdPartyLawyer = isThirdPartyLawyerCase(item);
   const isFranchiseRecovery = isFranchiseRecoveryCase(item);
   const isCleas = isCleasCase(item);
+  const isTodoRiesgo = isTodoRiesgoCase(item);
   const canProgressFromPresentation = item.computed.todoRisk?.canProgressFromPresentation ?? false;
   const canCompleteProcessingCore = item.computed.todoRisk?.canCompleteProcessingCore ?? false;
   const agendaPendingCount = todoRisk?.processing?.agenda?.filter((task) => !isAgendaTaskResolved(task)).length ?? 0;
   const processingLocked = isCleas
     ? !canProgressFromPresentation || item.computed.todoRisk?.noRepairNeeded
     : !canProgressFromPresentation;
-  const isFranchiseFlow = todoRisk?.processing?.cleasScope === 'Sobre franquicia';
-  const isDamageTotal = todoRisk?.processing?.cleasScope === 'Sobre daño total';
-  const dictamen = todoRisk?.processing?.dictamen || 'Pendiente';
+  const opinionEntries = getCatalogEntries(insuranceCatalogs, 'opinionCodes');
+  const franchiseStatusEntries = getCatalogEntries(insuranceCatalogs, 'franchiseStatusCodes');
+  const franchiseRecoveryTypeEntries = getCatalogEntries(insuranceCatalogs, 'franchiseRecoveryTypeCodes');
+  const franchiseOpinionEntries = getCatalogEntries(insuranceCatalogs, 'franchiseOpinionCodes');
+  const cleasScopeEntries = getCatalogEntries(insuranceCatalogs, 'cleasScopeCodes');
+  const cleasScopeLabel = resolveCatalogLabel(todoRisk?.processing?.cleasScope, cleasScopeEntries, CLEAS_SCOPE_OPTIONS);
+  const franchiseStatusLabel = resolveCatalogLabel(todoRisk?.franchise?.status, franchiseStatusEntries, TODO_RIESGO_FRANCHISE_STATUS_OPTIONS);
+  const recoveryTypeLabel = resolveCatalogLabel(todoRisk?.franchise?.recoveryType, franchiseRecoveryTypeEntries, TODO_RIESGO_RECOVERY_OPTIONS);
+  const recoveryTypeKind = getRecoveryKind(recoveryTypeLabel || todoRisk?.franchise?.recoveryType);
+  const dictamen = resolveCatalogLabel(todoRisk?.processing?.dictamen, opinionEntries, isCleas ? CLEAS_DICTAMEN_OPTIONS : TODO_RIESGO_DICTAMEN_OPTIONS) || 'Pendiente';
+  const isFranchiseFlow = cleasScopeLabel === 'Sobre franquicia';
+  const isDamageTotal = cleasScopeLabel === 'Sobre daño total';
   const modalityOptions = getCatalogSelectOptions(insuranceCatalogs, 'modalityCodes', TODO_RIESGO_MODALITY_OPTIONS);
   const opinionOptions = getCatalogSelectOptions(insuranceCatalogs, 'opinionCodes', isCleas ? CLEAS_DICTAMEN_OPTIONS : TODO_RIESGO_DICTAMEN_OPTIONS);
   const quotationStatusOptions = getCatalogSelectOptions(insuranceCatalogs, 'quotationStatusCodes', TODO_RIESGO_QUOTE_STATUS_OPTIONS);
-  const franchiseStatusOptions = getCatalogSelectOptions(insuranceCatalogs, 'franchiseStatusCodes', TODO_RIESGO_FRANCHISE_STATUS_OPTIONS);
-  const franchiseRecoveryTypeOptions = getCatalogSelectOptions(insuranceCatalogs, 'franchiseRecoveryTypeCodes', TODO_RIESGO_RECOVERY_OPTIONS);
+  const franchiseStatusOptions = mapOptionLabels(
+    getCatalogSelectOptions(insuranceCatalogs, 'franchiseStatusCodes', TODO_RIESGO_FRANCHISE_STATUS_OPTIONS),
+    FRANCHISE_STATUS_LABELS,
+  );
+  const franchiseRecoveryTypeOptions = keepAllowedCodes(mapOptionLabels(
+    getCatalogSelectOptions(insuranceCatalogs, 'franchiseRecoveryTypeCodes', TODO_RIESGO_RECOVERY_OPTIONS),
+    RECOVERY_OPTION_LABELS,
+    (option) => isTodoRiesgo || getRecoveryKind(option?.label || option?.value) !== 'own_company',
+  ), ALLOWED_RECOVERY_CODES, RECOVERY_CODE_ALIASES);
+  const franchiseStatusOptionsFiltered = keepAllowedCodes(franchiseStatusOptions, ALLOWED_FRANCHISE_STATUS_CODES, FRANCHISE_STATUS_CODE_ALIASES);
+  const franchiseStatusOptionsSafe = ensureForcedOptions(franchiseStatusOptionsFiltered, FORCED_FRANCHISE_STATUS_OPTIONS);
+  const franchiseRecoveryTypeOptionsSafe = ensureForcedOptions(franchiseRecoveryTypeOptions, FORCED_RECOVERY_TYPE_OPTIONS);
   const franchiseOpinionOptions = getCatalogSelectOptions(insuranceCatalogs, 'franchiseOpinionCodes', TODO_RIESGO_DICTAMEN_OPTIONS);
   const cleasScopeOptions = getCatalogSelectOptions(insuranceCatalogs, 'cleasScopeCodes', CLEAS_SCOPE_OPTIONS);
   const paymentStatusOptions = getCatalogSelectOptions(insuranceCatalogs, 'paymentStatusCodes', CLEAS_PAYMENT_STATUS_OPTIONS);
@@ -96,7 +209,9 @@ export default function GestionTramiteTab({ item, updateCase, flash, insuranceCa
 
   if (isFranchiseRecovery) {
     const compatibleFolders = allCases.filter(
-      (entry) => entry.id !== item.id && isTodoRiesgoCase(entry) && entry.todoRisk?.franchise?.status !== 'Sin Franquicia',
+      (entry) => entry.id !== item.id
+        && isTodoRiesgoCase(entry)
+        && resolveCatalogLabel(entry.todoRisk?.franchise?.status, franchiseStatusEntries, TODO_RIESGO_FRANCHISE_STATUS_OPTIONS) !== 'Sin Franquicia',
     );
     const linkedCase = compatibleFolders.find((entry) => entry.code === franchiseRecovery.associatedFolderCode) || null;
     const repairEnabled = franchiseRecovery.enablesRepair !== 'NO';
@@ -313,7 +428,7 @@ export default function GestionTramiteTab({ item, updateCase, flash, insuranceCa
                 <DataField label="Fecha siniestro" onChange={() => {}} readOnly type="date" value={linkedCase.todoRisk.incident.date || ''} />
                 <DataField label="Lugar" onChange={() => {}} readOnly value={linkedCase.todoRisk.incident.location || '-'} />
                 <DataField label="Franquicia origen" onChange={() => {}} readOnly value={money(linkedCase.todoRisk.franchise.amount || 0)} />
-                <DataField label="Recupero original" onChange={() => {}} readOnly value={linkedCase.todoRisk.franchise.recoveryType || 'Pendiente'} />
+                <DataField label="Recupero original" onChange={() => {}} readOnly value={resolveCatalogLabel(linkedCase.todoRisk.franchise.recoveryType, franchiseRecoveryTypeEntries, TODO_RIESGO_RECOVERY_OPTIONS) || linkedCase.todoRisk.franchise.recoveryType || 'Pendiente'} />
               </div>
 
               <label className="field">
@@ -718,25 +833,27 @@ export default function GestionTramiteTab({ item, updateCase, flash, insuranceCa
         <article className="card inner-card">
           <div className="section-head small-gap">
             <h3>Franquicia</h3>
-            <StatusBadge tone={getStatusTone(todoRisk.franchise.status)}>{todoRisk.franchise.status}</StatusBadge>
+            <StatusBadge tone={getStatusTone(franchiseStatusLabel || todoRisk.franchise.status)}>{franchiseStatusLabel || todoRisk.franchise.status}</StatusBadge>
           </div>
           <div className="form-grid four-columns compact-grid">
-            <SelectField label="Estado" onChange={(value) => updateCase((draft) => { draft.todoRisk.franchise.status = value; })} options={franchiseStatusOptions} value={resolveCatalogCode(todoRisk.franchise.status, getCatalogEntries(insuranceCatalogs, 'franchiseStatusCodes'), TODO_RIESGO_FRANCHISE_STATUS_OPTIONS) || todoRisk.franchise.status} />
+            <SelectField label="Estado" onChange={(value) => updateCase((draft) => { draft.todoRisk.franchise.status = value; })} options={franchiseStatusOptionsSafe} value={resolveCatalogCode(todoRisk.franchise.status, getCatalogEntries(insuranceCatalogs, 'franchiseStatusCodes'), TODO_RIESGO_FRANCHISE_STATUS_OPTIONS) || todoRisk.franchise.status} />
             <DataField label="Monto" onChange={(value) => updateCase((draft) => { draft.todoRisk.franchise.amount = value; })} value={todoRisk.franchise.amount} />
             <SelectField label="Recupero" onChange={(value) => updateCase((draft) => {
+              const nextRecoveryTypeLabel = resolveCatalogLabel(value, franchiseRecoveryTypeEntries, TODO_RIESGO_RECOVERY_OPTIONS);
+              const nextRecoveryTypeKind = getRecoveryKind(nextRecoveryTypeLabel || value);
               draft.todoRisk.franchise.recoveryType = value;
-              if (value !== 'Cía. del 3ero') draft.todoRisk.franchise.associatedCase = '';
-              if (value !== 'Propia Cía.') draft.todoRisk.franchise.dictamen = '';
-              if (!value) {
+              if (nextRecoveryTypeKind !== 'third_company') draft.todoRisk.franchise.associatedCase = '';
+              if (nextRecoveryTypeKind !== 'own_company') draft.todoRisk.franchise.dictamen = '';
+              if (!nextRecoveryTypeLabel) {
                 draft.todoRisk.processing.presentedDate = '';
                 draft.todoRisk.processing.derivedToInspectionDate = '';
                 draft.todoRisk.processing.quoteStatus = 'Pendiente';
                 draft.todoRisk.processing.quoteDate = '';
                 draft.todoRisk.processing.agreedAmount = '';
               }
-            })} options={franchiseRecoveryTypeOptions} placeholder="Seleccioná" value={resolveCatalogCode(todoRisk.franchise.recoveryType, getCatalogEntries(insuranceCatalogs, 'franchiseRecoveryTypeCodes'), TODO_RIESGO_RECOVERY_OPTIONS) || todoRisk.franchise.recoveryType} />
-            <DataField disabled={todoRisk.franchise.recoveryType !== 'Cía. del 3ero'} label="Caso asociado" onChange={(value) => updateCase((draft) => { draft.todoRisk.franchise.associatedCase = value; })} value={todoRisk.franchise.associatedCase} />
-            <SelectField disabled={todoRisk.franchise.recoveryType !== 'Propia Cía.'} label="Dictamen" onChange={(value) => updateCase((draft) => { draft.todoRisk.franchise.dictamen = value; })} options={franchiseOpinionOptions} placeholder="Seleccioná" value={resolveCatalogCode(todoRisk.franchise.dictamen, getCatalogEntries(insuranceCatalogs, 'franchiseOpinionCodes'), TODO_RIESGO_DICTAMEN_OPTIONS) || todoRisk.franchise.dictamen} />
+            })} options={franchiseRecoveryTypeOptionsSafe} placeholder="Seleccioná" value={resolveCatalogCode(todoRisk.franchise.recoveryType, franchiseRecoveryTypeEntries, TODO_RIESGO_RECOVERY_OPTIONS) || todoRisk.franchise.recoveryType} />
+            <DataField disabled={recoveryTypeKind !== 'third_company'} label="Caso asociado" onChange={(value) => updateCase((draft) => { draft.todoRisk.franchise.associatedCase = value; })} value={todoRisk.franchise.associatedCase} />
+            <SelectField disabled={recoveryTypeKind !== 'own_company'} label="Dictamen" onChange={(value) => updateCase((draft) => { draft.todoRisk.franchise.dictamen = value; })} options={franchiseOpinionOptions} placeholder="Seleccioná" value={resolveCatalogCode(todoRisk.franchise.dictamen, franchiseOpinionEntries, TODO_RIESGO_DICTAMEN_OPTIONS) || todoRisk.franchise.dictamen} />
             <ToggleField label="Cotización supera Franquicia" onChange={(value) => updateCase((draft) => {
               draft.todoRisk.franchise.exceedsFranchise = value;
               if (value !== 'NO') draft.todoRisk.franchise.recoveryAmount = '';

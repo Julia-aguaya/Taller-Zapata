@@ -1,4 +1,13 @@
-export default function BlockingDocGateModal({ isOpen, message, onAccept }) {
+export default function BlockingDocGateModal({
+  isOpen,
+  message,
+  onAccept,
+  onCancel = null,
+  title = 'Carpeta con documentación pendiente',
+  eyebrow = 'Aviso bloqueante',
+  acceptLabel = 'Aceptar',
+  cancelLabel = 'Cancelar',
+}) {
   if (!isOpen) {
     return null;
   }
@@ -6,11 +15,12 @@ export default function BlockingDocGateModal({ isOpen, message, onAccept }) {
   return (
     <div className="blocking-modal-overlay" role="presentation">
       <div aria-labelledby="doc-gate-title" aria-modal="true" className="blocking-modal" role="dialog">
-        <p className="eyebrow">Aviso bloqueante</p>
-        <h3 id="doc-gate-title">Carpeta con documentación pendiente</h3>
+        <p className="eyebrow">{eyebrow}</p>
+        <h3 id="doc-gate-title">{title}</h3>
         <p className="muted">{message}</p>
         <div className="blocking-modal-actions">
-          <button className="primary-button" onClick={onAccept} type="button">Aceptar</button>
+          {onCancel ? <button className="secondary-button" onClick={onCancel} type="button">{cancelLabel}</button> : null}
+          <button className="primary-button" onClick={onAccept} type="button">{acceptLabel}</button>
         </div>
       </div>
     </div>

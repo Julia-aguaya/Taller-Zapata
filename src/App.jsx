@@ -65,9 +65,17 @@ import { useBackendSession } from './features/auth/hooks/useBackendSession';
 import { useAuthenticatedCases } from './features/cases/hooks/useAuthenticatedCases';
 import { filterCases, getBranchOptions, getStateOptions, calculateCaseMetrics, getCaseSearchHaystack, getBackendBranchLabel, getCaseIdentifierLabel, getBackendStatusTone } from './features/cases/lib/caseFilters';
 import { getCatalogEntries, getCatalogOptionNames, getCatalogSelectOptions, resolveCatalogCode } from './features/cases/lib/caseCatalogHelpers';
+import { inferTramiteTypeFromBackendCase, resolveFrontendCaseTypeCatalogEntry } from './features/cases/lib/caseTypeResolvers';
 import { formatProbeCheckedAt, maskToken, resolveInsuranceCompanyIdByName } from './features/cases/lib/caseAppUtils';
+import {
+  buildBudgetItemPersistenceFields,
+  buildBudgetPersistenceFields,
+  buildPersistedPartsBySignature,
+  resolvePersistedPartId,
+} from './features/cases/lib/caseBudgetRehydrationFixes';
 import { formatWorkflowDomain, getWorkflowHistoryItems, getWorkflowActionsItems } from './features/case-detail/lib/caseWorkflowUtils';
 import { getBackendCasesItems, getCaseVehicleLabel, getCaseResponsibleLabel, getCaseNextTaskLabel } from './features/cases/lib/caseDisplayHelpers';
+import { TODO_RIESGO_TURNO_WARNING_MESSAGE } from './features/gestion/lib/gestionUtils';
 import { useCaseDetail } from './features/case-detail/hooks/useCaseDetail';
 import { loadCaseDetailBundle } from './features/case-detail/lib/loadCaseDetailBundle';
 import { buildCaseDetailState } from './features/case-detail/lib/buildCaseDetailState';
@@ -140,6 +148,7 @@ import {
   readAuthenticatedCaseDetail,
   readAuthenticatedCaseDocuments,
   downloadAuthenticatedCaseDocument,
+  downloadAuthenticatedCaseBudgetPdf,
   readAuthenticatedCaseFinanceSummary,
   readAuthenticatedCaseFinancialMovements,
   readAuthenticatedCaseReceipts,
@@ -178,6 +187,7 @@ import {
   searchAuthenticatedPersons,
   searchAuthenticatedVehicles,
   storeBackendSession,
+  updateAuthenticatedVehicle,
   updateAuthenticatedDocument,
   updateAuthenticatedDocumentRelation,
   updateAuthenticatedCaseIncident,
@@ -603,6 +613,57 @@ function buildCasePartsState(data) {
 
 function buildRejectedCasePartsState(reason) {
   return { status: 'rejected', items: [], total: 0, detail: reason?.httpStatus !== 404 ? 'No pudimos cargar los repuestos.' : '' };
+}
+
+function getPartQuoteItems(payload) {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (Array.isArray(payload?.items)) {
+    return payload.items;
+  }
+
+  if (Array.isArray(payload?.content)) {
+    return payload.content;
+  }
+
+  return [];
+}
+
+function buildCasePartQuotesState(rows, reason = null) {
+  return {
+    status: reason ? 'rejected' : 'success',
+    items: Array.isArray(rows) ? rows : [],
+    total: Array.isArray(rows) ? rows.length : 0,
+    detail: reason ? getFriendlyErrorMessage(reason) : '',
+  };
+}
+
+function buildPartQuoteRowsFromBackend(parts = [], quotesByPartId = {}) {
+  return parts.map((part) => {
+    const quotes = quotesByPartId[String(part?.id || '')] || [];
+    const row = {
+      id: `part-quote-${part?.id || part?.budgetItemId || part?.description || createUuid()}`,
+      piece: part?.description || part?.name || 'Pieza sin nombre',
+      provider1: '',
+      provider2: '',
+      provider3: '',
+      provider4: '',
+      billing: 'A',
+      paymentMethod: 'Contado',
+      source: 'budget',
+      sourceLineId: part?.budgetItemId ? String(part.budgetItemId) : '',
+    };
+
+    quotes.slice(0, 4).forEach((quote, index) => {
+      row[`provider${index + 1}`] = pickFirstNonEmpty(quote?.amount, quote?.price, '');
+    });
+
+    row.billing = pickFirstNonEmpty(quotes[0]?.billingCode, quotes[0]?.billing, row.billing);
+    row.paymentMethod = pickFirstNonEmpty(quotes[0]?.paymentMethodCode, quotes[0]?.paymentMethod, row.paymentMethod);
+    return row;
+  });
 }
 
 function normalizeAuthenticatedCasesPayload(payload) {
@@ -1071,12 +1132,14 @@ function getPendingPriorityMeta(item) {
 
 
 
-function resolveGestionAccess(item, target = {}) {
+export function resolveGestionAccess(item, target = {}) {
   const requestedTab = CASE_TABS.includes(target.tab) ? target.tab : 'ficha';
-  const companyWorkflow = isInsuranceWorkflowCase(item) || isFranchiseRecoveryCase(item);
-  const thirdPartyWorkshop = isThirdPartyWorkshopCase(item);
-  const thirdPartyLawyer = isThirdPartyLawyerCase(item);
-  const franchiseRecovery = isFranchiseRecoveryCase(item);
+  const inferredTramiteType = item?.tramiteType || inferTramiteTypeFromBackendCase(item);
+  const thirdPartyWorkshop = inferredTramiteType === 'Reclamo de Tercero - Taller';
+  const thirdPartyLawyer = inferredTramiteType === 'Reclamo de Tercero - Abogado';
+  const franchiseRecovery = inferredTramiteType === FRANCHISE_RECOVERY_TRAMITE;
+  const companyWorkflow = ['Todo Riesgo', 'CLEAS / Terceros / Franquicia', 'Reclamo de Tercero - Taller', 'Reclamo de Tercero - Abogado', FRANCHISE_RECOVERY_TRAMITE]
+    .includes(inferredTramiteType);
   const franchiseEnablesRepair = franchiseRecovery ? item.franchiseRecovery?.enablesRepair !== 'NO' : true;
 
   if ((requestedTab === 'tramite' || requestedTab === 'documentacion') && !companyWorkflow) {
@@ -1121,13 +1184,6 @@ function resolveGestionAccess(item, target = {}) {
     };
   }
 
-  if (!item?.computed?.budgetReady) {
-    return {
-      tab: item?.computed?.reportClosed ? 'presupuesto' : 'ficha',
-      subtab: '',
-    };
-  }
-
   return {
     tab: 'gestion',
     subtab: REPAIR_TABS.includes(target.subtab) ? target.subtab : 'repuestos',
@@ -1136,42 +1192,126 @@ function resolveGestionAccess(item, target = {}) {
 
 
 
-function getGestionEntryTarget(item) {
-  if (isThirdPartyLawyerCase(item)) {
-    return { tab: 'abogado' };
-  }
-
-  if (isThirdPartyWorkshopCase(item)) {
-    return { tab: 'documentacion' };
-  }
-
-  if (isInsuranceWorkflowCase(item) || isFranchiseRecoveryCase(item)) {
-    return { tab: 'tramite' };
-  }
-
-  return { tab: 'gestion', subtab: 'repuestos' };
+export function getGestionEntryTarget(item) {
+  return { tab: 'ficha' };
 }
 
-function inferTramiteTypeFromBackendCase(item) {
-  const haystack = [
-    item?.caseTypeName,
-    item?.caseTypeCode,
-    item?.domain,
-    item?.workflowDomain,
-    item?.currentWorkflowDomain,
-    item?.folderCode,
-  ]
-    .filter(Boolean)
-    .map((value) => normalizeLookupText(value))
-    .join(' ');
+export function resolvePanelOpenCaseTarget(item, target = {}) {
+  return getGestionEntryTarget(item);
+}
 
-  if (haystack.includes('abogado')) return 'Reclamo de Tercero - Abogado';
-  if (haystack.includes('tercero') && haystack.includes('taller')) return 'Reclamo de Tercero - Taller';
-  if (haystack.includes('todo riesgo') || haystack.includes('todo_riesgo')) return 'Todo Riesgo';
-  if (haystack.includes('cleas') || haystack.includes('franquicia')) return 'CLEAS / Terceros / Franquicia';
-  if (haystack.includes('recupero')) return FRANCHISE_RECOVERY_TRAMITE;
+export function shouldPreserveGestionHash(view, hash, lastLawyerOpenAt, now = Date.now()) {
+  if (view === 'gestion') {
+    return true;
+  }
 
-  return 'Particular';
+  if (!hash || !hash.includes('/abogado')) {
+    return false;
+  }
+
+  return now - Number(lastLawyerOpenAt || 0) < 1500;
+}
+
+export function resolveOpenCasePayload(rawCaseRef, rawTarget = {}, fallbackItem = null) {
+  const refIsObject = rawCaseRef && typeof rawCaseRef === 'object';
+  const sourceItem = refIsObject ? rawCaseRef : fallbackItem;
+  const normalizedTarget = rawTarget && typeof rawTarget === 'object' ? rawTarget : {};
+
+  const candidates = [
+    !refIsObject ? rawCaseRef : null,
+    sourceItem?.id,
+    sourceItem?.caseId,
+    sourceItem?.folderId,
+    sourceItem?.case?.id,
+  ];
+
+  const resolvedId = candidates
+    .map((candidate) => String(candidate ?? '').trim())
+    .find((candidate) => candidate);
+
+  const fallbackTarget = getGestionEntryTarget(sourceItem || {});
+  const validTab = CASE_TABS.includes(normalizedTarget.tab) ? normalizedTarget.tab : fallbackTarget.tab;
+  const validSubtab = validTab === 'gestion' && REPAIR_TABS.includes(normalizedTarget.subtab) ? normalizedTarget.subtab : '';
+  const inferredTarget = validTab === 'gestion' ? { tab: validTab, subtab: validSubtab } : { tab: validTab };
+
+  const forcedTarget = resolveGestionAccess(sourceItem || {}, inferredTarget);
+
+  return {
+    id: resolvedId || '',
+    item: sourceItem || null,
+    target: {
+      tab: forcedTarget.tab,
+      subtab: forcedTarget.subtab || '',
+    },
+  };
+}
+
+export function resolveSelectedCaseById(computedCases, selectedCaseId) {
+  const selected = computedCases.find((item) => String(item.id) === String(selectedCaseId));
+  if (selected) {
+    return selected;
+  }
+
+  if (selectedCaseId) {
+    return null;
+  }
+
+  return computedCases[0] || null;
+}
+
+function getRepairAccessCaseSnapshot(item) {
+  if (!item || item.computed || !item.budget || !item.repair || !item.payments) {
+    return item;
+  }
+
+  return applyBackendVisibleStatesToCase(applyBackendWorkflowToCase(getComputedCase(item)));
+}
+
+export function shouldPromptRepairAccess(item, target = {}, options = {}) {
+  const accessSource = options.source || 'tab-change';
+  const caseSnapshot = getRepairAccessCaseSnapshot(item);
+  return accessSource === 'tab-change'
+    && target.tab === 'gestion'
+    && caseSnapshot?.tramiteType !== 'Reclamo de Tercero - Abogado'
+    && Boolean(caseSnapshot?.computed?.todoRisk?.turnWarningRequired);
+}
+
+function isUnauthorizedError(error) {
+  return error?.httpStatus === 401 || error?.httpStatus === 403;
+}
+
+export function shouldForceAuthReset(error) {
+  return isUnauthorizedError(error);
+}
+
+export function shouldOpenDocumentationGate({
+  activeView,
+  selectedCase,
+  docGateAcceptedCaseId,
+  repairAccessPrompt,
+  activeTab,
+}) {
+  if (activeView !== 'gestion' || !selectedCase) {
+    return false;
+  }
+
+  if (isThirdPartyLawyerCase(selectedCase)) {
+    return false;
+  }
+
+  if (!isThirdPartyDocumentationIncomplete(selectedCase)) {
+    return false;
+  }
+
+  if (docGateAcceptedCaseId === selectedCase.id) {
+    return false;
+  }
+
+  if (repairAccessPrompt) {
+    return false;
+  }
+
+  return activeTab !== 'gestion';
 }
 
 function buildLocalCaseFromBackend(item, nextCounter) {
@@ -1533,11 +1673,14 @@ function App() {
   const [isSavingDocuments, setIsSavingDocuments] = useState({ upload: false, byId: {} });
   const [isDownloadingDocument, setIsDownloadingDocument] = useState({ byId: {} });
   const [isPreviewingDocument, setIsPreviewingDocument] = useState({ byId: {} });
+  const [isDownloadingBudgetPdf, setIsDownloadingBudgetPdf] = useState({ byId: {} });
+  const [isPreviewingBudgetPdf, setIsPreviewingBudgetPdf] = useState({ byId: {} });
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [dirtyTabs, setDirtyTabs] = useState(new Set());
   const [activeTab, setActiveTab] = useState('ficha');
   const [activeRepairTab, setActiveRepairTab] = useState('repuestos');
   const [docGateAcceptedCaseId, setDocGateAcceptedCaseId] = useState('');
+  const [repairAccessPrompt, setRepairAccessPrompt] = useState(null);
   const [notice, setNotice] = useState(null);
   const [newCaseForm, setNewCaseForm] = useState(createEmptyForm);
   const [showNewCaseValidation, setShowNewCaseValidation] = useState(false);
@@ -1705,11 +1848,12 @@ function App() {
   });
   const [pendingNotificationIds, setPendingNotificationIds] = useState([]);
   const [notificationActionStateById, setNotificationActionStateById] = useState({});
+  const lastLawyerOpenAtRef = useRef(0);
 
   const computedCases = useMemo(() => cases.map((item) => applyBackendVisibleStatesToCase(applyBackendWorkflowToCase(getComputedCase(item)))), [cases]);
   const agendaItems = useMemo(() => buildAgendaStore(computedCases), [computedCases]);
 
-  const selectedCase = computedCases.find((item) => String(item.id) === String(selectedCaseId)) || computedCases[0];
+  const selectedCase = resolveSelectedCaseById(computedCases, selectedCaseId);
   const selectedCaseCodeIssues = useMemo(() => {
     if (!import.meta.env.DEV || !selectedCase) {
       return [];
@@ -1732,12 +1876,30 @@ function App() {
         return;
       }
 
-      const caseExists = computedCases.some((item) => String(item.id) === String(caseId));
-      if (!caseExists) {
+      let selectedFromHash = computedCases.find((item) => String(item.id) === String(caseId));
+
+      if (!selectedFromHash) {
+        const backendItem = authenticatedCasesState.items.find((item) => String(item?.id) === String(caseId));
+        if (backendItem) {
+          const bridgedCase = buildLocalCaseFromBackend(backendItem, nextCounter);
+          setCases((current) => {
+            if (current.some((item) => String(item.id) === String(bridgedCase.id))) {
+              return current;
+            }
+            return [...current, bridgedCase];
+          });
+          selectedFromHash = bridgedCase;
+        }
+      }
+
+      if (!selectedFromHash) {
+        setSelectedCaseId(caseId);
+        setActiveView('gestion');
+        setActiveTab('ficha');
+        setActiveRepairTab('repuestos');
         return;
       }
 
-      const selectedFromHash = computedCases.find((item) => String(item.id) === String(caseId));
       const resolvedRoute = resolveGestionAccess(selectedFromHash, route);
 
       setSelectedCaseId(caseId);
@@ -1750,7 +1912,7 @@ function App() {
     window.addEventListener('hashchange', syncCaseFromHash);
 
     return () => window.removeEventListener('hashchange', syncCaseFromHash);
-  }, [computedCases]);
+  }, [authenticatedCasesState.items, computedCases, nextCounter]);
 
   useEffect(() => {
     if (authenticatedCaseDetailState.status !== 'success') {
@@ -1839,17 +2001,6 @@ function App() {
       }
     });
   }, [cases, authenticatedInsuranceCatalogsState.catalogs, authenticatedFinanceCatalogsState.catalogs]);
-
-  useEffect(() => {
-    if (activeView !== 'gestion' || activeTab !== 'gestion' || !selectedCase) {
-      return;
-    }
-
-    if (!selectedCase.computed.budgetReady) {
-      setActiveTab(selectedCase.computed.reportClosed ? 'presupuesto' : 'ficha');
-      setActiveRepairTab('repuestos');
-    }
-  }, [activeView, activeTab, selectedCase]);
 
   useEffect(() => {
     if (activeView !== 'gestion' || !selectedCase || !isFranchiseRecoveryCase(selectedCase)) {
@@ -2132,94 +2283,17 @@ function App() {
   };
 
   const runAuthenticatedCasesRead = async (accessToken, signal, filters = {}) => {
-    setAuthenticatedCasesState({
+    setAuthenticatedCasesState((current) => ({
+      ...current,
       status: 'loading',
       tone: 'info',
       title: 'Actualizando carpetas',
       detail: 'Estamos trayendo la información más reciente de tu cuenta.',
       endpoint: probeEndpoint,
-      checkedAt: '',
+      checkedAt: current.checkedAt,
       httpStatus: null,
       technicalDetail: '',
-      items: [],
-      total: 0,
-      visible: 0,
-      page: 0,
-      size: 5,
-      totalPages: 0,
-    });
-    setAuthenticatedCaseDetailState((current) => (current.status === 'idle'
-        ? current
-        : {
-            ...current,
-            status: 'idle',
-            tone: 'info',
-            title: 'Detalle pendiente',
-            detail: 'Elegí una carpeta para ver un resumen real del caso.',
-            endpoint: '',
-            checkedAt: '',
-            httpStatus: null,
-            item: null,
-            data: null,
-            workflowHistory: [],
-            workflowActions: [],
-            budgetState: {
-              status: 'idle',
-              data: null,
-              items: [],
-              totalItems: 0,
-              detail: '',
-            },
-            appointmentsState: {
-              status: 'idle',
-              items: [],
-              total: 0,
-              nextAppointment: null,
-              hasUpcomingAppointment: false,
-              detail: '',
-            },
-            documentsState: {
-              status: 'idle',
-              items: [],
-              total: 0,
-              visibleCount: 0,
-              hiddenCount: 0,
-              detail: '',
-            },
-            financeSummaryState: {
-              status: 'idle',
-              data: null,
-              detail: '',
-            },
-            financialMovementsState: {
-              status: 'idle',
-              items: [],
-              total: 0,
-              detail: '',
-            },
-            receiptsState: {
-              status: 'idle',
-              items: [],
-              total: 0,
-              latest: null,
-              detail: '',
-            },
-            vehicleIntakesState: {
-              status: 'idle',
-              items: [],
-              total: 0,
-              latest: null,
-              detail: '',
-            },
-            vehicleOutcomesState: {
-              status: 'idle',
-              items: [],
-              total: 0,
-              latest: null,
-              detail: '',
-            },
-            trackingNotice: '',
-          }));
+    }));
 
     try {
       const result = await readAuthenticatedCases(accessToken, { page: 0, size: 200, signal, ...filters });
@@ -2238,7 +2312,8 @@ function App() {
         ...normalized,
       });
     } catch (error) {
-      setAuthenticatedCasesState({
+      setAuthenticatedCasesState((current) => ({
+        ...current,
         status: 'error',
         tone: 'danger',
         title: 'No pudimos cargar tus carpetas',
@@ -2247,13 +2322,7 @@ function App() {
         checkedAt: new Date().toISOString(),
         httpStatus: error.httpStatus || null,
         technicalDetail: getCasesTechnicalDetail({ endpoint: probeEndpoint, httpStatus: error.httpStatus || null, errorMessage: error.message }),
-        items: [],
-        total: 0,
-        visible: 0,
-        page: 0,
-        size: 5,
-        totalPages: 0,
-      });
+      }));
     }
   };
 
@@ -2851,6 +2920,12 @@ function App() {
         detail: 'Estamos revisando la estimación cargada para esta carpeta.',
         endpoint: budgetEndpoint,
       },
+      partQuotesState: {
+        status: 'loading',
+        items: [],
+        total: 0,
+        detail: 'Estamos revisando las cotizaciones cargadas para los repuestos.',
+      },
       appointmentsState: {
         status: 'loading',
         items: [],
@@ -3000,6 +3075,31 @@ function App() {
       const partsState = partsResult.status === 'fulfilled'
         ? buildCasePartsState(partsResult.value.data)
         : buildRejectedCasePartsState(partsResult.reason);
+      let partQuotesState = buildCasePartQuotesState([]);
+      if (partsResult.status === 'fulfilled' && isThirdPartyClaimCase(hydratedDetail)) {
+        const backendParts = Array.isArray(partsResult.value.data) ? partsResult.value.data : [];
+        const quoteResults = await Promise.allSettled(
+          backendParts
+            .filter((part) => Number.isFinite(Number(part?.id)))
+            .map(async (part) => ({
+              partId: String(part.id),
+              quotes: getPartQuoteItems(await readAuthenticatedCasePartQuotes(backendSession.accessToken, item.id, part.id)),
+            })),
+        );
+
+        const quotesByPartId = {};
+        const rejectedQuote = quoteResults.find((result) => result.status === 'rejected');
+        quoteResults.forEach((result) => {
+          if (result.status === 'fulfilled') {
+            quotesByPartId[result.value.partId] = result.value.quotes;
+          }
+        });
+
+        partQuotesState = buildCasePartQuotesState(
+          buildPartQuoteRowsFromBackend(backendParts, quotesByPartId),
+          rejectedQuote?.status === 'rejected' ? rejectedQuote.reason : null,
+        );
+      }
       const appointmentsState = appointmentsResult.status === 'fulfilled'
         ? buildCaseAppointmentsState(appointmentsResult.value.data)
           : {
@@ -3133,6 +3233,7 @@ function App() {
         franchiseRecoveryState,
         budgetState,
         partsState,
+        partQuotesState,
         appointmentsState,
         documentsState,
         financeSummaryState,
@@ -3143,7 +3244,20 @@ function App() {
         trackingNotice,
       });
     } catch (error) {
-      setAuthenticatedCaseDetailState({
+      setAuthenticatedCaseDetailState((current) => {
+        if (isUnauthorizedError(error) && String(current?.item?.id || '') === String(item.id || '')) {
+          return {
+            ...current,
+            status: 'error',
+            tone: 'danger',
+            title: 'Sesión vencida al abrir carpeta',
+            detail: getFriendlyErrorMessage(error),
+            checkedAt: new Date().toISOString(),
+            httpStatus: error.httpStatus || null,
+          };
+        }
+
+        return {
         status: 'error',
         tone: 'danger',
         title: 'No pudimos abrir esta carpeta',
@@ -3155,6 +3269,12 @@ function App() {
         data: null,
         workflowHistory: [],
         workflowActions: [],
+        partQuotesState: {
+          status: 'error',
+          items: [],
+          total: 0,
+          detail: '',
+        },
         auditEventsState: {
           status: 'error',
           items: [],
@@ -3276,6 +3396,7 @@ function App() {
           detail: '',
         },
         trackingNotice: '',
+      };
       });
     }
   };
@@ -3396,10 +3517,6 @@ function App() {
   };
 
   const handleExpiredSessionRedirect = () => {
-    if (isSessionExpiring) {
-      return;
-    }
-
     if (sessionExpiryTimerRef.current) {
       window.clearTimeout(sessionExpiryTimerRef.current);
       sessionExpiryTimerRef.current = null;
@@ -3409,40 +3526,17 @@ function App() {
       sessionExpiryIntervalRef.current = null;
     }
 
-    let remaining = 3;
-    setIsSessionExpiring(true);
-    setSessionExpirySeconds(remaining);
-    setSessionExpiryNotice(`Tu sesión venció. Te vamos a redirigir al login en ${remaining} segundos...`);
-
-    sessionExpiryIntervalRef.current = window.setInterval(() => {
-      remaining -= 1;
-      if (remaining <= 0) {
-        if (sessionExpiryIntervalRef.current) {
-          window.clearInterval(sessionExpiryIntervalRef.current);
-          sessionExpiryIntervalRef.current = null;
-        }
-        return;
-      }
-      setSessionExpirySeconds(remaining);
-      setSessionExpiryNotice(`Tu sesión venció. Te vamos a redirigir al login en ${remaining} segundos...`);
-    }, 1000);
-
-    sessionExpiryTimerRef.current = window.setTimeout(() => {
-      if (sessionExpiryIntervalRef.current) {
-        window.clearInterval(sessionExpiryIntervalRef.current);
-        sessionExpiryIntervalRef.current = null;
-      }
-      sessionExpiryTimerRef.current = null;
-      resetSessionState({
-        authTitle: 'Sesión vencida',
-        authDetail: 'Tu sesión venció. Volvé a ingresar para continuar.',
-        authTone: 'danger',
-      });
-      setSessionExpiryNotice('');
-      setSessionExpirySeconds(0);
-      setIsSessionExpiring(false);
-      flash({ tone: 'danger', title: 'Sesión vencida', message: 'Volvé a ingresar para continuar.' });
-    }, 3000);
+    setRepairAccessPrompt(null);
+    setDocGateAcceptedCaseId('');
+    setSessionExpiryNotice('');
+    setSessionExpirySeconds(0);
+    setIsSessionExpiring(false);
+    resetSessionState({
+      authTitle: 'Sesión vencida',
+      authDetail: 'Tu sesión venció o no tenés permisos para continuar. Volvé a ingresar.',
+      authTone: 'danger',
+    });
+    flash({ tone: 'danger', title: 'Sesión vencida', message: 'Volvé a ingresar para continuar.' });
   };
 
   const readWithStoredToken = async (reader) => {
@@ -3458,7 +3552,7 @@ function App() {
     try {
       await reader(backendSession.accessToken);
     } catch (error) {
-      if (error?.httpStatus === 401 || error?.httpStatus === 403) {
+      if (shouldForceAuthReset(error)) {
         handleExpiredSessionRedirect();
         return;
       }
@@ -3482,7 +3576,7 @@ function App() {
       authenticatedCaseDetailState,
     ];
 
-    const hasSessionExpired = sources.some((source) => source?.httpStatus === 401 || source?.httpStatus === 403);
+    const hasSessionExpired = sources.some((source) => shouldForceAuthReset(source));
 
     if (!backendSession?.accessToken || !hasSessionExpired) {
       return;
@@ -3708,7 +3802,11 @@ function App() {
   const openView = (view) => {
     setActiveView(view);
 
-    if (view !== 'gestion' && window.location.hash) {
+    if ((view === 'panel' || view === 'carpetas') && backendSession?.accessToken) {
+      void refreshAuthenticatedCasesPreview({});
+    }
+
+    if (window.location.hash && !shouldPreserveGestionHash(view, window.location.hash, lastLawyerOpenAtRef.current)) {
       window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
     }
   };
@@ -3797,30 +3895,7 @@ function App() {
     flash(`Exportación PDF preparada para impresión con ${rows.length} carpetas visibles.`);
   };
 
-  const openCase = (id, target = {}) => {
-    let targetCase = computedCases.find((item) => String(item.id) === String(id));
-
-    if (!targetCase) {
-      const backendItem = authenticatedCasesState.items.find((item) => String(item.id) === String(id));
-
-      if (backendItem) {
-        const bridgedCase = buildLocalCaseFromBackend(backendItem, nextCounter);
-        setCases((current) => {
-          if (current.some((item) => String(item.id) === String(bridgedCase.id))) {
-            return current;
-          }
-          return [...current, bridgedCase];
-        });
-        targetCase = bridgedCase;
-      }
-    }
-
-    if (!targetCase) {
-      flash({ tone: 'danger', title: 'No pudimos abrir la carpeta', message: 'No encontramos los datos necesarios para abrir esta ficha técnica.' });
-      return;
-    }
-
-    const resolvedTarget = resolveGestionAccess(targetCase, target);
+  const commitCaseOpen = (id, resolvedTarget) => {
     const nextTab = resolvedTarget.tab;
     const nextRepairTab = resolvedTarget.subtab || 'repuestos';
 
@@ -3835,6 +3910,86 @@ function App() {
     if (backendSession?.accessToken) {
       void openAuthenticatedCaseDetail({ id });
     }
+  };
+
+  const handleTabChange = (nextTab) => {
+    if (nextTab === activeTab) {
+      return;
+    }
+
+    if (nextTab === 'gestion' && shouldPromptRepairAccess(selectedCase, { tab: nextTab })) {
+      setRepairAccessPrompt({
+        mode: 'tab',
+        resolvedTarget: { tab: 'gestion', subtab: activeRepairTab || 'repuestos' },
+      });
+      return;
+    }
+
+    setActiveTab(nextTab);
+  };
+
+  const acceptRepairAccessPrompt = () => {
+    if (!repairAccessPrompt) {
+      return;
+    }
+
+    if (repairAccessPrompt.mode === 'open-case') {
+      commitCaseOpen(repairAccessPrompt.caseId, repairAccessPrompt.resolvedTarget);
+    } else {
+      setActiveTab(repairAccessPrompt.resolvedTarget.tab);
+      setActiveRepairTab(repairAccessPrompt.resolvedTarget.subtab || 'repuestos');
+    }
+
+    setRepairAccessPrompt(null);
+  };
+
+  const openCase = (caseRef, target = {}) => {
+    const resolvedPayload = resolveOpenCasePayload(caseRef, target);
+    const requestedId = resolvedPayload.id;
+
+    let targetCase = requestedId ? computedCases.find((item) => String(item.id) === String(requestedId)) : null;
+
+    if (!targetCase && requestedId) {
+      const backendItem = authenticatedCasesState.items.find((item) => String(item.id) === String(requestedId));
+
+      if (backendItem) {
+        const bridgedCase = buildLocalCaseFromBackend(backendItem, nextCounter);
+        setCases((current) => {
+          if (current.some((item) => String(item.id) === String(bridgedCase.id))) {
+            return current;
+          }
+          return [...current, bridgedCase];
+        });
+        targetCase = bridgedCase;
+      }
+    }
+
+    if (!targetCase && resolvedPayload.item) {
+      targetCase = targetCase || computedCases.find((item) => String(item.id) === String(resolvedPayload.item.id));
+    }
+
+    if (!targetCase) {
+      flash({ tone: 'danger', title: 'No pudimos abrir la carpeta', message: 'No encontramos los datos necesarios para abrir esta ficha técnica.' });
+      return;
+    }
+
+    const effectiveId = String(requestedId || targetCase.id || '').trim();
+    if (!effectiveId) {
+      flash({ tone: 'danger', title: 'No pudimos abrir la carpeta', message: 'La carpeta no tiene un identificador válido para navegar.' });
+      return;
+    }
+
+    const resolvedTarget = resolveGestionAccess(targetCase, resolvedPayload.target);
+    if (shouldPromptRepairAccess(targetCase, resolvedTarget, { source: 'open-case' })) {
+      setRepairAccessPrompt({
+        caseId: effectiveId,
+        mode: 'open-case',
+        resolvedTarget,
+      });
+      return;
+    }
+
+    commitCaseOpen(effectiveId, resolvedTarget);
   };
 
   const syncSelectedCaseToBackend = async ({ silent = false, tabs = null, changeNote = '' } = {}) => {
@@ -3874,6 +4029,29 @@ function App() {
         const pushSyncOp = (tabId, request) => {
           syncOps.push({ tabId, request });
         };
+        const summaryItem = authenticatedCasesState.items.find((entry) => String(entry?.id) === String(caseId));
+        const principalVehicleId = summaryItem?.principalVehicleId || authenticatedCaseDetailState.item?.principalVehicleId || null;
+
+        if (shouldSync('ficha') && principalVehicleId) {
+          pushSyncOp('ficha', updateAuthenticatedVehicle(accessToken, principalVehicleId, {
+            brandId: null,
+            modelId: null,
+            brandText: selectedCase.vehicle?.brand?.trim() || null,
+            modelText: selectedCase.vehicle?.model?.trim() || null,
+            plate: normalizePlate(selectedCase.vehicle?.plate || '') || null,
+            year: Number.parseInt(selectedCase.vehicle?.year || '', 10) || null,
+            vehicleTypeCode: selectedCase.vehicle?.type?.trim() || null,
+            usageCode: selectedCase.vehicle?.usage?.trim() || null,
+            color: selectedCase.vehicle?.color?.trim() || null,
+            paintCode: selectedCase.vehicle?.paint?.trim() || null,
+            chasis: selectedCase.vehicle?.chassis?.trim() || null,
+            motor: selectedCase.vehicle?.engine?.trim() || null,
+            transmissionCode: selectedCase.vehicle?.transmission?.trim() || null,
+            mileage: Number.parseInt(selectedCase.vehicle?.mileage || '', 10) || null,
+            observaciones: selectedCase.vehicle?.observations?.trim() || null,
+            activo: true,
+          }));
+        }
 
         if (shouldSync('ficha') || shouldSync('tramite')) {
           pushSyncOp('ficha', updateAuthenticatedCaseIncident(accessToken, caseId, {
@@ -4103,6 +4281,7 @@ function App() {
 
         if (shouldSync('presupuesto')) {
           const operationCatalogs = authenticatedOperationCatalogsState.catalogs || {};
+          const budgetPersistenceFields = buildBudgetPersistenceFields(selectedCase);
           const reportStatusCode = resolveReportStatusCode(selectedCase.budget?.reportStatus, operationCatalogs);
           if (selectedCase.budget?.reportStatus && !reportStatusCode) {
             const validationError = new Error('Revisá Presupuesto: informe. No pudimos identificar el estado para guardarlo.');
@@ -4116,9 +4295,9 @@ function App() {
             laborWithoutVat: toDecimal(selectedCase.budget?.laborWithoutVat),
             vatRate: 0.21,
             partsTotal: toDecimal(selectedCase.computed?.partsTotal),
-            estimatedDays: Number.parseInt(selectedCase.repair?.turno?.estimatedDays || '0', 10) || null,
+            estimatedDays: budgetPersistenceFields.estimatedDays,
             minimumCloseAmount: toDecimal(selectedCase.budget?.minimumLaborClose),
-            observations: selectedCase.budget?.notes || null,
+            observations: budgetPersistenceFields.observations,
           }, { changeNote }));
 
           const existingBudgetBySignature = new Map(
@@ -4139,6 +4318,7 @@ function App() {
             const existingItem = line.backendId
               ? { id: line.backendId }
               : existingBudgetBySignature.get(signature);
+            const budgetItemPersistenceFields = buildBudgetItemPersistenceFields(line);
             const payload = {
               visualOrder: index + 1,
               affectedPiece: line.piece || null,
@@ -4147,9 +4327,9 @@ function App() {
               partDecisionCode: line.replacementDecision || null,
               actionCode: line.repairAction || null,
               requiresReplacement: Boolean(line.replacementDecision && line.replacementDecision !== 'Sin definir'),
-              partValue: toDecimal(line.partPrice),
+              partValue: budgetItemPersistenceFields.partValue,
               estimatedHours: toDecimal(line.hours),
-              laborAmount: toDecimal(line.laborWithoutVat),
+              laborAmount: budgetItemPersistenceFields.laborAmount,
             };
             if (existingItem?.id) {
               pushSyncOp('presupuesto', updateAuthenticatedCaseBudgetItem(accessToken, caseId, existingItem.id, {
@@ -4171,9 +4351,9 @@ function App() {
               partDecisionCode: null,
               actionCode: null,
               requiresReplacement: false,
-              partValue: null,
+              partValue: 0,
               estimatedHours: null,
-              laborAmount: null,
+              laborAmount: 0,
               active: false,
             }, { changeNote }));
           });
@@ -4202,7 +4382,7 @@ function App() {
               paymentStatusCode: part.paymentStatus || null,
               budgetedPrice: toDecimal(part.budgetAmount),
               finalPrice: toDecimal(part.amount),
-              receivedDate: toDate(part.receivedAt),
+              receivedDate: toDate(part.receivedDate),
               used: Boolean(part.used),
               returned: Boolean(part.returned),
             };
@@ -4332,68 +4512,87 @@ function App() {
           }
         }
 
-        if (shouldSync('presupuesto') && (selectedCase.repair?.quoteRows || []).length > 0) {
-          const quoteOps = [];
-          for (const part of (selectedCase.repair?.parts || [])) {
-            if (!part.backendId) continue;
-            const quoteRow = (selectedCase.repair.quoteRows || []).find(r => r.sourceLineId === part.sourceLineId);
-            if (!quoteRow) continue;
+        const failedByTab = {};
 
-            // Fetch existing quotes from backend
-            let existingQuotes = [];
-            try {
-              const quotesResult = await readAuthenticatedCasePartQuotes(accessToken, caseId, part.backendId);
-              existingQuotes = quotesResult || [];
-            } catch {
-              continue;
+        if (syncOps.length > 0) {
+          const settled = await Promise.allSettled(syncOps.map((entry) => entry.request));
+
+          settled.forEach((result, index) => {
+            if (result.status === 'fulfilled') {
+              return;
             }
+            const tabId = syncOps[index]?.tabId || activeTab;
+            const reason = result.reason;
+            failedByTab[tabId] = getFriendlyErrorMessage(reason);
+          });
+        }
 
-            // Delete all existing quotes for this part (simple V1: recreate all)
-            for (const existing of existingQuotes) {
-              if (existing.id) {
-                quoteOps.push(deleteAuthenticatedPartSupplierQuote(accessToken, caseId, part.backendId, existing.id));
+        if (Object.keys(failedByTab).length === 0 && shouldSync('presupuesto') && (selectedCase.repair?.quoteRows || []).length > 0) {
+          try {
+            const persistedPartsResponse = await readAuthenticatedCaseParts(accessToken, caseId);
+            const persistedParts = Array.isArray(persistedPartsResponse?.data)
+              ? persistedPartsResponse.data
+              : Array.isArray(persistedPartsResponse)
+                ? persistedPartsResponse
+                : [];
+            const persistedPartsBySignature = buildPersistedPartsBySignature(persistedParts);
+            const quoteOps = [];
+
+            for (const part of (selectedCase.repair?.parts || [])) {
+              const persistedPartId = resolvePersistedPartId(part, persistedPartsBySignature);
+              if (!persistedPartId) continue;
+
+              const quoteRow = (selectedCase.repair.quoteRows || []).find((row) => row.sourceLineId === part.sourceLineId);
+              if (!quoteRow) continue;
+
+              let existingQuotes = [];
+              try {
+                const quotesResult = await readAuthenticatedCasePartQuotes(accessToken, caseId, persistedPartId);
+                existingQuotes = getPartQuoteItems(quotesResult);
+              } catch {
+                continue;
+              }
+
+              for (const existing of existingQuotes) {
+                if (existing.id) {
+                  quoteOps.push(deleteAuthenticatedPartSupplierQuote(accessToken, caseId, persistedPartId, existing.id));
+                }
+              }
+
+              const providers = [
+                { key: 'provider1', label: 'Proveedor 1' },
+                { key: 'provider2', label: 'Proveedor 2' },
+                { key: 'provider3', label: 'Proveedor 3' },
+                { key: 'provider4', label: 'Proveedor 4' },
+              ];
+              for (const { key, label } of providers) {
+                const amount = quoteRow[key];
+                if (!amount || amount === '' || amount === '0') continue;
+                quoteOps.push(createAuthenticatedPartSupplierQuote(accessToken, caseId, persistedPartId, {
+                  supplier: label,
+                  amount: toDecimal(amount),
+                  billingCode: quoteRow.billing || 'A',
+                  paymentMethodCode: quoteRow.paymentMethod || 'CONTADO',
+                }, { changeNote }));
               }
             }
 
-            // Create quotes from providers
-            const providers = [
-              { key: 'provider1', label: 'Proveedor 1' },
-              { key: 'provider2', label: 'Proveedor 2' },
-              { key: 'provider3', label: 'Proveedor 3' },
-              { key: 'provider4', label: 'Proveedor 4' },
-            ];
-            for (const { key, label } of providers) {
-              const amount = quoteRow[key];
-              if (!amount || amount === '' || amount === '0') continue;
-              quoteOps.push(createAuthenticatedPartSupplierQuote(accessToken, caseId, part.backendId, {
-                supplier: label,
-                amount: toDecimal(amount),
-                billingCode: quoteRow.billing || 'A',
-                paymentMethodCode: quoteRow.paymentMethod || 'CONTADO',
-              }, { changeNote }));
+            if (quoteOps.length > 0) {
+              const quoteSettled = await Promise.allSettled(quoteOps);
+              const quoteFailure = quoteSettled.find((result) => result.status === 'rejected');
+              if (quoteFailure?.status === 'rejected') {
+                failedByTab.presupuesto = getFriendlyErrorMessage(quoteFailure.reason);
+              }
             }
-          }
-
-          if (quoteOps.length > 0) {
-            await Promise.allSettled(quoteOps);
+          } catch (error) {
+            failedByTab.presupuesto = getFriendlyErrorMessage(error);
           }
         }
 
-        if (syncOps.length === 0) {
+        if (syncOps.length === 0 && Object.keys(failedByTab).length === 0) {
+          await openAuthenticatedCaseDetail({ id: caseId });
           return true;
         }
-
-        const settled = await Promise.allSettled(syncOps.map((entry) => entry.request));
-        const failedByTab = {};
-
-        settled.forEach((result, index) => {
-          if (result.status === 'fulfilled') {
-            return;
-          }
-          const tabId = syncOps[index]?.tabId || activeTab;
-          const reason = result.reason;
-          failedByTab[tabId] = getFriendlyErrorMessage(reason);
-        });
 
         const hasFailures = Object.keys(failedByTab).length > 0;
         if (!hasFailures) {
@@ -4749,6 +4948,96 @@ function App() {
     }
   };
 
+  const downloadCaseBudgetPdf = async (caseId) => {
+    const numericCaseId = Number(caseId);
+    if (!Number.isFinite(numericCaseId)) {
+      flash({ tone: 'danger', title: 'Carpeta inválida', message: 'No pudimos identificar la carpeta para descargar el presupuesto.' });
+      return false;
+    }
+
+    let shouldContinue = true;
+    setIsDownloadingBudgetPdf((current) => {
+      if (current.byId[numericCaseId]) {
+        shouldContinue = false;
+        return current;
+      }
+      return {
+        ...current,
+        byId: {
+          ...current.byId,
+          [numericCaseId]: true,
+        },
+      };
+    });
+    if (!shouldContinue) {
+      return false;
+    }
+
+    try {
+      await readWithStoredToken(async (accessToken) => {
+        const result = await downloadAuthenticatedCaseBudgetPdf(accessToken, numericCaseId);
+        triggerBlobDownload(result.fileName || `presupuesto-${numericCaseId}.pdf`, result.blob);
+      });
+      return true;
+    } catch (error) {
+      flash({ tone: 'danger', title: 'No pudimos descargar el PDF', message: error?.message || 'Falló la descarga del presupuesto.' });
+      return false;
+    } finally {
+      setIsDownloadingBudgetPdf((current) => {
+        const nextById = { ...current.byId };
+        delete nextById[numericCaseId];
+        return { ...current, byId: nextById };
+      });
+    }
+  };
+
+  const previewCaseBudgetPdf = async (caseId) => {
+    const numericCaseId = Number(caseId);
+    if (!Number.isFinite(numericCaseId)) {
+      flash({ tone: 'danger', title: 'Carpeta inválida', message: 'No pudimos identificar la carpeta para previsualizar el presupuesto.' });
+      return null;
+    }
+
+    let shouldContinue = true;
+    setIsPreviewingBudgetPdf((current) => {
+      if (current.byId[numericCaseId]) {
+        shouldContinue = false;
+        return current;
+      }
+      return {
+        ...current,
+        byId: {
+          ...current.byId,
+          [numericCaseId]: true,
+        },
+      };
+    });
+    if (!shouldContinue) {
+      return null;
+    }
+
+    try {
+      return await readWithStoredToken(async (accessToken) => {
+        const result = await downloadAuthenticatedCaseBudgetPdf(accessToken, numericCaseId);
+        const blobUrl = URL.createObjectURL(result.blob);
+        return {
+          blobUrl,
+          fileName: result.fileName || `presupuesto-${numericCaseId}.pdf`,
+          mimeType: result.blob?.type || 'application/pdf',
+        };
+      });
+    } catch (error) {
+      flash({ tone: 'danger', title: 'No pudimos previsualizar el PDF', message: error?.message || 'Falló la apertura del presupuesto.' });
+      return null;
+    } finally {
+      setIsPreviewingBudgetPdf((current) => {
+        const nextById = { ...current.byId };
+        delete nextById[numericCaseId];
+        return { ...current, byId: nextById };
+      });
+    }
+  };
+
   const createCase = async () => {
     if (isCreatingCase) {
       return;
@@ -4770,21 +5059,7 @@ function App() {
         const customerRoles = Array.isArray(catalogsResponse.data?.customerRoleCodes) ? catalogsResponse.data.customerRoleCodes : [];
         const vehicleRoles = Array.isArray(catalogsResponse.data?.principalVehicleRoleCodes) ? catalogsResponse.data.principalVehicleRoleCodes : [];
 
-        const typeMap = {
-          Particular: ['particular'],
-          'Todo Riesgo': ['todo riesgo', 'todo_riesgo'],
-          'CLEAS / Terceros / Franquicia': ['cleas', 'terceros', 'franquicia'],
-          'Reclamo de Tercero - Taller': ['tercero', 'taller'],
-          'Reclamo de Tercero - Abogado': ['tercero', 'abogado'],
-          [FRANCHISE_RECOVERY_TRAMITE]: ['recupero', 'franquicia'],
-        };
-
-        const typeNeedles = typeMap[newCaseForm.type] || [newCaseForm.type];
-        const selectedCaseType = caseTypes.find((item) => {
-          const name = normalizeLookupText(item?.name);
-          const code = normalizeLookupText(item?.code);
-          return typeNeedles.some((needle) => name.includes(normalizeLookupText(needle)) || code.includes(normalizeLookupText(needle)));
-        });
+        const selectedCaseType = resolveFrontendCaseTypeCatalogEntry(caseTypes, newCaseForm.type);
 
         if (!selectedCaseType?.id) {
           throw new Error('No pudimos resolver el tipo de trámite en los catálogos de casos.');
@@ -4842,8 +5117,8 @@ function App() {
             modelText: newCaseForm.model.trim(),
             plate,
             year: null,
-            vehicleTypeCode: null,
-            usageCode: null,
+            vehicleTypeCode: newCaseForm.vehicleType.trim() || null,
+            usageCode: newCaseForm.vehicleUse.trim() || null,
             color: null,
             paintCode: null,
             chasis: null,
@@ -5118,7 +5393,13 @@ function App() {
       unreadCountSource={authenticatedNotificationsState.unreadCountSource}
     >
       <BlockingDocGateModal
-        isOpen={activeView === 'gestion' && Boolean(selectedCase) && isThirdPartyDocumentationIncomplete(selectedCase) && docGateAcceptedCaseId !== selectedCase?.id}
+        isOpen={shouldOpenDocumentationGate({
+          activeView,
+          selectedCase,
+          docGateAcceptedCaseId,
+          repairAccessPrompt,
+          activeTab,
+        })}
         message={selectedCase ? `La carpeta sigue marcada como incompleta. Aceptá para seguir navegando y revisá la solapa ${isThirdPartyWorkshopCase(selectedCase) ? 'Documentación' : 'Gestión del trámite'}.` : ''}
         onAccept={() => {
           if (selectedCase) {
@@ -5126,9 +5407,19 @@ function App() {
           }
         }}
       />
+      <BlockingDocGateModal
+        acceptLabel="Aceptar"
+        cancelLabel="Cancelar"
+        eyebrow="Confirmación"
+        isOpen={Boolean(repairAccessPrompt)}
+        message={`${TODO_RIESGO_TURNO_WARNING_MESSAGE} ¿Desea abrirlo igual?`}
+        onAccept={acceptRepairAccessPrompt}
+        onCancel={() => setRepairAccessPrompt(null)}
+        title="Gestión de reparación con advertencia"
+      />
 
       {activeView === 'panel' ? (
-        <PanelGeneral
+      <PanelGeneral
           formatDate={formatDate}
           formatDateTime={formatDateTime}
           authenticatedCaseDetailState={authenticatedCaseDetailState}
@@ -5136,7 +5427,7 @@ function App() {
           authenticatedInsuranceCatalogsState={authenticatedInsuranceCatalogsState}
           authenticatedNotificationsState={authenticatedNotificationsState}
           authenticatedDocumentsCatalogsState={authenticatedDocumentsCatalogsState}
-          onOpenCase={(item, target) => { openCase(item.id, target || getGestionEntryTarget(item)); }}
+          onOpenCase={(item, target) => { openCase(item, resolvePanelOpenCaseTarget(item, target)); }}
           onSaveDocument={saveCaseDocument}
           onDownloadDocument={downloadCaseDocument}
           onPreviewDocument={previewCaseDocument}
@@ -5164,7 +5455,7 @@ function App() {
             isDownloadingDocument={isDownloadingDocument}
             isPreviewingDocument={isPreviewingDocument}
             onOpenCase={(item, target) => {
-              openCase(item.id, target || getGestionEntryTarget(item));
+              openCase(item, resolvePanelOpenCaseTarget(item, target));
             }}
             onDownloadDocument={downloadCaseDocument}
             onPreviewDocument={previewCaseDocument}
@@ -5219,10 +5510,14 @@ function App() {
           financeCatalogs={authenticatedFinanceCatalogsState.catalogs}
           debugCodeIssues={selectedCaseCodeIssues}
           onChangeRepairTab={setActiveRepairTab}
-          onChangeTab={setActiveTab}
+          onChangeTab={handleTabChange}
           onSyncCase={syncSelectedCaseToBackend}
           onRunWorkflowTransition={runWorkflowTransitionForCase}
+          onPreviewBudgetPdf={previewCaseBudgetPdf}
+          onDownloadBudgetPdf={downloadCaseBudgetPdf}
           onSetVisibleStateOverride={setVisibleStateOverrideForCase}
+          isPreviewingBudgetPdf={Boolean(selectedCase && isPreviewingBudgetPdf.byId[Number(selectedCase.id)])}
+          isDownloadingBudgetPdf={Boolean(selectedCase && isDownloadingBudgetPdf.byId[Number(selectedCase.id)])}
           isSavingCase={isSavingCase}
           hasUnsavedChanges={hasUnsavedChanges}
           updateCase={updateSelectedCase}

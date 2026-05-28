@@ -4,6 +4,7 @@ import { createTodoRiskDefaults, createLawyerDefaults, createThirdPartyDefaults 
 import {
   createBudgetLine,
   createRepairPart,
+  createRepairQuoteRow,
   createTodoRiskInvoice,
   createSettlement,
 } from '../../gestion/lib/gestionShared';
@@ -15,6 +16,20 @@ export function pickFirstNonEmpty(...values) {
     }
   }
   return '';
+}
+
+function mapBackendBudgetReportStatus(value) {
+  const normalized = normalizeLookupText(value);
+
+  if (!normalized) {
+    return '';
+  }
+
+  if (normalized.includes('cerrad') || normalized === 'closed') {
+    return 'Informe cerrado';
+  }
+
+  return 'Informe abierto';
 }
 
 function isCustomerPlaceholder(value) {
@@ -134,6 +149,8 @@ export function patchCaseWithBackendDetail(localCase, detailState) {
   localCase.vehicle.model = pickFirstNonEmpty(localCase.vehicle.model, detail.model, detail.modelText, detail.vehicleModel, detailVehicle.model, detailVehicle.modelo);
   localCase.vehicle.plate = pickFirstNonEmpty(localCase.vehicle.plate, detail.plate, detail.licensePlate, detail.patent, detail.domain, detailVehicle.plate, detailVehicle.licensePlate, detailVehicle.patent, detailVehicle.domain);
   localCase.vehicle.year = pickFirstNonEmpty(localCase.vehicle.year, detail.vehicleYear, detailVehicle.year, detailVehicle.anio);
+  localCase.vehicle.type = pickFirstNonEmpty(localCase.vehicle.type, detail.vehicleTypeCode, detail.vehicleType, detailVehicle.type, detailVehicle.vehicleTypeCode, detailVehicle.tipoVehiculoCodigo);
+  localCase.vehicle.usage = pickFirstNonEmpty(localCase.vehicle.usage, detail.usageCode, detail.vehicleUsageCode, detail.vehicleUse, detailVehicle.usage, detailVehicle.usageCode, detailVehicle.usoCodigo);
   localCase.vehicle.color = pickFirstNonEmpty(localCase.vehicle.color, detail.vehicleColor, detailVehicle.color);
   localCase.vehicle.chassis = pickFirstNonEmpty(localCase.vehicle.chassis, detail.vehicleChassis, detailVehicle.chassis, detailVehicle.chasis);
   localCase.vehicle.engine = pickFirstNonEmpty(localCase.vehicle.engine, detail.vehicleEngine, detailVehicle.engine, detailVehicle.motor);
@@ -169,6 +186,26 @@ export function patchCaseWithBackendDetail(localCase, detailState) {
   if (typeof budget.totalAmount === 'number' && Number.isFinite(budget.totalAmount)) {
     localCase.budget.amount = String(Math.round(budget.totalAmount));
   }
+
+  const mappedReportStatus = mapBackendBudgetReportStatus(budget.reportStatusCode);
+  if (mappedReportStatus) {
+    localCase.budget.reportStatus = mappedReportStatus;
+    localCase.budget.generated = mappedReportStatus === 'Informe cerrado';
+  }
+
+  if (budget.laborWithoutVat != null) {
+    localCase.budget.laborWithoutVat = budget.laborWithoutVat;
+  }
+
+  if (budget.estimatedDays != null) {
+    localCase.budget.estimatedWorkDays = budget.estimatedDays;
+  }
+
+  if (budget.minimumCloseAmount != null) {
+    localCase.budget.minimumLaborClose = budget.minimumCloseAmount;
+  }
+
+  localCase.budget.observations = pickFirstNonEmpty(localCase.budget.observations, budget.observations);
 
   if (Array.isArray(budget.items) && budget.items.length) {
     localCase.budget.lines = budget.items.map((entry) => createBudgetLine({
@@ -320,6 +357,21 @@ export function patchCaseWithBackendDetail(localCase, detailState) {
       partCode: entry.partCode || '',
       used: Boolean(entry.used),
       returned: Boolean(entry.returned),
+    }));
+  }
+
+  if (Array.isArray(detailState?.partQuotesState?.items)) {
+    localCase.repair.quoteRows = detailState.partQuotesState.items.map((entry, index) => createRepairQuoteRow({
+      id: entry.id || `${localCase.id}-part-quote-${index}`,
+      piece: entry.piece || '',
+      provider1: pickFirstNonEmpty(entry.provider1, ''),
+      provider2: pickFirstNonEmpty(entry.provider2, ''),
+      provider3: pickFirstNonEmpty(entry.provider3, ''),
+      provider4: pickFirstNonEmpty(entry.provider4, ''),
+      billing: pickFirstNonEmpty(entry.billing, 'A'),
+      paymentMethod: pickFirstNonEmpty(entry.paymentMethod, 'Contado'),
+      source: pickFirstNonEmpty(entry.source, 'budget'),
+      sourceLineId: entry.sourceLineId ? String(entry.sourceLineId) : '',
     }));
   }
 

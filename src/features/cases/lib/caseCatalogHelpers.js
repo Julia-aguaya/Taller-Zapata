@@ -68,3 +68,20 @@ export function resolveCatalogCode(value, entries = [], fallbackOptions = []) {
 
   return null;
 }
+
+export function resolveCatalogLabel(value, entries = [], fallbackOptions = []) {
+  const normalized = normalizeLookupText(value);
+  if (!normalized) return '';
+
+  const matched = entries.find((entry) => {
+    const byCode = normalizeLookupText(entry?.code);
+    const byName = normalizeLookupText(entry?.name);
+    return normalized === byCode || normalized === byName;
+  });
+  if (matched) return matched.name || matched.code || String(value);
+
+  const fallbackMatch = fallbackOptions.find((option) => normalizeLookupText(option) === normalized);
+  if (fallbackMatch) return fallbackMatch;
+
+  return String(value);
+}

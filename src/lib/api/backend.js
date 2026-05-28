@@ -98,6 +98,10 @@ function buildCaseBudgetPath(caseId) {
   return `/cases/${caseId}/budget`;
 }
 
+function buildCaseBudgetPdfPath(caseId) {
+  return `/cases/${caseId}/budget/pdf`;
+}
+
 function buildCaseDocumentsPath(caseId) {
   return `/cases/${caseId}/documents`;
 }
@@ -413,6 +417,10 @@ export function getCaseBudgetUrl(caseId) {
   return buildApiUrl(buildCaseBudgetPath(caseId));
 }
 
+export function getCaseBudgetPdfUrl(caseId) {
+  return buildApiUrl(buildCaseBudgetPdfPath(caseId));
+}
+
 export function getCasePartsUrl(caseId) {
   return buildApiUrl(buildCasePartsPath(caseId));
 }
@@ -627,6 +635,10 @@ export async function readAuthenticatedCases(accessToken, options = {}) {
       endpoint.searchParams.set(key, options[key].trim());
     }
   });
+
+  if (typeof options.q === 'string' && options.q.trim()) {
+    endpoint.searchParams.set('q', options.q.trim());
+  }
 
   if (typeof options.hasPendingTasks === 'boolean') {
     endpoint.searchParams.set('hasPendingTasks', String(options.hasPendingTasks));
@@ -1020,6 +1032,35 @@ export async function readAuthenticatedCaseBudget(accessToken, caseId, options =
 
   return {
     data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function downloadAuthenticatedCaseBudgetPdf(accessToken, caseId, options = {}) {
+  const endpoint = getCaseBudgetPdfUrl(caseId);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: '*/*',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+
+  if (!response.ok) {
+    const payload = await readJson(response);
+    throw buildHttpError(response, 'No pude descargar el PDF del presupuesto.', payload);
+  }
+
+  const blob = await response.blob();
+  const contentDisposition = response.headers.get('content-disposition') || '';
+  const fileNameMatch = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(contentDisposition);
+  const fileName = decodeURIComponent(fileNameMatch?.[1] || fileNameMatch?.[2] || `presupuesto-${caseId}.pdf`);
+
+  return {
+    blob,
+    fileName,
     endpoint: endpoint.toString(),
     httpStatus: response.status,
   };
@@ -1912,6 +1953,31 @@ export async function readAuthenticatedVehicle(accessToken, vehicleId, options =
 
   if (!response.ok) {
     throw buildHttpError(response, 'No pude leer el vehículo.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function updateAuthenticatedVehicle(accessToken, vehicleId, body, options = {}) {
+  const endpoint = getVehicleUrl(vehicleId);
+  const response = await fetch(endpoint, {
+    method: 'PUT',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude actualizar el vehículo.', payload);
   }
 
   return {

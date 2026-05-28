@@ -22,6 +22,8 @@ export function mapBackendVehicleToCaseVehicle(vehicle) {
     model: vehicle.modelText || '',
     plate: vehicle.plate || '',
     year: vehicle.year || '',
+    type: vehicle.vehicleTypeCode || '',
+    usage: vehicle.usageCode || '',
     color: vehicle.color || '',
     chassis: vehicle.chasis || '',
     engine: vehicle.motor || '',

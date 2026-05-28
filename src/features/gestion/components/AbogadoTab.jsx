@@ -22,6 +22,7 @@ import {
   LAWYER_INSTANCE_OPTIONS,
   LAWYER_RECLAMA_OPTIONS,
   LAWYER_TRAMITA_OPTIONS,
+  TODO_RIESGO_ASSIGNABLE_USERS,
   TASK_PRIORITY_OPTIONS,
   TASK_STATUS_OPTIONS,
 } from '../constants/gestionOptions';
@@ -34,6 +35,7 @@ import {
 } from '../lib/gestionShared';
 import { money } from '../lib/gestionUtils';
 import { createTodoRiskDocument, createTodoRiskTask } from '../../cases/lib/caseFactories';
+import { escapeCsvValue } from '../../../lib/utils/exportHelpers';
 
 export default function AbogadoTab({ item, updateCase, flash, insuranceCatalogs = null }) {
   const legalProcessorOptions = getCatalogSelectOptions(insuranceCatalogs, 'legalProcessorCodes', LAWYER_TRAMITA_OPTIONS);
@@ -45,11 +47,39 @@ export default function AbogadoTab({ item, updateCase, flash, insuranceCatalogs 
     return null;
   }
 
-  const includesInjuries = item.computed.lawyer.includesInjuries;
-  const isJudicial = item.computed.lawyer.isJudicial;
-  const expensesTotal = item.computed.lawyer.expensesTotal;
-  const agendaPendingCount = item.lawyer.agenda.filter((task) => !isAgendaTaskResolved(task)).length;
-  const statusUpdateCount = item.lawyer.statusUpdates.length;
+  const computedLawyer = item?.computed?.lawyer || {};
+  const computedTabs = item?.computed?.tabs || {};
+  const lawyer = {
+    tramita: item?.lawyer?.tramita || '',
+    reclama: item?.lawyer?.reclama || '',
+    instance: item?.lawyer?.instance || 'Administrativa',
+    entryDate: item?.lawyer?.entryDate || '',
+    cuij: item?.lawyer?.cuij || '',
+    court: item?.lawyer?.court || '',
+    autos: item?.lawyer?.autos || '',
+    opponentLawyer: item?.lawyer?.opponentLawyer || '',
+    opponentPhone: item?.lawyer?.opponentPhone || '',
+    opponentEmail: item?.lawyer?.opponentEmail || '',
+    observations: item?.lawyer?.observations || '',
+    expedienteDocuments: Array.isArray(item?.lawyer?.expedienteDocuments) ? item.lawyer.expedienteDocuments : [],
+    statusUpdates: Array.isArray(item?.lawyer?.statusUpdates) ? item.lawyer.statusUpdates : [],
+    agenda: Array.isArray(item?.lawyer?.agenda) ? item.lawyer.agenda : [],
+    injuredParties: Array.isArray(item?.lawyer?.injuredParties) ? item.lawyer.injuredParties : [],
+    closure: {
+      expenses: Array.isArray(item?.lawyer?.closure?.expenses) ? item.lawyer.closure.expenses : [],
+      closeBy: item?.lawyer?.closure?.closeBy || 'pendiente',
+      closeDate: item?.lawyer?.closure?.closeDate || '',
+      totalAmount: item?.lawyer?.closure?.totalAmount || '',
+      items: Array.isArray(item?.lawyer?.closure?.items) ? item.lawyer.closure.items : [],
+      notes: item?.lawyer?.closure?.notes || '',
+    },
+  };
+
+  const includesInjuries = Boolean(computedLawyer.includesInjuries);
+  const isJudicial = Boolean(computedLawyer.isJudicial);
+  const expensesTotal = computedLawyer.expensesTotal || 0;
+  const agendaPendingCount = lawyer.agenda.filter((task) => !isAgendaTaskResolved(task)).length;
+  const statusUpdateCount = lawyer.statusUpdates.length;
   const instanceLabel = isJudicial ? 'Instancia judicial' : 'Instancia administrativa';
   const instanceDescription = isJudicial
     ? 'Expone CUIJ, juzgado y autos y ayuda a leer el cierre separando rubros del taller y del expediente.'
@@ -100,7 +130,7 @@ export default function AbogadoTab({ item, updateCase, flash, insuranceCatalogs 
   const downloadExpensesExcel = () => {
     const csv = [
       ['Concepto', 'Monto', 'Fecha', 'Abonó'].map(escapeCsvValue).join(','),
-      ...item.lawyer.closure.expenses.map((expense) => [expense.concept, expense.amount, expense.date, expense.paidBy].map(escapeCsvValue).join(',')),
+      ...lawyer.closure.expenses.map((expense) => [expense.concept, expense.amount, expense.date, expense.paidBy].map(escapeCsvValue).join(',')),
     ].join('\n');
     triggerDownload(`gastos-${item.code}.csv`, csv, 'text/csv;charset=utf-8;');
     flash('Descargar Excel: se exportó la planilla de gastos del expediente.');
@@ -114,20 +144,20 @@ export default function AbogadoTab({ item, updateCase, flash, insuranceCatalogs 
             <p className="eyebrow">Abogado</p>
             <h3>Gestión legal y cierre</h3>
           </div>
-          <StatusBadge tone={item.computed.tabs.abogado === 'resolved' ? 'success' : 'info'}>{item.computed.tabs.abogado === 'resolved' ? 'Cierre legal listo' : 'Seguimiento abierto'}</StatusBadge>
+          <StatusBadge tone={computedTabs.abogado === 'resolved' ? 'success' : 'info'}>{computedTabs.abogado === 'resolved' ? 'Cierre legal listo' : 'Seguimiento abierto'}</StatusBadge>
         </div>
         <div className="form-grid four-columns compact-grid">
-          <SelectField label="Tramita" onChange={(value) => updateCase((draft) => { draft.lawyer.tramita = value; })} options={legalProcessorOptions} value={resolveCatalogCode(item.lawyer.tramita, getCatalogEntries(insuranceCatalogs, 'legalProcessorCodes'), LAWYER_TRAMITA_OPTIONS) || item.lawyer.tramita} />
-          <SelectField label="Reclama" onChange={(value) => updateCase((draft) => { draft.lawyer.reclama = value; })} options={legalClaimantOptions} value={resolveCatalogCode(item.lawyer.reclama, getCatalogEntries(insuranceCatalogs, 'legalClaimantCodes'), LAWYER_RECLAMA_OPTIONS) || item.lawyer.reclama} />
-          <SelectField label="Instancia" onChange={(value) => updateCase((draft) => { draft.lawyer.instance = value; if (value !== 'Judicial') { draft.lawyer.cuij = ''; draft.lawyer.court = ''; draft.lawyer.autos = ''; } })} options={legalInstanceOptions} value={resolveCatalogCode(item.lawyer.instance, getCatalogEntries(insuranceCatalogs, 'legalInstanceCodes'), LAWYER_INSTANCE_OPTIONS) || item.lawyer.instance} />
-          <DataField label="Días tramitando" onChange={() => {}} readOnly value={item.computed.lawyer.daysProcessing} />
-          <DataField label="Fecha ingreso" onChange={(value) => updateCase((draft) => { draft.lawyer.entryDate = value; })} type="date" value={item.lawyer.entryDate} />
-          {isJudicial ? <DataField label="N° CUIJ" onChange={(value) => updateCase((draft) => { draft.lawyer.cuij = value; })} value={item.lawyer.cuij} /> : null}
-          {isJudicial ? <DataField label="Juzgado" onChange={(value) => updateCase((draft) => { draft.lawyer.court = value; })} value={item.lawyer.court} /> : null}
-          {isJudicial ? <DataField label="Autos" onChange={(value) => updateCase((draft) => { draft.lawyer.autos = value; })} value={item.lawyer.autos} /> : null}
-          <DataField label="Abg. contraparte" onChange={(value) => updateCase((draft) => { draft.lawyer.opponentLawyer = value; })} value={item.lawyer.opponentLawyer} />
-          <DataField label="Tel." onChange={(value) => updateCase((draft) => { draft.lawyer.opponentPhone = value; })} value={item.lawyer.opponentPhone} />
-          <DataField label="Correo" onChange={(value) => updateCase((draft) => { draft.lawyer.opponentEmail = value; })} value={item.lawyer.opponentEmail} />
+          <SelectField label="Tramita" onChange={(value) => updateCase((draft) => { draft.lawyer.tramita = value; })} options={legalProcessorOptions} value={resolveCatalogCode(lawyer.tramita, getCatalogEntries(insuranceCatalogs, 'legalProcessorCodes'), LAWYER_TRAMITA_OPTIONS) || lawyer.tramita} />
+          <SelectField label="Reclama" onChange={(value) => updateCase((draft) => { draft.lawyer.reclama = value; })} options={legalClaimantOptions} value={resolveCatalogCode(lawyer.reclama, getCatalogEntries(insuranceCatalogs, 'legalClaimantCodes'), LAWYER_RECLAMA_OPTIONS) || lawyer.reclama} />
+          <SelectField label="Instancia" onChange={(value) => updateCase((draft) => { draft.lawyer.instance = value; if (value !== 'Judicial') { draft.lawyer.cuij = ''; draft.lawyer.court = ''; draft.lawyer.autos = ''; } })} options={legalInstanceOptions} value={resolveCatalogCode(lawyer.instance, getCatalogEntries(insuranceCatalogs, 'legalInstanceCodes'), LAWYER_INSTANCE_OPTIONS) || lawyer.instance} />
+          <DataField label="Días tramitando" onChange={() => {}} readOnly value={computedLawyer.daysProcessing || 0} />
+          <DataField label="Fecha ingreso" onChange={(value) => updateCase((draft) => { draft.lawyer.entryDate = value; })} type="date" value={lawyer.entryDate} />
+          {isJudicial ? <DataField label="N° CUIJ" onChange={(value) => updateCase((draft) => { draft.lawyer.cuij = value; })} value={lawyer.cuij} /> : null}
+          {isJudicial ? <DataField label="Juzgado" onChange={(value) => updateCase((draft) => { draft.lawyer.court = value; })} value={lawyer.court} /> : null}
+          {isJudicial ? <DataField label="Autos" onChange={(value) => updateCase((draft) => { draft.lawyer.autos = value; })} value={lawyer.autos} /> : null}
+          <DataField label="Abg. contraparte" onChange={(value) => updateCase((draft) => { draft.lawyer.opponentLawyer = value; })} value={lawyer.opponentLawyer} />
+          <DataField label="Tel." onChange={(value) => updateCase((draft) => { draft.lawyer.opponentPhone = value; })} value={lawyer.opponentPhone} />
+          <DataField label="Correo" onChange={(value) => updateCase((draft) => { draft.lawyer.opponentEmail = value; })} value={lawyer.opponentEmail} />
         </div>
         <div className={`lawyer-instance-banner ${isJudicial ? 'is-judicial' : 'is-administrative'}`}>
           <div className="stack-tight">
@@ -147,12 +177,12 @@ export default function AbogadoTab({ item, updateCase, flash, insuranceCatalogs 
           <div className="section-head small-gap">
             <h3>Reclamante lesiones</h3>
             <div className="tag-row">
-              <StatusBadge tone="info">{item.lawyer.injuredParties.length} lesionado(s)</StatusBadge>
+              <StatusBadge tone="info">{lawyer.injuredParties.length} lesionado(s)</StatusBadge>
               <button className="secondary-button" onClick={addInjured} type="button">Agregar lesionado</button>
             </div>
           </div>
           <div className="budget-lines">
-            {item.lawyer.injuredParties.map((injured) => (
+            {lawyer.injuredParties.map((injured) => (
               <div className="budget-line budget-line-extended" key={injured.id}>
                 <SelectField label="Lesionado es" onChange={(value) => updateCase((draft) => { const target = draft.lawyer.injuredParties.find((entry) => entry.id === injured.id); target.injuredRole = value; })} options={LAWYER_INJURED_ROLE_OPTIONS} value={injured.injuredRole} />
                 <DataField label="Apellido" onChange={(value) => updateCase((draft) => { const target = draft.lawyer.injuredParties.find((entry) => entry.id === injured.id); target.lastName = value; })} value={injured.lastName} />
@@ -178,11 +208,11 @@ export default function AbogadoTab({ item, updateCase, flash, insuranceCatalogs 
             <strong>Observaciones y antecedentes del caso</strong>
             <small>Contexto legal y narrativa breve para entender en que tramo esta el reclamo.</small>
           </div>
-          <span className="collapsible-summary-meta">{item.lawyer.observations ? 'Completo' : 'Pendiente'}</span>
+           <span className="collapsible-summary-meta">{lawyer.observations ? 'Completo' : 'Pendiente'}</span>
         </summary>
         <label className="field">
           <span>Detalle</span>
-          <textarea onChange={(event) => updateCase((draft) => { draft.lawyer.observations = event.target.value; })} value={item.lawyer.observations} />
+          <textarea onChange={(event) => updateCase((draft) => { draft.lawyer.observations = event.target.value; })} value={lawyer.observations} />
         </label>
       </details>
 
@@ -192,7 +222,7 @@ export default function AbogadoTab({ item, updateCase, flash, insuranceCatalogs 
             <strong>Documentación Expediente</strong>
             <small>Archivos legales separados de la documentación general del trámite.</small>
           </div>
-          <span className="collapsible-summary-meta">{item.lawyer.expedienteDocuments.length} adjunto(s)</span>
+           <span className="collapsible-summary-meta">{lawyer.expedienteDocuments.length} adjunto(s)</span>
         </summary>
         <div className="section-head">
           <p className="muted">Separada de la documentación general del trámite.</p>
@@ -207,7 +237,7 @@ export default function AbogadoTab({ item, updateCase, flash, insuranceCatalogs 
               <tr><th>Categoría</th><th>Tipo archivo / nombre</th><th>Fecha de carga</th><th>Observaciones</th><th /></tr>
             </thead>
             <tbody>
-              {item.lawyer.expedienteDocuments.map((doc) => (
+              {lawyer.expedienteDocuments.map((doc) => (
                 <tr key={doc.id}>
                   <td><SelectField label="Categoría" onChange={(value) => updateCase((draft) => { const target = draft.lawyer.expedienteDocuments.find((entry) => entry.id === doc.id); target.category = value; })} options={LAWYER_EXPEDIENT_DOC_CATEGORY_OPTIONS} value={doc.category} /></td>
                   <td><DataField label="Nombre" onChange={(value) => updateCase((draft) => { const target = draft.lawyer.expedienteDocuments.find((entry) => entry.id === doc.id); target.name = value; })} value={doc.name} /></td>
@@ -242,7 +272,7 @@ export default function AbogadoTab({ item, updateCase, flash, insuranceCatalogs 
               <tr><th>Actualización</th><th>Fecha novedad</th><th>Notifica a cliente</th><th /></tr>
             </thead>
             <tbody>
-              {item.lawyer.statusUpdates.map((update) => (
+              {lawyer.statusUpdates.map((update) => (
                 <tr key={update.id}>
                   <td><DataField label="Actualización" onChange={(value) => updateCase((draft) => { const target = draft.lawyer.statusUpdates.find((entry) => entry.id === update.id); target.detail = value; })} value={update.detail} /></td>
                   <td><DataField label="Fecha" onChange={(value) => updateCase((draft) => { const target = draft.lawyer.statusUpdates.find((entry) => entry.id === update.id); target.date = value; })} type="date" value={update.date} /></td>
@@ -281,7 +311,7 @@ export default function AbogadoTab({ item, updateCase, flash, insuranceCatalogs 
               <tr><th>Tarea</th><th>Descripción</th><th>Fecha límite</th><th>Prioridad</th><th>Estado</th><th>Responsable</th><th>Hecho</th></tr>
             </thead>
             <tbody>
-              {item.lawyer.agenda.map((task) => {
+              {lawyer.agenda.map((task) => {
                 const normalizedTask = normalizeAgendaTask(task, { sourceArea: 'Abogado', sourceLabel: 'Abogado', relatedTab: 'abogado' });
                 const dueMeta = getAgendaTaskDueMeta(normalizedTask.scheduledAt);
 
@@ -311,14 +341,14 @@ export default function AbogadoTab({ item, updateCase, flash, insuranceCatalogs 
             <strong>Cierre</strong>
             <small>Planilla de gastos, rubros y total manual del expediente.</small>
           </div>
-          <span className="collapsible-summary-meta">{item.lawyer.closure.closeBy}</span>
+          <span className="collapsible-summary-meta">{lawyer.closure.closeBy}</span>
         </summary>
         <div className="section-head small-gap">
           <div>
             <h3>Cierre</h3>
             <p className="muted">Planilla de gastos, rubros y total manual del expediente.</p>
           </div>
-          <StatusBadge tone={item.lawyer.closure.closeBy === 'pendiente' ? 'danger' : 'success'}>{item.lawyer.closure.closeBy}</StatusBadge>
+          <StatusBadge tone={lawyer.closure.closeBy === 'pendiente' ? 'danger' : 'success'}>{lawyer.closure.closeBy}</StatusBadge>
         </div>
         <div className="section-head small-gap">
           <h4>Planilla de gastos</h4>
@@ -333,7 +363,7 @@ export default function AbogadoTab({ item, updateCase, flash, insuranceCatalogs 
               <tr><th>Concepto</th><th>Monto</th><th>Fecha</th><th>Abonó</th><th /></tr>
             </thead>
             <tbody>
-              {item.lawyer.closure.expenses.map((expense) => (
+              {lawyer.closure.expenses.map((expense) => (
                 <tr key={expense.id}>
                   <td><DataField label="Concepto" onChange={(value) => updateCase((draft) => { const target = draft.lawyer.closure.expenses.find((entry) => entry.id === expense.id); target.concept = value; })} value={expense.concept} /></td>
                   <td><DataField label="Monto" onChange={(value) => updateCase((draft) => { const target = draft.lawyer.closure.expenses.find((entry) => entry.id === expense.id); target.amount = value; })} value={expense.amount} /></td>
@@ -347,9 +377,9 @@ export default function AbogadoTab({ item, updateCase, flash, insuranceCatalogs 
         </div>
         <div className="lawyer-total-row"><span>Total gastos</span><strong>{money(expensesTotal)}</strong></div>
         <div className="form-grid three-columns compact-grid">
-          <SelectField label="Cierre por" onChange={(value) => updateCase((draft) => { draft.lawyer.closure.closeBy = value; })} options={legalClosureOptions} value={resolveCatalogCode(item.lawyer.closure.closeBy, getCatalogEntries(insuranceCatalogs, 'legalClosureReasonCodes'), LAWYER_CLOSE_BY_OPTIONS) || item.lawyer.closure.closeBy} />
-          <DataField label="Fecha" onChange={(value) => updateCase((draft) => { draft.lawyer.closure.closeDate = value; })} type="date" value={item.lawyer.closure.closeDate} />
-          <DataField label="Importe total" onChange={(value) => updateCase((draft) => { draft.lawyer.closure.totalAmount = value; draft.payments.manualTotalAmount = value; })} value={item.lawyer.closure.totalAmount} />
+          <SelectField label="Cierre por" onChange={(value) => updateCase((draft) => { draft.lawyer.closure.closeBy = value; })} options={legalClosureOptions} value={resolveCatalogCode(lawyer.closure.closeBy, getCatalogEntries(insuranceCatalogs, 'legalClosureReasonCodes'), LAWYER_CLOSE_BY_OPTIONS) || lawyer.closure.closeBy} />
+          <DataField label="Fecha" onChange={(value) => updateCase((draft) => { draft.lawyer.closure.closeDate = value; })} type="date" value={lawyer.closure.closeDate} />
+          <DataField label="Importe total" onChange={(value) => updateCase((draft) => { draft.lawyer.closure.totalAmount = value; draft.payments.manualTotalAmount = value; })} value={lawyer.closure.totalAmount} />
         </div>
         <div className="section-head small-gap">
           <h4>Detalle de rubros</h4>
@@ -361,7 +391,7 @@ export default function AbogadoTab({ item, updateCase, flash, insuranceCatalogs 
               <tr><th>Concepto</th><th>Monto</th><th>Fecha de pago</th><th>Suma Taller</th><th>Pagado</th><th /></tr>
             </thead>
             <tbody>
-              {item.lawyer.closure.items.map((entry) => (
+              {lawyer.closure.items.map((entry) => (
                 <tr key={entry.id}>
                   <td><DataField label="Concepto" onChange={(value) => updateCase((draft) => { const target = draft.lawyer.closure.items.find((itemEntry) => itemEntry.id === entry.id); target.concept = value; })} value={entry.concept} /></td>
                   <td><DataField label="Monto" onChange={(value) => updateCase((draft) => { const target = draft.lawyer.closure.items.find((itemEntry) => itemEntry.id === entry.id); target.amount = value; })} value={entry.amount} /></td>
@@ -376,7 +406,7 @@ export default function AbogadoTab({ item, updateCase, flash, insuranceCatalogs 
         </div>
         <label className="field">
           <span>Anotaciones</span>
-          <textarea onChange={(event) => updateCase((draft) => { draft.lawyer.closure.notes = event.target.value; })} value={item.lawyer.closure.notes} />
+          <textarea onChange={(event) => updateCase((draft) => { draft.lawyer.closure.notes = event.target.value; })} value={lawyer.closure.notes} />
         </label>
       </details>
     </div>

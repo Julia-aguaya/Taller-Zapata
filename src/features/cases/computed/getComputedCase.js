@@ -954,11 +954,12 @@ export function getComputedCase(item) {
     const retentionsReady = hasTodoRiskRetentionsDefined(item.payments);
     const franchiseReadyForPayments = todoRisk.franchise.status !== 'Pendiente';
     const paymentsReady = Boolean(item.payments.paymentDate && numberValue(item.payments.depositedAmount) > 0 && retentionsReady && franchiseReadyForPayments);
+    const noRepairNeeded = todoRisk.processing.noRepairNeeded;
     const managementAdvanced = Boolean(operativePartsReady && quoteAgreed && amountMeetsMinimum && resolvedAgenda);
+    const turnWarningRequired = !noRepairNeeded && !quoteAgreed;
     const canProgressFromPresentation = Boolean(presentedDate);
     const canCompleteProcessingCore = Boolean(incidentDate && hasRecoveryType);
     const latestPaymentDate = item.payments.paymentDate || item.payments.passedToPaymentsDate || item.payments.estimatedPaymentDate;
-    const noRepairNeeded = todoRisk.processing.noRepairNeeded;
 
     const hasScheduledTurn = Boolean(item.repair.turno.date);
 
@@ -1011,8 +1012,7 @@ export function getComputedCase(item) {
     if (todoRisk.franchise.recoveryType === 'Propia Cía.' && !todoRisk.franchise.dictamen) blockers.push('Recupero por Propia Cía. exige Dictamen.');
     if (todoRisk.franchise.exceedsFranchise === 'NO' && !todoRisk.franchise.recoveryAmount) blockers.push('Si la cotización no supera franquicia, cargá el monto a recuperar.');
     if (pendingPartsAuthorization && canProgressFromPresentation) blockers.push('Definí autorización SI/NO de cada repuesto antes de cerrar Gestión del trámite.');
-    if (!managementAdvanced) blockers.push('Gestión del trámite sigue en rojo hasta acordar cotización, resolver agenda y recibir repuestos requeridos o marcar que no aplican.');
-    if (!noRepairNeeded && !quoteAgreed) blockers.push('No podés dar turno sin cotización acordada con fecha y monto.');
+    if (!managementAdvanced && (!operativePartsReady || !resolvedAgenda || !amountMeetsMinimum)) blockers.push('Gestión del trámite sigue en rojo hasta resolver agenda y repuestos requeridos o marcar que no aplican.');
     if (item.payments.invoice === 'SI' && (!item.payments.businessName || !item.payments.invoiceNumber)) blockers.push('Facturación en SI exige razón social y número principal.');
     if (item.payments.hasRetentions === 'SI' && !retentionsReady) blockers.push('Si hay retenciones, deben quedar todas definidas antes de cerrar Pagos.');
     if (!franchiseReadyForPayments) blockers.push('Pagos no cierra mientras la franquicia siga pendiente.');
@@ -1076,6 +1076,7 @@ export function getComputedCase(item) {
           paymentStatus,
           managementAdvanced,
           hasPendingAgenda,
+          turnWarningRequired,
           canProgressFromPresentation,
           canCompleteProcessingCore,
           paymentsReady,

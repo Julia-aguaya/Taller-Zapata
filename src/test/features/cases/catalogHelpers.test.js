@@ -4,6 +4,7 @@ import {
   getCatalogOptionNames,
   getCatalogSelectOptions,
   resolveCatalogCode,
+  resolveCatalogLabel,
 } from '../../../features/cases/lib/caseCatalogHelpers';
 
 describe('caseCatalogHelpers', () => {
@@ -137,6 +138,29 @@ describe('caseCatalogHelpers', () => {
     it('debería retornar null para valor null', () => {
       const result = resolveCatalogCode(null, entries);
       expect(result).toBeNull();
+    });
+  });
+
+  describe('resolveCatalogLabel', () => {
+    const entries = [
+      { code: 'TERCERO', name: 'Cía. del 3ero' },
+      { code: 'PROPIA', name: 'Propia Cía.' },
+    ];
+
+    it('devuelve el nombre cuando recibe el codigo', () => {
+      expect(resolveCatalogLabel('TERCERO', entries)).toBe('Cía. del 3ero');
+    });
+
+    it('devuelve el nombre cuando recibe la etiqueta', () => {
+      expect(resolveCatalogLabel('Propia Cía.', entries)).toBe('Propia Cía.');
+    });
+
+    it('usa fallback cuando no hay catalogo', () => {
+      expect(resolveCatalogLabel('Pendiente', [], ['Pendiente', 'Cobrada'])).toBe('Pendiente');
+    });
+
+    it('devuelve string vacio para valores vacios', () => {
+      expect(resolveCatalogLabel('', entries)).toBe('');
     });
   });
 });

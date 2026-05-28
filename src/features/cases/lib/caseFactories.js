@@ -220,29 +220,46 @@ export function createTodoRiskDefaults(overrides = {}) {
 }
 
 export function createThirdPartyDefaults(overrides = {}) {
+  const claimOverrides = overrides.claim || {};
+  const paymentOverrides = overrides.payments || {};
+  const registryOverrides = overrides.clientRegistry || {};
+  const { claim: _ignoredClaim, payments: _ignoredPayments, clientRegistry: _ignoredRegistry, ...rootOverrides } = overrides;
+  const thirdParties = Array.isArray(claimOverrides.thirdParties)
+    ? claimOverrides.thirdParties
+    : [createThirdPartyParticipant()];
+  const documents = Array.isArray(claimOverrides.documents)
+    ? claimOverrides.documents
+    : [createTodoRiskDocument()];
+  const clientPayments = Array.isArray(paymentOverrides.clientPayments)
+    ? paymentOverrides.clientPayments
+    : [];
+
   return {
     clientRegistry: {
       isOwner: 'SI',
       ownershipPercentage: '100%',
-      owners: overrides.clientRegistry?.owners ?? [createRegistryOwner(), createRegistryOwner()],
-      ...overrides.clientRegistry,
+      owners: registryOverrides.owners ?? [createRegistryOwner(), createRegistryOwner()],
+      ...registryOverrides,
     },
     claim: {
       presentedDate: '',
       claimReference: '',
       thirdCompany: '',
-      thirdParties: overrides.claim?.thirdParties ?? [createThirdPartyParticipant()],
+      thirdParties,
       documentationStatus: 'Incompleta',
       documentationAccepted: false,
-      documents: overrides.claim?.documents ?? [createTodoRiskDocument()],
+      documents,
       partsProviderMode: 'Provee Cía.',
-      ...overrides.claim,
+      ...claimOverrides,
+      thirdParties,
+      documents,
     },
     payments: {
-      clientPayments: overrides.payments?.clientPayments ?? [],
-      ...overrides.payments,
+      clientPayments,
+      ...paymentOverrides,
+      clientPayments,
     },
-    ...overrides,
+    ...rootOverrides,
   };
 }
 

@@ -42,6 +42,7 @@ export default function PanelGeneral({
         onRefresh={onRefreshAuthenticatedCases}
         onSaveDocument={onSaveDocument}
         prioritizeForUser
+        sortStrategy="latest-created"
         showLoadMore={false}
         state={authenticatedCasesState}
       />

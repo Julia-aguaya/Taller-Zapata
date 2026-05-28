@@ -12,16 +12,38 @@ export function getCaseSearchHaystack(item) {
   if (!item) return '';
   
   const parts = [
+    item.folderCode,
+    item.publicId,
+    item.id,
     item.caseNumber,
     item.clientName,
     item.clientDocument,
+    item.customerName,
+    item.claimantName,
+    item.insuredName,
+    item.holderName,
+    item.ownerName,
+    item.client?.firstName,
+    item.client?.lastName,
+    item.client?.document,
+    item.client?.email,
     item.vehiclePlate,
     item.vehicleBrand,
     item.vehicleModel,
+    item.plate,
+    item.licensePlate,
+    item.patent,
+    item.brand,
+    item.model,
+    item.vehicle?.plate,
+    item.vehicle?.brand,
+    item.vehicle?.model,
     item.branchName,
     item.branchCode,
+    item.branch,
     item.insuranceCompanyName,
     item.currentCaseStateCode,
+    formatBackendState(item.currentCaseStateCode, ''),
   ].filter(Boolean);
   
   return normalizeLookupText(parts.join(' '));

@@ -154,6 +154,40 @@ class CaseCreateIntegrationTest {
     }
 
     @Test
+    void shouldCreateLawyerThirdPartyCaseWithLawyerFolderCode() throws Exception {
+        CaseCreateRequest request = new CaseCreateRequest(
+                6L,
+                1L,
+                1L,
+                10L,
+                10L,
+                false,
+                null,
+                "",
+                "ALTA",
+                "Reclamo con abogado",
+                LocalDate.of(2026, 4, 20),
+                LocalTime.of(10, 30),
+                "Av. Siempre Viva 742",
+                "Choque lateral",
+                "Sin lesionados",
+                LocalDate.of(2026, 5, 20),
+                2,
+                "CLIENTE",
+                "PRINCIPAL"
+        );
+
+        mockMvc.perform(post("/api/v1/cases")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.folderCode").value("0001RAZ"))
+                .andExpect(jsonPath("$.caseTypeCode").value("RECLAMO_TERCEROS_ABOGADO"))
+                .andExpect(jsonPath("$.currentCaseStateCode").value("INGRESADO"));
+    }
+
+    @Test
     void shouldRejectCreateWhenPrincipalPersonDoesNotExist() throws Exception {
         CaseCreateRequest request = new CaseCreateRequest(
                 1L,

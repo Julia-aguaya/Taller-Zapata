@@ -286,6 +286,17 @@ function resolveComparableDate(item, fieldNames) {
   return String(rawValue || '').slice(0, 10);
 }
 
+function compareCasesByLatestCreation(left, right) {
+  const leftOpenedAt = resolveComparableDate(left, ['openedAt', 'openedDate', 'openAt', 'createdAt', 'creationDate', 'entryDate']) || '0000-00-00';
+  const rightOpenedAt = resolveComparableDate(right, ['openedAt', 'openedDate', 'openAt', 'createdAt', 'creationDate', 'entryDate']) || '0000-00-00';
+
+  if (leftOpenedAt !== rightOpenedAt) {
+    return rightOpenedAt.localeCompare(leftOpenedAt);
+  }
+
+  return String(getBackendCaseKey(right)).localeCompare(String(getBackendCaseKey(left)), 'es');
+}
+
 function hasPendingTasks(item) {
   if (typeof item?.hasPendingTasks === 'boolean') {
     return item.hasPendingTasks;
@@ -399,6 +410,7 @@ export default function AuthenticatedCasesPreview({
   onDownloadDocument,
   onPreviewDocument,
   prioritizeForUser = false,
+  sortStrategy = 'default',
   showLoadMore = true,
   state,
 }) {
@@ -410,11 +422,17 @@ export default function AuthenticatedCasesPreview({
   const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false);
   const [visibleCasesCount, setVisibleCasesCount] = useState(initialVisibleCases);
   const onRefreshRef = useRef(onRefresh);
+  const appliedAdvancedFiltersRef = useRef(appliedAdvancedFilters);
+  const hasMountedSearchRefreshRef = useRef(false);
   const normalizedSearchTerm = searchTerm.trim().toLowerCase();
 
   useEffect(() => {
     onRefreshRef.current = onRefresh;
   }, [onRefresh]);
+
+  useEffect(() => {
+    appliedAdvancedFiltersRef.current = appliedAdvancedFilters;
+  }, [appliedAdvancedFilters]);
 
   const caseStateOptions = useMemo(() => {
     const values = Array.from(new Set(
@@ -515,6 +533,10 @@ export default function AuthenticatedCasesPreview({
     });
   }, [advancedFilteredItems, normalizedSearchTerm, selectedCaseState, selectedBranch]);
   const rankedItems = useMemo(() => {
+    if (sortStrategy === 'latest-created') {
+      return [...filteredItems].sort(compareCasesByLatestCreation);
+    }
+
     if (!prioritizeForUser) {
       return filteredItems;
     }
@@ -540,8 +562,12 @@ export default function AuthenticatedCasesPreview({
         : 'Pendiente';
 
   const refreshWithAdvancedFilters = useCallback((filters) => {
-    return onRefreshRef.current(buildAdvancedFiltersPayload(filters));
-  }, []);
+    const payload = buildAdvancedFiltersPayload(filters);
+    if (searchTerm.trim()) {
+      payload.q = searchTerm.trim();
+    }
+    return onRefreshRef.current(payload);
+  }, [searchTerm]);
 
   const handleSetAdvancedFilter = useCallback((field, value) => {
     setDraftAdvancedFilters((current) => ({
@@ -570,6 +596,19 @@ export default function AuthenticatedCasesPreview({
       setIsAdvancedFiltersOpen(true);
     }
   }, [activeAdvancedFiltersCount, draftAdvancedFiltersCount]);
+
+  useEffect(() => {
+    if (!hasMountedSearchRefreshRef.current) {
+      hasMountedSearchRefreshRef.current = true;
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => {
+      void refreshWithAdvancedFilters(appliedAdvancedFiltersRef.current);
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [refreshWithAdvancedFilters, searchTerm]);
 
   const handleLoadMore = () => {
     setVisibleCasesCount((current) => current + loadMoreStep);
@@ -612,6 +651,7 @@ export default function AuthenticatedCasesPreview({
         statusLabel={statusLabel}
         statusTone={statusTone}
         StatusBadge={StatusBadge}
+        usesBackendSearch
         visibleRepairStateOptions={visibleRepairStateOptions}
         visibleTramiteStateOptions={visibleTramiteStateOptions}
       />

@@ -34,7 +34,7 @@ import {
   syncThirdPartyQuoteRowsWithBudget,
 } from '../lib/gestionShared';
 import { createTodoRiskTask as createTodoRiskTaskFactory } from '../../cases/lib/caseFactories';
-import { getStatusTone, money, todayIso } from '../lib/gestionUtils';
+import { getStatusTone, money, todayIso, TODO_RIESGO_TURNO_WARNING_MESSAGE } from '../lib/gestionUtils';
 import { todayIso as todayIsoAgenda } from '../../cases/lib/caseAgendaHelpers';
 
 export default function GestionReparacionTab({ item, updateCase, activeRepairTab, onChangeRepairTab, flash }) {
@@ -96,11 +96,6 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
       return;
     }
 
-    if (isInsuranceWorkflowCase(item) && !item.computed.todoRisk.quoteAgreed && !item.todoRisk.processing.adminTurnOverride) {
-      flash('Bloqueado: para Todo Riesgo necesitás cotización acordada con fecha y monto. Solo administración puede forzar la excepción visual.');
-      return;
-    }
-
     if (!item.computed.turnoReady) {
       flash('No se puede agendar turno si faltan fecha, dias estimados, salida estimada y estado.');
       return;
@@ -134,7 +129,9 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
       }
     }
 
-    flash('Turno agendado. La salida estimada excluye fines de semana.');
+    flash(item.computed.todoRisk.turnWarningRequired
+      ? `Turno agendado con advertencia. ${TODO_RIESGO_TURNO_WARNING_MESSAGE}`
+      : 'Turno agendado. La salida estimada excluye fines de semana.');
   };
 
   const addRepairPart = () => {
@@ -161,7 +158,7 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
   };
 
   const repairTabs = [
-    { id: 'repuestos', label: 'Repuestos' },
+    { id: 'repuestos', label: 'Cotización / Pedidos' },
     { id: 'turno', label: 'Turno' },
     { id: 'ingreso', label: 'Ingreso' },
     { id: 'egreso', label: 'Egreso' },
@@ -187,6 +184,11 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
   const repairedMediaItems = item.repair.egreso.repairedMedia || [];
   const currentPreviewBroken = previewMedia ? brokenPreviewIds.includes(previewMedia.id) : false;
   const thirdPartyRepairTab = ['repuestos', 'turno'].includes(activeRepairTab) ? activeRepairTab : 'repuestos';
+  const quoteAlternativeCount = (item.repair.quoteRows || []).reduce(
+    (sum, row) => sum + ['provider1', 'provider2', 'provider3', 'provider4'].filter((field) => numberValue(row?.[field]) > 0).length,
+    0,
+  );
+  const getArrivalLabel = (part) => (part.state === 'Recibido' || part.receivedDate ? 'Si' : 'No');
 
   useEffect(() => {
     if (activeRepairTab !== 'repuestos') {
@@ -251,8 +253,8 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
           <article className="card inner-card">
             <div className="section-head">
               <div>
-                <p className="eyebrow">Planilla de cotizaciones</p>
-                <h3>Piezas traídas desde Presupuesto</h3>
+                <p className="eyebrow">Cotización</p>
+                <h3>Precios, alternativas y proveedor sugerido</h3>
               </div>
               <div className="tag-row">
                 <StatusBadge tone={item.repair.quoteRows?.length ? 'info' : 'danger'}>{item.repair.quoteRows?.length || 0} pieza(s)</StatusBadge>
@@ -264,16 +266,24 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
 
             <div className="parts-total-grid third-party-summary-grid">
               <article className="summary-chip">
+                <span>Proveedor sugerido</span>
+                <strong>{item.budget.partsProvider || 'Sin sugerir'}</strong>
+              </article>
+              <article className="summary-chip">
+                <span>Mano de obra</span>
+                <strong>{money(item.computed.laborWithoutVat)}</strong>
+              </article>
+              <article className="summary-chip">
+                <span>Alternativas</span>
+                <strong>{quoteAlternativeCount}</strong>
+              </article>
+              <article className="summary-chip">
                 <span>Subtotal mejor cotización</span>
                 <strong>{money(bestQuoteSubtotal)}</strong>
               </article>
               <article className="summary-chip">
-                <span>Mínimo repuestos</span>
-                <strong>{money(item.computed.thirdParty.minimumParts)}</strong>
-              </article>
-              <article className="summary-chip">
-                <span>Piezas sincronizadas</span>
-                <strong>{item.repair.quoteRows?.length || 0}</strong>
+                <span>Repuestos estimados</span>
+                <strong>{money(item.computed.partsTotal)}</strong>
               </article>
             </div>
 
@@ -320,7 +330,7 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
             <div className="section-head">
               <div>
                 <p className="eyebrow">Gestión de pedidos</p>
-                <h3>Carga manual y etiquetas</h3>
+                <h3>Confirmación operativa y llegada</h3>
               </div>
               <div className="tag-row">
                 <StatusBadge tone={item.repair.parts.length ? 'info' : 'danger'}>{item.repair.parts.length} repuesto(s)</StatusBadge>
@@ -328,6 +338,8 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
                 <button className="secondary-button" onClick={addRepairPart} type="button">Agregar repuesto</button>
               </div>
             </div>
+
+            <div className="inline-alert info-banner">La fecha de pedido todavía no tiene un campo separado en el backend actual. Esta vista deja clara la confirmación del repuesto, el proveedor, el estado y si llegó.</div>
 
             <div className="parts-total-grid third-party-summary-grid">
               <article className="summary-chip">
@@ -352,7 +364,7 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
                       <strong>{part.name || 'Nuevo repuesto'}</strong>
                       <small>N° inventario {getThirdPartyInventoryCode(item.code, index)}</small>
                     </div>
-                    <DataField disabled={noRepairNeeded} label="Repuesto" onChange={(value) => updateCase((draft) => {
+                    <DataField disabled={noRepairNeeded} label="Repuesto confirmado" onChange={(value) => updateCase((draft) => {
                       const target = draft.repair.parts.find((entry) => entry.id === part.id);
                       target.name = value;
                     })} value={part.name} />
@@ -364,13 +376,15 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
                       const target = draft.repair.parts.find((entry) => entry.id === part.id);
                       target.provider = value;
                     })} value={part.provider} />
-                    <SelectField disabled={noRepairNeeded} label="Estado" onChange={(value) => updateCase((draft) => {
+                    <DataField disabled label="Fecha pedido" onChange={() => {}} readOnly value="Sin campo separado" />
+                    <SelectField disabled={noRepairNeeded} label="Estado pedido" onChange={(value) => updateCase((draft) => {
                       const target = draft.repair.parts.find((entry) => entry.id === part.id);
                       target.state = value;
                       if (value !== 'Recibido') {
                         target.receivedDate = '';
                       }
                     })} options={THIRD_PARTY_ORDER_STATE_OPTIONS} value={part.state} />
+                    <DataField disabled label="Llegó" onChange={() => {}} readOnly value={getArrivalLabel(part)} />
                     <DataField disabled={noRepairNeeded} label="Fecha recibido" onChange={(value) => updateCase((draft) => {
                       const target = draft.repair.parts.find((entry) => entry.id === part.id);
                       target.receivedDate = value;
@@ -405,7 +419,7 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
   if (isInsuranceWorkflowCase(item)) {
     const todoRiskParts = item.repair.parts.filter((part) => part.source === 'budget');
     const authorizedParts = todoRiskParts.filter((part) => part.authorized === 'SI');
-    const turnoBlockedForTodoRisk = !item.computed.todoRisk.quoteAgreed && !item.todoRisk.processing.adminTurnOverride;
+    const turnoWarningForTodoRisk = item.computed.todoRisk.turnWarningRequired;
     const authorizationBlocked = !item.computed.todoRisk.canProgressFromPresentation;
 
     return (
@@ -443,20 +457,36 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
           <article className="card inner-card">
             <div className="section-head">
               <div>
-                <p className="eyebrow">Repuestos</p>
-                <h3>Automáticos desde Presupuesto</h3>
+                <p className="eyebrow">Cotización y pedidos</p>
+                <h3>Repuestos estimados + confirmación operativa</h3>
               </div>
               <button className="secondary-button" onClick={() => flash('Imprimir etiqueta: se preparará la etiqueta individual del repuesto.') } type="button">Imprimir etiqueta</button>
             </div>
+            <div className="parts-total-grid third-party-summary-grid">
+              <article className="summary-chip">
+                <span>Proveedor sugerido</span>
+                <strong>{item.budget.partsProvider || 'Sin sugerir'}</strong>
+              </article>
+              <article className="summary-chip">
+                <span>Mano de obra</span>
+                <strong>{money(item.computed.laborWithoutVat)}</strong>
+              </article>
+              <article className="summary-chip">
+                <span>Repuestos estimados</span>
+                <strong>{money(item.computed.partsTotal)}</strong>
+              </article>
+            </div>
+            <div className="inline-alert info-banner">La cotización queda respaldada en Presupuesto. Acá se confirma qué repuesto se pide, a qué proveedor, en qué estado está y si ya llegó. La fecha de pedido todavía no tiene campo separado.</div>
             <div className="table-wrap">
               <table className="data-table compact-table">
                 <thead>
                   <tr>
-                    <th>Repuesto</th>
-                    <th>Autorizado</th>
+                    <th>Repuesto confirmado</th>
+                    <th>Se pide</th>
                     <th>Proveedor</th>
-                    <th>Estado</th>
-                    <th>Recibido</th>
+                    <th>Fecha pedido</th>
+                    <th>Estado pedido</th>
+                    <th>Llegó</th>
                     <th>N° inventario</th>
                     <th>Acciones</th>
                   </tr>
@@ -475,6 +505,7 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
                           </div>
                         </td>
                         <td><DataField label="Proveedor" onChange={(value) => updateCase((draft) => { const target = draft.repair.parts.find((entry) => entry.id === part.id); target.provider = value; })} value={part.provider} /></td>
+                        <td>Sin campo separado</td>
                         <td><SelectField disabled={authorizationBlocked} label="Estado" onChange={(value) => updateCase((draft) => { const target = draft.repair.parts.find((entry) => entry.id === part.id); target.state = value; })} options={REPAIR_PART_STATE_OPTIONS} value={part.state} /></td>
                         <td>{part.state === 'Recibido' ? 'Sí' : 'No'}</td>
                         <td>{inventoryCode}</td>
@@ -494,11 +525,11 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
             <div className="section-head">
               <div>
                 <p className="eyebrow">Turno</p>
-                <h3>Guard con excepción administrativa</h3>
+                <h3>Turno con advertencia operativa</h3>
               </div>
               <button className="primary-button" onClick={assignTurn} type="button">Agendar turno</button>
             </div>
-            {turnoBlockedForTodoRisk ? <div className="inline-alert danger-banner">Sin cotización acordada no se da turno, salvo la excepción visual administrativa.</div> : null}
+            {turnoWarningForTodoRisk ? <div className="inline-alert warning-banner" role="status" aria-live="polite">{TODO_RIESGO_TURNO_WARNING_MESSAGE}</div> : null}
             <div className="form-grid four-columns compact-grid">
               <DataField label="Fecha" onChange={(value) => updateCase((draft) => { draft.repair.turno.date = value; })} type="date" value={item.repair.turno.date} />
               <DataField label="Días estimados" onChange={(value) => updateCase((draft) => { draft.repair.turno.estimatedDays = value; })} type="number" value={item.repair.turno.estimatedDays} />
@@ -568,8 +599,8 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
           <article className="card inner-card parts-forecast-card">
             <div className="section-head">
               <div>
-                <p className="eyebrow">Repuestos presupuestados</p>
-                <h3>Traídos desde REEMPLAZAR</h3>
+                <p className="eyebrow">Cotización</p>
+                <h3>Repuestos estimados desde Presupuesto</h3>
               </div>
               <StatusBadge tone={item.computed.budgetParts.length ? 'info' : 'danger'}>
                 {item.computed.budgetParts.length ? `${item.computed.budgetParts.length} piezas` : 'Sin líneas'}
@@ -577,8 +608,30 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
             </div>
 
             <div className="inline-alert info-banner">
-              Esta sub-solapa replica automáticamente las líneas con REEMPLAZAR. Podés sacar ítems acá sin tocar el origen del presupuesto.
+              Esta vista replica automáticamente las líneas con REEMPLAZAR para separar la cotización del pedido real. Podés sacar ítems acá sin tocar el origen del presupuesto.
             </div>
+
+            <div className="parts-total-grid">
+              <article className="summary-chip">
+                <span>Proveedor sugerido</span>
+                <strong>{item.budget.partsProvider || 'Sin sugerir'}</strong>
+              </article>
+              <article className="summary-chip">
+                <span>Mano de obra</span>
+                <strong>{money(item.computed.laborWithoutVat)}</strong>
+              </article>
+              <article className="summary-chip">
+                <span>Repuestos estimados</span>
+                <strong>{money(item.computed.partsTotal)}</strong>
+              </article>
+            </div>
+
+            {item.budget.observations ? (
+              <label className="field">
+                <span>Alternativas / observaciones</span>
+                <textarea readOnly value={item.budget.observations} />
+              </label>
+            ) : null}
 
             {item.computed.budgetParts.length ? (
               <div className="parts-forecast-grid">
@@ -617,8 +670,8 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
           <article className="card inner-card">
             <div className="section-head">
               <div>
-                <p className="eyebrow">Gestión operativa</p>
-                <h3>Pedidos y recepciones</h3>
+                <p className="eyebrow">Pedidos</p>
+                <h3>Confirmación operativa y llegada</h3>
               </div>
               <div className="tag-row">
                 <StatusBadge tone={item.repair.parts.length ? 'info' : 'danger'}>{money(item.computed.repairPartsTotal)}</StatusBadge>
@@ -629,6 +682,8 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
                 <button className="secondary-button" onClick={addRepairPart} type="button">Agregar repuesto</button>
               </div>
             </div>
+
+            <div className="inline-alert info-banner">La fecha de pedido todavía no tiene un campo persistido por separado. Por ahora esta solapa ordena el repuesto confirmado, proveedor, estado del pedido y si llegó o no llegó.</div>
 
             <div className="parts-total-grid">
               <article className="summary-chip">
@@ -653,7 +708,7 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
                       <strong>{part.name || 'Nuevo repuesto'}</strong>
                       <small>{part.source === 'budget' ? 'Arrastrado desde Presupuesto' : 'Carga independiente en Repuestos'}</small>
                     </div>
-                    <DataField label="Repuesto" onChange={(value) => updateCase((draft) => {
+                    <DataField label="Repuesto confirmado" onChange={(value) => updateCase((draft) => {
                       const target = draft.repair.parts.find((entry) => entry.id === part.id);
                       target.name = value;
                     })} value={part.name} />
@@ -661,14 +716,16 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
                       const target = draft.repair.parts.find((entry) => entry.id === part.id);
                       target.provider = value;
                     })} value={part.provider} />
+                    <DataField label="Fecha pedido" onChange={() => {}} readOnly value="Sin campo separado" />
                     <DataField label="Importe" onChange={(value) => updateCase((draft) => {
                       const target = draft.repair.parts.find((entry) => entry.id === part.id);
                       target.amount = value;
                     })} value={part.amount} />
-                    <SelectField label="Estado" onChange={(value) => updateCase((draft) => {
+                    <SelectField label="Estado pedido" onChange={(value) => updateCase((draft) => {
                       const target = draft.repair.parts.find((entry) => entry.id === part.id);
                       target.state = value;
                     })} options={REPAIR_PART_STATE_OPTIONS} value={part.state} />
+                    <DataField label="Llegó" onChange={() => {}} readOnly value={getArrivalLabel(part)} />
                     <SelectField label="Compra" onChange={(value) => updateCase((draft) => {
                       const target = draft.repair.parts.find((entry) => entry.id === part.id);
                       target.purchaseBy = value;

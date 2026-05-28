@@ -40,6 +40,8 @@ describe('patchCaseWithBackendDetail', () => {
           model: 'Focus',
           plate: 'AA123BB',
           year: 2020,
+          vehicleTypeCode: 'SUV',
+          usageCode: 'Particular',
           color: 'Gris',
           chassis: 'CH-001',
           engine: 'EN-001',
@@ -60,6 +62,8 @@ describe('patchCaseWithBackendDetail', () => {
       model: 'Focus',
       plate: 'AA123BB',
       year: 2020,
+      type: 'SUV',
+      usage: 'Particular',
       color: 'Gris',
       chassis: 'CH-001',
       engine: 'EN-001',
@@ -101,5 +105,61 @@ describe('patchCaseWithBackendDetail', () => {
 
     expect(localCase.customer.firstName).toBe('Juan');
     expect(localCase.customer.lastName).toBe('Perez');
+  });
+
+  it('hidrata el estado cerrado del presupuesto backend para habilitar el PDF real', () => {
+    const localCase = {
+      id: '9401',
+      customer: {
+        firstName: '',
+        lastName: '',
+        phone: '',
+        document: '',
+        email: '',
+      },
+      vehicle: {
+        brand: '',
+        model: '',
+        plate: '',
+        year: '',
+        color: '',
+        chassis: '',
+        engine: '',
+        transmission: '',
+      },
+      budget: {
+        amount: '',
+        lines: [],
+        services: [],
+        reportStatus: 'Informe abierto',
+        generated: false,
+        laborWithoutVat: 0,
+        estimatedWorkDays: '',
+        minimumLaborClose: '',
+        observations: '',
+      },
+    };
+
+    patchCaseWithBackendDetail(localCase, {
+      budgetState: {
+        data: {
+          reportStatusCode: 'CERRADO',
+          laborWithoutVat: 450000,
+          estimatedDays: 4,
+          minimumCloseAmount: 400000,
+          observations: 'Presupuesto ejecutado y cerrado.',
+          items: [],
+        },
+      },
+    });
+
+    expect(localCase.budget).toMatchObject({
+      reportStatus: 'Informe cerrado',
+      generated: true,
+      laborWithoutVat: 450000,
+      estimatedWorkDays: 4,
+      minimumLaborClose: 400000,
+      observations: 'Presupuesto ejecutado y cerrado.',
+    });
   });
 });

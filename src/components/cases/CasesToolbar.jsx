@@ -29,6 +29,7 @@ export default function CasesToolbar({
   statusLabel,
   statusTone,
   StatusBadge,
+  usesBackendSearch = false,
   visibleRepairStateOptions,
   visibleTramiteStateOptions,
 }) {
@@ -72,6 +73,7 @@ export default function CasesToolbar({
           type="search"
           value={searchTerm}
         />
+        {usesBackendSearch ? <small>La búsqueda textual consulta el backend y después afina visualmente el listado actual.</small> : null}
       </div>
 
       <div className="simple-filter-grid" role="group" aria-label="Filtros rápidos de carpetas">

@@ -7,6 +7,7 @@ import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import userEvent from '@testing-library/user-event';
+import { shouldPromptRepairAccess } from '../../../App';
 
 import GestionView from '../../../features/gestion/components/GestionView';
 import FichaTecnicaTab from '../../../features/gestion/components/FichaTecnicaTab';
@@ -466,6 +467,63 @@ describe('GestionView', () => {
     expect(onChangeTab).toHaveBeenCalledWith('presupuesto');
   });
 
+  it('permite abrir Gestión de reparación aunque presupuesto siga en rojo', async () => {
+    const onChangeTab = vi.fn();
+    const flash = vi.fn();
+    const user = userEvent.setup();
+
+    render(<GestionView {...baseProps} flash={flash} onChangeTab={onChangeTab} />);
+
+    await user.click(screen.getByRole('button', { name: /Gestión de reparación/i }));
+
+    expect(onChangeTab).toHaveBeenCalledWith('gestion');
+    expect(flash).not.toHaveBeenCalled();
+  });
+
+  it('guarda solo presupuesto desde Guardar cotizacion', async () => {
+    const user = userEvent.setup();
+    const onSyncCase = vi.fn().mockResolvedValue(true);
+
+    render(<GestionView {...baseProps} activeTab="presupuesto" hasUnsavedChanges onSyncCase={onSyncCase} />);
+
+    await user.click(screen.getByRole('button', { name: 'Guardar cotizacion' }));
+
+    expect(onSyncCase).toHaveBeenCalledWith({ tabs: ['presupuesto'], changeNote: '' });
+  });
+
+  it('en abogado, el click en Gestión de reparación sigue despachando tab gestion', async () => {
+    const onChangeTab = vi.fn();
+    const user = userEvent.setup();
+    const lawyerCase = {
+      ...structuredClone(mockCase),
+      id: 'lawyer-1',
+      tramiteType: 'Reclamo de Tercero - Abogado',
+      computed: {
+        ...structuredClone(mockCase.computed),
+        todoRisk: {
+          ...structuredClone(mockCase.computed.todoRisk),
+          turnWarningRequired: true,
+        },
+      },
+    };
+
+    render(<GestionView {...baseProps} item={lawyerCase} onChangeTab={onChangeTab} activeTab="abogado" />);
+
+    await user.click(screen.getByRole('button', { name: /Gestión de reparación/i }));
+
+    expect(onChangeTab).toHaveBeenCalledWith('gestion');
+  });
+
+  it('mantiene la advertencia al evaluar una carpeta backend recien hidratada', () => {
+    const backendLikeCase = structuredClone(todoRiskCase);
+    backendLikeCase.todoRisk.processing.quoteStatus = 'Pendiente';
+    backendLikeCase.todoRisk.processing.quoteDate = '';
+    backendLikeCase.todoRisk.processing.agreedAmount = '';
+    delete backendLikeCase.computed;
+
+    expect(shouldPromptRepairAccess(backendLikeCase, { tab: 'gestion' })).toBe(true);
+  });
+
   it('muestra historial cuando el detalle viene con id numerico y la carpeta local usa id string', () => {
     render(
       <GestionView
@@ -495,6 +553,41 @@ describe('GestionView', () => {
     expect(screen.getByText('Actualizar Siniestro Caso')).toBeInTheDocument();
     expect(screen.getByText('Nota: Actualizamos la fecha del siniestro')).toBeInTheDocument();
     expect(screen.getByText('Usuario Test')).toBeInTheDocument();
+  });
+
+  it('muestra warning operativo en GestionView cuando falta cotizacion acordada', async () => {
+    const user = userEvent.setup();
+    const flash = vi.fn();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const item = {
+      ...structuredClone(todoRiskCase),
+      todoRisk: {
+        ...structuredClone(todoRiskCase.todoRisk),
+        processing: {
+          ...structuredClone(todoRiskCase.todoRisk.processing),
+          quoteStatus: 'Pendiente',
+          quoteDate: '',
+          agreedAmount: '',
+        },
+      },
+      computed: {
+        ...structuredClone(todoRiskCase.computed),
+        todoRisk: {
+          ...structuredClone(todoRiskCase.computed.todoRisk),
+          quoteAgreed: false,
+          turnWarningRequired: true,
+        },
+      },
+    };
+
+    render(<GestionView {...baseProps} item={item} activeTab="gestion" activeRepairTab="turno" flash={flash} />);
+
+    expect(screen.getByText(/Podés seguir con agenda y turno/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Agendar turno' }));
+
+    expect(flash).toHaveBeenCalledWith(expect.stringContaining('Turno agendado con advertencia.'));
+    confirmSpy.mockRestore();
   });
 });
 
@@ -567,6 +660,57 @@ describe('GestionTramiteTab', () => {
     render(<GestionTramiteTab {...baseProps} />);
     expect(screen.getByText('Franquicia')).toBeInTheDocument();
   });
+
+  it('muestra opciones pedidas en Recupero y Franquicia para Todo Riesgo', () => {
+    render(<GestionTramiteTab {...baseProps} item={todoRiskCase} />);
+
+    expect(screen.getByRole('option', { name: 'Cia Del 3ero' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Abona Cliente' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '3ero particular' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Propia Cia' })).toBeInTheDocument();
+
+    expect(screen.getByRole('option', { name: 'Sin Franquicia' })).toBeInTheDocument();
+    expect(screen.getAllByRole('option', { name: 'Pendiente' }).length).toBeGreaterThan(0);
+    expect(screen.getByRole('option', { name: 'Cobrada' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Bonificada' })).toBeInTheDocument();
+  });
+
+  it('fuerza 4 opciones de Franquicia y Recupero cuando catálogo backend no matchea', () => {
+    const nonMatchingCatalogs = {
+      franchiseStatusCodes: [
+        { code: 'SFR', name: 'Estado X' },
+        { code: 'PENX', name: 'Estado Y' },
+      ],
+      franchiseRecoveryTypeCodes: [
+        { code: 'R1', name: 'Recupero A' },
+        { code: 'R2', name: 'Recupero B' },
+      ],
+    };
+
+    render(<GestionTramiteTab {...baseProps} item={todoRiskCase} insuranceCatalogs={nonMatchingCatalogs} />);
+
+    expect(screen.getByRole('option', { name: 'Sin Franquicia' })).toBeInTheDocument();
+    expect(screen.getAllByRole('option', { name: 'Pendiente' }).length).toBeGreaterThan(0);
+    expect(screen.getByRole('option', { name: 'Cobrada' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Bonificada' })).toBeInTheDocument();
+
+    expect(screen.getByRole('option', { name: 'Cia Del 3ero' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Abona Cliente' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: '3ero particular' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Propia Cia' })).toBeInTheDocument();
+  });
+
+  it('oculta bloque de Franquicia en CLEAS (incluye Propia Cia)', () => {
+    const cleasCase = {
+      ...structuredClone(todoRiskCase),
+      tramiteType: 'CLEAS / Terceros / Franquicia',
+    };
+
+    render(<GestionTramiteTab {...baseProps} item={cleasCase} />);
+
+    expect(screen.queryByText('Franquicia')).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Propia Cia' })).not.toBeInTheDocument();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -613,9 +757,135 @@ describe('PresupuestoTab', () => {
   it('renderiza totales y botón de generar presupuesto', () => {
     render(<PresupuestoTab {...baseProps} />);
 
-    expect(screen.getByText('Totales y condiciones para emitir')).toBeInTheDocument();
+    expect(screen.getByText('Precios, mano de obra y repuestos estimados')).toBeInTheDocument();
+    expect(screen.getAllByText('Proveedor sugerido').length).toBeGreaterThan(0);
+    expect(screen.getByText('Guardar cotizacion')).toBeInTheDocument();
     expect(screen.getByText('Generar presupuesto')).toBeInTheDocument();
+    expect(screen.getByText('Previsualizar PDF')).toBeDisabled();
+    expect(screen.getByText('Descargar PDF')).toBeDisabled();
     expect(screen.getByText('Total presupuesto')).toBeInTheDocument();
+  });
+
+  it('permite guardar cotizacion sin generar el presupuesto final', async () => {
+    const user = userEvent.setup();
+    const onSaveQuote = vi.fn().mockResolvedValue(true);
+
+    render(<PresupuestoTab {...baseProps} onSaveQuote={onSaveQuote} />);
+
+    await user.click(screen.getByText('Guardar cotizacion'));
+
+    expect(onSaveQuote).toHaveBeenCalledTimes(1);
+    expect(onSaveQuote).not.toHaveBeenCalledWith(expect.objectContaining({ generated: true }));
+  });
+
+  it('deshabilita Guardar cotizacion cuando el presupuesto esta cerrado', () => {
+    render(
+      <PresupuestoTab
+        {...baseProps}
+        item={{
+          ...mockCase,
+          budget: {
+            ...mockCase.budget,
+            reportStatus: 'Informe cerrado',
+          },
+          computed: {
+            ...mockCase.computed,
+            reportClosed: true,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Guardar cotizacion' })).toBeDisabled();
+    expect(screen.getByText('Presupuesto cerrado: la cotizacion ya no es editable.')).toBeInTheDocument();
+  });
+
+  it('evita ejecutar onSaveQuote cuando el presupuesto esta cerrado', async () => {
+    const user = userEvent.setup();
+    const onSaveQuote = vi.fn().mockResolvedValue(true);
+
+    render(
+      <PresupuestoTab
+        {...baseProps}
+        onSaveQuote={onSaveQuote}
+        item={{
+          ...mockCase,
+          budget: {
+            ...mockCase.budget,
+            reportStatus: 'Informe cerrado',
+          },
+          computed: {
+            ...mockCase.computed,
+            reportClosed: true,
+          },
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Guardar cotizacion' }));
+
+    expect(onSaveQuote).not.toHaveBeenCalled();
+  });
+
+  it('expone preview y descarga del PDF cuando el presupuesto ya fue generado', async () => {
+    const user = userEvent.setup();
+    const onPreviewBudgetPdf = vi.fn().mockResolvedValue({
+      blobUrl: 'blob:demo',
+      fileName: 'presupuesto-demo.pdf',
+      mimeType: 'application/pdf',
+    });
+    const onDownloadBudgetPdf = vi.fn().mockResolvedValue(true);
+
+    render(
+      <PresupuestoTab
+        {...baseProps}
+        item={{
+          ...mockCase,
+          id: '25',
+          budget: {
+            ...mockCase.budget,
+            generated: true,
+          },
+        }}
+        onDownloadBudgetPdf={onDownloadBudgetPdf}
+        onPreviewBudgetPdf={onPreviewBudgetPdf}
+      />,
+    );
+
+    await user.click(screen.getByText('Previsualizar PDF'));
+    await user.click(screen.getByText('Descargar PDF'));
+
+    expect(onPreviewBudgetPdf).toHaveBeenCalledWith('25');
+    expect(onDownloadBudgetPdf).toHaveBeenCalledWith('25');
+    expect(screen.getByRole('dialog', { name: 'Vista previa de presupuesto-demo.pdf' })).toBeInTheDocument();
+    expect(screen.getByTitle('presupuesto-demo.pdf')).toBeInTheDocument();
+  });
+
+  it('muestra feedback claro cuando no hay PDF para previsualizar presupuesto cerrado', async () => {
+    const user = userEvent.setup();
+    const flash = vi.fn();
+    const onPreviewBudgetPdf = vi.fn().mockResolvedValue(null);
+
+    render(
+      <PresupuestoTab
+        {...baseProps}
+        flash={flash}
+        item={{
+          ...mockCase,
+          id: '26',
+          budget: {
+            ...mockCase.budget,
+            generated: true,
+          },
+        }}
+        onPreviewBudgetPdf={onPreviewBudgetPdf}
+      />,
+    );
+
+    await user.click(screen.getByText('Previsualizar PDF'));
+
+    expect(onPreviewBudgetPdf).toHaveBeenCalledWith('26');
+    expect(flash).toHaveBeenCalledWith('El backend no devolvió un PDF para previsualizar este presupuesto cerrado.');
   });
 
   it('usa el catálogo editable de talleres para la cabecera del presupuesto', () => {
@@ -854,5 +1124,61 @@ describe('GestionReparacionTab', () => {
     await user.click(screen.getByRole('button', { name: 'Crear tarea' }));
 
     expect(updateCase).toHaveBeenCalled();
+  });
+
+  it('muestra warning y permite agendar turno sin cotizacion acordada', async () => {
+    const user = userEvent.setup();
+    const flash = vi.fn();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const item = {
+      ...structuredClone(todoRiskCase),
+      todoRisk: {
+        ...structuredClone(todoRiskCase.todoRisk),
+        processing: {
+          ...structuredClone(todoRiskCase.todoRisk.processing),
+          quoteStatus: 'Pendiente',
+          quoteDate: '',
+          agreedAmount: '',
+        },
+      },
+      computed: {
+        ...structuredClone(todoRiskCase.computed),
+        todoRisk: {
+          ...structuredClone(todoRiskCase.computed.todoRisk),
+          quoteAgreed: false,
+          turnWarningRequired: true,
+        },
+      },
+    };
+
+    const { rerender } = render(
+      <GestionReparacionTab
+        activeRepairTab="repuestos"
+        flash={flash}
+        item={item}
+        onChangeRepairTab={vi.fn()}
+        updateCase={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/Cotización y pedidos/i)).toBeInTheDocument();
+    expect(screen.getByText(/La fecha de pedido todavía no tiene campo separado/i)).toBeInTheDocument();
+
+    rerender(
+      <GestionReparacionTab
+        activeRepairTab="turno"
+        flash={flash}
+        item={item}
+        onChangeRepairTab={vi.fn()}
+        updateCase={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/Podés seguir con agenda y turno/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Agendar turno' }));
+
+    expect(flash).toHaveBeenCalledWith(expect.stringContaining('Turno agendado con advertencia.'));
+    confirmSpy.mockRestore();
   });
 });

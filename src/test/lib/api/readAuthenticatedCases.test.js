@@ -19,6 +19,7 @@ describe('readAuthenticatedCases', () => {
     await readAuthenticatedCases('token-demo', {
       page: 0,
       size: 200,
+      q: 'gol delantero',
       openedFrom: '2026-02-01',
       openedTo: '2026-02-28',
       paidFrom: '2026-03-01',
@@ -41,6 +42,7 @@ describe('readAuthenticatedCases', () => {
     expect(endpoint.pathname).toBe('/api/v1/cases');
     expect(endpoint.searchParams.get('page')).toBe('0');
     expect(endpoint.searchParams.get('size')).toBe('200');
+    expect(endpoint.searchParams.get('q')).toBe('gol delantero');
     expect(endpoint.searchParams.get('openedFrom')).toBe('2026-02-01');
     expect(endpoint.searchParams.get('openedTo')).toBe('2026-02-28');
     expect(endpoint.searchParams.get('paidFrom')).toBe('2026-03-01');

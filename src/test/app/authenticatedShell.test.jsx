@@ -112,6 +112,7 @@ describe('BlockingDocGateModal', () => {
   it('renders only when open and delegates acceptance', async () => {
     const user = userEvent.setup();
     const onAccept = vi.fn();
+    const onCancel = vi.fn();
 
     const { rerender } = render(
       <BlockingDocGateModal isOpen={false} message="Pendiente" onAccept={onAccept} />
@@ -121,17 +122,37 @@ describe('BlockingDocGateModal', () => {
 
     rerender(
       <BlockingDocGateModal
+        cancelLabel="Cancelar"
         isOpen
         message="La carpeta sigue marcada como incompleta."
         onAccept={onAccept}
+        onCancel={onCancel}
       />
     );
 
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(screen.getByText('La carpeta sigue marcada como incompleta.')).toBeInTheDocument();
 
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
     await user.click(screen.getByRole('button', { name: 'Aceptar' }));
 
+    expect(onCancel).toHaveBeenCalledTimes(1);
     expect(onAccept).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows customizing title and eyebrow copy', () => {
+    render(
+      <BlockingDocGateModal
+        isOpen
+        message="La carpeta tiene advertencia operativa. ¿Desea abrirlo igual?"
+        eyebrow="Confirmación"
+        onAccept={vi.fn()}
+        title="Gestión de reparación con advertencia"
+      />
+    );
+
+    expect(screen.getByText('Confirmación')).toBeInTheDocument();
+    expect(screen.getByText('La carpeta tiene advertencia operativa. ¿Desea abrirlo igual?')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: 'Gestión de reparación con advertencia' })).toBeInTheDocument();
   });
 });

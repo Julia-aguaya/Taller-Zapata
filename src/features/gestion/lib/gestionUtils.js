@@ -30,3 +30,5 @@ export function getStatusTone(status) {
   if (['Pasado a pagos', 'Con Turno', 'En trámite', 'Acordado', 'Recibido', 'Parcial', 'Presentado (PD)', 'Autorización parcial'].includes(status)) return 'info';
   return 'danger';
 }
+
+export const TODO_RIESGO_TURNO_WARNING_MESSAGE = 'Falta cotización acordada con fecha y monto. Podés seguir con agenda y turno, pero validalo antes de cerrar el caso.';

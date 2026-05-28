@@ -28,8 +28,19 @@ import {
 import { getWorkshopOptions, readWorkshopCatalog, readWorkshopCatalogFromBackend } from '../lib/workshopCatalog';
 import { money, numberValue } from '../lib/gestionUtils';
 
-export default function PresupuestoTab({ item, updateCase, flash }) {
+export default function PresupuestoTab({
+  item,
+  updateCase,
+  flash,
+  onSaveQuote,
+  onPreviewBudgetPdf,
+  onDownloadBudgetPdf,
+  isSavingQuote = false,
+  isPreviewingBudgetPdf = false,
+  isDownloadingBudgetPdf = false,
+}) {
   const [previewMedia, setPreviewMedia] = useState(null);
+  const [previewBudgetPdf, setPreviewBudgetPdf] = useState(null);
   const [failedMediaIds, setFailedMediaIds] = useState([]);
   const [brokenPreviewIds, setBrokenPreviewIds] = useState([]);
   const [workshops, setWorkshops] = useState(() => readWorkshopCatalog());
@@ -158,6 +169,7 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
   ];
   const customerDisplayName = `${item.customer.firstName || ''} ${item.customer.lastName || ''}`.trim() || 'Pendiente';
   const budgetStatusTone = item.computed.budgetReady ? 'success' : item.computed.canGenerateBudget ? 'info' : 'danger';
+  const isBudgetClosed = item.computed.reportClosed || item.budget.reportStatus === 'Informe cerrado';
   const budgetStatusLabel = item.computed.budgetReady
     ? 'Presupuesto emitido y listo para gestión de reparación'
     : item.computed.canGenerateBudget
@@ -180,6 +192,12 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
   const currentPreviewBroken = previewMedia ? brokenPreviewIds.includes(previewMedia.id) : false;
   const showAccessoryBlock = item.tramiteType !== 'Particular';
   const accessoryTotal = (item.budget.accessoryWorks || []).reduce((sum, entry) => sum + numberValue(entry.amount), 0);
+  const quoteAlternativeCount = isThirdPartyClaimCase(item)
+    ? (item.repair.quoteRows || []).reduce(
+      (sum, row) => sum + ['provider1', 'provider2', 'provider3', 'provider4'].filter((field) => numberValue(row?.[field]) > 0).length,
+      0,
+    )
+    : 0;
 
   const addAccessoryWork = () => {
     updateBudget((draft) => {
@@ -213,6 +231,70 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
     updateBudget((draft) => {
       draft.budget.services = (draft.budget.services || []).filter((entry) => entry.id !== serviceId);
     });
+  };
+
+  const canUseBudgetPdf = item.budget.generated && Number.isFinite(Number(item.id));
+  const revokeBlobUrl = (blobUrl) => {
+    if (!blobUrl || typeof URL?.revokeObjectURL !== 'function') {
+      return;
+    }
+    URL.revokeObjectURL(blobUrl);
+  };
+
+  const handlePreviewBudgetPdf = async () => {
+    if (!canUseBudgetPdf) {
+      flash('Generá el presupuesto cerrado antes de previsualizar el PDF real.');
+      return;
+    }
+
+    const result = await onPreviewBudgetPdf?.(item.id);
+    if (!result?.blobUrl) {
+      flash('El backend no devolvió un PDF para previsualizar este presupuesto cerrado.');
+      return;
+    }
+
+    setPreviewBudgetPdf((current) => {
+      if (current?.blobUrl) {
+        revokeBlobUrl(current.blobUrl);
+      }
+      return {
+        blobUrl: result.blobUrl,
+        fileName: result.fileName || `presupuesto-${item.id}.pdf`,
+        mimeType: result.mimeType || 'application/pdf',
+      };
+    });
+  };
+
+  const closeBudgetPdfPreview = () => {
+    setPreviewBudgetPdf((current) => {
+      if (current?.blobUrl) {
+        revokeBlobUrl(current.blobUrl);
+      }
+      return null;
+    });
+  };
+
+  useEffect(() => () => {
+    if (previewBudgetPdf?.blobUrl) {
+      revokeBlobUrl(previewBudgetPdf.blobUrl);
+    }
+  }, [previewBudgetPdf]);
+
+  const handleDownloadBudgetPdf = async () => {
+    if (!canUseBudgetPdf) {
+      flash('Generá el presupuesto cerrado antes de descargar el PDF real.');
+      return;
+    }
+
+    await onDownloadBudgetPdf?.(item.id);
+  };
+
+  const handleSaveQuote = async () => {
+    if (isBudgetClosed) {
+      flash('El presupuesto esta cerrado. No se puede guardar una cotizacion editable.');
+      return;
+    }
+    await onSaveQuote?.();
   };
 
   return (
@@ -295,14 +377,14 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
               <small>Datos espejo de la planilla Particular</small>
             </article>
             <article>
-              <span>Repuestos cotizados</span>
+              <span>Proveedor sugerido</span>
               <strong>{item.budget.partsProvider || 'Sin proveedor'}</strong>
-              <small>{item.budget.partsQuotedDate ? `Fecha ${formatDate(item.budget.partsQuotedDate)}` : 'Falta fecha de cotización'}</small>
+              <small>{item.budget.partsQuotedDate ? `Cotizado el ${formatDate(item.budget.partsQuotedDate)}` : 'Falta fecha de cotización'}</small>
             </article>
             <article>
-              <span>Días estimados</span>
-              <strong>{item.budget.estimatedWorkDays || 'Pendiente'}</strong>
-              <small>Mínimo cierre MO {item.budget.minimumLaborClose ? money(item.budget.minimumLaborClose) : 'sin dato'}</small>
+              <span>Mano de obra</span>
+              <strong>{item.budget.laborWithoutVat ? money(item.budget.laborWithoutVat) : 'Pendiente'}</strong>
+              <small>Días estimados {item.budget.estimatedWorkDays || 'sin dato'}</small>
             </article>
           </div>
         </article>
@@ -361,7 +443,6 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
           <div>
             <h3>Tareas a realizar</h3>
           </div>
-          <button className="secondary-button" onClick={addLine} type="button">Agregar línea</button>
         </div>
 
         <div className="budget-lines checklist-lines">
@@ -447,6 +528,10 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
             </div>
             );
           })}
+        </div>
+
+        <div className="tag-row">
+          <button className="secondary-button" onClick={addLine} type="button">Agregar línea</button>
         </div>
       </article>
 
@@ -553,29 +638,51 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
       <article className="card inner-card">
         <div className="section-head">
           <div>
-            <p className="eyebrow">Cierre económico</p>
-            <h3>Totales y condiciones para emitir</h3>
+            <p className="eyebrow">Cotización</p>
+            <h3>Precios, mano de obra y repuestos estimados</h3>
           </div>
         </div>
 
-        <div className="form-grid three-columns compact-grid">
-          <DataField label="Fecha cotización repuestos" onChange={(value) => updateBudget((draft) => { draft.budget.partsQuotedDate = value; })} type="date" value={item.budget.partsQuotedDate} />
-          <DataField label="Proveedor repuestos" onChange={(value) => updateBudget((draft) => { draft.budget.partsProvider = value; })} value={item.budget.partsProvider} />
-          <DataField label="Días de trabajo estimados" onChange={(value) => updateBudget((draft) => { draft.budget.estimatedWorkDays = value; })} type="number" value={item.budget.estimatedWorkDays} />
-          <DataField label="Monto mínimo cierre MO" inputMode="numeric" onChange={(value) => updateBudget((draft) => { draft.budget.minimumLaborClose = value; })} value={item.budget.minimumLaborClose} />
-          <DataField label="Mano de obra s/IVA" inputMode="numeric" onChange={(value) => updateBudget((draft) => { draft.budget.laborWithoutVat = value; })} value={item.budget.laborWithoutVat} />
-          <DataField label="IVA 21% MO" onChange={() => {}} readOnly value={item.computed.laborVat} />
+        <div className="budget-ready-panel budget-ready-panel-compact">
+          <StatusBadge tone={item.budget.partsQuotedDate ? 'info' : 'danger'}>{item.budget.partsQuotedDate ? 'Cotización cargada' : 'Cotización pendiente'}</StatusBadge>
+          <small>Acá queda la base de cotización. La confirmación operativa del pedido se sigue desde Gestión reparación.</small>
         </div>
 
+        <div className="form-grid three-columns compact-grid">
+          <DataField label="Fecha cotización" onChange={(value) => updateBudget((draft) => { draft.budget.partsQuotedDate = value; })} type="date" value={item.budget.partsQuotedDate} />
+          <DataField label="Proveedor sugerido" onChange={(value) => updateBudget((draft) => { draft.budget.partsProvider = value; })} value={item.budget.partsProvider} />
+          <DataField label="Días de trabajo estimados" onChange={(value) => updateBudget((draft) => { draft.budget.estimatedWorkDays = value; })} type="number" value={item.budget.estimatedWorkDays} />
+          <DataField label="Mano de obra s/IVA" inputMode="numeric" onChange={(value) => updateBudget((draft) => { draft.budget.laborWithoutVat = value; })} value={item.budget.laborWithoutVat} />
+          <DataField label="IVA 21% MO" onChange={() => {}} readOnly value={item.computed.laborVat} />
+          <DataField label="Monto mínimo cierre MO" inputMode="numeric" onChange={(value) => updateBudget((draft) => { draft.budget.minimumLaborClose = value; })} value={item.budget.minimumLaborClose} />
+        </div>
+
+        {isThirdPartyClaimCase(item) ? (
+          <div className="parts-total-grid third-party-summary-grid">
+            <article className="summary-chip">
+              <span>Alternativas cargadas</span>
+              <strong>{quoteAlternativeCount}</strong>
+            </article>
+            <article className="summary-chip">
+              <span>Piezas con planilla</span>
+              <strong>{item.repair.quoteRows?.length || 0}</strong>
+            </article>
+            <article className="summary-chip">
+              <span>Repuestos estimados</span>
+              <strong>{money(item.computed.partsTotal)}</strong>
+            </article>
+          </div>
+        ) : null}
+
         <label className="field">
-          <span>Observaciones internas</span>
+          <span>Alternativas / observaciones de cotización</span>
           <textarea onChange={(event) => updateBudget((draft) => { draft.budget.observations = event.target.value; })} value={item.budget.observations} />
         </label>
 
         <div className="budget-totals-stack">
           <div className="budget-subtotals-grid">
             <article className="summary-chip budget-total-card">
-              <span>Repuestos</span>
+              <span>Repuestos estimados</span>
               <strong>{money(item.computed.partsTotal)}</strong>
             </article>
             <article className="summary-chip budget-total-card">
@@ -599,8 +706,22 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
         </div>
 
         <div className="budget-actions-row">
+          <button className="secondary-button" disabled={isSavingQuote || isBudgetClosed} onClick={() => { void handleSaveQuote(); }} type="button">
+            {isSavingQuote ? 'Guardando cotizacion...' : 'Guardar cotizacion'}
+          </button>
           <button className="primary-button" disabled={!item.computed.canGenerateBudget} onClick={generateBudget} type="button">Generar presupuesto</button>
+          <button className="secondary-button" disabled={!canUseBudgetPdf || isPreviewingBudgetPdf} onClick={() => { void handlePreviewBudgetPdf(); }} type="button">
+            {isPreviewingBudgetPdf ? 'Abriendo PDF...' : 'Previsualizar PDF'}
+          </button>
+          <button className="secondary-button" disabled={!canUseBudgetPdf || isDownloadingBudgetPdf} onClick={() => { void handleDownloadBudgetPdf(); }} type="button">
+            {isDownloadingBudgetPdf ? 'Descargando PDF...' : 'Descargar PDF'}
+          </button>
         </div>
+        {isBudgetClosed ? (
+          <div className="inline-alert info-banner" role="status">
+            Presupuesto cerrado: la cotizacion ya no es editable.
+          </div>
+        ) : null}
 
         <div className="budget-ready-panel budget-ready-panel-compact">
           <StatusBadge tone={budgetStatusTone}>{budgetStatusLabel}</StatusBadge>
@@ -639,6 +760,30 @@ export default function PresupuestoTab({ item, updateCase, flash }) {
 
             <div className="media-preview-actions">
               <a className="secondary-button button-link" href={previewMedia.url} rel="noreferrer" target="_blank">Abrir archivo</a>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {previewBudgetPdf ? (
+        <div className="media-overlay" onClick={closeBudgetPdfPreview} role="presentation">
+          <div aria-label={`Vista previa de ${previewBudgetPdf.fileName}`} aria-modal="true" className="media-modal document-preview-modal" onClick={(event) => event.stopPropagation()} role="dialog">
+            <div className="media-modal-head">
+              <div>
+                <strong>{previewBudgetPdf.fileName}</strong>
+                <p>Previsualización del presupuesto sin descargarlo a tu PC.</p>
+              </div>
+              <button className="ghost-button" onClick={closeBudgetPdfPreview} type="button">Cerrar</button>
+            </div>
+
+            {String(previewBudgetPdf.mimeType || '').includes('pdf') ? (
+              <iframe className="document-preview-frame" src={previewBudgetPdf.blobUrl} title={previewBudgetPdf.fileName} />
+            ) : (
+              <img alt={previewBudgetPdf.fileName} src={previewBudgetPdf.blobUrl} />
+            )}
+
+            <div className="media-preview-actions">
+              <a className="secondary-button button-link" href={previewBudgetPdf.blobUrl} rel="noreferrer" target="_blank">Abrir en pestaña nueva</a>
             </div>
           </div>
         </div>
