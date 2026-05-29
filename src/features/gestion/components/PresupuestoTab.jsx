@@ -28,6 +28,9 @@ import {
 import { getWorkshopOptions, readWorkshopCatalog, readWorkshopCatalogFromBackend } from '../lib/workshopCatalog';
 import { money, numberValue } from '../lib/gestionUtils';
 
+const YES_NO_OPTIONS = ['SI', 'NO'];
+const MECHANICAL_WORK_OPTIONS = [{ value: '', label: 'Sin definir' }, { value: 'A/V', label: 'A/V' }];
+
 export default function PresupuestoTab({
   item,
   updateCase,
@@ -377,15 +380,39 @@ export default function PresupuestoTab({
               <small>Datos espejo de la planilla Particular</small>
             </article>
             <article>
-              <span>Proveedor sugerido</span>
-              <strong>{item.budget.partsProvider || 'Sin proveedor'}</strong>
-              <small>{item.budget.partsQuotedDate ? `Cotizado el ${formatDate(item.budget.partsQuotedDate)}` : 'Falta fecha de cotización'}</small>
+              <span>Repuestos cotizados</span>
+              <strong>{item.repair.quotedPartsSupplier || item.budget.partsProvider || 'Sin proveedor'}</strong>
+              <small>{item.repair.quotedPartsDate || item.budget.partsQuotedDate ? `Fecha ${formatDate(item.repair.quotedPartsDate || item.budget.partsQuotedDate)}` : 'Falta fecha de cotización'}</small>
             </article>
             <article>
               <span>Mano de obra</span>
               <strong>{item.budget.laborWithoutVat ? money(item.budget.laborWithoutVat) : 'Pendiente'}</strong>
               <small>Días estimados {item.budget.estimatedWorkDays || 'sin dato'}</small>
             </article>
+          </div>
+
+          <div className="nested-card">
+            <div className="section-head small-gap">
+              <div>
+                <p className="eyebrow">Datos de impresión</p>
+                <h3>Metadatos del presupuesto</h3>
+              </div>
+            </div>
+
+            <div className="form-grid three-columns compact-grid">
+              <DataField label="Autorizó" onChange={(value) => updateBudget((draft) => { draft.budget.authorizedByName = value; })} value={item.budget.authorizedByName || ''} />
+              <DataField label="Interesado" onChange={(value) => updateBudget((draft) => { draft.budget.interestedName = value; })} value={item.budget.interestedName || ''} />
+              <SelectField label="Estiraje en bancada" onChange={(value) => updateBudget((draft) => { draft.repair.benchStraighteningApplies = value; if (value !== 'SI') draft.repair.benchStraighteningDetail = ''; })} options={YES_NO_OPTIONS} value={item.repair.benchStraighteningApplies || 'NO'} />
+              <DataField label="Detalle estiraje" onChange={(value) => updateBudget((draft) => { draft.repair.benchStraighteningDetail = value; })} value={item.repair.benchStraighteningDetail || ''} />
+              <SelectField label="Alineación" onChange={(value) => updateBudget((draft) => { draft.repair.alignmentApplies = value; })} options={YES_NO_OPTIONS} value={item.repair.alignmentApplies || 'NO'} />
+              <SelectField label="Balanceo" onChange={(value) => updateBudget((draft) => { draft.repair.balancingApplies = value; })} options={YES_NO_OPTIONS} value={item.repair.balancingApplies || 'NO'} />
+              <SelectField label="Recambio cristales" onChange={(value) => updateBudget((draft) => { draft.repair.glassReplacementApplies = value; if (value !== 'SI') draft.repair.glassReplacementDetail = ''; })} options={YES_NO_OPTIONS} value={item.repair.glassReplacementApplies || 'NO'} />
+              <DataField label="Detalle cristales" onChange={(value) => updateBudget((draft) => { draft.repair.glassReplacementDetail = value; })} value={item.repair.glassReplacementDetail || ''} />
+              <SelectField label="Trabajos sobre sist. eléctrico" onChange={(value) => updateBudget((draft) => { draft.repair.electricalWorkApplies = value; })} options={YES_NO_OPTIONS} value={item.repair.electricalWorkApplies || 'NO'} />
+              <SelectField label="Trabajos de mecánicas" onChange={(value) => updateBudget((draft) => { draft.repair.mechanicalWorkCode = value; })} options={MECHANICAL_WORK_OPTIONS} value={item.repair.mechanicalWorkCode || ''} />
+              <DataField label="Repuestos cotizados fecha" onChange={(value) => updateBudget((draft) => { draft.repair.quotedPartsDate = value; draft.budget.partsQuotedDate = value; })} type="date" value={item.repair.quotedPartsDate || item.budget.partsQuotedDate || ''} />
+              <DataField label="Repuestos cotizados proveedor" onChange={(value) => updateBudget((draft) => { draft.repair.quotedPartsSupplier = value; draft.budget.partsProvider = value; })} value={item.repair.quotedPartsSupplier || item.budget.partsProvider || ''} />
+            </div>
           </div>
         </article>
 

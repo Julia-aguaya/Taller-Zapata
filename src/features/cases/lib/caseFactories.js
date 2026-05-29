@@ -131,6 +131,8 @@ export function createBudgetDefaults(overrides = {}) {
     workshop: '',
     reportStatus: 'Informe abierto',
     authorizer: AUTHORIZER_OPTIONS[0],
+    authorizedByName: '',
+    interestedName: '',
     laborWithoutVat: 0,
     generated: false,
     lines: [createBudgetLine()],

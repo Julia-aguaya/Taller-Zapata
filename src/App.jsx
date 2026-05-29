@@ -1383,6 +1383,16 @@ function buildLocalCaseFromBackend(item, nextCounter) {
       : undefined,
     repair: {
       parts: [],
+      benchStraighteningApplies: 'NO',
+      benchStraighteningDetail: '',
+      alignmentApplies: 'NO',
+      balancingApplies: 'NO',
+      glassReplacementApplies: 'NO',
+      glassReplacementDetail: '',
+      electricalWorkApplies: 'NO',
+      mechanicalWorkCode: '',
+      quotedPartsDate: '',
+      quotedPartsSupplier: '',
       turno: { date: '', estimatedDays: '', state: 'Pendiente programar', notes: '' },
       ingreso: { realDate: '', hasObservation: 'NO', observation: '', items: [] },
       egreso: {
@@ -4298,6 +4308,18 @@ function App() {
             estimatedDays: budgetPersistenceFields.estimatedDays,
             minimumCloseAmount: toDecimal(selectedCase.budget?.minimumLaborClose),
             observations: budgetPersistenceFields.observations,
+            authorizedByName: selectedCase.budget?.authorizedByName || null,
+            interestedName: selectedCase.budget?.interestedName || null,
+            benchStraighteningApplies: toBooleanSiNo(selectedCase.repair?.benchStraighteningApplies),
+            benchStraighteningDetail: selectedCase.repair?.benchStraighteningDetail || null,
+            alignmentApplies: toBooleanSiNo(selectedCase.repair?.alignmentApplies),
+            balancingApplies: toBooleanSiNo(selectedCase.repair?.balancingApplies),
+            glassReplacementApplies: toBooleanSiNo(selectedCase.repair?.glassReplacementApplies),
+            glassReplacementDetail: selectedCase.repair?.glassReplacementDetail || null,
+            electricalWorkApplies: toBooleanSiNo(selectedCase.repair?.electricalWorkApplies),
+            mechanicalWorkCode: selectedCase.repair?.mechanicalWorkCode || null,
+            quotedPartsDate: toDate(selectedCase.repair?.quotedPartsDate || selectedCase.budget?.partsQuotedDate),
+            quotedPartsSupplier: selectedCase.repair?.quotedPartsSupplier || selectedCase.budget?.partsProvider || null,
           }, { changeNote }));
 
           const existingBudgetBySignature = new Map(

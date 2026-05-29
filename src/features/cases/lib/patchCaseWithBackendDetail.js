@@ -73,6 +73,16 @@ export function ensureCaseStructure(caseItem) {
   if (!draft.repair) {
     draft.repair = {
       parts: [],
+      benchStraighteningApplies: 'NO',
+      benchStraighteningDetail: '',
+      alignmentApplies: 'NO',
+      balancingApplies: 'NO',
+      glassReplacementApplies: 'NO',
+      glassReplacementDetail: '',
+      electricalWorkApplies: 'NO',
+      mechanicalWorkCode: '',
+      quotedPartsDate: '',
+      quotedPartsSupplier: '',
       turno: { date: '', estimatedDays: '', state: 'Pendiente programar', notes: '' },
       ingreso: { realDate: '', hasObservation: 'NO', observation: '', items: [] },
       egreso: {
@@ -90,6 +100,16 @@ export function ensureCaseStructure(caseItem) {
     };
   }
   if (!Array.isArray(draft.repair.parts)) draft.repair.parts = [];
+  if (!draft.repair.benchStraighteningApplies) draft.repair.benchStraighteningApplies = 'NO';
+  if (!draft.repair.benchStraighteningDetail) draft.repair.benchStraighteningDetail = '';
+  if (!draft.repair.alignmentApplies) draft.repair.alignmentApplies = 'NO';
+  if (!draft.repair.balancingApplies) draft.repair.balancingApplies = 'NO';
+  if (!draft.repair.glassReplacementApplies) draft.repair.glassReplacementApplies = 'NO';
+  if (!draft.repair.glassReplacementDetail) draft.repair.glassReplacementDetail = '';
+  if (!draft.repair.electricalWorkApplies) draft.repair.electricalWorkApplies = 'NO';
+  if (!draft.repair.mechanicalWorkCode) draft.repair.mechanicalWorkCode = '';
+  if (!draft.repair.quotedPartsDate) draft.repair.quotedPartsDate = '';
+  if (!draft.repair.quotedPartsSupplier) draft.repair.quotedPartsSupplier = '';
 
   if (!draft.meta) {
     draft.meta = { dirtyTabs: {}, lastSavedByTab: {}, syncErrorsByTab: {}, removedBudgetItemIds: [], removedPartIds: [] };
@@ -124,6 +144,12 @@ export function patchCaseWithBackendDetail(localCase, detailState) {
   const workflowActions = Array.isArray(detailState?.workflowActions) ? detailState.workflowActions : [];
 
   const mapYesNo = (value) => (value ? 'SI' : 'NO');
+  const mapOptionalBooleanToYesNo = (backendValue, currentValue) => {
+    if (backendValue == null) {
+      return pickFirstNonEmpty(currentValue, 'NO');
+    }
+    return mapYesNo(Boolean(backendValue));
+  };
   const mapQuoteStatus = (value) => {
     const normalized = normalizeLookupText(value);
     if (normalized.includes('acord')) return 'Acordada';
@@ -206,6 +232,23 @@ export function patchCaseWithBackendDetail(localCase, detailState) {
   }
 
   localCase.budget.observations = pickFirstNonEmpty(localCase.budget.observations, budget.observations);
+
+  localCase.budget.authorizedByName = pickFirstNonEmpty(localCase.budget.authorizedByName, budget.authorizedByName);
+  localCase.budget.interestedName = pickFirstNonEmpty(localCase.budget.interestedName, budget.interestedName);
+
+  localCase.repair.benchStraighteningApplies = mapOptionalBooleanToYesNo(budget.benchStraighteningApplies, localCase.repair.benchStraighteningApplies);
+  localCase.repair.benchStraighteningDetail = pickFirstNonEmpty(localCase.repair.benchStraighteningDetail, budget.benchStraighteningDetail);
+  localCase.repair.alignmentApplies = mapOptionalBooleanToYesNo(budget.alignmentApplies, localCase.repair.alignmentApplies);
+  localCase.repair.balancingApplies = mapOptionalBooleanToYesNo(budget.balancingApplies, localCase.repair.balancingApplies);
+  localCase.repair.glassReplacementApplies = mapOptionalBooleanToYesNo(budget.glassReplacementApplies, localCase.repair.glassReplacementApplies);
+  localCase.repair.glassReplacementDetail = pickFirstNonEmpty(localCase.repair.glassReplacementDetail, budget.glassReplacementDetail);
+  localCase.repair.electricalWorkApplies = mapOptionalBooleanToYesNo(budget.electricalWorkApplies, localCase.repair.electricalWorkApplies);
+  localCase.repair.mechanicalWorkCode = pickFirstNonEmpty(localCase.repair.mechanicalWorkCode, budget.mechanicalWorkCode);
+  localCase.repair.quotedPartsDate = pickFirstNonEmpty(localCase.repair.quotedPartsDate, budget.quotedPartsDate).slice(0, 10);
+  localCase.repair.quotedPartsSupplier = pickFirstNonEmpty(localCase.repair.quotedPartsSupplier, budget.quotedPartsSupplier);
+
+  localCase.budget.partsQuotedDate = pickFirstNonEmpty(localCase.budget.partsQuotedDate, localCase.repair.quotedPartsDate);
+  localCase.budget.partsProvider = pickFirstNonEmpty(localCase.budget.partsProvider, localCase.repair.quotedPartsSupplier);
 
   if (Array.isArray(budget.items) && budget.items.length) {
     localCase.budget.lines = budget.items.map((entry) => createBudgetLine({
