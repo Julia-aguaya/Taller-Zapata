@@ -226,6 +226,7 @@ public class PersonService {
         entity.setEmailPrincipal(blankToNull(request.emailPrincipal()));
         entity.setOcupacion(blankToNull(request.ocupacion()));
         entity.setObservaciones(blankToNull(request.observaciones()));
+        entity.setEstadoCivilCodigo(blankToNull(request.estadoCivilCodigo()));
         entity.setActivo(request.activo() == null ? true : request.activo());
     }
 
@@ -306,6 +307,7 @@ public class PersonService {
                 entity.getEmailPrincipal(),
                 entity.getOcupacion(),
                 entity.getObservaciones(),
+                entity.getEstadoCivilCodigo(),
                 entity.getActivo()
         );
     }

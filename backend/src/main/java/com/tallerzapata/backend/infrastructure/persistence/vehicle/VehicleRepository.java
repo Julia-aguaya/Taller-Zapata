@@ -35,4 +35,14 @@ public interface VehicleRepository extends JpaRepository<VehicleEntity, Long> {
             @Param("normalizedPlate") String normalizedPlate,
             Pageable pageable
     );
+
+    @Query("""
+            select distinct v
+            from VehicleEntity v
+            join CaseEntity c on c.principalVehicleId = v.id
+            where c.principalCustomerPersonId = :personId
+              and v.activo = true
+            order by v.id desc
+            """)
+    List<VehicleEntity> findByPrincipalCustomerPersonId(@Param("personId") Long personId);
 }

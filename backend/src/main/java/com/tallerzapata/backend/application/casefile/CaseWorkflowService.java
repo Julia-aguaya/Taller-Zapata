@@ -403,6 +403,10 @@ public class CaseWorkflowService {
     }
 
     private boolean evaluateNode(JsonNode node, CaseEntity caseEntity, CaseWorkflowTransitionRequest request) {
+        if (node == null || node.isNull() || (node.isObject() && node.isEmpty())) {
+            return true;
+        }
+
         if (node.has("always")) {
             return node.get("always").asBoolean(false);
         }
@@ -430,6 +434,9 @@ public class CaseWorkflowService {
         }
 
         String field = node.path("field").asText("");
+        if (field.isBlank()) {
+            return true;
+        }
         String op = node.path("op").asText("EQ").toUpperCase(Locale.ROOT);
         JsonNode valueNode = node.get("value");
         Object left = resolveFieldValue(field, caseEntity, request);

@@ -1,31 +1,28 @@
 package com.tallerzapata.backend.api.person;
 
 import com.tallerzapata.backend.application.person.PersonService;
+import com.tallerzapata.backend.application.vehicle.VehicleService;
+import com.tallerzapata.backend.api.vehicle.VehicleResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/persons")
-@Tag(name = "Personas", description = "Gestion de personas, contactos y direcciones (clientes, proveedores, asegurados, etc.)")
+@Tag(name = "Personas", description = "Gestion de personas")
 public class PersonController {
 
     private final PersonService personService;
+    private final VehicleService vehicleService;
 
-    public PersonController(PersonService personService) {
+    public PersonController(PersonService personService, VehicleService vehicleService) {
         this.personService = personService;
+        this.vehicleService = vehicleService;
     }
 
     @Operation(summary = "Buscar personas", description = "Busca personas por documento o texto libre")
@@ -45,6 +42,14 @@ public class PersonController {
     @GetMapping("/{personId}")
     public PersonResponse getById(@PathVariable Long personId) {
         return personService.getById(personId);
+    }
+
+    @Operation(summary = "Vehículos de la persona", description = "Devuelve los vehículos que estuvieron vinculados a esta persona en carpetas anteriores")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PreAuthorize("hasAuthority('persona.ver')")
+    @GetMapping("/{personId}/vehicles")
+    public List<VehicleResponse> listVehicles(@PathVariable Long personId) {
+        return vehicleService.findVehiclesByPerson(personId);
     }
 
     @Operation(summary = "Crear persona", description = "Crea una nueva persona en el sistema")

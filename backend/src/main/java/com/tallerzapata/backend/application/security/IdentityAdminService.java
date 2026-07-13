@@ -2,7 +2,9 @@ package com.tallerzapata.backend.application.security;
 
 import com.tallerzapata.backend.api.identity.PermissionResponse;
 import com.tallerzapata.backend.api.identity.BranchResponse;
+import com.tallerzapata.backend.api.identity.BranchUpdateRequest;
 import com.tallerzapata.backend.api.identity.OrganizationResponse;
+import com.tallerzapata.backend.api.identity.OrganizationUpdateRequest;
 import com.tallerzapata.backend.api.identity.RoleSummaryResponse;
 import com.tallerzapata.backend.api.identity.UserCreateRequest;
 import com.tallerzapata.backend.api.identity.UserRoleAssignmentRequest;
@@ -12,7 +14,9 @@ import com.tallerzapata.backend.api.identity.UserRolesUpdateRequest;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ForbiddenException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
+import com.tallerzapata.backend.infrastructure.persistence.organization.BranchEntity;
 import com.tallerzapata.backend.infrastructure.persistence.organization.BranchRepository;
+import com.tallerzapata.backend.infrastructure.persistence.organization.OrganizationEntity;
 import com.tallerzapata.backend.infrastructure.persistence.organization.OrganizationRepository;
 import com.tallerzapata.backend.infrastructure.persistence.security.PermissionRepository;
 import com.tallerzapata.backend.infrastructure.persistence.security.RoleEntity;
@@ -81,7 +85,7 @@ public class IdentityAdminService {
 
         return organizationRepository.findAllByOrderByNameAsc().stream()
                 .filter(item -> allowedOrganizationIds.contains(item.getId()))
-                .map(item -> new OrganizationResponse(item.getId(), item.getPublicId(), item.getCode(), item.getName()))
+                .map(item -> new OrganizationResponse(item.getId(), item.getPublicId(), item.getCode(), item.getName(), item.getRazonSocial(), item.getCuit(), item.getCondicionIva(), item.getPhone(), item.getEmail(), item.getLogoDocumentId()))
                 .toList();
     }
 
@@ -104,14 +108,47 @@ public class IdentityAdminService {
         if (organizationId == null) {
             return branchRepository.findAllByOrderByNameAsc().stream()
                     .filter(item -> canReadBranch(item.getOrganizationId(), item.getId(), fullAccessOrganizationIds, allowedBranchIdsByOrganizationId))
-                    .map(item -> new BranchResponse(item.getId(), item.getCode(), item.getName(), item.getOrganizationId()))
+                    .map(item -> new BranchResponse(item.getId(), item.getCode(), item.getName(), item.getOrganizationId(), item.getAddressLine1(), item.getCity(), item.getProvince(), item.getPhone(), item.getEmail()))
                     .toList();
         }
 
         return branchRepository.findByOrganizationIdOrderByNameAsc(organizationId).stream()
                 .filter(item -> canReadBranch(item.getOrganizationId(), item.getId(), fullAccessOrganizationIds, allowedBranchIdsByOrganizationId))
-                .map(item -> new BranchResponse(item.getId(), item.getCode(), item.getName(), item.getOrganizationId()))
+                .map(item -> new BranchResponse(item.getId(), item.getCode(), item.getName(), item.getOrganizationId(), item.getAddressLine1(), item.getCity(), item.getProvince(), item.getPhone(), item.getEmail()))
                 .toList();
+    }
+
+    @Transactional
+    public OrganizationResponse updateOrganization(Long organizationId, OrganizationUpdateRequest request) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        requirePermission(currentUser, "identity.roles.manage");
+        OrganizationEntity entity = organizationRepository.findById(organizationId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe la organizacion " + organizationId));
+        if (request.name() != null) entity.setName(request.name());
+        if (request.razonSocial() != null) entity.setRazonSocial(request.razonSocial());
+        if (request.cuit() != null) entity.setCuit(request.cuit());
+        if (request.condicionIva() != null) entity.setCondicionIva(request.condicionIva());
+        if (request.phone() != null) entity.setPhone(request.phone());
+        if (request.email() != null) entity.setEmail(request.email());
+        if (request.logoDocumentId() != null) entity.setLogoDocumentId(request.logoDocumentId());
+        entity = organizationRepository.save(entity);
+        return new OrganizationResponse(entity.getId(), entity.getPublicId(), entity.getCode(), entity.getName(), entity.getRazonSocial(), entity.getCuit(), entity.getCondicionIva(), entity.getPhone(), entity.getEmail(), entity.getLogoDocumentId());
+    }
+
+    @Transactional
+    public BranchResponse updateBranch(Long branchId, BranchUpdateRequest request) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        requirePermission(currentUser, "identity.roles.manage");
+        BranchEntity entity = branchRepository.findById(branchId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe la sucursal " + branchId));
+        if (request.name() != null) entity.setName(request.name());
+        if (request.addressLine1() != null) entity.setAddressLine1(request.addressLine1());
+        if (request.city() != null) entity.setCity(request.city());
+        if (request.province() != null) entity.setProvince(request.province());
+        if (request.phone() != null) entity.setPhone(request.phone());
+        if (request.email() != null) entity.setEmail(request.email());
+        entity = branchRepository.save(entity);
+        return new BranchResponse(entity.getId(), entity.getCode(), entity.getName(), entity.getOrganizationId(), entity.getAddressLine1(), entity.getCity(), entity.getProvince(), entity.getPhone(), entity.getEmail());
     }
 
     private boolean canReadBranch(

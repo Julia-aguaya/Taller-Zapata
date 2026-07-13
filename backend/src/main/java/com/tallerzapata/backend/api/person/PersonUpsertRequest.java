@@ -18,6 +18,7 @@ public record PersonUpsertRequest(
         String emailPrincipal,
         String ocupacion,
         String observaciones,
+        String estadoCivilCodigo,
         Boolean activo
 ) {
 }

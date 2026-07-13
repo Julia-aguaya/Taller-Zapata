@@ -60,7 +60,7 @@ app:
   security:
     auth-strategy: jwt-refresh-token
     jwt-secret: change-this-secret-in-real-environments-change-this-secret-in-real-environments
-    access-token-seconds: 900
+    access-token-seconds: 86400
     refresh-token-days: 15
   storage:
     mode: local

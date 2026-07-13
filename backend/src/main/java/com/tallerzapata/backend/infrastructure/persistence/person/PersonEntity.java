@@ -57,6 +57,10 @@ public class PersonEntity {
 
     private String ocupacion;
     private String observaciones;
+
+    @Column(name = "estado_civil_codigo")
+    private String estadoCivilCodigo;
+
     private Boolean activo;
 
     @PrePersist
@@ -100,6 +104,8 @@ public class PersonEntity {
     public void setOcupacion(String ocupacion) { this.ocupacion = ocupacion; }
     public String getObservaciones() { return observaciones; }
     public void setObservaciones(String observaciones) { this.observaciones = observaciones; }
+    public String getEstadoCivilCodigo() { return estadoCivilCodigo; }
+    public void setEstadoCivilCodigo(String estadoCivilCodigo) { this.estadoCivilCodigo = estadoCivilCodigo; }
     public Boolean getActivo() { return activo; }
     public void setActivo(Boolean activo) { this.activo = activo; }
 }

@@ -65,6 +65,12 @@ public class FinanceController {
     @GetMapping("/cases/{caseId}/finance-summary")
     public FinanceCaseSummaryResponse summarize(@PathVariable Long caseId) { return financeService.summarizeCase(caseId); }
 
+    @Operation(summary = "Resumen financiero particular", description = "Devuelve el resumen especifico para tramites particulares")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PreAuthorize("hasAuthority('finanza.ver')")
+    @GetMapping("/cases/{caseId}/finance/particular-summary")
+    public FinanceParticularSummaryResponse summarizeParticular(@PathVariable Long caseId) { return financeService.summarizeParticularCase(caseId); }
+
     @Operation(summary = "Agregar retenciones", description = "Agrega retenciones a un movimiento financiero")
     @ApiResponse(responseCode = "200", description = "OK")
     @PreAuthorize("hasAuthority('finanza.crear')")

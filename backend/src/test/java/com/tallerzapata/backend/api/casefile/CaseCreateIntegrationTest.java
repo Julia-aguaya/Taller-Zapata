@@ -80,6 +80,11 @@ class CaseCreateIntegrationTest {
                 .andExpect(jsonPath("$.orderNumber").value(1))
                 .andExpect(jsonPath("$.currentCaseStateCode").value("INGRESADO"))
                 .andExpect(jsonPath("$.currentRepairStateCode").value("SIN_TURNO"))
+                .andExpect(jsonPath("$.visibleTramiteState.code").value("INGRESADO"))
+                .andExpect(jsonPath("$.visibleRepairState.code").value("EN_TRAMITE"))
+                .andExpect(jsonPath("$.createdByUserId").value(1))
+                .andExpect(jsonPath("$.createdByDisplayName").value("Admin Bootstrap"))
+                .andExpect(jsonPath("$.createdAt").isString())
                 .andReturn();
 
         Long caseId = objectMapper.readTree(result.getResponse().getContentAsByteArray()).get("id").asLong();
@@ -151,6 +156,45 @@ class CaseCreateIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(request)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.message").value("No existe la sucursal 999"));
+    }
+
+    @Test
+    void shouldCreateCaseUsingDefaultScopeAndDefaultRoleCodes() throws Exception {
+        jdbcTemplate.update(
+                "INSERT INTO usuario_roles (usuario_id, rol_id, organizacion_id, sucursal_id, activo) VALUES (?, ?, ?, ?, ?)",
+                1L, 1L, 1L, 1L, true
+        );
+
+        CaseCreateRequest request = new CaseCreateRequest(
+                1L,
+                null,
+                null,
+                10L,
+                10L,
+                false,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+
+        mockMvc.perform(post("/api/v1/cases")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.folderCode").value("0001PZ"))
+                .andExpect(jsonPath("$.caseTypeCode").value("PARTICULAR"))
+                .andExpect(jsonPath("$.createdByDisplayName").value("Admin Bootstrap"));
     }
 
     @Test

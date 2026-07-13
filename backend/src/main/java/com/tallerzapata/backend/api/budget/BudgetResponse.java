@@ -21,6 +21,22 @@ public record BudgetResponse(
         BigDecimal minimumCloseAmount,
         String observations,
         Integer currentVersion,
-        List<BudgetItemResponse> items
+        List<BudgetItemResponse> items,
+        String authorizedByName,
+        String interestedName,
+        Boolean benchStraighteningApplies,
+        String benchStraighteningDetail,
+        Boolean alignmentApplies,
+        String alignmentDetail,
+        Boolean balancingApplies,
+        String balancingDetail,
+        Boolean glassReplacementApplies,
+        String glassReplacementDetail,
+        Boolean electricalWorkApplies,
+        String electricalDetail,
+        Boolean mechanicalWorkApplies,
+        String mechanicalWorkCode,
+        LocalDate quotedPartsDate,
+        String quotedPartsSupplier
 ) {
 }

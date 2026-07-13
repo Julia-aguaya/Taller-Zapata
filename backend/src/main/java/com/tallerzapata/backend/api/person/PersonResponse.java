@@ -19,6 +19,7 @@ public record PersonResponse(
         String emailPrincipal,
         String ocupacion,
         String observaciones,
+        String estadoCivilCodigo,
         Boolean activo
 ) {
 }

@@ -4,6 +4,7 @@ import com.tallerzapata.backend.api.operation.VehicleOutcomeCreateRequest;
 import com.tallerzapata.backend.api.operation.VehicleOutcomeResponse;
 import com.tallerzapata.backend.api.operation.VehicleOutcomeUpdateRequest;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
+import com.tallerzapata.backend.application.casefile.ParticularCaseClosureService;
 import com.tallerzapata.backend.application.casefile.CaseWorkflowService;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
@@ -44,6 +45,7 @@ public class VehicleOutcomeService {
     private final CaseAuditService caseAuditService;
     private final CaseWorkflowService caseWorkflowService;
     private final RepairAppointmentService repairAppointmentService;
+    private final ParticularCaseClosureService particularCaseClosureService;
 
     public VehicleOutcomeService(
             VehicleOutcomeRepository vehicleOutcomeRepository,
@@ -56,7 +58,8 @@ public class VehicleOutcomeService {
             CaseAccessControlService caseAccessControlService,
             CaseAuditService caseAuditService,
             CaseWorkflowService caseWorkflowService,
-            RepairAppointmentService repairAppointmentService
+            RepairAppointmentService repairAppointmentService,
+            ParticularCaseClosureService particularCaseClosureService
     ) {
         this.vehicleOutcomeRepository = vehicleOutcomeRepository;
         this.vehicleIntakeRepository = vehicleIntakeRepository;
@@ -69,6 +72,7 @@ public class VehicleOutcomeService {
         this.caseAuditService = caseAuditService;
         this.caseWorkflowService = caseWorkflowService;
         this.repairAppointmentService = repairAppointmentService;
+        this.particularCaseClosureService = particularCaseClosureService;
     }
 
     @Transactional(readOnly = true)
@@ -145,6 +149,7 @@ public class VehicleOutcomeService {
         );
 
         syncReentryAppointment(entity, currentUser.id(), httpRequest);
+        particularCaseClosureService.syncClosure(caseId);
 
         return toResponse(entity);
     }
@@ -203,6 +208,7 @@ public class VehicleOutcomeService {
         );
 
         syncReentryAppointment(entity, currentUser.id(), httpRequest);
+        particularCaseClosureService.syncClosure(caseEntity.getId());
 
         return toResponse(entity);
     }

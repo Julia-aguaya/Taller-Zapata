@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.api.auth;
 
 import com.tallerzapata.backend.application.security.AuthApplicationService;
+import com.tallerzapata.backend.application.security.AuthSessionService;
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
 import com.tallerzapata.backend.infrastructure.security.CurrentUserService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -21,10 +22,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthApplicationService authApplicationService;
+    private final AuthSessionService authSessionService;
     private final CurrentUserService currentUserService;
 
-    public AuthController(AuthApplicationService authApplicationService, CurrentUserService currentUserService) {
+    public AuthController(AuthApplicationService authApplicationService, AuthSessionService authSessionService, CurrentUserService currentUserService) {
         this.authApplicationService = authApplicationService;
+        this.authSessionService = authSessionService;
         this.currentUserService = currentUserService;
     }
 
@@ -65,5 +68,12 @@ public class AuthController {
                 currentUser.displayName(),
                 currentUser.role()
         );
+    }
+
+    @Operation(summary = "Bootstrap de sesion", description = "Devuelve usuario, permisos, scopes y navegacion recomendada para inicializar el frontend")
+    @ApiResponse(responseCode = "200", description = "Sesion obtenida exitosamente")
+    @GetMapping("/session")
+    public AuthSessionResponse session() {
+        return authSessionService.getCurrentSession();
     }
 }

@@ -300,19 +300,50 @@ public class DocumentService {
         }
         entity = documentRelationRepository.save(entity);
 
+        return toRelationResponse(entity);
+    }
+
+    @Transactional
+    public void deleteRelation(Long relationId, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        caseAccessControlService.requirePermission(currentUser, "documento.crear");
+
+        DocumentRelationEntity entity = documentRelationRepository.findById(relationId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe la relacion documental " + relationId));
+        CaseEntity caseEntity = requireCase(entity.getCaseId());
+        caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "documento.ver");
+
         caseAuditService.register(
                 currentUser.id(),
                 caseEntity.getId(),
                 "documento_relaciones",
                 entity.getId(),
-                "actualizar_relacion_documento",
-                caseAuditService.toJson(before),
+                "eliminar_relacion_documento",
                 caseAuditService.toJson(relationSnapshot(entity)),
+                null,
                 caseAuditService.toJson(Map.of("domain", "documentos")),
                 httpRequest
         );
 
-        return toRelationResponse(entity);
+        documentRelationRepository.delete(entity);
+    }
+
+    @Transactional
+    public void deleteDocument(Long documentId, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        caseAccessControlService.requirePermission(currentUser, "documento.crear");
+
+        DocumentEntity entity = documentRepository.findById(documentId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el documento " + documentId));
+
+        List<DocumentRelationEntity> relations = documentRelationRepository.findByDocumentIdOrderByVisualOrderAscIdAsc(documentId);
+        documentRelationRepository.deleteAll(relations);
+
+        if (entity.getStorageKey() != null) {
+            documentStorageService.delete(entity.getStorageKey());
+        }
+
+        documentRepository.delete(entity);
     }
 
     @Transactional

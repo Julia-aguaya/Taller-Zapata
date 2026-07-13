@@ -1,6 +1,8 @@
 package com.tallerzapata.backend.application.vehicle;
 
 import com.tallerzapata.backend.api.vehicle.VehicleBrandResponse;
+import com.tallerzapata.backend.api.casefile.CodeCatalogResponse;
+import com.tallerzapata.backend.api.vehicle.VehicleCatalogsResponse;
 import com.tallerzapata.backend.api.vehicle.VehicleModelResponse;
 import com.tallerzapata.backend.api.vehicle.VehiclePersonResponse;
 import com.tallerzapata.backend.api.vehicle.VehiclePersonUpsertRequest;
@@ -48,6 +50,13 @@ public class VehicleService {
         this.vehicleModelRepository = vehicleModelRepository;
         this.vehiclePersonRepository = vehiclePersonRepository;
         this.vehicleRoleRepository = vehicleRoleRepository;
+    }
+
+    @Transactional(readOnly = true)
+    public List<VehicleResponse> findVehiclesByPerson(Long personId) {
+        return vehicleRepository.findByPrincipalCustomerPersonId(personId).stream()
+                .map(this::toResponse)
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -103,6 +112,30 @@ public class VehicleService {
         apply(entity, request);
 
         return toResponse(vehicleRepository.save(entity));
+    }
+
+    @Transactional(readOnly = true)
+    public VehicleCatalogsResponse listCatalogs() {
+        return new VehicleCatalogsResponse(
+                List.of(
+                        new CodeCatalogResponse("SEDAN", "Sedan"),
+                        new CodeCatalogResponse("PICK_UP", "Pick up"),
+                        new CodeCatalogResponse("FURGON", "Furgon"),
+                        new CodeCatalogResponse("UTILITARIO", "Utilitario"),
+                        new CodeCatalogResponse("CAMION", "Camion"),
+                        new CodeCatalogResponse("MOTO", "Moto"),
+                        new CodeCatalogResponse("OTRO", "Otro")
+                ),
+                List.of(
+                        new CodeCatalogResponse("PARTICULAR", "Particular"),
+                        new CodeCatalogResponse("COMERCIAL", "Comercial"),
+                        new CodeCatalogResponse("OFICIAL", "Oficial")
+                ),
+                List.of(
+                        new CodeCatalogResponse("MANUAL", "Manual"),
+                        new CodeCatalogResponse("AUTOMATICA", "Automatica")
+                )
+        );
     }
 
     @Transactional(readOnly = true)

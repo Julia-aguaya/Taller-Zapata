@@ -1,7 +1,9 @@
 package com.tallerzapata.backend.application.budget;
 
 import com.tallerzapata.backend.api.budget.*;
+import com.tallerzapata.backend.api.casefile.CodeCatalogResponse;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
+import com.tallerzapata.backend.application.casefile.ParticularCaseClosureService;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
@@ -9,6 +11,12 @@ import com.tallerzapata.backend.infrastructure.persistence.budget.*;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsurancePartsAuthorizationRepository;
+import com.tallerzapata.backend.infrastructure.persistence.organization.BranchEntity;
+import com.tallerzapata.backend.infrastructure.persistence.organization.BranchRepository;
+import com.tallerzapata.backend.infrastructure.persistence.organization.OrganizationEntity;
+import com.tallerzapata.backend.infrastructure.persistence.organization.OrganizationRepository;
+import com.tallerzapata.backend.infrastructure.persistence.person.PersonEntity;
+import com.tallerzapata.backend.infrastructure.persistence.person.PersonRepository;
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
 import com.tallerzapata.backend.infrastructure.security.CurrentUserService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -17,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -35,12 +44,17 @@ public class BudgetService {
     private final PartPurchaserRepository partPurchaserRepository;
     private final PartPaymentStatusRepository partPaymentStatusRepository;
     private final InsurancePartsAuthorizationRepository insurancePartsAuthorizationRepository;
+    private final PersonRepository personRepository;
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService accessControlService;
     private final CaseAuditService caseAuditService;
     private final BudgetPdfService budgetPdfService;
+    private final ParticularCaseClosureService particularCaseClosureService;
+    private final OrganizationRepository organizationRepository;
+    private final BranchRepository branchRepository;
 
-    public BudgetService(BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CasePartRepository casePartRepository, CaseRepository caseRepository, BudgetReportStatusRepository budgetReportStatusRepository, BudgetTaskRepository budgetTaskRepository, DamageLevelRepository damageLevelRepository, PartDecisionRepository partDecisionRepository, BudgetActionRepository budgetActionRepository, PartStatusRepository partStatusRepository, PartPurchaserRepository partPurchaserRepository, PartPaymentStatusRepository partPaymentStatusRepository, InsurancePartsAuthorizationRepository insurancePartsAuthorizationRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, BudgetPdfService budgetPdfService) {
+    public BudgetService(BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CasePartRepository casePartRepository, CaseRepository caseRepository, BudgetReportStatusRepository budgetReportStatusRepository, BudgetTaskRepository budgetTaskRepository, DamageLevelRepository damageLevelRepository, PartDecisionRepository partDecisionRepository, BudgetActionRepository budgetActionRepository, PartStatusRepository partStatusRepository, PartPurchaserRepository partPurchaserRepository, PartPaymentStatusRepository partPaymentStatusRepository, InsurancePartsAuthorizationRepository insurancePartsAuthorizationRepository, PersonRepository personRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService,             BudgetPdfService budgetPdfService, ParticularCaseClosureService particularCaseClosureService,
+            OrganizationRepository organizationRepository, BranchRepository branchRepository) {
         this.budgetRepository = budgetRepository;
         this.budgetItemRepository = budgetItemRepository;
         this.casePartRepository = casePartRepository;
@@ -54,10 +68,14 @@ public class BudgetService {
         this.partPurchaserRepository = partPurchaserRepository;
         this.partPaymentStatusRepository = partPaymentStatusRepository;
         this.insurancePartsAuthorizationRepository = insurancePartsAuthorizationRepository;
+        this.personRepository = personRepository;
         this.currentUserService = currentUserService;
         this.accessControlService = accessControlService;
         this.caseAuditService = caseAuditService;
         this.budgetPdfService = budgetPdfService;
+        this.particularCaseClosureService = particularCaseClosureService;
+        this.organizationRepository = organizationRepository;
+        this.branchRepository = branchRepository;
     }
 
     @Transactional(readOnly = true)
@@ -71,9 +89,23 @@ public class BudgetService {
     }
 
     @Transactional(readOnly = true)
+    public BudgetCatalogsResponse listCatalogs() {
+        return new BudgetCatalogsResponse(
+                budgetReportStatusRepository.findAll().stream().filter(item -> Boolean.TRUE.equals(item.getActive())).map(item -> new CodeCatalogResponse(item.getCode(), item.getName())).toList(),
+                budgetTaskRepository.findAll().stream().filter(item -> Boolean.TRUE.equals(item.getActive())).map(item -> new CodeCatalogResponse(item.getCode(), item.getName())).toList(),
+                damageLevelRepository.findAll().stream().filter(item -> Boolean.TRUE.equals(item.getActive())).map(item -> new CodeCatalogResponse(item.getCode(), item.getName())).toList(),
+                partDecisionRepository.findAll().stream().filter(item -> Boolean.TRUE.equals(item.getActive())).map(item -> new CodeCatalogResponse(item.getCode(), item.getName())).toList(),
+                budgetActionRepository.findAll().stream().filter(item -> Boolean.TRUE.equals(item.getActive())).map(item -> new CodeCatalogResponse(item.getCode(), item.getName())).toList()
+        );
+    }
+
+    @Transactional(readOnly = true)
     public byte[] generatePdf(Long caseId) {
         var data = loadPdfData(caseId);
-        return budgetPdfService.generate(data.budget(), data.items(), data.folderCode());
+        CaseEntity caseEntity = requireCase(caseId);
+        OrganizationEntity org = caseEntity.getOrganizationId() != null ? organizationRepository.findById(caseEntity.getOrganizationId()).orElse(null) : null;
+        BranchEntity branch = caseEntity.getBranchId() != null ? branchRepository.findById(caseEntity.getBranchId()).orElse(null) : null;
+        return budgetPdfService.generate(data.budget(), data.items(), data.folderCode(), org, branch);
     }
 
     private PdfData loadPdfData(Long caseId) {
@@ -120,9 +152,26 @@ public class BudgetService {
         entity.setEstimatedDays(request.estimatedDays());
         entity.setMinimumCloseAmount(scale(request.minimumCloseAmount()));
         entity.setObservations(blankToNull(request.observations()));
+        entity.setAuthorizedByName(blankToNull(request.authorizedByName()) != null ? blankToNull(request.authorizedByName()) : blankToNull(currentUser.displayName()));
+        entity.setInterestedName(blankToNull(request.interestedName()) != null ? blankToNull(request.interestedName()) : resolveInterestedName(caseEntity));
+        entity.setBenchStraighteningApplies(request.benchStraighteningApplies());
+        entity.setBenchStraighteningDetail(blankToNull(request.benchStraighteningDetail()));
+        entity.setAlignmentApplies(request.alignmentApplies());
+        entity.setAlignmentDetail(blankToNull(request.alignmentDetail()));
+        entity.setBalancingApplies(request.balancingApplies());
+        entity.setBalancingDetail(blankToNull(request.balancingDetail()));
+        entity.setGlassReplacementApplies(request.glassReplacementApplies());
+        entity.setGlassReplacementDetail(blankToNull(request.glassReplacementDetail()));
+        entity.setElectricalWorkApplies(request.electricalWorkApplies());
+        entity.setElectricalDetail(blankToNull(request.electricalDetail()));
+        entity.setMechanicalWorkApplies(request.mechanicalWorkApplies());
+        entity.setMechanicalWorkCode(normalizedOptionalCode(request.mechanicalWorkCode()));
+        entity.setQuotedPartsDate(request.quotedPartsDate());
+        entity.setQuotedPartsSupplier(blankToNull(request.quotedPartsSupplier()));
         entity.setCurrentVersion(isCreate ? 1 : entity.getCurrentVersion() + 1);
         entity = budgetRepository.save(entity);
         caseAuditService.register(currentUser.id(), caseId, "presupuestos", entity.getId(), "upsert_presupuesto", null, caseAuditService.toJson(Map.of("reportStatusCode", entity.getReportStatusCode(), "totalQuoted", entity.getTotalQuoted())), caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
+        particularCaseClosureService.syncClosure(caseId);
         List<BudgetItemResponse> items = budgetItemRepository.findByBudgetIdOrderByVisualOrderAsc(entity.getId()).stream().map(this::toBudgetItemResponse).toList();
         return toBudgetResponse(entity, items);
     }
@@ -138,6 +187,7 @@ public class BudgetService {
         entity.setObservations(blankToNull(request.observations()));
         entity = budgetRepository.save(entity);
         caseAuditService.register(currentUser.id(), caseId, "presupuestos", entity.getId(), "cerrar_presupuesto", null, caseAuditService.toJson(Map.of("reportStatusCode", entity.getReportStatusCode())), caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
+        particularCaseClosureService.syncClosure(caseId);
         List<BudgetItemResponse> items = budgetItemRepository.findByBudgetIdOrderByVisualOrderAsc(entity.getId()).stream().map(this::toBudgetItemResponse).toList();
         return toBudgetResponse(entity, items);
     }
@@ -270,6 +320,37 @@ public class BudgetService {
         if (request.actionCode() != null && !budgetActionRepository.existsByCodeAndActiveTrue(normalizeCode(request.actionCode()))) throw new ConflictException("actionCode no permitido: " + request.actionCode());
     }
 
+    @Transactional
+    public List<CasePartResponse> syncPartsFromBudget(Long caseId, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "presupuesto.crear");
+
+        BudgetEntity budget = budgetRepository.findByCaseId(caseId)
+                .orElseThrow(() -> new ConflictException("No existe presupuesto para sincronizar repuestos"));
+
+        List<BudgetItemEntity> items = budgetItemRepository.findByBudgetIdOrderByVisualOrderAsc(budget.getId());
+        List<CasePartResponse> created = new ArrayList<>();
+        for (BudgetItemEntity item : items) {
+            if (!Boolean.TRUE.equals(item.getActive())) continue;
+            String decision = normalizeCode(item.getPartDecisionCode());
+            if (!"REEMPLAZAR".equals(decision)) continue;
+
+            CasePartEntity part = new CasePartEntity();
+            part.setCaseId(caseId);
+            part.setBudgetItemId(item.getId());
+            part.setDescription(item.getAffectedPiece() != null ? item.getAffectedPiece() : "Repuesto sin descripción");
+            part.setStatusCode("PENDIENTE");
+            part.setBudgetedPrice(scale(item.getPartValue()));
+            part.setFinalPrice(scale(item.getPartValue()));
+            part.setUsed(false);
+            part.setReturned(false);
+            part = casePartRepository.save(part);
+            created.add(toCasePartResponse(part));
+        }
+        return created;
+    }
+
     private void validateBudgetItemUpdateRequest(BudgetItemUpdateRequest request) {
         if (request.taskCode() != null && !budgetTaskRepository.existsByCodeAndActiveTrue(normalizeCode(request.taskCode()))) throw new ConflictException("taskCode no permitido: " + request.taskCode());
         if (request.damageLevelCode() != null && !damageLevelRepository.existsByCodeAndActiveTrue(normalizeCode(request.damageLevelCode()))) throw new ConflictException("damageLevelCode no permitido: " + request.damageLevelCode());
@@ -294,7 +375,16 @@ public class BudgetService {
     private CaseEntity requireCase(Long caseId) { return caseRepository.findById(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId)); }
 
     private BudgetResponse toBudgetResponse(BudgetEntity e, List<BudgetItemResponse> items) {
-        return new BudgetResponse(e.getId(), e.getCaseId(), e.getOrganizationId(), e.getBranchId(), e.getBudgetDate(), e.getReportStatusCode(), e.getLaborWithoutVat(), e.getVatRate(), e.getLaborVat(), e.getLaborWithVat(), e.getPartsTotal(), e.getTotalQuoted(), e.getEstimatedDays(), e.getMinimumCloseAmount(), e.getObservations(), e.getCurrentVersion(), items);
+        return new BudgetResponse(e.getId(), e.getCaseId(), e.getOrganizationId(), e.getBranchId(), e.getBudgetDate(), e.getReportStatusCode(), e.getLaborWithoutVat(), e.getVatRate(), e.getLaborVat(), e.getLaborWithVat(), e.getPartsTotal(), e.getTotalQuoted(), e.getEstimatedDays(), e.getMinimumCloseAmount(), e.getObservations(), e.getCurrentVersion(), items, e.getAuthorizedByName(), e.getInterestedName(), e.getBenchStraighteningApplies(), e.getBenchStraighteningDetail(), e.getAlignmentApplies(), e.getAlignmentDetail(), e.getBalancingApplies(), e.getBalancingDetail(), e.getGlassReplacementApplies(), e.getGlassReplacementDetail(), e.getElectricalWorkApplies(), e.getElectricalDetail(), e.getMechanicalWorkApplies(), e.getMechanicalWorkCode(), e.getQuotedPartsDate(), e.getQuotedPartsSupplier());
+    }
+
+    private String resolveInterestedName(CaseEntity caseEntity) {
+        if (caseEntity.getPrincipalCustomerPersonId() == null) {
+            return null;
+        }
+        return personRepository.findById(caseEntity.getPrincipalCustomerPersonId())
+                .map(PersonEntity::getNombreMostrar)
+                .orElse(null);
     }
 
     private BudgetItemResponse toBudgetItemResponse(BudgetItemEntity e) {

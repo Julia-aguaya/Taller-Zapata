@@ -4,6 +4,8 @@ import com.tallerzapata.backend.api.casefile.CaseVisibleStateResponse;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartEntity;
 import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartRepository;
+import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetEntity;
+import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeRepository;
@@ -46,6 +48,7 @@ public class CaseVisibleStateResolver {
     private static final String DOMAIN_REPARACION = "reparacion";
 
     private static final Set<String> TRAMITE_VISIBLE_CODES = Set.of(
+            "INGRESADO",
             "SIN_PRESENTAR",
             "PRESENTADO",
             "EN_TRAMITE",
@@ -70,6 +73,7 @@ public class CaseVisibleStateResolver {
 
     private static final Map<String, String> LABELS = Map.ofEntries(
             Map.entry("SIN_PRESENTAR", "Sin presentar"),
+            Map.entry("INGRESADO", "Ingresado"),
             Map.entry("PRESENTADO", "Presentado"),
             Map.entry("EN_TRAMITE", "En tramite"),
             Map.entry("ACORDADO", "Acordado"),
@@ -87,6 +91,7 @@ public class CaseVisibleStateResolver {
 
     private final CaseTypeRepository caseTypeRepository;
     private final InsuranceProcessingRepository insuranceProcessingRepository;
+    private final BudgetRepository budgetRepository;
     private final CaseFranchiseRepository caseFranchiseRepository;
     private final CaseThirdPartyRepository caseThirdPartyRepository;
     private final CaseLegalRepository caseLegalRepository;
@@ -100,6 +105,7 @@ public class CaseVisibleStateResolver {
     public CaseVisibleStateResolver(
             CaseTypeRepository caseTypeRepository,
             InsuranceProcessingRepository insuranceProcessingRepository,
+            BudgetRepository budgetRepository,
             CaseFranchiseRepository caseFranchiseRepository,
             CaseThirdPartyRepository caseThirdPartyRepository,
             CaseLegalRepository caseLegalRepository,
@@ -112,6 +118,7 @@ public class CaseVisibleStateResolver {
     ) {
         this.caseTypeRepository = caseTypeRepository;
         this.insuranceProcessingRepository = insuranceProcessingRepository;
+        this.budgetRepository = budgetRepository;
         this.caseFranchiseRepository = caseFranchiseRepository;
         this.caseThirdPartyRepository = caseThirdPartyRepository;
         this.caseLegalRepository = caseLegalRepository;
@@ -135,11 +142,12 @@ public class CaseVisibleStateResolver {
         List<VehicleIntakeEntity> intakes = vehicleIntakeRepository.findByCaseId(caseEntity.getId(), VEHICLE_INTAKE_SORT);
         List<VehicleOutcomeEntity> outcomes = vehicleOutcomeRepository.findByCaseId(caseEntity.getId(), VEHICLE_OUTCOME_SORT);
         List<CasePartEntity> parts = casePartRepository.findByCaseIdOrderByIdAsc(caseEntity.getId());
+        BudgetEntity budget = budgetRepository.findByCaseId(caseEntity.getId()).orElse(null);
         boolean hasFinancialMovements = !financialMovementRepository.findByCaseId(caseEntity.getId(), FINANCE_SORT).isEmpty();
         boolean hasReceipts = !issuedReceiptRepository.findByCaseId(caseEntity.getId(), FINANCE_SORT).isEmpty();
 
-        String automaticTramiteCode = resolveAutomaticTramiteCode(caseType, insuranceProcessing.orElse(null), thirdParty.orElse(null), legal.orElse(null), hasFinancialMovements, hasReceipts);
-        String automaticRepairCode = resolveAutomaticRepairCode(insuranceProcessing.orElse(null), outcomes, intakes, appointments, parts);
+        String automaticRepairCode = resolveAutomaticRepairCode(caseType, insuranceProcessing.orElse(null), budget, outcomes, intakes, appointments, parts);
+        String automaticTramiteCode = resolveAutomaticTramiteCode(caseType, insuranceProcessing.orElse(null), thirdParty.orElse(null), legal.orElse(null), budget, automaticRepairCode, hasFinancialMovements, hasReceipts, caseEntity.getId());
 
         Map<String, CaseVisibleStateResponse> result = new LinkedHashMap<>();
         result.put(DOMAIN_TRAMITE, buildVisibleState(DOMAIN_TRAMITE, automaticTramiteCode, normalizeCode(caseEntity.getVisibleCaseStateOverrideCode())));
@@ -200,9 +208,16 @@ public class CaseVisibleStateResolver {
             InsuranceProcessingEntity insuranceProcessing,
             CaseThirdPartyEntity thirdParty,
             CaseLegalEntity legal,
+            BudgetEntity budget,
+            String repairVisibleCode,
             boolean hasFinancialMovements,
-            boolean hasReceipts
+            boolean hasReceipts,
+            Long caseId
     ) {
+        if ("PARTICULAR".equals(normalizeCode(caseType.getCode()))) {
+            return resolveParticularTramiteCode(repairVisibleCode, budget, caseId);
+        }
+
         if (legal != null && "DESISTIMIENTO".equals(normalizeCode(legal.getClosedByCode()))) {
             return "DESISTIDO";
         }
@@ -257,12 +272,18 @@ public class CaseVisibleStateResolver {
     }
 
     private String resolveAutomaticRepairCode(
+            CaseTypeEntity caseType,
             InsuranceProcessingEntity insuranceProcessing,
+            BudgetEntity budget,
             List<VehicleOutcomeEntity> outcomes,
             List<VehicleIntakeEntity> intakes,
             List<RepairAppointmentEntity> appointments,
             List<CasePartEntity> parts
     ) {
+        if ("PARTICULAR".equals(normalizeCode(caseType.getCode()))) {
+            return resolveParticularRepairCode(budget, outcomes, intakes, appointments, parts);
+        }
+
         if (insuranceProcessing != null && Boolean.TRUE.equals(insuranceProcessing.getNoRepair())) {
             return "NO_DEBE_REPARARSE";
         }
@@ -299,6 +320,77 @@ public class CaseVisibleStateResolver {
         }
 
         return "EN_TRAMITE";
+    }
+
+    private String resolveParticularTramiteCode(String repairVisibleCode, BudgetEntity budget, Long caseId) {
+        if (isParticularFullyPaid(budget, caseId)) {
+            return "PAGADO";
+        }
+        if ("REPARADO".equals(normalizeCode(repairVisibleCode))) {
+            return "PASADO_A_PAGOS";
+        }
+        return "INGRESADO";
+    }
+
+    private String resolveParticularRepairCode(
+            BudgetEntity budget,
+            List<VehicleOutcomeEntity> outcomes,
+            List<VehicleIntakeEntity> intakes,
+            List<RepairAppointmentEntity> appointments,
+            List<CasePartEntity> parts
+    ) {
+        VehicleOutcomeEntity latestOutcome = outcomes.isEmpty() ? null : outcomes.get(0);
+        if (latestOutcome != null) {
+            if (Boolean.TRUE.equals(latestOutcome.getDefinitive()) && !Boolean.TRUE.equals(latestOutcome.getShouldReenter())) {
+                return "REPARADO";
+            }
+            if (Boolean.TRUE.equals(latestOutcome.getShouldReenter()) || latestOutcome.getReentryAppointmentId() != null || hasText(latestOutcome.getReentryStatusCode())) {
+                return "DEBE_REINGRESAR";
+            }
+        }
+
+        if (!intakes.isEmpty()) {
+            return "EN_TRAMITE";
+        }
+
+        RepairAppointmentEntity latestAppointment = appointments.isEmpty() ? null : appointments.get(0);
+        if (latestAppointment != null && !"CANCELADO".equals(normalizeCode(latestAppointment.getStatusCode()))) {
+            return "CON_TURNO";
+        }
+
+        if (budget != null && "CERRADO".equals(normalizeCode(budget.getReportStatusCode()))) {
+            boolean hasPendingAuthorizedParts = parts.stream().anyMatch(part ->
+                    "AUTORIZADO".equals(normalizeCode(part.getAuthorizedCode()))
+                            && !"RECIBIDO".equals(normalizeCode(part.getStatusCode()))
+            );
+            if (hasPendingAuthorizedParts) {
+                return "FALTAN_REPUESTOS";
+            }
+            return "DAR_TURNO";
+        }
+
+        return "EN_TRAMITE";
+    }
+
+    private boolean isParticularFullyPaid(BudgetEntity budget, Long caseId) {
+        if (budget == null) {
+            return false;
+        }
+
+        BigDecimal expectedTotal = budget.getTotalQuoted() == null ? BigDecimal.ZERO : budget.getTotalQuoted();
+        BigDecimal customerNet = financialMovementRepository.findByCaseId(caseId, FINANCE_SORT).stream()
+                .filter(movement -> "CLIENTE".equals(normalizeCode(movement.getFlowOriginCode())))
+                .map(movement -> {
+                    BigDecimal amount = movement.getNetAmount() == null ? BigDecimal.ZERO : movement.getNetAmount();
+                    String type = normalizeCode(movement.getMovementTypeCode());
+                    if ("INGRESO".equals(type) || ("AJUSTE".equals(type) && amount.signum() >= 0)) {
+                        return amount;
+                    }
+                    return amount.negate().abs();
+                })
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        return customerNet.compareTo(expectedTotal) >= 0;
     }
 
     private boolean hasPositiveAmount(BigDecimal value) {

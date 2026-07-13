@@ -66,6 +66,14 @@ public class VehicleController {
     @Operation(summary = "Listar marcas", description = "Devuelve el catalogo de marcas de vehiculos")
     @ApiResponse(responseCode = "200", description = "OK")
     @PreAuthorize("hasAuthority('vehiculo.ver')")
+    @GetMapping("/catalogs")
+    public VehicleCatalogsResponse listCatalogs() {
+        return vehicleService.listCatalogs();
+    }
+
+    @Operation(summary = "Listar marcas", description = "Devuelve el catalogo de marcas de vehiculos")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PreAuthorize("hasAuthority('vehiculo.ver')")
     @GetMapping("/brands")
     public List<VehicleBrandResponse> listBrands() {
         return vehicleService.listBrands();

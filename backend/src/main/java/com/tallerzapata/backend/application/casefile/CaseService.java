@@ -38,6 +38,10 @@ import com.tallerzapata.backend.infrastructure.persistence.operation.Operational
 import com.tallerzapata.backend.infrastructure.persistence.person.PersonEntity;
 import com.tallerzapata.backend.infrastructure.persistence.person.PersonRepository;
 import com.tallerzapata.backend.infrastructure.persistence.recovery.FranchiseRecoveryRepository;
+import com.tallerzapata.backend.infrastructure.persistence.security.UserEntity;
+import com.tallerzapata.backend.infrastructure.persistence.security.UserRepository;
+import com.tallerzapata.backend.infrastructure.persistence.security.UserRoleEntity;
+import com.tallerzapata.backend.infrastructure.persistence.security.UserRoleRepository;
 import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleEntity;
 import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleRepository;
 import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleRoleRepository;
@@ -86,6 +90,8 @@ public class CaseService {
     private final FranchiseRecoveryRepository franchiseRecoveryRepository;
     private final CaseLegalRepository caseLegalRepository;
     private final OperationalTaskRepository operationalTaskRepository;
+    private final UserRoleRepository userRoleRepository;
+    private final UserRepository userRepository;
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService caseAccessControlService;
     private final CaseVisibleStateResolver caseVisibleStateResolver;
@@ -111,6 +117,8 @@ public class CaseService {
             FranchiseRecoveryRepository franchiseRecoveryRepository,
             CaseLegalRepository caseLegalRepository,
             OperationalTaskRepository operationalTaskRepository,
+            UserRoleRepository userRoleRepository,
+            UserRepository userRepository,
             CurrentUserService currentUserService,
             CaseAccessControlService caseAccessControlService,
             CaseVisibleStateResolver caseVisibleStateResolver
@@ -135,6 +143,8 @@ public class CaseService {
         this.franchiseRecoveryRepository = franchiseRecoveryRepository;
         this.caseLegalRepository = caseLegalRepository;
         this.operationalTaskRepository = operationalTaskRepository;
+        this.userRoleRepository = userRoleRepository;
+        this.userRepository = userRepository;
         this.currentUserService = currentUserService;
         this.caseAccessControlService = caseAccessControlService;
         this.caseVisibleStateResolver = caseVisibleStateResolver;
@@ -261,14 +271,15 @@ public class CaseService {
     public CaseResponse create(CaseCreateRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         caseAccessControlService.requirePermission(currentUser, "caso.crear");
-        caseAccessControlService.requireOrganizationScope(currentUser, request.organizationId(), request.branchId());
+        CreationScope creationScope = resolveCreationScope(currentUser, request.organizationId(), request.branchId());
+        caseAccessControlService.requireOrganizationScope(currentUser, creationScope.organizationId(), creationScope.branchId());
 
         CaseTypeEntity caseType = caseTypeRepository.findById(request.caseTypeId())
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el tipo de tramite " + request.caseTypeId()));
-        BranchEntity branch = branchRepository.findById(request.branchId())
-                .orElseThrow(() -> new ResourceNotFoundException("No existe la sucursal " + request.branchId()));
+        BranchEntity branch = branchRepository.findById(creationScope.branchId())
+                .orElseThrow(() -> new ResourceNotFoundException("No existe la sucursal " + creationScope.branchId()));
 
-        if (!branch.getOrganizationId().equals(request.organizationId())) {
+        if (!branch.getOrganizationId().equals(creationScope.organizationId())) {
             throw new ResourceNotFoundException("La sucursal no pertenece a la organizacion indicada");
         }
 
@@ -277,7 +288,14 @@ public class CaseService {
         vehicleRepository.findById(request.principalVehicleId())
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el vehiculo principal " + request.principalVehicleId()));
 
-        validateCaseCodes(request.customerRoleCode(), request.principalVehicleRoleCode(), request.priorityCode());
+        String customerRoleCode = request.customerRoleCode() == null || request.customerRoleCode().isBlank()
+                ? "CLIENTE"
+                : request.customerRoleCode();
+        String principalVehicleRoleCode = request.principalVehicleRoleCode() == null || request.principalVehicleRoleCode().isBlank()
+                ? "PRINCIPAL"
+                : request.principalVehicleRoleCode();
+
+        validateCaseCodes(customerRoleCode, principalVehicleRoleCode, request.priorityCode());
 
         WorkflowStateEntity initialCaseState = workflowStateRepository.findByDomainAndCode("tramite", "INGRESADO")
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el estado inicial de tramite"));
@@ -290,15 +308,15 @@ public class CaseService {
         WorkflowStateEntity initialLegalState = workflowStateRepository.findByDomainAndCode("legal", "SIN_GESTION")
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el estado inicial de legal"));
 
-        Long nextOrderNumber = caseRepository.findMaxOrderNumberByOrganizationId(request.organizationId()) + 1;
+        Long nextOrderNumber = caseRepository.findMaxOrderNumberByOrganizationId(creationScope.organizationId()) + 1;
         String folderCode = CaseFolderCodeGenerator.generate(nextOrderNumber, caseType.getFolderPrefix(), branch.getCode());
 
         CaseEntity entity = new CaseEntity();
         entity.setOrderNumber(nextOrderNumber);
         entity.setFolderCode(folderCode);
         entity.setCaseTypeId(caseType.getId());
-        entity.setOrganizationId(request.organizationId());
-        entity.setBranchId(request.branchId());
+        entity.setOrganizationId(creationScope.organizationId());
+        entity.setBranchId(creationScope.branchId());
         entity.setPrincipalVehicleId(request.principalVehicleId());
         entity.setPrincipalCustomerPersonId(request.principalCustomerPersonId());
         entity.setReferenced(Boolean.TRUE.equals(request.referenced()));
@@ -317,7 +335,7 @@ public class CaseService {
         CasePersonEntity casePerson = new CasePersonEntity();
         casePerson.setCaseId(entity.getId());
         casePerson.setPersonId(request.principalCustomerPersonId());
-        casePerson.setCaseRoleCode(normalizeCode(request.customerRoleCode()));
+        casePerson.setCaseRoleCode(normalizeCode(customerRoleCode));
         casePerson.setVehicleId(request.principalVehicleId());
         casePerson.setPrincipal(true);
         casePersonRepository.save(casePerson);
@@ -325,7 +343,7 @@ public class CaseService {
         CaseVehicleEntity caseVehicle = new CaseVehicleEntity();
         caseVehicle.setCaseId(entity.getId());
         caseVehicle.setVehicleId(request.principalVehicleId());
-        caseVehicle.setVehicleRoleCode(normalizeCode(request.principalVehicleRoleCode()));
+        caseVehicle.setVehicleRoleCode(normalizeCode(principalVehicleRoleCode));
         caseVehicle.setPrincipal(true);
         caseVehicle.setVisualOrder(1);
         caseVehicleRepository.save(caseVehicle);
@@ -366,8 +384,12 @@ public class CaseService {
 
         Map<String, Object> metadata = new LinkedHashMap<>();
         metadata.put("caseTypeCode", caseType.getCode());
-        metadata.put("customerRoleCode", request.customerRoleCode());
-        metadata.put("principalVehicleRoleCode", request.principalVehicleRoleCode());
+        metadata.put("customerRoleCode", customerRoleCode);
+        metadata.put("principalVehicleRoleCode", principalVehicleRoleCode);
+        metadata.put("creationScopeResolved", Map.of(
+                "organizationId", creationScope.organizationId(),
+                "branchId", creationScope.branchId()
+        ));
 
         caseAuditService.register(
                 currentUser.id(),
@@ -389,6 +411,13 @@ public class CaseService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity entity = getCase(caseId);
         caseAccessControlService.requireCaseAccess(currentUser, entity, "caso.crear");
+        Long caseTypeId = entity.getCaseTypeId();
+        CaseTypeEntity caseType = caseTypeRepository.findById(caseTypeId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el tipo de tramite " + caseTypeId));
+
+        if ("PARTICULAR".equals(normalizeCode(caseType.getCode())) && request.closedAt() != null) {
+            throw new ConflictException("closedAt se calcula automaticamente para tramites PARTICULARES");
+        }
 
         if (request.referredByPersonId() != null) {
             personRepository.findById(request.referredByPersonId())
@@ -415,8 +444,12 @@ public class CaseService {
             throw new ConflictException("priorityCode no permitido: " + entity.getPriorityCode());
         }
         entity.setGeneralObservations(blankToNull(request.generalObservations()));
-        entity.setClosedAt(request.closedAt());
-        entity.setArchivedAt(request.archivedAt());
+        if (request.closedAt() != null) {
+            entity.setClosedAt(request.closedAt());
+        }
+        if (request.archivedAt() != null) {
+            entity.setArchivedAt(request.archivedAt());
+        }
 
         entity = caseRepository.save(entity);
 
@@ -739,6 +772,9 @@ public class CaseService {
                     .map(VehicleEntity::getPlate)
                     .orElse(null);
         }
+        String createdByDisplayName = userRepository.findById(entity.getCreatedByUserId())
+                .map(this::buildUserDisplayName)
+                .orElse(null);
 
         return new CaseResponse(
                 entity.getId(),
@@ -767,6 +803,9 @@ public class CaseService {
                 entity.getGeneralObservations(),
                 entity.getClosedAt(),
                 entity.getArchivedAt(),
+                entity.getCreatedByUserId(),
+                createdByDisplayName,
+                entity.getCreatedAt(),
                 visibleStates.get("tramite"),
                 visibleStates.get("reparacion"),
                 principalCustomerName,
@@ -801,6 +840,9 @@ public class CaseService {
             VehicleEntity vehicle = vehiclesById.get(entity.getPrincipalVehicleId());
             principalVehiclePlate = vehicle != null ? vehicle.getPlate() : null;
         }
+        String createdByDisplayName = userRepository.findById(entity.getCreatedByUserId())
+                .map(this::buildUserDisplayName)
+                .orElse(null);
 
         return new CaseResponse(
                 entity.getId(),
@@ -829,6 +871,9 @@ public class CaseService {
                 entity.getGeneralObservations(),
                 entity.getClosedAt(),
                 entity.getArchivedAt(),
+                entity.getCreatedByUserId(),
+                createdByDisplayName,
+                entity.getCreatedAt(),
                 visibleStates.get("tramite"),
                 visibleStates.get("reparacion"),
                 principalCustomerName,
@@ -842,6 +887,53 @@ public class CaseService {
         }
         return value.trim();
     }
+
+    private CreationScope resolveCreationScope(AuthenticatedUser currentUser, Long requestedOrganizationId, Long requestedBranchId) {
+        List<UserRoleEntity> activeRoles = userRoleRepository.findByUserIdAndActiveTrue(currentUser.id());
+        if (activeRoles.isEmpty()) {
+            throw new ConflictException("El usuario no tiene roles activos para crear carpetas");
+        }
+
+        Long organizationId = requestedOrganizationId;
+        if (organizationId == null) {
+            List<Long> organizationIds = activeRoles.stream()
+                    .map(UserRoleEntity::getOrganizationId)
+                    .distinct()
+                    .toList();
+            if (organizationIds.size() != 1) {
+                throw new ConflictException("organizationId es obligatorio cuando el usuario tiene alcance a multiples organizaciones");
+            }
+            organizationId = organizationIds.get(0);
+        }
+
+        Long finalOrganizationId = organizationId;
+        Long branchId = requestedBranchId;
+        if (branchId == null) {
+            List<Long> branchIds = activeRoles.stream()
+                    .filter(role -> finalOrganizationId.equals(role.getOrganizationId()))
+                    .map(UserRoleEntity::getBranchId)
+                    .filter(id -> id != null)
+                    .distinct()
+                    .toList();
+            if (branchIds.size() != 1) {
+                throw new ConflictException("branchId es obligatorio cuando el usuario tiene alcance a multiples sucursales");
+            }
+            branchId = branchIds.get(0);
+        }
+
+        return new CreationScope(organizationId, branchId);
+    }
+
+    private String buildUserDisplayName(UserEntity user) {
+        String firstName = blankToNull(user.getFirstName());
+        String lastName = blankToNull(user.getLastName());
+        if (firstName == null) {
+            return lastName == null ? user.getUsername() : lastName;
+        }
+        return lastName == null ? firstName : firstName + " " + lastName;
+    }
+
+    private record CreationScope(Long organizationId, Long branchId) {}
 
     private void validateCaseCodes(String customerRoleCode, String principalVehicleRoleCode, String priorityCode) {
         String normalizedCustomerRoleCode = normalizeCode(customerRoleCode);

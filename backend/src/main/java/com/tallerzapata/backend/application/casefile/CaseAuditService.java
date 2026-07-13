@@ -231,4 +231,24 @@ public class CaseAuditService {
         }
         return value.trim();
     }
+
+    public void registerNote(Long caseId, String noteText, HttpServletRequest request) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = caseRepository.findById(caseId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
+        caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "caso.ver");
+
+        AuditEventEntity entity = new AuditEventEntity();
+        entity.setUserId(currentUser.id());
+        entity.setCaseId(caseId);
+        entity.setEntityType("anotaciones");
+        entity.setEntityId(null);
+        entity.setActionCode("nota_manual");
+        entity.setBeforeJson(toJson(Map.of("text", noteText, "domain", "anotaciones")));
+        entity.setAfterJson(null);
+        entity.setMetadataJson(toJson(Map.of("domain", "anotaciones", "changeNote", noteText)));
+        entity.setSourceIp(request == null ? null : request.getRemoteAddr());
+        entity.setUserAgent(request == null ? null : request.getHeader("User-Agent"));
+        auditEventRepository.save(entity);
+    }
 }

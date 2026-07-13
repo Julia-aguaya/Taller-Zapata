@@ -1,0 +1,12 @@
+ALTER TABLE presupuestos ADD COLUMN autorizo_nombre VARCHAR(150) NULL;
+ALTER TABLE presupuestos ADD COLUMN interesado_nombre VARCHAR(150) NULL;
+ALTER TABLE presupuestos ADD COLUMN estiraje_bancada_aplica TINYINT(1) NULL;
+ALTER TABLE presupuestos ADD COLUMN estiraje_bancada_detalle VARCHAR(255) NULL;
+ALTER TABLE presupuestos ADD COLUMN alineacion_aplica TINYINT(1) NULL;
+ALTER TABLE presupuestos ADD COLUMN balanceo_aplica TINYINT(1) NULL;
+ALTER TABLE presupuestos ADD COLUMN recambio_cristales_aplica TINYINT(1) NULL;
+ALTER TABLE presupuestos ADD COLUMN recambio_cristales_detalle VARCHAR(255) NULL;
+ALTER TABLE presupuestos ADD COLUMN trabajos_electricos_aplica TINYINT(1) NULL;
+ALTER TABLE presupuestos ADD COLUMN trabajos_mecanicos_codigo VARCHAR(20) NULL;
+ALTER TABLE presupuestos ADD COLUMN repuestos_cotizados_fecha DATE NULL;
+ALTER TABLE presupuestos ADD COLUMN repuestos_cotizados_proveedor VARCHAR(150) NULL;

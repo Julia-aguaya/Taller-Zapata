@@ -49,4 +49,14 @@ public class LocalDocumentStorageService implements DocumentStorageService {
         }
         return new FileSystemResource(target);
     }
+
+    @Override
+    public void delete(String storageKey) {
+        try {
+            Path target = storageRoot.resolve(storageKey).normalize();
+            Files.deleteIfExists(target);
+        } catch (IOException exception) {
+            // File may not exist, silently ignore
+        }
+    }
 }

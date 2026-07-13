@@ -9,6 +9,8 @@ public interface DocumentStorageService {
 
     Resource open(String storageKey);
 
+    void delete(String storageKey);
+
     record StoredDocument(String storageKey, long sizeBytes) {
     }
 }

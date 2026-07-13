@@ -1,6 +1,5 @@
 package com.tallerzapata.backend.api.casefile;
 
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
 import java.time.LocalDate;
@@ -8,8 +7,8 @@ import java.time.LocalTime;
 
 public record CaseCreateRequest(
         @NotNull Long caseTypeId,
-        @NotNull Long organizationId,
-        @NotNull Long branchId,
+        Long organizationId,
+        Long branchId,
         @NotNull Long principalVehicleId,
         @NotNull Long principalCustomerPersonId,
         Boolean referenced,
@@ -24,7 +23,7 @@ public record CaseCreateRequest(
         String incidentObservations,
         LocalDate prescriptionDate,
         Integer daysInProcess,
-        @NotBlank String customerRoleCode,
-        @NotBlank String principalVehicleRoleCode
+        String customerRoleCode,
+        String principalVehicleRoleCode
 ) {
 }

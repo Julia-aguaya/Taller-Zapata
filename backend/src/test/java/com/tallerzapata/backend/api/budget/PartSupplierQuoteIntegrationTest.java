@@ -43,7 +43,7 @@ class PartSupplierQuoteIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(
                                 LocalDate.of(2026, 4, 20), "BORRADOR",
                                 new BigDecimal("1000.00"), new BigDecimal("21.00"),
-                                new BigDecimal("500.00"), 5, null, null
+                                new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null
                         ))))
                 .andExpect(status().isOk());
 
@@ -101,7 +101,7 @@ class PartSupplierQuoteIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(
                                 LocalDate.of(2026, 4, 20), "BORRADOR",
                                 new BigDecimal("1000.00"), new BigDecimal("21.00"),
-                                new BigDecimal("500.00"), 5, null, null
+                                new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null
                         ))))
                 .andExpect(status().isOk());
 
@@ -171,7 +171,7 @@ class PartSupplierQuoteIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(
                                 LocalDate.of(2026, 4, 20), "BORRADOR",
                                 new BigDecimal("1000.00"), new BigDecimal("21.00"),
-                                new BigDecimal("500.00"), 5, null, null
+                                new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null
                         ))))
                 .andExpect(status().isOk());
 
@@ -216,7 +216,7 @@ class PartSupplierQuoteIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(
                                 LocalDate.of(2026, 4, 20), "BORRADOR",
                                 new BigDecimal("1000.00"), new BigDecimal("21.00"),
-                                new BigDecimal("500.00"), 5, null, null
+                                new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null
                         ))))
                 .andExpect(status().isOk());
 
@@ -263,7 +263,7 @@ class PartSupplierQuoteIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(
                                 LocalDate.of(2026, 4, 20), "BORRADOR",
                                 new BigDecimal("1000.00"), new BigDecimal("21.00"),
-                                new BigDecimal("500.00"), 5, null, null
+                                new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null
                         ))))
                 .andExpect(status().isOk());
 
@@ -311,7 +311,7 @@ class PartSupplierQuoteIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(
                                 LocalDate.of(2026, 4, 20), "BORRADOR",
                                 new BigDecimal("1000.00"), new BigDecimal("21.00"),
-                                new BigDecimal("500.00"), 5, null, null
+                                new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null
                         ))))
                 .andExpect(status().isOk());
 

@@ -11,6 +11,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -92,6 +93,22 @@ public class DocumentController {
             HttpServletRequest httpRequest
     ) {
         return documentService.updateRelation(relationId, request, httpRequest);
+    }
+
+    @Operation(summary = "Eliminar relacion de documento", description = "Elimina la relacion de un documento con una entidad, desvinculandolo del caso")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PreAuthorize("hasAuthority('documento.crear')")
+    @DeleteMapping("/api/v1/document-relations/{relationId}")
+    public void deleteRelation(@PathVariable Long relationId, HttpServletRequest httpRequest) {
+        documentService.deleteRelation(relationId, httpRequest);
+    }
+
+    @Operation(summary = "Eliminar documento", description = "Elimina definitivamente un documento y su archivo del storage")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PreAuthorize("hasAuthority('documento.crear')")
+    @DeleteMapping("/api/v1/documents/{documentId}")
+    public void deleteDocument(@PathVariable Long documentId, HttpServletRequest httpRequest) {
+        documentService.deleteDocument(documentId, httpRequest);
     }
 
     @Operation(summary = "Reemplazar documento", description = "Reemplaza el archivo de un documento existente")

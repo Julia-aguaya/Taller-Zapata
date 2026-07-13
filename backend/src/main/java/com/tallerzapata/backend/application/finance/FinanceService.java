@@ -2,9 +2,12 @@ package com.tallerzapata.backend.application.finance;
 
 import com.tallerzapata.backend.api.finance.*;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
+import com.tallerzapata.backend.application.casefile.ParticularCaseClosureService;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
+import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetEntity;
+import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
 import com.tallerzapata.backend.infrastructure.persistence.document.DocumentRepository;
@@ -21,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +37,7 @@ public class FinanceService {
     private final FinancialMovementRetentionRepository retentionRepository;
     private final FinancialMovementApplicationRepository applicationRepository;
     private final IssuedReceiptRepository receiptRepository;
+    private final BudgetRepository budgetRepository;
     private final CaseRepository caseRepository;
     private final PersonRepository personRepository;
     private final UserRepository userRepository;
@@ -49,12 +54,14 @@ public class FinanceService {
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService accessControlService;
     private final CaseAuditService caseAuditService;
+    private final ParticularCaseClosureService particularCaseClosureService;
 
-    public FinanceService(FinancialMovementRepository movementRepository, FinancialMovementRetentionRepository retentionRepository, FinancialMovementApplicationRepository applicationRepository, IssuedReceiptRepository receiptRepository, CaseRepository caseRepository, PersonRepository personRepository, UserRepository userRepository, DocumentRepository documentRepository, FinancialMovementTypeRepository movementTypeRepository, FinancialFlowOriginRepository flowOriginRepository, FinancialCounterpartyTypeRepository counterpartyTypeRepository, FinancialPaymentMethodRepository paymentMethodRepository, FinancialCancellationTypeRepository cancellationTypeRepository, FinancialRetentionTypeRepository retentionTypeRepository, FinancialApplicationConceptRepository applicationConceptRepository, IssuedReceiptTypeRepository issuedReceiptTypeRepository, InsuranceCompanyRepository companyRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService) {
+    public FinanceService(FinancialMovementRepository movementRepository, FinancialMovementRetentionRepository retentionRepository, FinancialMovementApplicationRepository applicationRepository, IssuedReceiptRepository receiptRepository, BudgetRepository budgetRepository, CaseRepository caseRepository, PersonRepository personRepository, UserRepository userRepository, DocumentRepository documentRepository, FinancialMovementTypeRepository movementTypeRepository, FinancialFlowOriginRepository flowOriginRepository, FinancialCounterpartyTypeRepository counterpartyTypeRepository, FinancialPaymentMethodRepository paymentMethodRepository, FinancialCancellationTypeRepository cancellationTypeRepository, FinancialRetentionTypeRepository retentionTypeRepository, FinancialApplicationConceptRepository applicationConceptRepository, IssuedReceiptTypeRepository issuedReceiptTypeRepository, InsuranceCompanyRepository companyRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, ParticularCaseClosureService particularCaseClosureService) {
         this.movementRepository = movementRepository;
         this.retentionRepository = retentionRepository;
         this.applicationRepository = applicationRepository;
         this.receiptRepository = receiptRepository;
+        this.budgetRepository = budgetRepository;
         this.caseRepository = caseRepository;
         this.personRepository = personRepository;
         this.userRepository = userRepository;
@@ -71,6 +78,7 @@ public class FinanceService {
         this.currentUserService = currentUserService;
         this.accessControlService = accessControlService;
         this.caseAuditService = caseAuditService;
+        this.particularCaseClosureService = particularCaseClosureService;
     }
 
     @Transactional(readOnly = true)
@@ -113,6 +121,7 @@ public class FinanceService {
         saveApplications(entity.getId(), caseId, request.applications());
 
         caseAuditService.register(currentUser.id(), caseId, "movimientos_financieros", entity.getId(), "crear_movimiento_financiero", null, caseAuditService.toJson(movementSnapshot(entity)), caseAuditService.toJson(Map.of("domain", "finanzas")), httpRequest);
+        particularCaseClosureService.syncClosure(caseId);
         return toMovementResponse(entity);
     }
 
@@ -173,6 +182,57 @@ public class FinanceService {
         }
 
         return new FinanceCaseSummaryResponse(caseId, ingresos, egresos, ingresos.subtract(egresos), totalRetenciones, totalAplicado);
+    }
+
+    @Transactional(readOnly = true)
+    public FinanceParticularSummaryResponse summarizeParticularCase(Long caseId) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "finanza.ver");
+
+        BudgetEntity budget = budgetRepository.findByCaseId(caseId).orElse(null);
+        BigDecimal quotedTotal = budget == null ? BigDecimal.ZERO : scale(budget.getTotalQuoted());
+        BigDecimal customerPaid = BigDecimal.ZERO;
+        boolean hasAdvancePayment = false;
+        LocalDateTime paidInFullAt = null;
+
+        List<FinancialMovementEntity> movements = movementRepository.findByCaseId(caseId, Sort.by(Sort.Order.asc("movementAt"), Sort.Order.asc("id")));
+        for (FinancialMovementEntity movement : movements) {
+            if (!"CLIENTE".equals(normalizeCode(movement.getFlowOriginCode()))) {
+                continue;
+            }
+
+            BigDecimal amount = scale(movement.getNetAmount());
+            String movementTypeCode = normalizeCode(movement.getMovementTypeCode());
+            if ("INGRESO".equals(movementTypeCode) || ("AJUSTE".equals(movementTypeCode) && amount.signum() >= 0)) {
+                customerPaid = customerPaid.add(amount);
+            } else {
+                customerPaid = customerPaid.subtract(amount.abs());
+            }
+
+            if (Boolean.TRUE.equals(movement.getAdvancePayment())) {
+                hasAdvancePayment = true;
+            }
+
+            if (paidInFullAt == null && customerPaid.compareTo(quotedTotal) >= 0 && quotedTotal.compareTo(BigDecimal.ZERO) > 0) {
+                paidInFullAt = movement.getMovementAt();
+            }
+        }
+
+        BigDecimal pendingBalance = quotedTotal.subtract(customerPaid);
+        if (pendingBalance.signum() < 0) {
+            pendingBalance = BigDecimal.ZERO;
+        }
+
+        return new FinanceParticularSummaryResponse(
+                caseId,
+                quotedTotal,
+                customerPaid,
+                pendingBalance,
+                hasAdvancePayment,
+                paidInFullAt != null,
+                paidInFullAt
+        );
     }
 
     @Transactional

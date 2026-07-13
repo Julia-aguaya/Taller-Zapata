@@ -85,4 +85,18 @@ public class IdentityController {
     ) {
         return identityAdminService.updateUserRoles(userId, request);
     }
+
+    @Operation(summary = "Actualizar organizacion", description = "Actualiza los datos comerciales de una organizacion")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PutMapping("/organizations/{organizationId}")
+    public OrganizationResponse updateOrganization(@PathVariable Long organizationId, @RequestBody OrganizationUpdateRequest request) {
+        return identityAdminService.updateOrganization(organizationId, request);
+    }
+
+    @Operation(summary = "Actualizar sucursal", description = "Actualiza los datos comerciales de una sucursal")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PutMapping("/branches/{branchId}")
+    public BranchResponse updateBranch(@PathVariable Long branchId, @RequestBody BranchUpdateRequest request) {
+        return identityAdminService.updateBranch(branchId, request);
+    }
 }

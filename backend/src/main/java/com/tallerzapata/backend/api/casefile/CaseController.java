@@ -3,6 +3,8 @@ package com.tallerzapata.backend.api.casefile;
 import com.tallerzapata.backend.application.casefile.CaseService;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.CaseListFilters;
+import com.tallerzapata.backend.application.casefile.CaseReadinessService;
+import com.tallerzapata.backend.application.casefile.CaseWorkspaceService;
 import com.tallerzapata.backend.application.casefile.CaseWorkflowService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -28,15 +30,21 @@ import java.time.LocalDate;
 public class CaseController {
 
     private final CaseService caseService;
+    private final CaseReadinessService caseReadinessService;
+    private final CaseWorkspaceService caseWorkspaceService;
     private final CaseWorkflowService caseWorkflowService;
     private final CaseAuditService caseAuditService;
 
     public CaseController(
             CaseService caseService,
+            CaseReadinessService caseReadinessService,
+            CaseWorkspaceService caseWorkspaceService,
             CaseWorkflowService caseWorkflowService,
             CaseAuditService caseAuditService
     ) {
         this.caseService = caseService;
+        this.caseReadinessService = caseReadinessService;
+        this.caseWorkspaceService = caseWorkspaceService;
         this.caseWorkflowService = caseWorkflowService;
         this.caseAuditService = caseAuditService;
     }
@@ -100,6 +108,20 @@ public class CaseController {
     @GetMapping("/{caseId}")
     public CaseResponse getById(@PathVariable Long caseId) {
         return caseService.getById(caseId);
+    }
+
+    @Operation(summary = "Obtener readiness del caso", description = "Devuelve el estado de habilitacion, completitud y bloqueos por solapa")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @GetMapping("/{caseId}/readiness")
+    public CaseReadinessResponse getReadiness(@PathVariable Long caseId) {
+        return caseReadinessService.getReadiness(caseId);
+    }
+
+    @Operation(summary = "Obtener workspace del caso", description = "Devuelve el bootstrap compuesto de la carpeta para evitar waterfalls en frontend")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @GetMapping("/{caseId}/workspace")
+    public CaseWorkspaceResponse getWorkspace(@PathVariable Long caseId) {
+        return caseWorkspaceService.getWorkspace(caseId);
     }
 
     @Operation(summary = "Crear caso", description = "Crea un nuevo caso/expediente en el sistema")
@@ -175,6 +197,17 @@ public class CaseController {
             HttpServletRequest httpRequest
     ) {
         caseWorkflowService.overrideVisibleState(caseId, request, httpRequest);
+    }
+
+    @Operation(summary = "Agregar nota al caso", description = "Registra una anotacion manual en la auditoria del caso")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PostMapping("/{caseId}/notes")
+    public void addNote(
+            @PathVariable Long caseId,
+            @Valid @RequestBody CaseNoteCreateRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        caseAuditService.registerNote(caseId, request.text(), httpRequest);
     }
 
     @Operation(summary = "Listar eventos de auditoria", description = "Devuelve el log de auditoria de un caso con filtros opcionales")

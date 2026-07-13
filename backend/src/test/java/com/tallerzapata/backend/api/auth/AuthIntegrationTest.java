@@ -75,6 +75,45 @@ class AuthIntegrationTest {
     }
 
     @Test
+    void shouldReturnSessionBootstrap() throws Exception {
+        jdbcTemplate.update(
+                "INSERT INTO notificaciones (id, usuario_id, tipo_codigo, titulo, mensaje, leida, created_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+                1L,
+                1L,
+                "RECORDATORIO",
+                "Recordatorio",
+                "Falta revisar una carpeta",
+                false
+        );
+
+        LoginRequest request = new LoginRequest("admin@tallerzapata.local", "password");
+
+        MvcResult loginResult = mockMvc.perform(post("/api/v1/auth/login")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String accessToken = objectMapper.readTree(loginResult.getResponse().getContentAsByteArray()).get("accessToken").asText();
+
+        mockMvc.perform(get("/api/v1/auth/session")
+                        .header("Authorization", "Bearer " + accessToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.user.id").value("1"))
+                .andExpect(jsonPath("$.user.displayName").value("Admin Bootstrap"))
+                .andExpect(jsonPath("$.navigation.defaultRoute").value("/panel"))
+                .andExpect(jsonPath("$.navigation.items[0].code").value("PANEL"))
+                .andExpect(jsonPath("$.navigation.items[1].code").value("NEW_CASE"))
+                .andExpect(jsonPath("$.authorities").isArray())
+                .andExpect(jsonPath("$.capabilities.canAccessPanel").value(true))
+                .andExpect(jsonPath("$.capabilities.canCreateCase").value(true))
+                .andExpect(jsonPath("$.capabilities.canOverrideVisibleStates").value(true))
+                .andExpect(jsonPath("$.capabilities.canForceWorkflowTransition").value(true))
+                .andExpect(jsonPath("$.scopes[0].organizationId").value(1))
+                .andExpect(jsonPath("$.unreadNotifications").value(1));
+    }
+
+    @Test
     void shouldRotateRefreshToken() throws Exception {
         LoginRequest loginRequest = new LoginRequest("admin@tallerzapata.local", "password");
 

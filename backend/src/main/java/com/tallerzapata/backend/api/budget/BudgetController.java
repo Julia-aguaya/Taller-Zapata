@@ -25,6 +25,14 @@ public class BudgetController {
         this.budgetService = budgetService;
     }
 
+    @Operation(summary = "Listar catalogos de presupuesto", description = "Devuelve los catalogos disponibles para presupuesto")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PreAuthorize("hasAuthority('presupuesto.ver')")
+    @GetMapping("/budget/catalogs")
+    public BudgetCatalogsResponse listCatalogs() {
+        return budgetService.listCatalogs();
+    }
+
     @Operation(summary = "Obtener presupuesto", description = "Devuelve el presupuesto de un caso")
     @ApiResponse(responseCode = "200", description = "OK")
     @PreAuthorize("hasAuthority('presupuesto.ver')")
@@ -95,6 +103,14 @@ public class BudgetController {
     @PutMapping("/cases/{caseId}/parts/{partId}")
     public CasePartResponse updateCasePart(@PathVariable Long caseId, @PathVariable Long partId, @Valid @RequestBody CasePartUpdateRequest request, HttpServletRequest httpRequest) {
         return budgetService.updateCasePart(caseId, partId, request, httpRequest);
+    }
+
+    @Operation(summary = "Sincronizar repuestos desde presupuesto", description = "Crea repuestos de caso a partir de los items del presupuesto que indican REEMPLAZAR")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PreAuthorize("hasAuthority('presupuesto.crear')")
+    @PostMapping("/cases/{caseId}/parts/sync-from-budget")
+    public List<CasePartResponse> syncPartsFromBudget(@PathVariable Long caseId, HttpServletRequest httpRequest) {
+        return budgetService.syncPartsFromBudget(caseId, httpRequest);
     }
 
     @Operation(summary = "Descargar PDF del presupuesto", description = "Genera y devuelve el PDF del presupuesto. Requiere que el presupuesto este CERRADO.")
