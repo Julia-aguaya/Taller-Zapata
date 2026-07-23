@@ -5,6 +5,11 @@ export const createRepairAppointment = (caseId, payload) => requestJson(`/cases/
   body: JSON.stringify(payload),
 });
 
+export const updateRepairAppointment = (appointmentId, payload) => requestJson(`/appointments/${appointmentId}`, {
+  method: 'PUT',
+  body: JSON.stringify(payload),
+});
+
 export const createVehicleIntake = (caseId, payload) => requestJson(`/cases/${caseId}/vehicle-intakes`, {
   method: 'POST',
   body: JSON.stringify(payload),

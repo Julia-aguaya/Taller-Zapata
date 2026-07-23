@@ -56,6 +56,9 @@ public class VehicleIntakeEntity {
     @Column(name = "detalle_observaciones")
     private String observationDetail;
 
+    @Column(name = "observacion_fecha")
+    private LocalDateTime observationCreatedAt;
+
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -96,6 +99,8 @@ public class VehicleIntakeEntity {
     public void setHasObservations(Boolean hasObservations) { this.hasObservations = hasObservations; }
     public String getObservationDetail() { return observationDetail; }
     public void setObservationDetail(String observationDetail) { this.observationDetail = observationDetail; }
+    public LocalDateTime getObservationCreatedAt() { return observationCreatedAt; }
+    public void setObservationCreatedAt(LocalDateTime observationCreatedAt) { this.observationCreatedAt = observationCreatedAt; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
 }

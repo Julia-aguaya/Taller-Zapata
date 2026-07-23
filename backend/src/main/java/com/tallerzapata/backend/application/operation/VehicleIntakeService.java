@@ -33,6 +33,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -126,6 +127,9 @@ public class VehicleIntakeService {
         entity.setEstimatedExitDate(request.estimatedExitDate());
         entity.setHasObservations(Boolean.TRUE.equals(request.hasObservations()));
         entity.setObservationDetail(blankToNull(request.observationDetail()));
+        if (entity.getObservationDetail() != null) {
+            entity.setObservationCreatedAt(LocalDateTime.now());
+        }
         entity = vehicleIntakeRepository.save(entity);
 
         Map<String, Object> auditPayload = new LinkedHashMap<>();
@@ -184,6 +188,9 @@ public class VehicleIntakeService {
         entity.setEstimatedExitDate(request.estimatedExitDate());
         entity.setHasObservations(Boolean.TRUE.equals(request.hasObservations()));
         entity.setObservationDetail(blankToNull(request.observationDetail()));
+        if (entity.getObservationDetail() != null) {
+            entity.setObservationCreatedAt(LocalDateTime.now());
+        }
         entity = vehicleIntakeRepository.save(entity);
 
         caseAuditService.register(
@@ -336,6 +343,7 @@ public class VehicleIntakeService {
                 entity.getEstimatedExitDate(),
                 entity.getHasObservations(),
                 entity.getObservationDetail(),
+                entity.getObservationCreatedAt(),
                 entity.getCreatedAt(),
                 entity.getUpdatedAt()
         );
@@ -353,6 +361,7 @@ public class VehicleIntakeService {
         snapshot.put("estimatedExitDate", entity.getEstimatedExitDate());
         snapshot.put("hasObservations", entity.getHasObservations());
         snapshot.put("observationDetail", entity.getObservationDetail());
+        snapshot.put("observationCreatedAt", entity.getObservationCreatedAt());
         return snapshot;
     }
 

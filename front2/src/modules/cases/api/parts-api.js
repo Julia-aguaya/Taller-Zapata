@@ -15,3 +15,9 @@ export const updateCasePart = (caseId, partId, payload) => requestJson(`/cases/$
 export const syncPartsFromBudget = (caseId) => requestJson(`/cases/${caseId}/parts/sync-from-budget`, {
   method: 'POST',
 });
+
+export const deleteCasePart = (caseId, partId) => requestJson(`/cases/${caseId}/parts/${partId}`, {
+  method: 'DELETE',
+});
+
+export const getPartsCatalogs = () => requestJson('/budget/parts/catalogs');

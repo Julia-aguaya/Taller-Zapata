@@ -17,6 +17,7 @@ public record VehicleIntakeResponse(
         LocalDate estimatedExitDate,
         Boolean hasObservations,
         String observationDetail,
+        LocalDateTime observationCreatedAt,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {

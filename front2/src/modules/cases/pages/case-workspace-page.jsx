@@ -562,13 +562,13 @@ const DetallesTabButton = ({ selectedTab, setSelectedTab }) => {
       type="button"
       onClick={() => setSelectedTab('DETALLES')}
       className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium transition border border-primary ${
-        active ? 'bg-primary text-primary-foreground' : 'bg-primary/10 text-primary hover:bg-primary hover:text-primary-foreground'
+        active ? 'bg-primary text-primary-foreground' : 'bg-primary text-primary-foreground'
       }`}
     >
       <ShieldCheck className="h-4 w-4" />
       <span>
         <span className="block leading-tight">Detalles rápidos</span>
-        <span className={`text-[11px] ${active ? 'text-primary-foreground/80' : 'text-primary/60'}`}>Resumen</span>
+        <span className="text-[11px] text-primary-foreground/80">Resumen</span>
       </span>
     </button>
   );

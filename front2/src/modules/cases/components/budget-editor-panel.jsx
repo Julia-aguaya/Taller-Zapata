@@ -121,7 +121,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
   };
 
   // Documents
-  const fileInputRef = useRef(null);
+  const photoInputRef = useRef(null);
   const [previewDoc, setPreviewDoc] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const docsQuery = useQuery({
@@ -153,7 +153,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
       await requestJson(`/documents/${doc.id}/relations`, { method: 'POST', body: JSON.stringify({ caseId: Number(caseId), entityType: 'CASO', entityId: Number(caseId), moduleCode: 'OPERACION', principal: false, visibleToCustomer: false, visualOrder: 0 }) });
       return doc;
     },
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'documents'] }); toast.success('Subido.'); if (fileInputRef.current) fileInputRef.current.value = ''; },
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'documents'] }); toast.success('Subido.'); },
     onError: (error) => toast.error(error.message),
   });
   const deleteDocMutation = useMutation({
@@ -167,7 +167,6 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
       {/* Barra superior */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-card px-4 py-2 text-sm font-medium">{workshopInfo?.branchName || 'Taller Zapata'}</div>
-        <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}><ImagePlus className="mr-1.5 h-4 w-4" />Fotos de daños</Button>
         {budget?.reportStatusCode === 'CERRADO' ? (
             <Button className="bg-emerald-600 hover:bg-emerald-700" size="sm" onClick={async () => { const stored = JSON.parse(window.localStorage.getItem('front2.session.v1') || '{}'); const r = await fetch(`/api/v1/cases/${caseId}/budget/pdf`, { headers: { Authorization: `Bearer ${stored.accessToken}` } }); if (!r.ok) return toast.error('No se pudo descargar.'); const b = await r.blob(); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = `presupuesto-${caseId}.pdf`; a.click(); URL.revokeObjectURL(u); }}><FileDown className="mr-1.5 h-4 w-4" />Descargar PDF</Button>
         ) : null}
@@ -176,8 +175,6 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
           <Button onClick={() => guardedSave(true)} disabled={saveMutation.isPending}><ShieldCheck className="mr-1.5 h-4 w-4" />Generar presupuesto</Button>
         </div>
       </div>
-
-      <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadMutation.mutate(f); }} />
 
       {hasIncompleteLines ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
@@ -294,7 +291,11 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
 
       {/* Fotos */}
       <div className="rounded-2xl border border-border/60 bg-card p-4">
-        <p className="text-sm font-semibold mb-3">Fotos y videos del vehículo</p>
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-semibold">Fotos y videos del vehículo</p>
+          <Button variant="outline" size="sm" onClick={() => photoInputRef.current?.click()}><ImagePlus className="mr-1.5 h-4 w-4" />Agregar</Button>
+        </div>
+        <input ref={photoInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadMutation.mutate(f); }} />
         {(docsQuery.data ?? []).length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border/70 py-6 text-center text-sm text-muted-foreground">Todavía no hay archivos.</p>
         ) : (

@@ -79,6 +79,16 @@ public class BudgetService {
     }
 
     @Transactional(readOnly = true)
+    public PartsCatalogsResponse listPartsCatalogs() {
+        return new PartsCatalogsResponse(
+                partStatusRepository.findAll().stream().filter(item -> Boolean.TRUE.equals(item.getActive())).map(item -> new CodeCatalogResponse(item.getCode(), item.getName())).toList(),
+                partPurchaserRepository.findAll().stream().filter(item -> Boolean.TRUE.equals(item.getActive())).map(item -> new CodeCatalogResponse(item.getCode(), item.getName())).toList(),
+                partPaymentStatusRepository.findAll().stream().filter(item -> Boolean.TRUE.equals(item.getActive())).map(item -> new CodeCatalogResponse(item.getCode(), item.getName())).toList(),
+                insurancePartsAuthorizationRepository.findAll().stream().filter(item -> Boolean.TRUE.equals(item.getActive())).map(item -> new CodeCatalogResponse(item.getCode(), item.getName())).toList()
+        );
+    }
+
+    @Transactional(readOnly = true)
     public BudgetResponse getBudget(Long caseId) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
@@ -207,7 +217,7 @@ public class BudgetService {
         CaseEntity caseEntity = requireCase(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "presupuesto.crear");
         BudgetEntity budget = budgetRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe presupuesto para el caso " + caseId));
-        validateBudgetItemRequest(request);
+        validateBudgetItemCreateRequest(request);
         BudgetItemEntity entity = new BudgetItemEntity();
         entity.setBudgetId(budget.getId());
         entity.setVisualOrder(request.visualOrder());
@@ -309,15 +319,25 @@ public class BudgetService {
         entity.setUsed(Boolean.TRUE.equals(request.used()));
         entity.setReturned(Boolean.TRUE.equals(request.returned()));
         entity = casePartRepository.save(entity);
-        caseAuditService.register(currentUser.id(), caseId, "repuestos_caso", entity.getId(), "actualizar_repuesto_caso", null, caseAuditService.toJson(Map.of("description", entity.getDescription(), "statusCode", entity.getStatusCode())), caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
+    caseAuditService.register(currentUser.id(), caseId, "repuestos_caso", entity.getId(), "actualizar_repuesto_caso", null, caseAuditService.toJson(Map.of("description", entity.getDescription(), "statusCode", entity.getStatusCode())), caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
         return toCasePartResponse(entity);
     }
 
-    private void validateBudgetItemRequest(BudgetItemCreateRequest request) {
-        if (request.taskCode() != null && !budgetTaskRepository.existsByCodeAndActiveTrue(normalizeCode(request.taskCode()))) throw new ConflictException("taskCode no permitido: " + request.taskCode());
-        if (request.damageLevelCode() != null && !damageLevelRepository.existsByCodeAndActiveTrue(normalizeCode(request.damageLevelCode()))) throw new ConflictException("damageLevelCode no permitido: " + request.damageLevelCode());
-        if (request.partDecisionCode() != null && !partDecisionRepository.existsByCodeAndActiveTrue(normalizeCode(request.partDecisionCode()))) throw new ConflictException("partDecisionCode no permitido: " + request.partDecisionCode());
-        if (request.actionCode() != null && !budgetActionRepository.existsByCodeAndActiveTrue(normalizeCode(request.actionCode()))) throw new ConflictException("actionCode no permitido: " + request.actionCode());
+    @Transactional
+    public void deleteCasePart(Long caseId, Long partId, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "presupuesto.crear");
+        CasePartEntity entity = casePartRepository.findById(partId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el repuesto " + partId));
+        if (!entity.getCaseId().equals(caseId))
+            throw new ConflictException("El repuesto no pertenece al caso indicado");
+        casePartRepository.delete(entity);
+        caseAuditService.register(currentUser.id(), caseId, "repuestos_caso", partId,
+                "eliminar_repuesto_caso",
+                caseAuditService.toJson(Map.of("description", entity.getDescription(), "statusCode", entity.getStatusCode())),
+                null,
+                caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
     }
 
     @Transactional
@@ -349,6 +369,13 @@ public class BudgetService {
             created.add(toCasePartResponse(part));
         }
         return created;
+    }
+
+    private void validateBudgetItemCreateRequest(BudgetItemCreateRequest request) {
+        if (request.taskCode() != null && !budgetTaskRepository.existsByCodeAndActiveTrue(normalizeCode(request.taskCode()))) throw new ConflictException("taskCode no permitido: " + request.taskCode());
+        if (request.damageLevelCode() != null && !damageLevelRepository.existsByCodeAndActiveTrue(normalizeCode(request.damageLevelCode()))) throw new ConflictException("damageLevelCode no permitido: " + request.damageLevelCode());
+        if (request.partDecisionCode() != null && !partDecisionRepository.existsByCodeAndActiveTrue(normalizeCode(request.partDecisionCode()))) throw new ConflictException("partDecisionCode no permitido: " + request.partDecisionCode());
+        if (request.actionCode() != null && !budgetActionRepository.existsByCodeAndActiveTrue(normalizeCode(request.actionCode()))) throw new ConflictException("actionCode no permitido: " + request.actionCode());
     }
 
     private void validateBudgetItemUpdateRequest(BudgetItemUpdateRequest request) {

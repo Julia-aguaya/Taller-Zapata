@@ -33,6 +33,14 @@ public class BudgetController {
         return budgetService.listCatalogs();
     }
 
+    @Operation(summary = "Listar catalogos de repuestos", description = "Devuelve los catalogos disponibles para repuestos (estados, provisto por, estado de pago, autorizaciones)")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PreAuthorize("hasAuthority('presupuesto.ver')")
+    @GetMapping("/budget/parts/catalogs")
+    public PartsCatalogsResponse listPartsCatalogs() {
+        return budgetService.listPartsCatalogs();
+    }
+
     @Operation(summary = "Obtener presupuesto", description = "Devuelve el presupuesto de un caso")
     @ApiResponse(responseCode = "200", description = "OK")
     @PreAuthorize("hasAuthority('presupuesto.ver')")
@@ -103,6 +111,14 @@ public class BudgetController {
     @PutMapping("/cases/{caseId}/parts/{partId}")
     public CasePartResponse updateCasePart(@PathVariable Long caseId, @PathVariable Long partId, @Valid @RequestBody CasePartUpdateRequest request, HttpServletRequest httpRequest) {
         return budgetService.updateCasePart(caseId, partId, request, httpRequest);
+    }
+
+    @Operation(summary = "Eliminar repuesto de caso", description = "Elimina un repuesto/pieza de un caso sin modificar el presupuesto")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PreAuthorize("hasAuthority('presupuesto.crear')")
+    @DeleteMapping("/cases/{caseId}/parts/{partId}")
+    public void deleteCasePart(@PathVariable Long caseId, @PathVariable Long partId, HttpServletRequest httpRequest) {
+        budgetService.deleteCasePart(caseId, partId, httpRequest);
     }
 
     @Operation(summary = "Sincronizar repuestos desde presupuesto", description = "Crea repuestos de caso a partir de los items del presupuesto que indican REEMPLAZAR")
