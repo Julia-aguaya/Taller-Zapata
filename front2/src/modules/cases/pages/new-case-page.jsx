@@ -577,7 +577,7 @@ export const NewCasePage = () => {
               <div className="mb-4 rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm dark:bg-emerald-950">
                 <div className="flex items-center justify-between gap-3">
                   <span className="font-semibold text-emerald-800 dark:text-emerald-200">✓ Vehículo existente seleccionado</span>
-                  <Button size="sm" variant="secondary" onClick={() => { setSelectedVehicleId(null); }}>>>
+                  <Button size="sm" variant="secondary" onClick={() => { setSelectedVehicleId(null); }}>
                     Cambiar
                   </Button>
                 </div>

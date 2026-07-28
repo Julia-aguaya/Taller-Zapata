@@ -17,6 +17,8 @@ export const createCase = (payload) => requestJson('/cases', {
 
 export const getCaseCatalogs = () => requestJson('/cases/catalogs');
 
+export const getInsuranceCatalogs = () => requestJson('/insurance/catalogs');
+
 export const listOrganizations = () => requestJson('/organizations');
 
 export const listBranches = (organizationId) => requestJson(`/branches${organizationId ? `?organizationId=${organizationId}` : ''}`);

@@ -24,6 +24,23 @@
   --border: 204 24% 84%;
   --input: 204 24% 84%;
   --ring: 199 84% 32%;
+  --page-gradient-from: 202 72% 96%;
+  --page-gradient-via: 198 44% 98%;
+  --page-gradient-to: 202 36% 94%;
+  --shell-sidebar-bg: 201 46% 34%;
+  --shell-sidebar-border: 199 44% 46%;
+  --shell-sidebar-foreground: 0 0% 100%;
+  --shell-sidebar-muted: 204 35% 88%;
+  --shell-sidebar-hover: 0 0% 100%;
+  --shell-sidebar-hover-bg: 0 0% 100%;
+  --shell-sidebar-active-bg: 0 0% 100%;
+  --shell-sidebar-panel-bg: 201 38% 41%;
+  --shell-overlay: 208 42% 14%;
+  --metric-sky-accent: 200 80% 38%;
+  --metric-amber-accent: 35 92% 42%;
+  --metric-orange-accent: 24 94% 46%;
+  --metric-red-accent: 350 78% 48%;
+  --metric-slate-accent: 214 20% 36%;
   --radius: 1rem;
 }
 
@@ -49,6 +66,23 @@
   --border: 217 33% 17%;
   --input: 217 33% 17%;
   --ring: 224 76% 48%;
+  --page-gradient-from: 220 34% 7%;
+  --page-gradient-via: 222 28% 8%;
+  --page-gradient-to: 216 24% 10%;
+  --shell-sidebar-bg: 222 26% 10%;
+  --shell-sidebar-border: 217 24% 20%;
+  --shell-sidebar-foreground: 210 40% 96%;
+  --shell-sidebar-muted: 215 20% 72%;
+  --shell-sidebar-hover: 210 40% 96%;
+  --shell-sidebar-hover-bg: 217 91% 60%;
+  --shell-sidebar-active-bg: 217 91% 60%;
+  --shell-sidebar-panel-bg: 220 21% 13%;
+  --shell-overlay: 222 47% 11%;
+  --metric-sky-accent: 201 92% 72%;
+  --metric-amber-accent: 40 95% 68%;
+  --metric-orange-accent: 26 96% 63%;
+  --metric-red-accent: 350 90% 70%;
+  --metric-slate-accent: 214 18% 72%;
 }
 
 .dark body {
@@ -59,7 +93,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  background: linear-gradient(180deg, #eef8fc 0%, #f8fbfc 55%, #eef5f7 100%);
+  background: linear-gradient(180deg, hsl(var(--page-gradient-from)) 0%, hsl(var(--page-gradient-via)) 55%, hsl(var(--page-gradient-to)) 100%);
   color: hsl(var(--foreground));
 }
 

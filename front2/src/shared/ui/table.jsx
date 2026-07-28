@@ -1,7 +1,7 @@
 import { cn } from '@/shared/lib/cn';
 
-export const Table = ({ className, ...props }) => (
-  <div className="overflow-hidden rounded-3xl border border-border/70 bg-card shadow-haze">
+export const Table = ({ className, containerClassName, ...props }) => (
+  <div className={cn('overflow-hidden rounded-3xl border border-border/70 bg-card shadow-haze', containerClassName)}>
     <div className="overflow-x-auto">
       <table className={cn('w-full border-collapse text-sm', className)} {...props} />
     </div>

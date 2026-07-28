@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'sonner';
 import { AppRouter } from '@/app/router';
+import { ThemeProvider } from '@/app/theme/theme-provider';
 import { SessionProvider } from '@/modules/auth/providers/session-provider';
 import '@/app/styles/globals.css';
 
@@ -20,12 +21,14 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <SessionProvider>
-          <AppRouter />
-          <Toaster richColors position="top-right" />
-        </SessionProvider>
-      </BrowserRouter>
+      <ThemeProvider>
+        <BrowserRouter>
+          <SessionProvider>
+            <AppRouter />
+            <Toaster richColors position="top-right" />
+          </SessionProvider>
+        </BrowserRouter>
+      </ThemeProvider>
     </QueryClientProvider>
   </React.StrictMode>,
 );

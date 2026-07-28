@@ -4,13 +4,29 @@ export const getCaseWorkspace = (caseId) => requestJson(`/cases/${caseId}/worksp
 
 export const listCases = (params = {}) => {
   const searchParams = new URLSearchParams();
+  const stringFilters = [
+    'q',
+    'folderStatus',
+    'openedFrom',
+    'openedTo',
+    'paidFrom',
+    'paidTo',
+    'caseTypeCode',
+    'opinionCode',
+    'managerCode',
+    'visibleTramiteState',
+    'visibleRepairState',
+    'paymentStateCode',
+  ];
+
   if (params.page != null) searchParams.set('page', String(params.page));
   if (params.size != null) searchParams.set('size', String(params.size));
-  if (params.q) searchParams.set('q', params.q);
-  if (params.caseTypeCode) searchParams.set('caseTypeCode', params.caseTypeCode);
-  if (params.visibleTramiteState) searchParams.set('visibleTramiteState', params.visibleTramiteState);
-  if (params.visibleRepairState) searchParams.set('visibleRepairState', params.visibleRepairState);
+  stringFilters.forEach((key) => {
+    if (params[key]) searchParams.set(key, params[key]);
+  });
   if (params.branchId) searchParams.set('branchId', params.branchId);
+  if (typeof params.hasPendingTasks === 'boolean') searchParams.set('hasPendingTasks', String(params.hasPendingTasks));
+  if (params.pendingTaskAssignedUserId != null) searchParams.set('pendingTaskAssignedUserId', String(params.pendingTaskAssignedUserId));
   const qs = searchParams.toString();
   return requestJson(`/cases${qs ? `?${qs}` : ''}`);
 };

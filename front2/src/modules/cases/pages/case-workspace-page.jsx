@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Clock, ClipboardList, Hammer, ReceiptText, Save, ShieldCheck, User, Wrench } from 'lucide-react';
+import { Clock, ClipboardList, Hammer, Lock, ReceiptText, Save, ShieldCheck, User, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
 import { getCaseWorkspace } from '@/modules/cases/api/cases-api';
 import { Card } from '@/shared/ui/card';
@@ -26,19 +26,110 @@ const iconByTab = {
 };
 
 const labelByTab = {
-  DETALLES: 'Detalles rápidos',
-  FICHA_TECNICA: 'Ficha técnica',
+  DETALLES: 'Resumen',
+  FICHA_TECNICA: 'Ficha tecnica',
   PRESUPUESTO: 'Presupuesto',
-  GESTION_REPARACION: 'Gestión reparación',
+  GESTION_REPARACION: 'Gestion de reparacion',
   PAGOS: 'Pagos',
 };
 
+const PARTICULAR_STAGE_TABS = ['FICHA_TECNICA', 'PRESUPUESTO', 'GESTION_REPARACION', 'PAGOS'];
+
 const currency = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 });
 const formatCurrency = (value) => (value == null ? '-' : currency.format(value));
+const formatDate = (value) => (!value ? '-' : new Date(value).toLocaleDateString('es-AR'));
 const formatDateTime = (value) => (!value ? '-' : new Date(value).toLocaleString('es-AR'));
 
 const updatePerson = (personId, payload) => requestJson(`/persons/${personId}`, { method: 'PUT', body: JSON.stringify(payload) });
 const updateVehicle = (vehicleId, payload) => requestJson(`/vehicles/${vehicleId}`, { method: 'PUT', body: JSON.stringify(payload) });
+
+const toSentenceCase = (value) => value
+  .toLowerCase()
+  .split('_')
+  .filter(Boolean)
+  .map((chunk) => chunk.charAt(0).toUpperCase() + chunk.slice(1))
+  .join(' ');
+
+const pluralize = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;
+
+export const formatDisplayValue = (value) => {
+  if (value == null || value === '') return 'Sin informar';
+  if (typeof value === 'boolean') return value ? 'Si' : 'No';
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return 'Sin informar';
+    if (trimmed === 'NO_INFORMA') return 'No informa';
+    if (trimmed === 'MANUAL') return 'Manual';
+    if (/^[A-Z0-9_]+$/.test(trimmed)) return toSentenceCase(trimmed);
+    return trimmed;
+  }
+  return String(value);
+};
+
+export const getOperationalTabs = (tabs = []) => tabs.filter((tab) => PARTICULAR_STAGE_TABS.includes(tab.tabCode));
+
+export const countCompletedStages = (tabs = []) => getOperationalTabs(tabs).filter((tab) => tab.completed).length;
+
+export const getFichaSummary = (readinessTab) => {
+  if (!readinessTab) return { label: 'Datos cargados', variant: 'outline' };
+  if (readinessTab.completed) return { label: 'Ficha completa', variant: 'success' };
+  const missingCount = readinessTab.blockingReasons?.length ?? 0;
+  return {
+    label: missingCount > 0 ? `Faltan ${pluralize(missingCount, 'dato', 'datos')}` : 'Datos basicos cargados',
+    variant: 'secondary',
+  };
+};
+
+const getHelpfulBlockingMessage = (message) => {
+  if (!message) return null;
+  if (message === 'Debe cerrar el presupuesto antes de avanzar a gestion reparacion') {
+    return 'Completa el presupuesto para habilitar Gestion de reparacion.';
+  }
+  return message;
+};
+
+const getTaskSnapshot = (tasks = []) => {
+  const pending = tasks.filter((task) => task.statusCode === 'PENDIENTE' || task.statusCode === 'EN_PROCESO');
+  const nextDueTask = pending
+    .filter((task) => task.dueDate)
+    .sort((left, right) => left.dueDate.localeCompare(right.dueDate))[0] ?? null;
+
+  return {
+    pendingCount: pending.length,
+    nextDueTask,
+  };
+};
+
+export const getNextStepDescriptor = ({ tabs = [], budget, widgets, particularFinanceSummary }) => {
+  const operationalTabs = getOperationalTabs(tabs);
+  const fichaTab = operationalTabs.find((tab) => tab.tabCode === 'FICHA_TECNICA');
+  const budgetTab = operationalTabs.find((tab) => tab.tabCode === 'PRESUPUESTO');
+  const repairTab = operationalTabs.find((tab) => tab.tabCode === 'GESTION_REPARACION');
+  const paymentsTab = operationalTabs.find((tab) => tab.tabCode === 'PAGOS');
+
+  if (fichaTab && !fichaTab.completed) {
+    return { label: 'Completar datos de la ficha tecnica', targetTab: 'FICHA_TECNICA', actionable: true };
+  }
+  if (!widgets?.budget?.exists) {
+    return { label: 'Cargar presupuesto', targetTab: 'PRESUPUESTO', actionable: true };
+  }
+  if (budget?.reportStatusCode !== 'CERRADO') {
+    return { label: 'Completar y cerrar presupuesto', targetTab: 'PRESUPUESTO', actionable: Boolean(budgetTab?.allowed) };
+  }
+  if (repairTab?.allowed && !repairTab.completed) {
+    return { label: 'Gestionar la reparacion', targetTab: 'GESTION_REPARACION', actionable: true };
+  }
+  if (widgets?.budget?.exists && paymentsTab && !paymentsTab.completed) {
+    if ((particularFinanceSummary?.pendingBalance ?? 0) > 0 || (particularFinanceSummary?.customerPaid ?? 0) > 0 || paymentsTab.blockingReasons?.length) {
+      return { label: 'Registrar o completar el pago', targetTab: 'PAGOS', actionable: Boolean(paymentsTab.allowed) };
+    }
+  }
+  if (operationalTabs.length > 0 && operationalTabs.every((tab) => tab.completed)) {
+    return { label: 'Carpeta completada', targetTab: null, actionable: false };
+  }
+  return { label: 'Continuar con la carpeta', targetTab: null, actionable: false };
+};
 
 export const CaseWorkspacePage = () => {
   const { caseId } = useParams();
@@ -60,17 +151,20 @@ export const CaseWorkspacePage = () => {
     queryFn: () => fetchCaseTasks(caseId),
     enabled: Boolean(caseId),
   });
-  const pendingTasks = (tasksQuery.data?.items ?? []).filter((t) => t.statusCode === 'PENDIENTE' || t.statusCode === 'EN_PROCESO').length;
 
   if (workspaceQuery.isLoading) return <FullScreenLoader label="Abriendo carpeta..." compact />;
   if (workspaceQuery.isError) return <EmptyState title="No pude abrir la carpeta" description={workspaceQuery.error.message} />;
 
-  const { caseDetail, readiness, budget, financeSummary, particularFinanceSummary, latestAppointment, latestIntake, latestOutcome, widgets, workflowActions, workshopInfo } = workspaceQuery.data;
+  const { caseDetail, readiness, budget, particularFinanceSummary, latestAppointment, latestIntake, latestOutcome, widgets, workshopInfo } = workspaceQuery.data;
+  const stageTabs = getOperationalTabs(readiness.tabs);
+  const completedStages = countCompletedStages(readiness.tabs);
+  const taskSnapshot = getTaskSnapshot(tasksQuery.data?.items ?? []);
+  const navigationHint = getHelpfulBlockingMessage(stageTabs.find((tab) => !tab.allowed && tab.blockingReasons?.length)?.blockingReasons?.[0]);
+  const nextStep = getNextStepDescriptor({ tabs: readiness.tabs, budget, widgets, particularFinanceSummary });
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <Card className="border-white/50 bg-card/90 p-6 shadow-haze">
+      <Card className="border-white/50 bg-card/90 p-5 shadow-haze">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Carpeta</p>
@@ -81,26 +175,27 @@ export const CaseWorkspacePage = () => {
             <p className="mt-3 max-w-3xl text-sm text-muted-foreground">
               {caseDetail.principalCustomerName} - {caseDetail.principalVehiclePlate || 'Sin patente'}
             </p>
+            <p className="mt-3 text-sm text-muted-foreground">
+              {`Creada el ${formatDate(caseDetail.createdAt)} · ${caseDetail.createdByDisplayName || 'Sin informar'} · ${caseDetail.closedAt ? `Cerrada el ${formatDate(caseDetail.closedAt)}` : 'Carpeta abierta'}`}
+            </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant={caseDetail.visibleTramiteState.code === 'PAGADO' ? 'success' : 'secondary'}>
-              Trámite: {caseDetail.visibleTramiteState.label}
-            </Badge>
-            <Badge variant={caseDetail.visibleRepairState.code === 'REPARADO' ? 'success' : 'outline'}>
-              Reparación: {caseDetail.visibleRepairState.label}
+
+          <div className="flex flex-col items-start gap-2 lg:items-end">
+            <div className="flex flex-wrap gap-2">
+              <Badge variant={caseDetail.visibleTramiteState.code === 'PAGADO' ? 'success' : 'secondary'}>
+                Trámite: {caseDetail.visibleTramiteState.label}
+              </Badge>
+              <Badge variant={caseDetail.visibleRepairState.code === 'REPARADO' ? 'success' : 'outline'}>
+                Reparación: {caseDetail.visibleRepairState.label}
+              </Badge>
+            </div>
+            <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">
+              {`${completedStages} de ${stageTabs.length || 4} etapas completas`}
             </Badge>
           </div>
-        </div>
-        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <MetricCard label="Creada" value={formatDateTime(caseDetail.createdAt)} />
-          <MetricCard label="Creador" value={caseDetail.createdByDisplayName || '-'} />
-          <MetricCard label="Cierre" value={formatDateTime(caseDetail.closedAt)} />
-          <MetricCard label="Tareas pendientes" value={`${pendingTasks}`} />
-          <MetricCard label="Estado" value={`${readiness.tabs.filter((t) => t.completed).length}/${readiness.tabs.length} completas`} />
         </div>
       </Card>
 
-      {/* Procesos */}
       <Card className="border-white/50 bg-card/90 p-5 shadow-haze">
         <div className="mb-4 flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
@@ -108,52 +203,87 @@ export const CaseWorkspacePage = () => {
           </div>
           <div>
             <h3 className="text-xl font-semibold tracking-tight">Procesos</h3>
-            <p className="text-xs text-muted-foreground">Solapas operativas de la carpeta. El backend decide qué está bloqueado.</p>
+            <p className="text-xs text-muted-foreground">Resumen general y etapas operativas de la carpeta.</p>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <DetallesTabButton selectedTab={selectedTab} setSelectedTab={setSelectedTab} />
-          {readiness.tabs.map((tab) => {
-            const Icon = iconByTab[tab.tabCode] ?? ClipboardList;
-            const active = selectedTab === tab.tabCode;
-            const isBlocked = !tab.allowed;
-            return (
-              <button
-                key={tab.tabCode}
-                disabled={isBlocked}
-                type="button"
-                onClick={() => { if (!isBlocked) setSelectedTab(tab.tabCode); }}
-                className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium transition ${
-                  isBlocked
-                    ? 'cursor-not-allowed border border-destructive/30 bg-destructive/5 text-destructive/60'
-                    : tab.completed
-                      ? 'border border-primary bg-primary text-primary-foreground'
+        <div className="overflow-x-auto pb-1" data-testid="workspace-tabs-scroll">
+          <div className="flex min-w-max gap-2" role="tablist" aria-label="Secciones de la carpeta">
+            <DetallesTabButton selectedTab={selectedTab} setSelectedTab={setSelectedTab} />
+            {readiness.tabs.map((tab) => {
+              const Icon = iconByTab[tab.tabCode] ?? ClipboardList;
+              const active = selectedTab === tab.tabCode;
+              const isBlocked = !tab.allowed;
+              return (
+                <button
+                  key={tab.tabCode}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  aria-disabled={isBlocked}
+                  onClick={() => {
+                    if (isBlocked) {
+                      setSelectedReadinessTab(tab);
+                      return;
+                    }
+                    setSelectedTab(tab.tabCode);
+                  }}
+                  className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-2.5 text-left text-sm font-medium transition ${
+                    isBlocked
+                      ? 'cursor-not-allowed border-destructive/30 bg-destructive/5 text-destructive/70'
                       : active
-                        ? 'border border-primary/40 bg-primary/10 text-primary'
-                        : 'border border-transparent bg-background/70 text-foreground hover:border-border/60 hover:bg-accent/50'
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                <span>
-                  <span className="block leading-tight">{labelByTab[tab.tabCode] || tab.tabCode}</span>
-                  <span className={`text-[11px] ${tab.completed ? 'text-primary-foreground/80' : isBlocked ? 'text-destructive/70' : 'text-muted-foreground'}`}>
-                    {tab.completed ? 'Completa' : isBlocked ? `${tab.blockingReasons.length} bloqueo(s)` : 'Pendiente'}
+                        ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                        : 'border-border/60 bg-background/80 text-foreground hover:border-primary/30 hover:bg-accent/40'
+                  }`}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="flex flex-col gap-1">
+                    <span className="leading-tight">{labelByTab[tab.tabCode] || tab.tabCode}</span>
+                    <span className="flex items-center gap-1.5 text-[11px]">
+                      {tab.completed ? (
+                        <Badge variant="success" className="px-2 py-0.5 text-[10px]">Completa</Badge>
+                      ) : isBlocked ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] text-destructive">
+                          <Lock className="h-3 w-3" />Bloqueada
+                        </span>
+                      ) : (
+                        <span className={active ? 'text-primary-foreground/80' : 'text-muted-foreground'}>Pendiente</span>
+                      )}
+                    </span>
                   </span>
-                </span>
-                {isBlocked ? (
-                  <Badge variant="destructive" className="ml-1 px-1.5 py-0 text-[10px]">⛔</Badge>
-                ) : null}
-              </button>
-            );
-          })}
+                </button>
+              );
+            })}
+          </div>
         </div>
+
+        {navigationHint ? (
+          <div className="mt-3 rounded-2xl border border-primary/15 bg-primary/5 px-4 py-3 text-sm text-primary">
+            {navigationHint}
+          </div>
+        ) : null}
 
         <div className="mt-5">
           {selectedTab === 'DETALLES' ? (
-            <CaseDetailsPanel caseDetail={caseDetail} budget={budget} particularFinanceSummary={particularFinanceSummary} widgets={widgets} pendingTasks={pendingTasks} />
+            <CaseDetailsPanel
+              caseDetail={caseDetail}
+              budget={budget}
+              particularFinanceSummary={particularFinanceSummary}
+              widgets={widgets}
+              latestAppointment={latestAppointment}
+              latestIntake={latestIntake}
+              latestOutcome={latestOutcome}
+              taskSnapshot={taskSnapshot}
+              nextStep={nextStep}
+              onOpenTab={setSelectedTab}
+            />
           ) : currentTab?.tabCode === 'FICHA_TECNICA' ? (
-            <FichaTecnicaEditor caseId={caseId} caseDetail={caseDetail} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
+            <FichaTecnicaEditor
+              caseId={caseId}
+              caseDetail={caseDetail}
+              readinessTab={stageTabs.find((tab) => tab.tabCode === 'FICHA_TECNICA')}
+              onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })}
+            />
           ) : currentTab?.tabCode === 'PRESUPUESTO' ? (
             <BudgetEditorPanel caseId={caseId} budget={budget} caseDetail={caseDetail} workshopInfo={workshopInfo} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'GESTION_REPARACION' ? (
@@ -164,15 +294,13 @@ export const CaseWorkspacePage = () => {
         </div>
       </Card>
 
-      {/* Historial y más */}
       <CaseHistorySection caseId={caseId} />
 
-      {/* Modal de bloqueos */}
       <Dialog
         open={Boolean(selectedReadinessTab)}
         onClose={() => setSelectedReadinessTab(null)}
         title={selectedReadinessTab ? `Detalle de ${labelByTab[selectedReadinessTab.tabCode] || selectedReadinessTab.tabCode}` : ''}
-        description="Los bloqueos y advertencias ya vienen del backend."
+        description="Bloqueos y advertencias informados por la carpeta."
       >
         {selectedReadinessTab ? (
           <div className="space-y-4">
@@ -180,8 +308,8 @@ export const CaseWorkspacePage = () => {
               <div>
                 <p className="mb-2 text-sm font-semibold text-destructive">Bloqueos</p>
                 <ul className="space-y-2">
-                  {selectedReadinessTab.blockingReasons.map((r) => (
-                    <li key={r} className="rounded-2xl border border-destructive/20 bg-destructive/8 px-4 py-3 text-sm">{r}</li>
+                  {selectedReadinessTab.blockingReasons.map((reason) => (
+                    <li key={reason} className="rounded-2xl border border-destructive/20 bg-destructive/8 px-4 py-3 text-sm">{reason}</li>
                   ))}
                 </ul>
               </div>
@@ -190,8 +318,8 @@ export const CaseWorkspacePage = () => {
               <div>
                 <p className="mb-2 text-sm font-semibold text-warning-foreground">Advertencias</p>
                 <ul className="space-y-2">
-                  {selectedReadinessTab.warningReasons.map((r) => (
-                    <li key={r} className="rounded-2xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm">{r}</li>
+                  {selectedReadinessTab.warningReasons.map((reason) => (
+                    <li key={reason} className="rounded-2xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm">{reason}</li>
                   ))}
                 </ul>
               </div>
@@ -243,7 +371,7 @@ const CaseHistorySection = ({ caseId }) => {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -267,14 +395,14 @@ const CaseHistorySection = ({ caseId }) => {
         ) : events.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Todavía no hay eventos registrados para esta carpeta.</p>
         ) : (
-          <div className="max-h-96 overflow-y-auto space-y-2">
+          <div className="max-h-96 space-y-2 overflow-y-auto">
             {events.map((event) => (
               <div key={event.id} className={`rounded-2xl border px-4 py-3 text-sm ${event.actionCode === 'nota_manual' ? 'border-amber-200 bg-amber-50/60' : 'border-border/50 bg-background/60'}`}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{event.actorDisplayName || 'Sistema'}</span>
                     {event.actionCode === 'nota_manual' ? (
-                      <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">📝 Nota</Badge>
+                      <Badge variant="outline" className="border-amber-300 text-[10px] text-amber-700">Nota</Badge>
                     ) : (
                       <>
                         <Badge variant="outline" className="text-[10px]">{event.domain}</Badge>
@@ -284,9 +412,7 @@ const CaseHistorySection = ({ caseId }) => {
                   </div>
                   <span className="text-xs text-muted-foreground">{formatDateTime(event.createdAt)}</span>
                 </div>
-                {event.changeNote ? (
-                  <p className="mt-1.5 leading-relaxed text-foreground">{event.changeNote}</p>
-                ) : null}
+                {event.changeNote ? <p className="mt-1.5 leading-relaxed text-foreground">{event.changeNote}</p> : null}
               </div>
             ))}
           </div>
@@ -320,7 +446,7 @@ const fetchVehicleCatalogs = () => requestJson('/vehicles/catalogs');
 const DOC_TYPE_OPTIONS = ['DNI', 'LE', 'LC', 'CI', 'PASAPORTE', 'CUIT'];
 const CIVIL_STATUS_OPTIONS = ['SOLTERO', 'CASADO', 'VIUDO', 'DIVORCIADO', 'NO_INFORMA'];
 
-const FichaTecnicaEditor = ({ caseId, caseDetail, onSaved }) => {
+const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, onSaved }) => {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
 
@@ -344,6 +470,7 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, onSaved }) => {
   const person = personQuery.data;
   const vehicle = vehicleQuery.data;
   const vCat = vehicleCatalogsQuery.data;
+  const fichaSummary = getFichaSummary(readinessTab);
 
   const [form, setForm] = useState({});
   useEffect(() => {
@@ -424,7 +551,7 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, onSaved }) => {
       await queryClient.invalidateQueries({ queryKey: ['persons', caseDetail.principalCustomerPersonId] });
       await queryClient.invalidateQueries({ queryKey: ['vehicles', caseDetail.principalVehicleId] });
       await onSaved?.();
-      toast.success('Ficha técnica actualizada.');
+      toast.success('Ficha tecnica actualizada.');
     },
     onError: (error) => toast.error(error.message || 'No pude actualizar la ficha.'),
   });
@@ -434,15 +561,18 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, onSaved }) => {
   }
 
   return (
-    <Card className="border-white/50 bg-card/90 p-6 shadow-haze">
-      <div className="mb-5 flex items-center justify-between gap-3">
+    <Card className="border-white/50 bg-card/90 p-5 shadow-haze">
+      <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
-          <h3 className="text-2xl font-semibold tracking-tight">Ficha técnica</h3>
-          <p className="mt-1 text-sm text-muted-foreground">{editing ? 'Modificá los datos y guardá los cambios.' : 'Datos del cliente y del vehículo.'}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-2xl font-semibold tracking-tight">Ficha tecnica</h3>
+            <Badge variant={fichaSummary.variant}>{fichaSummary.label}</Badge>
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">{editing ? 'Modificá los datos y guardá los cambios.' : 'Datos del cliente y del vehiculo para operar la carpeta.'}</p>
         </div>
         {editing ? (
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => { setEditing(false); }}>Cancelar</Button>
+            <Button variant="outline" onClick={() => setEditing(false)}>Cancelar</Button>
             <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
               <Save className="mr-2 h-4 w-4" />Guardar cambios
             </Button>
@@ -452,59 +582,106 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, onSaved }) => {
         )}
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-2">
-        <div className="rounded-2xl border border-border/60 bg-background/70 p-5">
-          <div className="mb-3 flex items-center gap-2">
-            <User className="h-4 w-4 text-primary" />
-            <h4 className="font-semibold">Cliente</h4>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Nombre" value={form.nombre} editing={editing} onChange={(v) => setForm((c) => ({ ...c, nombre: v }))} />
-            <Field label="Apellido" value={form.apellido} editing={editing} onChange={(v) => setForm((c) => ({ ...c, apellido: v }))} />
-            <SelectField label="Tipo doc." value={form.tipoDocumentoCodigo} editing={editing} onChange={(v) => setForm((c) => ({ ...c, tipoDocumentoCodigo: v }))} options={DOC_TYPE_OPTIONS} />
-            <Field label="Nro. documento" value={form.numeroDocumento} editing={editing} onChange={(v) => setForm((c) => ({ ...c, numeroDocumento: v }))} />
-            <SelectField label="Estado civil" value={form.estadoCivilCodigo} editing={editing} onChange={(v) => setForm((c) => ({ ...c, estadoCivilCodigo: v }))} options={CIVIL_STATUS_OPTIONS} />
-            <Field label="CUIT/CUIL" value={form.cuitCuil} editing={editing} onChange={(v) => setForm((c) => ({ ...c, cuitCuil: v }))} />
-            <Field label="Teléfono" value={form.telefonoPrincipal} editing={editing} onChange={(v) => setForm((c) => ({ ...c, telefonoPrincipal: v }))} />
-            <Field label="Email" value={form.emailPrincipal} editing={editing} onChange={(v) => setForm((c) => ({ ...c, emailPrincipal: v }))} type="email" />
-            <Field label="Ocupación" value={form.ocupacion} editing={editing} onChange={(v) => setForm((c) => ({ ...c, ocupacion: v }))} />
-            <Field label="Fecha nac." value={form.fechaNacimiento} editing={editing} onChange={(v) => setForm((c) => ({ ...c, fechaNacimiento: v }))} type="date" />
-          </div>
-          <div className="mt-3 space-y-1.5">
-            <Label>Observaciones</Label>
-            {editing ? (
-              <textarea className="flex min-h-[80px] w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" value={form.observacionesPersona} onChange={(e) => setForm((c) => ({ ...c, observacionesPersona: e.target.value }))} />
-            ) : (
-              <p className="rounded-2xl border border-border/50 bg-background/50 px-4 py-3 text-sm text-muted-foreground">{form.observacionesPersona || '-'}</p>
-            )}
+      <div className="space-y-5">
+        <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Datos generales de la carpeta</p>
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <ReadOnlyField label="Tipo de tramite" value="Particular" />
+            <ReadOnlyField label="Referenciado" value={caseDetail.referenced} />
           </div>
         </div>
 
-        <div className="rounded-2xl border border-border/60 bg-background/70 p-5">
-          <div className="mb-3 flex items-center gap-2">
-            <Wrench className="h-4 w-4 text-primary" />
-            <h4 className="font-semibold">Vehículo</h4>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            <Field label="Marca" value={form.brandText} editing={editing} onChange={(v) => setForm((c) => ({ ...c, brandText: v }))} />
-            <Field label="Modelo" value={form.modelText} editing={editing} onChange={(v) => setForm((c) => ({ ...c, modelText: v }))} />
-            <Field label="Patente" value={form.plate} editing={editing} onChange={(v) => setForm((c) => ({ ...c, plate: v.toUpperCase() }))} upper />
-            <Field label="Año" value={form.year} editing={editing} onChange={(v) => setForm((c) => ({ ...c, year: v }))} type="number" />
-            <SelectField label="Tipo" value={form.vehicleTypeCode} editing={editing} onChange={(v) => setForm((c) => ({ ...c, vehicleTypeCode: v }))} options={(vCat?.vehicleTypeCodes ?? []).map((o) => o.code)} />
-            <SelectField label="Uso" value={form.usageCode} editing={editing} onChange={(v) => setForm((c) => ({ ...c, usageCode: v }))} options={(vCat?.usageCodes ?? []).map((o) => o.code)} />
-            <SelectField label="Caja" value={form.transmissionCode} editing={editing} onChange={(v) => setForm((c) => ({ ...c, transmissionCode: v }))} options={(vCat?.transmissionCodes ?? []).map((o) => o.code)} />
-            <Field label="Color" value={form.color} editing={editing} onChange={(v) => setForm((c) => ({ ...c, color: v }))} />
-            <Field label="Pintura" value={form.paintCode} editing={editing} onChange={(v) => setForm((c) => ({ ...c, paintCode: v }))} />
-            <Field label="Chasis" value={form.chasis} editing={editing} onChange={(v) => setForm((c) => ({ ...c, chasis: v }))} />
-            <Field label="Motor" value={form.motor} editing={editing} onChange={(v) => setForm((c) => ({ ...c, motor: v }))} />
-            <Field label="Kilometraje" value={form.mileage} editing={editing} onChange={(v) => setForm((c) => ({ ...c, mileage: v }))} type="number" />
-          </div>
-          <div className="mt-3 space-y-1.5">
-            <Label>Observaciones</Label>
+        <div className="grid gap-5 xl:grid-cols-2">
+          <div className="rounded-2xl border border-border/60 bg-background/70 p-5">
+            <div className="mb-3 flex items-center gap-2">
+              <User className="h-4 w-4 text-primary" />
+              <h4 className="font-semibold">Cliente</h4>
+            </div>
+
             {editing ? (
-              <textarea className="flex min-h-[80px] w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" value={form.observacionesVehiculo} onChange={(e) => setForm((c) => ({ ...c, observacionesVehiculo: e.target.value }))} />
+              <>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field label="Nombre" value={form.nombre} editing={editing} onChange={(value) => setForm((current) => ({ ...current, nombre: value }))} />
+                  <Field label="Apellido" value={form.apellido} editing={editing} onChange={(value) => setForm((current) => ({ ...current, apellido: value }))} />
+                  <SelectField label="Tipo doc." value={form.tipoDocumentoCodigo} editing={editing} onChange={(value) => setForm((current) => ({ ...current, tipoDocumentoCodigo: value }))} options={DOC_TYPE_OPTIONS} />
+                  <Field label="Nro. documento" value={form.numeroDocumento} editing={editing} onChange={(value) => setForm((current) => ({ ...current, numeroDocumento: value }))} />
+                  <SelectField label="Estado civil" value={form.estadoCivilCodigo} editing={editing} onChange={(value) => setForm((current) => ({ ...current, estadoCivilCodigo: value }))} options={CIVIL_STATUS_OPTIONS} />
+                  <Field label="CUIT/CUIL" value={form.cuitCuil} editing={editing} onChange={(value) => setForm((current) => ({ ...current, cuitCuil: value }))} />
+                  <Field label="Teléfono" value={form.telefonoPrincipal} editing={editing} onChange={(value) => setForm((current) => ({ ...current, telefonoPrincipal: value }))} />
+                  <Field label="Email" value={form.emailPrincipal} editing={editing} onChange={(value) => setForm((current) => ({ ...current, emailPrincipal: value }))} type="email" />
+                  <Field label="Ocupación" value={form.ocupacion} editing={editing} onChange={(value) => setForm((current) => ({ ...current, ocupacion: value }))} />
+                  <Field label="Fecha nac." value={form.fechaNacimiento} editing={editing} onChange={(value) => setForm((current) => ({ ...current, fechaNacimiento: value }))} type="date" />
+                </div>
+                <div className="mt-3 space-y-1.5">
+                  <Label>Observaciones</Label>
+                  <textarea className="flex min-h-[80px] w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" value={form.observacionesPersona} onChange={(event) => setForm((current) => ({ ...current, observacionesPersona: event.target.value }))} />
+                </div>
+              </>
             ) : (
-              <p className="rounded-2xl border border-border/50 bg-background/50 px-4 py-3 text-sm text-muted-foreground">{form.observacionesVehiculo || '-'}</p>
+              <div className="grid gap-x-4 md:grid-cols-2">
+                <ReadOnlyField label="Tipo de persona" value={person?.tipoPersona} />
+                <ReadOnlyField label="Nombre visible" value={person?.nombreMostrar} />
+                <ReadOnlyField label="Nombre" value={form.nombre} />
+                <ReadOnlyField label="Apellido" value={form.apellido} />
+                <ReadOnlyField label="Razón social" value={person?.razonSocial} />
+                <ReadOnlyField label="Tipo doc." value={form.tipoDocumentoCodigo} />
+                <ReadOnlyField label="Nro. documento" value={form.numeroDocumento} />
+                <ReadOnlyField label="CUIT/CUIL" value={form.cuitCuil} />
+                <ReadOnlyField label="Estado civil" value={form.estadoCivilCodigo} />
+                <ReadOnlyField label="Teléfono" value={form.telefonoPrincipal} />
+                <ReadOnlyField label="Email" value={form.emailPrincipal} />
+                <ReadOnlyField label="Ocupación" value={form.ocupacion} />
+                <ReadOnlyField label="Fecha nac." value={form.fechaNacimiento ? formatDate(form.fechaNacimiento) : null} />
+                <ReadOnlyField label="Activo" value={person?.activo} />
+                <ReadOnlyField label="Observaciones" value={form.observacionesPersona} />
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border border-border/60 bg-background/70 p-5">
+            <div className="mb-3 flex items-center gap-2">
+              <Wrench className="h-4 w-4 text-primary" />
+              <h4 className="font-semibold">Vehiculo</h4>
+            </div>
+
+            {editing ? (
+              <>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <Field label="Marca" value={form.brandText} editing={editing} onChange={(value) => setForm((current) => ({ ...current, brandText: value }))} />
+                  <Field label="Modelo" value={form.modelText} editing={editing} onChange={(value) => setForm((current) => ({ ...current, modelText: value }))} />
+                  <Field label="Patente" value={form.plate} editing={editing} onChange={(value) => setForm((current) => ({ ...current, plate: value.toUpperCase() }))} upper />
+                  <Field label="Año" value={form.year} editing={editing} onChange={(value) => setForm((current) => ({ ...current, year: value }))} type="number" />
+                  <SelectField label="Tipo" value={form.vehicleTypeCode} editing={editing} onChange={(value) => setForm((current) => ({ ...current, vehicleTypeCode: value }))} options={(vCat?.vehicleTypeCodes ?? []).map((option) => option.code)} />
+                  <SelectField label="Uso" value={form.usageCode} editing={editing} onChange={(value) => setForm((current) => ({ ...current, usageCode: value }))} options={(vCat?.usageCodes ?? []).map((option) => option.code)} />
+                  <SelectField label="Caja" value={form.transmissionCode} editing={editing} onChange={(value) => setForm((current) => ({ ...current, transmissionCode: value }))} options={(vCat?.transmissionCodes ?? []).map((option) => option.code)} />
+                  <Field label="Color" value={form.color} editing={editing} onChange={(value) => setForm((current) => ({ ...current, color: value }))} />
+                  <Field label="Pintura" value={form.paintCode} editing={editing} onChange={(value) => setForm((current) => ({ ...current, paintCode: value }))} />
+                  <Field label="Chasis" value={form.chasis} editing={editing} onChange={(value) => setForm((current) => ({ ...current, chasis: value }))} />
+                  <Field label="Motor" value={form.motor} editing={editing} onChange={(value) => setForm((current) => ({ ...current, motor: value }))} />
+                  <Field label="Kilometraje" value={form.mileage} editing={editing} onChange={(value) => setForm((current) => ({ ...current, mileage: value }))} type="number" />
+                </div>
+                <div className="mt-3 space-y-1.5">
+                  <Label>Observaciones</Label>
+                  <textarea className="flex min-h-[80px] w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" value={form.observacionesVehiculo} onChange={(event) => setForm((current) => ({ ...current, observacionesVehiculo: event.target.value }))} />
+                </div>
+              </>
+            ) : (
+              <div className="grid gap-x-4 md:grid-cols-2">
+                <ReadOnlyField label="Marca" value={form.brandText} />
+                <ReadOnlyField label="Modelo" value={form.modelText} />
+                <ReadOnlyField label="Patente" value={form.plate} />
+                <ReadOnlyField label="Año" value={form.year} />
+                <ReadOnlyField label="Tipo" value={form.vehicleTypeCode} />
+                <ReadOnlyField label="Uso" value={form.usageCode} />
+                <ReadOnlyField label="Caja" value={form.transmissionCode} />
+                <ReadOnlyField label="Color" value={form.color} />
+                <ReadOnlyField label="Pintura" value={form.paintCode} />
+                <ReadOnlyField label="Chasis" value={form.chasis} />
+                <ReadOnlyField label="Motor" value={form.motor} />
+                <ReadOnlyField label="Kilometraje" value={form.mileage} />
+                <ReadOnlyField label="Activo" value={vehicle?.activo} />
+                <ReadOnlyField label="Observaciones" value={form.observacionesVehiculo} />
+              </div>
             )}
           </div>
         </div>
@@ -515,43 +692,44 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, onSaved }) => {
 
 const Field = ({ label, value, editing, onChange, type = 'text', upper }) => (
   <div className="space-y-1.5">
-    <Label>{label}</Label>
+    <Label htmlFor={`field-${label}`}>{label}</Label>
     {editing ? (
-      <Input type={type} value={value} onChange={(e) => onChange(upper ? e.target.value.toUpperCase() : e.target.value)} />
+      <Input id={`field-${label}`} type={type} value={value} onChange={(event) => onChange(upper ? event.target.value.toUpperCase() : event.target.value)} />
     ) : (
-      <p className="rounded-2xl border border-border/50 bg-background/50 px-4 py-3 text-sm">{value || '-'}</p>
+      <p className="rounded-2xl border border-border/50 bg-background/50 px-4 py-3 text-sm">{formatDisplayValue(value)}</p>
     )}
   </div>
 );
 
 const SelectField = ({ label, value, editing, onChange, options }) => (
   <div className="space-y-1.5">
-    <Label>{label}</Label>
+    <Label htmlFor={`field-${label}`}>{label}</Label>
     {editing ? (
       <select
+        id={`field-${label}`}
         className="flex h-12 w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(event) => onChange(event.target.value)}
       >
-        {options.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+        {options.map((option) => <option key={option} value={option}>{option}</option>)}
       </select>
     ) : (
-      <p className="rounded-2xl border border-border/50 bg-background/50 px-4 py-3 text-sm">{value || '-'}</p>
+      <p className="rounded-2xl border border-border/50 bg-background/50 px-4 py-3 text-sm">{formatDisplayValue(value)}</p>
     )}
   </div>
 );
 
-const MetricCard = ({ label, value }) => (
-  <div className="rounded-3xl border border-border/70 bg-background/80 p-4">
-    <p className="text-sm text-muted-foreground">{label}</p>
-    <p className="mt-3 text-base font-semibold leading-snug">{value}</p>
+const ReadOnlyField = ({ label, value }) => (
+  <div className="border-b border-border/50 py-3 last:border-b-0">
+    <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+    <p className="mt-1 text-sm leading-relaxed text-foreground">{formatDisplayValue(value)}</p>
   </div>
 );
 
 const WidgetRow = ({ label, value }) => (
   <div className="flex items-center justify-between gap-4 border-b border-border/60 pb-2 last:border-b-0 last:pb-0">
     <span className="text-muted-foreground">{label}</span>
-    <span className="font-medium">{value}</span>
+    <span className="font-medium text-right">{value}</span>
   </div>
 );
 
@@ -560,62 +738,96 @@ const DetallesTabButton = ({ selectedTab, setSelectedTab }) => {
   return (
     <button
       type="button"
+      role="tab"
+      aria-selected={active}
       onClick={() => setSelectedTab('DETALLES')}
-      className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium transition border border-primary ${
-        active ? 'bg-primary text-primary-foreground' : 'bg-primary text-primary-foreground'
+      className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-medium transition ${
+        active ? 'border-primary bg-primary text-primary-foreground shadow-sm' : 'border-border/60 bg-background/80 text-foreground hover:border-primary/30 hover:bg-accent/40'
       }`}
     >
       <ShieldCheck className="h-4 w-4" />
-      <span>
-        <span className="block leading-tight">Detalles rápidos</span>
-        <span className="text-[11px] text-primary-foreground/80">Resumen</span>
-      </span>
+      <span className="block leading-tight">Resumen</span>
     </button>
   );
 };
 
-const CaseDetailsPanel = ({ caseDetail, budget, particularFinanceSummary, widgets, pendingTasks }) => (
-  <div className="space-y-4">
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-      <MiniCard label="Presupuesto" value={widgets.budget.exists ? (budget?.reportStatusCode || 'CARGADO') : 'Sin presupuesto'} color={widgets.budget.exists && budget?.reportStatusCode === 'CERRADO' ? 'emerald' : 'amber'} />
-      <MiniCard label="Total cotizado" value={formatCurrency(widgets.budget.totalQuoted)} color="slate" />
-      <MiniCard label="Reparación" value={widgets.repair.hasDefinitiveOutcome ? 'Egreso definitivo' : widgets.repair.hasIntake ? 'En taller' : widgets.repair.hasAppointment ? 'Con turno' : 'Sin turno'} color={widgets.repair.hasDefinitiveOutcome ? 'emerald' : 'amber'} />
-      <MiniCard label="Tareas pendientes" value={`${pendingTasks}`} color={pendingTasks > 0 ? 'red' : 'emerald'} />
-    </div>
-    <div className="grid gap-4 md:grid-cols-2">
-      <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Finanzas</p>
-        <div className="mt-3 space-y-2 text-sm">
-          <WidgetRow label="Pagado por cliente" value={formatCurrency(particularFinanceSummary?.customerPaid)} />
-          <WidgetRow label="Saldo pendiente" value={formatCurrency(particularFinanceSummary?.pendingBalance)} />
-          <WidgetRow label="Pago total" value={particularFinanceSummary?.paidInFull ? 'Sí' : 'No'} />
-          {particularFinanceSummary?.hasAdvancePayment ? <WidgetRow label="Seña" value="Registrada" /> : null}
-        </div>
-      </div>
-      <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
-        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Identidad</p>
-        <div className="mt-3 space-y-2 text-sm">
-          <WidgetRow label="Creada" value={formatDateTime(caseDetail.createdAt)} />
-          <WidgetRow label="Creador" value={caseDetail.createdByDisplayName || '-'} />
-          <WidgetRow label="Cierre" value={formatDateTime(caseDetail.closedAt)} />
-          <WidgetRow label="Referenciado" value={caseDetail.referenced ? 'Sí' : 'No'} />
-        </div>
-      </div>
-    </div>
-  </div>
-);
+const CaseDetailsPanel = ({ caseDetail, budget, particularFinanceSummary, widgets, latestAppointment, latestIntake, latestOutcome, taskSnapshot, nextStep, onOpenTab }) => {
+  const paymentsState = !widgets?.budget?.exists
+    ? 'Pendiente de presupuesto'
+    : particularFinanceSummary?.paidInFull
+      ? 'Pagado'
+      : (particularFinanceSummary?.customerPaid ?? 0) > 0
+        ? 'Parcial'
+        : 'Sin pagos';
 
-const MiniCard = ({ label, value, color = 'slate' }) => {
+  const repairStatus = widgets?.repair?.hasDefinitiveOutcome
+    ? 'Reparacion finalizada'
+    : widgets?.repair?.hasIntake
+      ? 'Vehiculo ingresado'
+      : widgets?.repair?.hasAppointment
+        ? 'Turno programado'
+        : 'Pendiente de turno';
+
+  const appointmentLabel = latestAppointment?.appointmentDate
+    ? `${formatDate(latestAppointment.appointmentDate)}${latestAppointment.appointmentTime ? ` · ${String(latestAppointment.appointmentTime).slice(0, 5)}` : ''}`
+    : 'Sin turno asignado';
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-primary/15 bg-primary/5 p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/80">Proximo paso</p>
+            <p className="mt-1 text-lg font-semibold text-foreground">{nextStep.label}</p>
+          </div>
+          {nextStep.targetTab === 'PRESUPUESTO' && nextStep.actionable ? (
+            <Button type="button" onClick={() => onOpenTab('PRESUPUESTO')}>Ir a Presupuesto</Button>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <MiniCard label="Presupuesto" value={widgets?.budget?.exists ? (budget?.reportStatusCode || 'CARGADO') : 'Sin presupuesto'} color={widgets?.budget?.exists && budget?.reportStatusCode === 'CERRADO' ? 'emerald' : 'amber'}>
+          <WidgetRow label="Estado" value={widgets?.budget?.exists ? (budget?.reportStatusCode || 'CARGADO') : 'Todavia no se cargo'} />
+          <WidgetRow label="Total cotizado" value={widgets?.budget?.exists ? formatCurrency(widgets?.budget?.totalQuoted) : 'Todavia no se cargo'} />
+        </MiniCard>
+
+        <MiniCard label="Reparacion" value={caseDetail.visibleRepairState?.label || repairStatus} color={widgets?.repair?.hasDefinitiveOutcome ? 'emerald' : 'amber'}>
+          <WidgetRow label="Estado actual" value={repairStatus} />
+          <WidgetRow label="Turno" value={appointmentLabel} />
+          {latestIntake?.intakeAt ? <WidgetRow label="Ingreso" value={formatDateTime(latestIntake.intakeAt)} /> : null}
+          {latestOutcome?.outcomeAt ? <WidgetRow label="Ultimo egreso" value={formatDateTime(latestOutcome.outcomeAt)} /> : null}
+        </MiniCard>
+
+        <MiniCard label="Pagos" value={paymentsState} color={particularFinanceSummary?.paidInFull ? 'emerald' : widgets?.budget?.exists ? 'amber' : 'slate'}>
+          <WidgetRow label="Total cotizado" value={widgets?.budget?.exists ? formatCurrency(particularFinanceSummary?.quotedTotal) : 'Pendiente de presupuesto'} />
+          <WidgetRow label="Pagado por cliente" value={formatCurrency(particularFinanceSummary?.customerPaid)} />
+          <WidgetRow label="Saldo pendiente" value={widgets?.budget?.exists ? formatCurrency(particularFinanceSummary?.pendingBalance) : 'Pendiente de presupuesto'} />
+          <WidgetRow label="Estado" value={paymentsState} />
+        </MiniCard>
+
+        <MiniCard label="Tareas" value={taskSnapshot.pendingCount > 0 ? pluralize(taskSnapshot.pendingCount, 'pendiente', 'pendientes') : 'Sin tareas pendientes'} color={taskSnapshot.pendingCount > 0 ? 'red' : 'emerald'}>
+          <WidgetRow label="Pendientes" value={String(taskSnapshot.pendingCount)} />
+          <WidgetRow label="Proximo vencimiento" value={taskSnapshot.nextDueTask?.dueDate ? formatDate(taskSnapshot.nextDueTask.dueDate) : 'Sin tareas pendientes'} />
+        </MiniCard>
+      </div>
+    </div>
+  );
+};
+
+const MiniCard = ({ label, value, color = 'slate', children }) => {
   const accentColor = {
     emerald: 'border-l-emerald-500',
     amber: 'border-l-amber-500',
     red: 'border-l-red-500',
     slate: 'border-l-slate-300',
   };
+
   return (
-    <div className={`rounded-2xl border border-border/70 bg-card shadow-sm p-4 border-l-4 ${accentColor[color] || accentColor.slate}`}>
+    <div className={`rounded-2xl border border-border/70 bg-card p-4 shadow-sm border-l-4 ${accentColor[color] || accentColor.slate}`}>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="mt-2 text-lg font-semibold text-foreground">{value}</p>
+      <div className="mt-3 space-y-2 text-sm">{children}</div>
     </div>
   );
 };

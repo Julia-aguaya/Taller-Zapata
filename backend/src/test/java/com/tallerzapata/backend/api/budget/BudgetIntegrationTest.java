@@ -54,7 +54,8 @@ class BudgetIntegrationTest {
                                  5,
                                  new BigDecimal("2000.00"),
                                  "Observaciones iniciales",
-                                 null, null, null, null, null, null, null, null, null, null, null, null
+                                 null, null, null, null, null, null, null, null, null, null, null, null,
+                                 null, null, null, null
                          ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.caseId").value(100))
@@ -81,7 +82,8 @@ class BudgetIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(
                                 LocalDate.of(2026, 4, 20), "BORRADOR",
                                 new BigDecimal("1000.00"), new BigDecimal("21.00"),
-                                 new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null
+                                 new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                                 null, null, null, null
                          ))))
                 .andExpect(status().isOk());
 
@@ -117,7 +119,8 @@ class BudgetIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(
                                 LocalDate.of(2026, 4, 20), "BORRADOR",
                                 new BigDecimal("1000.00"), new BigDecimal("21.00"),
-                                 new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null
+                                 new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                                 null, null, null, null
                          ))))
                 .andExpect(status().isOk());
 
@@ -161,7 +164,8 @@ class BudgetIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(
                                 LocalDate.of(2026, 4, 20), "BORRADOR",
                                 new BigDecimal("1000.00"), new BigDecimal("21.00"),
-                                 new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null
+                                 new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                                 null, null, null, null
                          ))))
                 .andExpect(status().isOk());
 
@@ -250,7 +254,8 @@ class BudgetIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(
                                 LocalDate.of(2026, 4, 20), "BORRADOR",
                                 new BigDecimal("1000.00"), new BigDecimal("21.00"),
-                                 new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null
+                                 new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                                 null, null, null, null
                          ))))
                 .andExpect(status().isOk());
 
@@ -273,7 +278,8 @@ class BudgetIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(
                                 LocalDate.of(2026, 4, 20), "BORRADOR",
                                 new BigDecimal("1000.00"), new BigDecimal("21.00"),
-                                 new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null
+                                 new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                                 null, null, null, null
                          ))))
                 .andExpect(status().isOk());
 
@@ -312,7 +318,8 @@ class BudgetIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(
                                 LocalDate.of(2026, 4, 20), "BORRADOR",
                                 new BigDecimal("1000.00"), new BigDecimal("21.00"),
-                                 new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null
+                                 new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                                 null, null, null, null
                          ))))
                 .andExpect(status().isOk());
 
@@ -357,7 +364,8 @@ class BudgetIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(
                                 LocalDate.of(2026, 4, 20), "BORRADOR",
                                 new BigDecimal("1000.00"), new BigDecimal("21.00"),
-                                 new BigDecimal("0.00"), 3, null, "Sin items", null, null, null, null, null, null, null, null, null, null, null, null
+                                 new BigDecimal("0.00"), 3, null, "Sin items", null, null, null, null, null, null, null, null, null, null, null, null,
+                                 null, null, null, null
                          ))))
                 .andExpect(status().isOk());
 
@@ -384,7 +392,8 @@ class BudgetIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(
                                 LocalDate.of(2026, 4, 20), "BORRADOR",
                                 new BigDecimal("1000.00"), new BigDecimal("21.00"),
-                                 new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null
+                                 new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                                 null, null, null, null
                          ))))
                 .andExpect(status().isOk());
 
@@ -407,7 +416,8 @@ class BudgetIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(
                                 LocalDate.of(2026, 4, 20), "BORRADOR",
                                 new BigDecimal("1000.00"), new BigDecimal("21.00"),
-                                 new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null
+                                 new BigDecimal("500.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                                 null, null, null, null
                          ))))
                 .andExpect(status().isOk());
 

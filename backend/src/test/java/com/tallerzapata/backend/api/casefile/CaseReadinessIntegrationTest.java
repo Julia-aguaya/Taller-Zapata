@@ -112,6 +112,10 @@ class CaseReadinessIntegrationTest {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
+                null,
                 null
         );
 
@@ -603,6 +607,10 @@ class CaseReadinessIntegrationTest {
                 null,
                 new BigDecimal("0.00"),
                 3,
+                null,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,
