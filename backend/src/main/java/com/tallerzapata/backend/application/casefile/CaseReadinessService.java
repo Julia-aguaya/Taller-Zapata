@@ -16,6 +16,13 @@ import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeEnti
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementEntity;
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseFranchiseEntity;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseFranchiseRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseInsuranceEntity;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseInsuranceRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingEntity;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingRepository;
+import com.tallerzapata.backend.infrastructure.persistence.operation.OperationalTaskRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.RepairAppointmentEntity;
 import com.tallerzapata.backend.infrastructure.persistence.operation.RepairAppointmentRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleIntakeEntity;
@@ -28,6 +35,7 @@ import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleEntity
 import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleRepository;
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
 import com.tallerzapata.backend.infrastructure.security.CurrentUserService;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,6 +58,10 @@ public class CaseReadinessService {
     private final RepairAppointmentRepository repairAppointmentRepository;
     private final VehicleIntakeRepository vehicleIntakeRepository;
     private final VehicleOutcomeRepository vehicleOutcomeRepository;
+    private final CaseInsuranceRepository caseInsuranceRepository;
+    private final InsuranceProcessingRepository insuranceProcessingRepository;
+    private final CaseFranchiseRepository caseFranchiseRepository;
+    private final OperationalTaskRepository operationalTaskRepository;
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService caseAccessControlService;
 
@@ -65,6 +77,10 @@ public class CaseReadinessService {
             RepairAppointmentRepository repairAppointmentRepository,
             VehicleIntakeRepository vehicleIntakeRepository,
             VehicleOutcomeRepository vehicleOutcomeRepository,
+            CaseInsuranceRepository caseInsuranceRepository,
+            InsuranceProcessingRepository insuranceProcessingRepository,
+            CaseFranchiseRepository caseFranchiseRepository,
+            OperationalTaskRepository operationalTaskRepository,
             CurrentUserService currentUserService,
             CaseAccessControlService caseAccessControlService
     ) {
@@ -79,6 +95,10 @@ public class CaseReadinessService {
         this.repairAppointmentRepository = repairAppointmentRepository;
         this.vehicleIntakeRepository = vehicleIntakeRepository;
         this.vehicleOutcomeRepository = vehicleOutcomeRepository;
+        this.caseInsuranceRepository = caseInsuranceRepository;
+        this.insuranceProcessingRepository = insuranceProcessingRepository;
+        this.caseFranchiseRepository = caseFranchiseRepository;
+        this.operationalTaskRepository = operationalTaskRepository;
         this.currentUserService = currentUserService;
         this.caseAccessControlService = caseAccessControlService;
     }
@@ -109,6 +129,13 @@ public class CaseReadinessService {
             tabs.add(budgetTab);
             tabs.add(buildParticularRepairReadiness(caseId, budgetTab.completed()));
             tabs.add(buildParticularPaymentsReadiness(caseId));
+        } else if ("TODO_RIESGO".equals(caseType.getCode())) {
+            CaseReadinessTabResponse tramiteTab = buildTodoRiesgoGestionTramiteReadiness(caseId);
+            tabs.add(tramiteTab);
+            CaseReadinessTabResponse budgetTab = buildTodoRiesgoPresupuestoReadiness(caseId, principalVehicle, tramiteTab.completed());
+            tabs.add(budgetTab);
+            tabs.add(buildTodoRiesgoReparacionReadiness(caseId, budgetTab.completed(), tramiteTab.completed()));
+            tabs.add(buildTodoRiesgoPagosReadiness(caseId));
         }
 
         return new CaseReadinessResponse(caseId, caseType.getCode(), tabs);
@@ -249,6 +276,113 @@ public class CaseReadinessService {
                 List.copyOf(warningReasons)
         );
     }
+
+    // ── TODO_RIESGO ──────────────────────────────────────────────
+
+    private CaseReadinessTabResponse buildTodoRiesgoGestionTramiteReadiness(Long caseId) {
+        List<String> blocking = new ArrayList<>();
+        CaseInsuranceEntity insurance = caseInsuranceRepository.findByCaseId(caseId).orElse(null);
+        InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
+        CaseFranchiseEntity franchise = caseFranchiseRepository.findByCaseId(caseId).orElse(null);
+
+        if (insurance == null || insurance.getInsuranceCompanyId() == null) {
+            blocking.add("Falta seleccionar compania de seguro");
+        }
+        if (processing == null || processing.getQuotationDate() == null) {
+            blocking.add("Falta ingresar fecha de cotizacion del siniestro");
+        }
+        if (franchise == null || franchise.getRecoveryTypeCode() == null) {
+            blocking.add("Falta definir modo de recupero de franquicia");
+        }
+        if (processing == null || processing.getAgreedAmount() == null || processing.getQuotationDate() == null) {
+            blocking.add("Falta acordar cotizacion con la Cia.");
+        }
+
+        boolean hasPendingTasks = operationalTaskRepository.findAll().stream()
+                .anyMatch(t -> t.getCaseId().equals(caseId) && !Boolean.TRUE.equals(t.getResolved()));
+
+        if (hasPendingTasks) {
+            blocking.add("Hay tareas pendientes en la agenda");
+        }
+
+        return toTab("GESTION_TRAMITE", true, blocking, List.of());
+    }
+
+    private CaseReadinessTabResponse buildTodoRiesgoPresupuestoReadiness(Long caseId, VehicleEntity vehicle, boolean tramiteCompleted) {
+        List<String> blocking = new ArrayList<>();
+
+        if (!tramiteCompleted) {
+            blocking.add("Debe completar Gestion del Tramite antes de cargar el presupuesto");
+            return toTab("PRESUPUESTO", false, blocking, List.of());
+        }
+
+        BudgetEntity budget = budgetRepository.findByCaseId(caseId).orElse(null);
+        if (budget == null) {
+            blocking.add("Falta cargar el presupuesto");
+            return toTab("PRESUPUESTO", true, blocking, List.of());
+        }
+
+        if (!isVehicleCommerciallyComplete(vehicle)) {
+            blocking.add("Faltan datos del vehiculo requeridos para cerrar el presupuesto");
+        }
+
+        List<BudgetItemEntity> items = budgetItemRepository.findByBudgetIdOrderByVisualOrderAsc(budget.getId());
+        if (items.isEmpty()) blocking.add("Falta cargar al menos un item de presupuesto");
+        if (items.stream().anyMatch(item -> isBlank(item.getAffectedPiece()))) blocking.add("Hay items sin pieza afectada");
+        if (items.stream().anyMatch(item -> isBlank(item.getTaskCode()))) blocking.add("Hay items sin tarea");
+        if (items.stream().anyMatch(item -> isBlank(item.getDamageLevelCode()))) blocking.add("Hay items sin nivel de dano");
+        if (!"CERRADO".equals(budget.getReportStatusCode())) blocking.add("El presupuesto todavia no fue cerrado");
+
+        return toTab("PRESUPUESTO", true, blocking, List.of());
+    }
+
+    private CaseReadinessTabResponse buildTodoRiesgoReparacionReadiness(Long caseId, boolean budgetCompleted, boolean tramiteCompleted) {
+        List<String> blocking = new ArrayList<>();
+
+        if (!budgetCompleted || !tramiteCompleted) {
+            if (!budgetCompleted) blocking.add("Debe cerrar el presupuesto antes de gestionar la reparacion");
+            if (!tramiteCompleted) blocking.add("Debe completar Gestion del Tramite antes de gestionar la reparacion");
+            return toTab("GESTION_REPARACION", false, blocking, List.of());
+        }
+
+        List<RepairAppointmentEntity> appointments = repairAppointmentRepository.findByCaseId(caseId, Sort.unsorted());
+        List<VehicleIntakeEntity> intakes = vehicleIntakeRepository.findByCaseId(caseId, Sort.unsorted());
+        List<VehicleOutcomeEntity> outcomes = vehicleOutcomeRepository.findByCaseId(caseId, Sort.unsorted());
+
+        if (appointments.isEmpty()) blocking.add("Falta agendar el turno de reparacion");
+        else if (intakes.isEmpty()) blocking.add("Falta registrar el ingreso del vehiculo");
+        else if (!intakes.isEmpty() && outcomes.isEmpty()) blocking.add("Falta registrar el egreso del vehiculo");
+
+        // Only complete if definitive exit and no reentry
+        VehicleOutcomeEntity lastOutcome = outcomes.stream().max((a, b) -> a.getCreatedAt().compareTo(b.getCreatedAt())).orElse(null);
+        boolean completed = lastOutcome != null && Boolean.TRUE.equals(lastOutcome.getDefinitive()) && !Boolean.TRUE.equals(lastOutcome.getShouldReenter());
+        if (completed) blocking.clear();
+
+        return new CaseReadinessTabResponse("GESTION_REPARACION", true, completed,
+                completed ? "BLUE" : "RED", List.copyOf(blocking), List.of());
+    }
+
+    private CaseReadinessTabResponse buildTodoRiesgoPagosReadiness(Long caseId) {
+        List<String> blocking = new ArrayList<>();
+        InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
+
+        if (processing == null || processing.getAgreedAmount() == null || processing.getQuotationDate() == null) {
+            blocking.add("Falta acordar cotizacion con la Cia. antes de registrar pagos");
+            return toTab("PAGOS", false, blocking, List.of());
+        }
+
+        CaseFranchiseEntity franchise = caseFranchiseRepository.findByCaseId(caseId).orElse(null);
+        if (franchise != null && franchise.getFranchiseStatusCode() != null) {
+            String franchiseStatus = franchise.getFranchiseStatusCode().toUpperCase();
+            if ("PENDIENTE".equals(franchiseStatus)) {
+                blocking.add("La franquicia sigue pendiente de resolucion");
+            }
+        }
+
+        return toTab("PAGOS", true, blocking, List.of());
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────
 
     private List<String> collectTechnicalSheetBlockingReasons(CaseEntity caseEntity, PersonEntity principalCustomer, VehicleEntity principalVehicle) {
         List<String> reasons = new ArrayList<>();

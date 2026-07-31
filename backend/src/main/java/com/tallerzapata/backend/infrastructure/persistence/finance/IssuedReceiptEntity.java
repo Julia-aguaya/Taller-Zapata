@@ -41,6 +41,8 @@ public class IssuedReceiptEntity {
     private LocalDateTime signedAt;
     @Column(name = "notas")
     private String notes;
+    @Column(name = "comprobante_fiscal")
+    private String comprobanteFiscal;
     @Column(name = "documento_id")
     private Long documentId;
     @Column(name = "created_at", insertable = false, updatable = false)
@@ -71,6 +73,8 @@ public class IssuedReceiptEntity {
     public void setSignedAt(LocalDateTime signedAt) { this.signedAt = signedAt; }
     public String getNotes() { return notes; }
     public void setNotes(String notes) { this.notes = notes; }
+    public String getComprobanteFiscal() { return comprobanteFiscal; }
+    public void setComprobanteFiscal(String comprobanteFiscal) { this.comprobanteFiscal = comprobanteFiscal; }
     public Long getDocumentId() { return documentId; }
     public void setDocumentId(Long documentId) { this.documentId = documentId; }
     public LocalDateTime getCreatedAt() { return createdAt; }

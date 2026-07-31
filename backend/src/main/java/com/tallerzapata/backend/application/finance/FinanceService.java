@@ -13,6 +13,10 @@ import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseReposito
 import com.tallerzapata.backend.infrastructure.persistence.document.DocumentRepository;
 import com.tallerzapata.backend.infrastructure.persistence.finance.*;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceCompanyRepository;
+import com.tallerzapata.backend.infrastructure.persistence.organization.BranchEntity;
+import com.tallerzapata.backend.infrastructure.persistence.organization.BranchRepository;
+import com.tallerzapata.backend.infrastructure.persistence.organization.OrganizationEntity;
+import com.tallerzapata.backend.infrastructure.persistence.organization.OrganizationRepository;
 import com.tallerzapata.backend.infrastructure.persistence.person.PersonRepository;
 import com.tallerzapata.backend.infrastructure.persistence.security.UserRepository;
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
@@ -51,12 +55,15 @@ public class FinanceService {
     private final FinancialApplicationConceptRepository applicationConceptRepository;
     private final IssuedReceiptTypeRepository issuedReceiptTypeRepository;
     private final InsuranceCompanyRepository companyRepository;
+    private final OrganizationRepository organizationRepository;
+    private final BranchRepository branchRepository;
+    private final ReceiptPdfService receiptPdfService;
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService accessControlService;
     private final CaseAuditService caseAuditService;
     private final ParticularCaseClosureService particularCaseClosureService;
 
-    public FinanceService(FinancialMovementRepository movementRepository, FinancialMovementRetentionRepository retentionRepository, FinancialMovementApplicationRepository applicationRepository, IssuedReceiptRepository receiptRepository, BudgetRepository budgetRepository, CaseRepository caseRepository, PersonRepository personRepository, UserRepository userRepository, DocumentRepository documentRepository, FinancialMovementTypeRepository movementTypeRepository, FinancialFlowOriginRepository flowOriginRepository, FinancialCounterpartyTypeRepository counterpartyTypeRepository, FinancialPaymentMethodRepository paymentMethodRepository, FinancialCancellationTypeRepository cancellationTypeRepository, FinancialRetentionTypeRepository retentionTypeRepository, FinancialApplicationConceptRepository applicationConceptRepository, IssuedReceiptTypeRepository issuedReceiptTypeRepository, InsuranceCompanyRepository companyRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, ParticularCaseClosureService particularCaseClosureService) {
+    public FinanceService(FinancialMovementRepository movementRepository, FinancialMovementRetentionRepository retentionRepository, FinancialMovementApplicationRepository applicationRepository, IssuedReceiptRepository receiptRepository, BudgetRepository budgetRepository, CaseRepository caseRepository, PersonRepository personRepository, UserRepository userRepository, DocumentRepository documentRepository, FinancialMovementTypeRepository movementTypeRepository, FinancialFlowOriginRepository flowOriginRepository, FinancialCounterpartyTypeRepository counterpartyTypeRepository, FinancialPaymentMethodRepository paymentMethodRepository, FinancialCancellationTypeRepository cancellationTypeRepository, FinancialRetentionTypeRepository retentionTypeRepository, FinancialApplicationConceptRepository applicationConceptRepository, IssuedReceiptTypeRepository issuedReceiptTypeRepository, InsuranceCompanyRepository companyRepository, OrganizationRepository organizationRepository, BranchRepository branchRepository, ReceiptPdfService receiptPdfService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, ParticularCaseClosureService particularCaseClosureService) {
         this.movementRepository = movementRepository;
         this.retentionRepository = retentionRepository;
         this.applicationRepository = applicationRepository;
@@ -75,6 +82,9 @@ public class FinanceService {
         this.applicationConceptRepository = applicationConceptRepository;
         this.issuedReceiptTypeRepository = issuedReceiptTypeRepository;
         this.companyRepository = companyRepository;
+        this.organizationRepository = organizationRepository;
+        this.branchRepository = branchRepository;
+        this.receiptPdfService = receiptPdfService;
         this.currentUserService = currentUserService;
         this.accessControlService = accessControlService;
         this.caseAuditService = caseAuditService;
@@ -151,6 +161,7 @@ public class FinanceService {
         entity.setTotal(scale(request.total()));
         entity.setSignedAt(request.signedAt());
         entity.setNotes(blankToNull(request.notes()));
+        entity.setComprobanteFiscal(blankToNull(request.comprobanteFiscal()));
         entity.setDocumentId(request.documentId());
         entity = receiptRepository.save(entity);
 
@@ -308,6 +319,15 @@ public class FinanceService {
         }
     }
 
+    @Transactional(readOnly = true)
+    public byte[] getReceiptPdf(Long receiptId) {
+        IssuedReceiptEntity receipt = receiptRepository.findById(receiptId).orElseThrow(() -> new ResourceNotFoundException("Recibo no encontrado: " + receiptId));
+        CaseEntity caseEntity = caseRepository.findById(receipt.getCaseId()).orElse(null);
+        OrganizationEntity org = organizationRepository.findAll().stream().findFirst().orElse(null);
+        BranchEntity branch = org != null ? branchRepository.findByOrganizationIdOrderByNameAsc(org.getId()).stream().findFirst().orElse(null) : null;
+        return receiptPdfService.generate(receipt, caseEntity, org, branch);
+    }
+
     private void validateReceiptRequest(IssuedReceiptCreateRequest request) {
         if (!issuedReceiptTypeRepository.existsByCodeAndActiveTrue(normalizeCode(request.receiptTypeCode()))) throw new ConflictException("receiptTypeCode no permitido: " + request.receiptTypeCode());
         if (request.documentId() != null && documentRepository.findByIdAndActiveTrue(request.documentId()).isEmpty()) throw new ResourceNotFoundException("No existe el documento " + request.documentId());
@@ -349,7 +369,7 @@ public class FinanceService {
     }
 
     private IssuedReceiptResponse toReceiptResponse(IssuedReceiptEntity entity) {
-        return new IssuedReceiptResponse(entity.getId(), entity.getPublicId(), entity.getCaseId(), entity.getReceiptTypeCode(), entity.getReceiptNumber(), entity.getReceiverBusinessName(), entity.getIssuedDate(), entity.getTaxableNet(), entity.getVatAmount(), entity.getTotal(), entity.getSignedAt(), entity.getNotes(), entity.getDocumentId(), entity.getCreatedAt(), entity.getUpdatedAt());
+        return new IssuedReceiptResponse(entity.getId(), entity.getPublicId(), entity.getCaseId(), entity.getReceiptTypeCode(), entity.getReceiptNumber(), entity.getReceiverBusinessName(), entity.getIssuedDate(), entity.getTaxableNet(), entity.getVatAmount(), entity.getTotal(), entity.getComprobanteFiscal(), entity.getSignedAt(), entity.getNotes(), entity.getDocumentId(), entity.getCreatedAt(), entity.getUpdatedAt());
     }
 
     private Map<String, Object> movementSnapshot(FinancialMovementEntity entity) {

@@ -28,4 +28,17 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 4180,
   },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: [],
+    deps: { inline: [/react/, /react-dom/] },
+    resolve: {
+      alias: {
+        react: path.resolve(__dirname, './node_modules/react'),
+        'react-dom': path.resolve(__dirname, './node_modules/react-dom'),
+        'react-dom/client': path.resolve(__dirname, './node_modules/react-dom/client.js'),
+      },
+    },
+  },
 });

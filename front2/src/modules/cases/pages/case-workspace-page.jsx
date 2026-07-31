@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Clock, ClipboardList, Hammer, Lock, ReceiptText, Save, ShieldCheck, User, Wrench } from 'lucide-react';
+import { Clock, Hammer, Lock, Save, ShieldCheck, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { getCaseWorkspace } from '@/modules/cases/api/cases-api';
 import { Card } from '@/shared/ui/card';
@@ -15,25 +15,9 @@ import { FullScreenLoader } from '@/shared/ui/full-screen-loader';
 import { BudgetEditorPanel } from '@/modules/cases/components/budget-editor-panel';
 import { RepairEditorPanel } from '@/modules/cases/components/repair-editor-panel';
 import { PaymentsEditorPanel } from '@/modules/cases/components/payments-editor-panel';
+import { GestionTramiteEditor } from '@/modules/cases/components/gestion-tramite-editor';
 import { requestJson } from '@/shared/api/http-client';
-
-const iconByTab = {
-  DETALLES: ShieldCheck,
-  FICHA_TECNICA: ClipboardList,
-  PRESUPUESTO: ReceiptText,
-  GESTION_REPARACION: Wrench,
-  PAGOS: ShieldCheck,
-};
-
-const labelByTab = {
-  DETALLES: 'Resumen',
-  FICHA_TECNICA: 'Ficha tecnica',
-  PRESUPUESTO: 'Presupuesto',
-  GESTION_REPARACION: 'Gestion de reparacion',
-  PAGOS: 'Pagos',
-};
-
-const PARTICULAR_STAGE_TABS = ['FICHA_TECNICA', 'PRESUPUESTO', 'GESTION_REPARACION', 'PAGOS'];
+import { getOperationalTabs, getTabIcon, getTabLabel } from '@/modules/cases/lib/tab-registry';
 
 const currency = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 });
 const formatCurrency = (value) => (value == null ? '-' : currency.format(value));
@@ -66,8 +50,6 @@ export const formatDisplayValue = (value) => {
   }
   return String(value);
 };
-
-export const getOperationalTabs = (tabs = []) => tabs.filter((tab) => PARTICULAR_STAGE_TABS.includes(tab.tabCode));
 
 export const countCompletedStages = (tabs = []) => getOperationalTabs(tabs).filter((tab) => tab.completed).length;
 
@@ -211,7 +193,7 @@ export const CaseWorkspacePage = () => {
           <div className="flex min-w-max gap-2" role="tablist" aria-label="Secciones de la carpeta">
             <DetallesTabButton selectedTab={selectedTab} setSelectedTab={setSelectedTab} />
             {readiness.tabs.map((tab) => {
-              const Icon = iconByTab[tab.tabCode] ?? ClipboardList;
+              const Icon = getTabIcon(tab.tabCode);
               const active = selectedTab === tab.tabCode;
               const isBlocked = !tab.allowed;
               return (
@@ -231,14 +213,14 @@ export const CaseWorkspacePage = () => {
                   className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-2.5 text-left text-sm font-medium transition ${
                     isBlocked
                       ? 'cursor-not-allowed border-destructive/30 bg-destructive/5 text-destructive/70'
-                      : active
+                      : (tab.completed || active)
                         ? 'border-primary bg-primary text-primary-foreground shadow-sm'
                         : 'border-border/60 bg-background/80 text-foreground hover:border-primary/30 hover:bg-accent/40'
                   }`}
                 >
                   <Icon className="h-4 w-4" />
                   <span className="flex flex-col gap-1">
-                    <span className="leading-tight">{labelByTab[tab.tabCode] || tab.tabCode}</span>
+                    <span className="leading-tight">{getTabLabel(tab.tabCode)}</span>
                     <span className="flex items-center gap-1.5 text-[11px]">
                       {tab.completed ? (
                         <Badge variant="success" className="px-2 py-0.5 text-[10px]">Completa</Badge>
@@ -286,10 +268,12 @@ export const CaseWorkspacePage = () => {
             />
           ) : currentTab?.tabCode === 'PRESUPUESTO' ? (
             <BudgetEditorPanel caseId={caseId} budget={budget} caseDetail={caseDetail} workshopInfo={workshopInfo} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
+          ) : currentTab?.tabCode === 'GESTION_TRAMITE' ? (
+            <GestionTramiteEditor caseId={caseId} caseDetail={caseDetail} budget={budget} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'GESTION_REPARACION' ? (
             <RepairEditorPanel caseId={caseId} caseDetail={caseDetail} latestAppointment={latestAppointment} latestIntake={latestIntake} latestOutcome={latestOutcome} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'PAGOS' ? (
-            <PaymentsEditorPanel caseId={caseId} caseDetail={caseDetail} particularFinanceSummary={particularFinanceSummary} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
+            <PaymentsEditorPanel caseId={caseId} caseDetail={caseDetail} budget={budget} particularFinanceSummary={particularFinanceSummary} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : null}
         </div>
       </Card>
@@ -299,7 +283,7 @@ export const CaseWorkspacePage = () => {
       <Dialog
         open={Boolean(selectedReadinessTab)}
         onClose={() => setSelectedReadinessTab(null)}
-        title={selectedReadinessTab ? `Detalle de ${labelByTab[selectedReadinessTab.tabCode] || selectedReadinessTab.tabCode}` : ''}
+        title={selectedReadinessTab ? `Detalle de ${getTabLabel(selectedReadinessTab.tabCode)}` : ''}
         description="Bloqueos y advertencias informados por la carpeta."
       >
         {selectedReadinessTab ? (
@@ -741,8 +725,8 @@ const DetallesTabButton = ({ selectedTab, setSelectedTab }) => {
       role="tab"
       aria-selected={active}
       onClick={() => setSelectedTab('DETALLES')}
-      className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-medium transition ${
-        active ? 'border-primary bg-primary text-primary-foreground shadow-sm' : 'border-border/60 bg-background/80 text-foreground hover:border-primary/30 hover:bg-accent/40'
+      className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-medium transition border-primary bg-primary text-primary-foreground shadow-sm ${
+        !active ? 'opacity-90 hover:opacity-100' : ''
       }`}
     >
       <ShieldCheck className="h-4 w-4" />

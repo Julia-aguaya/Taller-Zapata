@@ -7,6 +7,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -58,6 +61,15 @@ public class FinanceController {
     @PreAuthorize("hasAuthority('finanza.crear')")
     @PostMapping("/cases/{caseId}/receipts")
     public IssuedReceiptResponse createReceipt(@PathVariable Long caseId, @Valid @RequestBody IssuedReceiptCreateRequest request, HttpServletRequest httpRequest) { return financeService.createReceipt(caseId, request, httpRequest); }
+
+    @Operation(summary = "Descargar PDF del recibo", description = "Genera y devuelve el PDF de un recibo emitido")
+    @ApiResponse(responseCode = "200", description = "PDF generado")
+    @PreAuthorize("hasAuthority('finanza.ver')")
+    @GetMapping("/receipts/{receiptId}/pdf")
+    public ResponseEntity<byte[]> getReceiptPdf(@PathVariable Long receiptId) {
+        byte[] pdf = financeService.getReceiptPdf(receiptId);
+        return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=recibo-" + receiptId + ".pdf").contentType(MediaType.APPLICATION_PDF).body(pdf);
+    }
 
     @Operation(summary = "Resumen financiero de caso", description = "Devuelve un resumen financiero de un caso")
     @ApiResponse(responseCode = "200", description = "OK")

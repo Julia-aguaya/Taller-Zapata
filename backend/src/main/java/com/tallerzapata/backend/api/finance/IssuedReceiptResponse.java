@@ -15,6 +15,7 @@ public record IssuedReceiptResponse(
         BigDecimal taxableNet,
         BigDecimal vatAmount,
         BigDecimal total,
+        String comprobanteFiscal,
         LocalDateTime signedAt,
         String notes,
         Long documentId,

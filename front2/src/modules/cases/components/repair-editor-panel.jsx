@@ -28,7 +28,7 @@ const createAppointmentState = (appointment) => ({
   appointmentTime: appointment?.appointmentTime || '09:00',
   estimatedDays: appointment?.estimatedDays?.toString?.() || '3',
   estimatedExitDate: appointment?.estimatedExitDate || addBusinessDays(appointment?.appointmentDate, appointment?.estimatedDays),
-  statusCode: appointment?.statusCode || 'PENDIENTE',
+  statusCode: 'PENDIENTE',
   reentry: appointment?.reentry ? 'SI' : 'NO',
   notes: appointment?.notes || '',
 });
@@ -43,17 +43,6 @@ const createIntakeState = (intake, fallbackVehicleId) => ({
   observationCreatedAt: intake?.observationCreatedAt || null,
 });
 
-const createOutcomeState = (outcome) => ({
-  outcomeAt: outcome?.outcomeAt ? outcome.outcomeAt.slice(0, 16) : `${new Date().toISOString().slice(0, 10)}T18:00`,
-  definitive: outcome?.definitive ? 'SI' : 'NO',
-  shouldReenter: outcome?.shouldReenter ? 'SI' : 'NO',
-  expectedReentryDate: outcome?.expectedReentryDate || '',
-  estimatedReentryDays: outcome?.estimatedReentryDays?.toString?.() || '0',
-  reentryStatusCode: outcome?.reentryStatusCode || '',
-  repairedPhotosUploaded: outcome?.repairedPhotosUploaded ? 'SI' : 'NO',
-  notes: outcome?.notes || '',
-});
-
 export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, latestIntake, latestOutcome, onSaved }) => {
   const queryClient = useQueryClient();
   const { session } = useSession();
@@ -65,12 +54,8 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const outcomesQuery = useQuery({ queryKey: ['cases', String(caseId), 'outcomes'], queryFn: () => listVehicleOutcomes(caseId) });
 
   const [appointment, setAppointment] = useState(() => createAppointmentState(latestAppointment));
-  const [intake, setIntake] = useState(() => createIntakeState(latestIntake, caseDetail.principalVehicleId));
-  const [outcome, setOutcome] = useState(() => createOutcomeState(latestOutcome));
 
   useEffect(() => { setAppointment(createAppointmentState(latestAppointment)); }, [latestAppointment]);
-  useEffect(() => { setIntake(createIntakeState(latestIntake, caseDetail.principalVehicleId)); }, [caseDetail.principalVehicleId, latestIntake]);
-  useEffect(() => { setOutcome(createOutcomeState(latestOutcome)); }, [latestOutcome]);
 
   useEffect(() => {
     setAppointment((c) => ({
@@ -79,14 +64,10 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     }));
   }, [appointment.appointmentDate, appointment.estimatedDays]);
 
-  useEffect(() => {
-    const intakeDate = intake.intakeAt ? intake.intakeAt.slice(0, 10) : null;
-    const days = Number(appointment.estimatedDays) || 0;
-    setIntake((c) => ({
-      ...c,
-      estimatedExitDate: addBusinessDays(intakeDate, days),
-    }));
-  }, [intake.intakeAt, appointment.estimatedDays]);
+  const [intakeModal, setIntakeModal] = useState(null);
+  const [intakeForm, setIntakeForm] = useState({ intakeAt: '', mileage: '0', hasObservations: 'NO', observationDetail: '' });
+  const [egresoModal, setEgresoModal] = useState(null);
+  const [egresoForm, setEgresoForm] = useState({ outcomeAt: '', definitive: 'SI', shouldReenter: 'NO', expectedReentryDate: '', estimatedReentryDays: '0', reentryStatusCode: '', repairedPhotosUploaded: 'NO', notes: '' });
 
   const refreshWorkspace = async (message) => {
     await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
@@ -122,29 +103,41 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   });
 
   const intakeMutation = useMutation({
-    mutationFn: () => createVehicleIntake(caseId, {
-      appointmentId: latestAppointment?.id || null, vehicleId: Number(intake.vehicleId), intakeAt: intake.intakeAt,
-      receivedByUserId: userId, deliveredByPersonId: null, mileage: Number.parseInt(intake.mileage || '0', 10) || 0,
-      fuelCode: null, estimatedExitDate: intake.estimatedExitDate || null,
-      hasObservations: intake.hasObservations === 'SI', observationDetail: intake.hasObservations === 'SI' ? intake.observationDetail || null : null,
+    mutationFn: ({ appointmentId, intakeAt, mileage, estimatedExitDate, hasObservations, observationDetail }) => createVehicleIntake(caseId, {
+      appointmentId, vehicleId: Number(caseDetail.principalVehicleId), intakeAt,
+      receivedByUserId: userId, deliveredByPersonId: null, mileage: Number.parseInt(mileage || '0', 10) || 0,
+      fuelCode: null, estimatedExitDate: estimatedExitDate || null,
+      hasObservations: hasObservations === 'SI', observationDetail: hasObservations === 'SI' ? observationDetail || null : null,
     }),
-    onSuccess: async () => refreshWorkspace('Ingreso registrado.'),
+    onSuccess: async () => {
+      const appt = intakeModal;
+      setIntakeModal(null);
+      if (appt) {
+        await updateRepairAppointment(appt.id, {
+          appointmentDate: appt.appointmentDate, appointmentTime: appt.appointmentTime,
+          estimatedDays: appt.estimatedDays, estimatedExitDate: appt.estimatedExitDate,
+          statusCode: 'CUMPLIDO', reentry: appt.reentry || false,
+          notes: appt.notes || null, userId: Number(appt.userId || userId),
+        });
+        await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'appointments'] });
+      }
+      await refreshWorkspace('Ingreso registrado. Turno actualizado a Cumplido.');
+    },
     onError: (error) => toast.error(error.message || 'No pude registrar el ingreso.'),
   });
 
   const outcomeMutation = useMutation({
-    mutationFn: () => createVehicleOutcome(caseId, {
-      intakeId: latestIntake?.id, outcomeAt: outcome.outcomeAt, deliveredByUserId: userId, receivedByPersonId: null,
-      definitive: outcome.definitive === 'SI', shouldReenter: outcome.shouldReenter === 'SI',
-      expectedReentryDate: outcome.shouldReenter === 'SI' ? outcome.expectedReentryDate || null : null,
-      estimatedReentryDays: outcome.shouldReenter === 'SI' ? Number.parseInt(outcome.estimatedReentryDays || '0', 10) || 0 : null,
-      reentryStatusCode: outcome.shouldReenter === 'SI' ? outcome.reentryStatusCode || null : null,
-      repairedPhotosUploaded: outcome.repairedPhotosUploaded === 'SI', notes: outcome.notes || null,
+    mutationFn: ({ intakeId, outcomeAt, definitive, shouldReenter, expectedReentryDate, estimatedReentryDays, reentryStatusCode, repairedPhotosUploaded, notes }) => createVehicleOutcome(caseId, {
+      intakeId, outcomeAt, deliveredByUserId: userId, receivedByPersonId: null,
+      definitive: definitive === 'SI', shouldReenter: shouldReenter === 'SI',
+      expectedReentryDate: shouldReenter === 'SI' ? expectedReentryDate || null : null,
+      estimatedReentryDays: shouldReenter === 'SI' ? Number.parseInt(estimatedReentryDays || '0', 10) || 0 : null,
+      reentryStatusCode: shouldReenter === 'SI' ? reentryStatusCode || null : null,
+      repairedPhotosUploaded: repairedPhotosUploaded === 'SI', notes: notes || null,
     }),
     onSuccess: async (data) => {
-      const message = data?.shouldReenter
-        ? 'Egreso registrado. Turno de reingreso creado automáticamente.'
-        : 'Egreso registrado y estados recalculados.';
+      const message = data?.shouldReenter ? 'Egreso registrado. Turno de reingreso creado automáticamente.' : 'Egreso registrado.';
+      setEgresoModal(null);
       await refreshWorkspace(message);
     },
     onError: (error) => toast.error(error.message || 'No pude registrar el egreso.'),
@@ -208,6 +201,15 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
 
   const parts = partsQuery.data ?? [];
   const appointments = appointmentsQuery.data ?? [];
+  const intakes = intakesQuery.data ?? [];
+  const hasIntakeFor = (appointmentId) => intakes.some((i) => i.appointmentId === appointmentId);
+  const outcomes = outcomesQuery.data ?? [];
+  const hasOutcomeFor = (intakeId) => outcomes.some((o) => o.intakeId === intakeId);
+  const appointmentById = useMemo(() => {
+    const map = {};
+    appointments.forEach((a) => { map[a.id] = a; });
+    return map;
+  }, [appointments]);
 
   const enterEditMode = () => {
     setDraftParts(parts.map(p => ({ ...p })));
@@ -329,11 +331,11 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
 
   const subTabCompleted = useMemo(() => ({
     repuestos: parts.length > 0,
-    turno: !!latestAppointment,
-    ingreso: !!latestIntake,
-    egreso: !!latestOutcome,
+    turno: appointments.length > 0,
+    ingreso: intakes.length > 0,
+    egreso: outcomes.length > 0,
     historial: false,
-  }), [parts.length, latestAppointment, latestIntake, latestOutcome]);
+  }), [parts.length, appointments.length, intakes.length, outcomes.length]);
 
   // Photos repaired
   const repairPhotoRef = useRef(null);
@@ -535,7 +537,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
             <div className="space-y-1"><Label className="text-xs">Hora</Label><Input className="h-9 rounded-xl text-sm" type="time" value={appointment.appointmentTime} onChange={(e) => setAppointment((c) => ({ ...c, appointmentTime: e.target.value }))} /></div>
             <div className="space-y-1"><Label className="text-xs">Días est.</Label><Input className="h-9 rounded-xl text-sm" type="number" min="0" value={appointment.estimatedDays} onChange={(e) => setAppointment((c) => ({ ...c, estimatedDays: e.target.value }))} /></div>
             <div className="space-y-1"><Label className="text-xs">Salida est.</Label><Input className="h-9 rounded-xl text-sm bg-muted/50 cursor-default" type="date" value={appointment.estimatedExitDate || ''} readOnly /></div>
-            <div className="space-y-1"><Label className="text-xs">Estado</Label><Select className="h-9 rounded-xl text-sm" value={appointment.statusCode} onChange={(e) => setAppointment((c) => ({ ...c, statusCode: e.target.value }))} options={appointmentStatusOptions.length > 0 ? appointmentStatusOptions : [{ value: 'PENDIENTE', label: 'Pendiente' }]} /></div>
+            <div className="space-y-1"><Label className="text-xs">Notas</Label><Input className="h-9 rounded-xl text-sm" value={appointment.notes} onChange={(e) => setAppointment((c) => ({ ...c, notes: e.target.value }))} placeholder="Opcional" /></div>
             <div className="flex items-end"><Button className="w-full" size="sm" onClick={() => appointmentMutation.mutate()} disabled={appointmentMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Agendar</Button></div>
           </div>
         </div>
@@ -581,26 +583,144 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
       ) : null}
 
       {subTab === 'ingreso' ? (
-        <EditorCard icon={<CarFront className="h-5 w-5" />} title="Ingreso" subtitle="Registrá el ingreso del vehículo." action={<Button variant="outline" onClick={() => intakeMutation.mutate()} disabled={intakeMutation.isPending || !latestAppointment?.id}><Save className="mr-2 h-4 w-4" />Guardar ingreso</Button>}>
-        <Field label="Fecha y hora"><Input type="datetime-local" value={intake.intakeAt} onChange={(e) => setIntake((c) => ({ ...c, intakeAt: e.target.value }))} /></Field>
-        <Field label="Vehicle ID"><Input type="number" value={intake.vehicleId} onChange={(e) => setIntake((c) => ({ ...c, vehicleId: e.target.value }))} /></Field>
-        <Field label="Kilometraje"><Input type="number" min="0" value={intake.mileage} onChange={(e) => setIntake((c) => ({ ...c, mileage: e.target.value }))} /></Field>
-        <Field label="Salida estimada"><Input type="date" value={intake.estimatedExitDate || ''} readOnly className="bg-muted/50 cursor-default" /></Field>
-        <Field label="Observaciones"><Select value={intake.hasObservations} onChange={(e) => setIntake((c) => ({ ...c, hasObservations: e.target.value }))} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
-        {intake.hasObservations === 'SI' ? <Field label="Detalle"><Textarea rows={3} value={intake.observationDetail} onChange={(e) => setIntake((c) => ({ ...c, observationDetail: e.target.value }))} />{intake.observationCreatedAt ? <p className="mt-1 text-xs text-muted-foreground">Registrado: {new Date(intake.observationCreatedAt).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p> : null}</Field> : null}
-      </EditorCard>
+        <div className="rounded-3xl border border-border/70 bg-card p-5">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><CarFront className="h-5 w-5" /></div>
+            <h4 className="text-lg font-semibold">Ingreso</h4>
+            <p className="mt-1 text-sm text-muted-foreground">Seleccioná un turno para registrar el ingreso del vehículo.</p>
+          </div>
+        </div>
+        {appointments.length === 0 ? (
+          <p className="rounded-2xl border border-dashed border-border/70 py-6 text-center text-sm text-muted-foreground">Sin turnos agendados. Creá uno en la solapa Turno.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-border/60 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  <th className="px-3 py-3 text-left">Fecha</th>
+                  <th className="px-3 py-3 text-left">Hora</th>
+                  <th className="px-3 py-3 text-center">Días</th>
+                  <th className="px-3 py-3 text-left">Salida est.</th>
+                  <th className="px-3 py-3 text-left">Estado</th>
+                  <th className="px-3 py-3 text-right"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {appointments.map((a) => {
+                  const alreadyIngested = hasIntakeFor(a.id);
+                  const isCanceled = a.statusCode === 'CANCELADO';
+                  return (
+                    <tr key={a.id} className={`border-b border-border/40 transition-colors ${isCanceled ? 'opacity-50 hover:bg-muted/20' : 'hover:bg-muted/30'}`}>
+                      <td className="px-3 py-3 font-medium">{a.appointmentDate}</td>
+                      <td className="px-3 py-3 text-muted-foreground">{a.appointmentTime || '—'}</td>
+                      <td className="px-3 py-3 text-center">{a.estimatedDays ?? '—'}</td>
+                      <td className="px-3 py-3 text-muted-foreground">{a.estimatedExitDate || '—'}</td>
+                      <td className="px-3 py-3"><span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${isCanceled ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400' : 'border-border/60 bg-muted/50'}`}>{appointmentStatusOptions.find(o => o.value === a.statusCode)?.label || a.statusCode || '—'}</span></td>
+                      <td className="px-3 py-3 text-right">
+                        {isCanceled ? (
+                          <span className="text-xs text-red-500 dark:text-red-400 font-medium">Cancelado</span>
+                        ) : alreadyIngested ? (
+                          <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Ingresado</span>
+                        ) : (
+                          <Button size="sm" variant="outline" onClick={() => { setIntakeModal(a); setIntakeForm({ intakeAt: new Date().toISOString().slice(0, 16), mileage: '0', hasObservations: 'NO', observationDetail: '' }); }}>Ingresar</Button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {intakeModal ? (
+          <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm py-10" onClick={() => setIntakeModal(null)}>
+            <div className="w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-haze my-auto" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-semibold">Registrar ingreso</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Turno del {intakeModal.appointmentDate} — {intakeModal.appointmentTime || ''}</p>
+              <div className="mt-5 max-h-[60vh] overflow-y-auto space-y-4 pr-1">
+                <Field label="Fecha y hora"><Input type="datetime-local" value={intakeForm.intakeAt} onChange={(e) => setIntakeForm((f) => ({ ...f, intakeAt: e.target.value }))} /></Field>
+                <Field label="Salida estimada"><Input type="date" value={addBusinessDays(intakeForm.intakeAt?.slice(0, 10), Number(intakeModal.estimatedDays) || 0)} readOnly className="bg-muted/50 cursor-default" /></Field>
+                <Field label="Kilometraje"><Input type="number" min="0" value={intakeForm.mileage} onChange={(e) => setIntakeForm((f) => ({ ...f, mileage: e.target.value }))} /></Field>
+                <Field label="Observaciones"><Select value={intakeForm.hasObservations} onChange={(e) => setIntakeForm((f) => ({ ...f, hasObservations: e.target.value }))} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
+                {intakeForm.hasObservations === 'SI' ? <Field label="Detalle"><Textarea rows={3} value={intakeForm.observationDetail} onChange={(e) => setIntakeForm((f) => ({ ...f, observationDetail: e.target.value }))} /></Field> : null}
+              </div>
+              <div className="mt-5 flex gap-3"><Button variant="outline" className="flex-1" onClick={() => setIntakeModal(null)}>Cancelar</Button><Button className="flex-1" onClick={() => intakeMutation.mutate({ appointmentId: intakeModal.id, intakeAt: intakeForm.intakeAt, mileage: intakeForm.mileage, estimatedExitDate: addBusinessDays(intakeForm.intakeAt?.slice(0, 10), Number(intakeModal.estimatedDays) || 0), hasObservations: intakeForm.hasObservations, observationDetail: intakeForm.observationDetail })} disabled={intakeMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar</Button></div>
+            </div>
+          </div>
+        ) : null}
+      </div>
       ) : null}
 
       {subTab === 'egreso' ? (
-        <EditorCard icon={<Flag className="h-5 w-5" />} title="Egreso" subtitle="Registrá la salida del vehículo." action={<Button variant="secondary" onClick={() => outcomeMutation.mutate()} disabled={outcomeMutation.isPending || !latestIntake?.id}><Save className="mr-2 h-4 w-4" />Guardar egreso</Button>}>
-        <Field label="Fecha y hora"><Input type="datetime-local" value={outcome.outcomeAt} onChange={(e) => setOutcome((c) => ({ ...c, outcomeAt: e.target.value }))} /></Field>
-        <Field label="Definitivo"><Select value={outcome.definitive} onChange={(e) => setOutcome((c) => ({ ...c, definitive: e.target.value }))} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
-        <Field label="Debe reingresar"><Select value={outcome.shouldReenter} onChange={(e) => setOutcome((c) => ({ ...c, shouldReenter: e.target.value }))} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
-        {outcome.shouldReenter === 'SI' ? (<><Field label="Fecha reingreso"><Input type="date" value={outcome.expectedReentryDate} onChange={(e) => setOutcome((c) => ({ ...c, expectedReentryDate: e.target.value }))} /></Field><Field label="Días reingreso"><Input type="number" min="0" value={outcome.estimatedReentryDays} onChange={(e) => setOutcome((c) => ({ ...c, estimatedReentryDays: e.target.value }))} /></Field><Field label="Estado reingreso"><Select value={outcome.reentryStatusCode} onChange={(e) => setOutcome((c) => ({ ...c, reentryStatusCode: e.target.value }))} options={reentryStatusOptions.length > 0 ? reentryStatusOptions : [{ value: '', label: 'Sin definir' }]} /></Field></>) : null}
-        <Field label="Fotos reparado"><Select value={outcome.repairedPhotosUploaded} onChange={(e) => setOutcome((c) => ({ ...c, repairedPhotosUploaded: e.target.value }))} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
-        <div className="space-y-1.5"><Label>Subir foto reparado</Label><input ref={repairPhotoRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) repairPhotosUploadMutation.mutate(f); }} /><Button variant="outline" size="sm" onClick={() => repairPhotoRef.current?.click()}><ImagePlus className="mr-1.5 h-4 w-4" />Subir</Button></div>
-        <Field label="Notas"><Textarea rows={3} value={outcome.notes} onChange={(e) => setOutcome((c) => ({ ...c, notes: e.target.value }))} /></Field>
-      </EditorCard>
+        <div className="rounded-3xl border border-border/70 bg-card p-5">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Flag className="h-5 w-5" /></div>
+            <h4 className="text-lg font-semibold">Egreso</h4>
+            <p className="mt-1 text-sm text-muted-foreground">Seleccioná un ingreso para registrar la salida del vehículo.</p>
+          </div>
+        </div>
+        {intakes.length === 0 ? (
+          <p className="rounded-2xl border border-dashed border-border/70 py-6 text-center text-sm text-muted-foreground">Sin ingresos registrados. Registrá uno en la solapa Ingreso.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-border/60 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  <th className="px-3 py-3 text-left">Fecha ingreso</th>
+                  <th className="px-3 py-3 text-left">Salida est.</th>
+                  <th className="px-3 py-3 text-center">Km</th>
+                  <th className="px-3 py-3 text-left">Observaciones</th>
+                  <th className="px-3 py-3 text-right"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {intakes.map((i) => {
+                  const alreadyOutcome = hasOutcomeFor(i.id);
+                  const intakeAppointment = appointmentById[i.appointmentId];
+                  const isCanceled = intakeAppointment?.statusCode === 'CANCELADO';
+                  return (
+                    <tr key={i.id} className={`border-b border-border/40 transition-colors ${isCanceled ? 'opacity-50 hover:bg-muted/20' : 'hover:bg-muted/30'}`}>
+                      <td className="px-3 py-3 font-medium">{i.intakeAt?.slice(0, 16).replace('T', ' ')}</td>
+                      <td className="px-3 py-3 text-muted-foreground">{i.estimatedExitDate || '—'}</td>
+                      <td className="px-3 py-3 text-center">{i.mileage ?? '—'}</td>
+                      <td className="px-3 py-3">{i.hasObservations ? <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">Sí</span> : <span className="text-muted-foreground text-xs">—</span>}</td>
+                      <td className="px-3 py-3 text-right">
+                        {isCanceled ? (
+                          <span className="text-xs text-red-500 dark:text-red-400 font-medium">Cancelado</span>
+                        ) : alreadyOutcome ? (
+                          <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Egresado</span>
+                        ) : (
+                          <Button size="sm" variant="outline" onClick={() => { setEgresoModal(i); setEgresoForm({ outcomeAt: new Date().toISOString().slice(0, 16), definitive: 'SI', shouldReenter: 'NO', expectedReentryDate: '', estimatedReentryDays: '0', reentryStatusCode: '', repairedPhotosUploaded: 'NO', notes: '' }); }}>Egresar</Button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {egresoModal ? (
+          <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm py-10" onClick={() => setEgresoModal(null)}>
+            <div className="w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-haze my-auto" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-semibold">Registrar egreso</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Ingreso del {egresoModal.intakeAt?.slice(0, 16).replace('T', ' ')}</p>
+              <div className="mt-5 max-h-[60vh] overflow-y-auto space-y-4 pr-1">
+                <Field label="Fecha y hora"><Input type="datetime-local" value={egresoForm.outcomeAt} onChange={(e) => setEgresoForm((f) => ({ ...f, outcomeAt: e.target.value }))} /></Field>
+                <Field label="Definitivo"><Select value={egresoForm.definitive} onChange={(e) => setEgresoForm((f) => ({ ...f, definitive: e.target.value }))} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
+                <Field label="Debe reingresar"><Select value={egresoForm.shouldReenter} onChange={(e) => setEgresoForm((f) => ({ ...f, shouldReenter: e.target.value }))} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
+                {egresoForm.shouldReenter === 'SI' ? (<><Field label="Fecha reingreso"><Input type="date" value={egresoForm.expectedReentryDate} onChange={(e) => setEgresoForm((f) => ({ ...f, expectedReentryDate: e.target.value }))} /></Field><Field label="Días reingreso"><Input type="number" min="0" value={egresoForm.estimatedReentryDays} onChange={(e) => setEgresoForm((f) => ({ ...f, estimatedReentryDays: e.target.value }))} /></Field><Field label="Estado reingreso"><Select value={egresoForm.reentryStatusCode} onChange={(e) => setEgresoForm((f) => ({ ...f, reentryStatusCode: e.target.value }))} options={reentryStatusOptions.length > 0 ? reentryStatusOptions : [{ value: '', label: 'Sin definir' }]} /></Field></>) : null}
+                <Field label="Fotos reparado"><Select value={egresoForm.repairedPhotosUploaded} onChange={(e) => setEgresoForm((f) => ({ ...f, repairedPhotosUploaded: e.target.value }))} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
+                <div className="space-y-1.5"><Label>Subir foto reparado</Label><input ref={repairPhotoRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) repairPhotosUploadMutation.mutate(f); }} /><Button variant="outline" size="sm" onClick={() => repairPhotoRef.current?.click()}><ImagePlus className="mr-1.5 h-4 w-4" />Subir</Button></div>
+                <Field label="Notas"><Textarea rows={3} value={egresoForm.notes} onChange={(e) => setEgresoForm((f) => ({ ...f, notes: e.target.value }))} /></Field>
+              </div>
+              <div className="mt-5 flex gap-3"><Button variant="outline" className="flex-1" onClick={() => setEgresoModal(null)}>Cancelar</Button><Button className="flex-1" onClick={() => outcomeMutation.mutate({ intakeId: egresoModal.id, outcomeAt: egresoForm.outcomeAt, definitive: egresoForm.definitive, shouldReenter: egresoForm.shouldReenter, expectedReentryDate: egresoForm.expectedReentryDate, estimatedReentryDays: egresoForm.estimatedReentryDays, reentryStatusCode: egresoForm.reentryStatusCode, repairedPhotosUploaded: egresoForm.repairedPhotosUploaded, notes: egresoForm.notes })} disabled={outcomeMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar</Button></div>
+            </div>
+          </div>
+        ) : null}
+      </div>
       ) : null}
 
       {subTab === 'historial' ? (

@@ -16,6 +16,7 @@ public record IssuedReceiptCreateRequest(
         @NotNull @DecimalMin("0.00") BigDecimal taxableNet,
         @NotNull @DecimalMin("0.00") BigDecimal vatAmount,
         @NotNull @DecimalMin("0.00") BigDecimal total,
+        String comprobanteFiscal,
         LocalDateTime signedAt,
         String notes,
         Long documentId
