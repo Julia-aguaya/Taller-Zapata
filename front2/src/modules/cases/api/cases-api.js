@@ -2,6 +2,11 @@ import { requestJson } from '@/shared/api/http-client';
 
 export const getCaseWorkspace = (caseId) => requestJson(`/cases/${caseId}/workspace`);
 
+export const overrideVisibleState = (caseId, domain, stateCode, reason) => requestJson(`/cases/${caseId}/visible-states`, {
+  method: 'PUT',
+  body: JSON.stringify({ domain, stateCode, reason }),
+});
+
 export const listCases = (params = {}) => {
   const searchParams = new URLSearchParams();
   const stringFilters = [

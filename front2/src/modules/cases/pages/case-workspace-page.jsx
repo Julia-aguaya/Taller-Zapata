@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Clock, Hammer, Lock, Save, ShieldCheck, User } from 'lucide-react';
 import { toast } from 'sonner';
-import { getCaseWorkspace } from '@/modules/cases/api/cases-api';
+import { getCaseWorkspace, overrideVisibleState } from '@/modules/cases/api/cases-api';
 import { Card } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
@@ -118,6 +118,14 @@ export const CaseWorkspacePage = () => {
   const queryClient = useQueryClient();
   const [selectedTab, setSelectedTab] = useState('DETALLES');
   const [selectedReadinessTab, setSelectedReadinessTab] = useState(null);
+  const [overrideModal, setOverrideModal] = useState(null); // { domain, currentCode }
+  const [overrideReason, setOverrideReason] = useState('');
+
+  const overrideMutation = useMutation({
+    mutationFn: ({ domain, stateCode }) => overrideVisibleState(caseId, domain, stateCode, overrideReason),
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] }); setOverrideModal(null); setOverrideReason(''); toast.success('Estado actualizado.'); },
+    onError: (e) => toast.error(e.message || 'No se pudo cambiar el estado.'),
+  });
 
   const workspaceQuery = useQuery({
     queryKey: ['cases', caseId, 'workspace'],
@@ -164,12 +172,30 @@ export const CaseWorkspacePage = () => {
 
           <div className="flex flex-col items-start gap-2 lg:items-end">
             <div className="flex flex-wrap gap-2">
-              <Badge variant={caseDetail.visibleTramiteState.code === 'PAGADO' ? 'success' : 'secondary'}>
-                Trámite: {caseDetail.visibleTramiteState.label}
-              </Badge>
-              <Badge variant={caseDetail.visibleRepairState.code === 'REPARADO' ? 'success' : 'outline'}>
-                Reparación: {caseDetail.visibleRepairState.label}
-              </Badge>
+              {/* Trámite state — clickeable para override */}
+              <div className="relative">
+                <button type="button" onClick={() => setOverrideModal({ domain: 'tramite', currentCode: caseDetail.visibleTramiteState.code })}
+                  className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition hover:ring-2 hover:ring-primary/30 ${
+                    caseDetail.visibleTramiteState.code === 'PAGADO' ? 'border-emerald-200 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400' :
+                    caseDetail.visibleTramiteState.code === 'RECHAZADO' || caseDetail.visibleTramiteState.code === 'DESISTIDO' ? 'border-red-200 bg-red-100 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-400' :
+                    'border-border bg-muted/50 text-foreground'
+                  }`}>
+                  Trámite: {caseDetail.visibleTramiteState.label}
+                </button>
+              </div>
+
+              {/* Reparación state — clickeable para override */}
+              <div className="relative">
+                <button type="button" onClick={() => setOverrideModal({ domain: 'reparacion', currentCode: caseDetail.visibleRepairState.code })}
+                  className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition hover:ring-2 hover:ring-primary/30 ${
+                    caseDetail.visibleRepairState.code === 'REPARADO' ? 'border-emerald-200 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400' :
+                    caseDetail.visibleRepairState.code === 'NO_DEBE_REPARARSE' ? 'border-blue-200 bg-blue-100 text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400' :
+                    caseDetail.visibleRepairState.code === 'RECHAZADO' || caseDetail.visibleRepairState.code === 'DESISTIDO' ? 'border-red-200 bg-red-100 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-400' :
+                    'border-border bg-muted/50 text-foreground'
+                  }`}>
+                  Reparación: {caseDetail.visibleRepairState.label}
+                </button>
+              </div>
             </div>
             <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">
               {`${completedStages} de ${stageTabs.length || 4} etapas completas`}
@@ -795,6 +821,39 @@ const CaseDetailsPanel = ({ caseDetail, budget, particularFinanceSummary, widget
           <WidgetRow label="Proximo vencimiento" value={taskSnapshot.nextDueTask?.dueDate ? formatDate(taskSnapshot.nextDueTask.dueDate) : 'Sin tareas pendientes'} />
         </MiniCard>
       </div>
+
+      {/* ── Override modal for visible states ── */}
+      {overrideModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setOverrideModal(null)}>
+          <div className="w-full max-w-sm rounded-3xl border border-border bg-card p-6 shadow-haze" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold">Cambiar estado de {overrideModal.domain === 'tramite' ? 'Trámite' : 'Reparación'}</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Actual: <strong>{overrideModal.domain === 'tramite' ? caseDetail.visibleTramiteState.label : caseDetail.visibleRepairState.label}</strong></p>
+            <div className="mt-4 space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Nuevo estado</Label>
+                <select className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm" value={overrideModal.currentCode} onChange={(e) => setOverrideModal((m) => ({ ...m, currentCode: e.target.value }))}>
+                  {(overrideModal.domain === 'tramite'
+                    ? ['INGRESADO','SIN_PRESENTAR','PRESENTADO','EN_TRAMITE','ACORDADO','PASADO_A_PAGOS','PAGADO','RECHAZADO','DESISTIDO']
+                    : ['EN_TRAMITE','FALTAN_REPUESTOS','DAR_TURNO','CON_TURNO','DEBE_REINGRESAR','REPARADO','NO_DEBE_REPARARSE','RECHAZADO','DESISTIDO']
+                  ).map((code) => {
+                    const labels = {INGRESADO:'Ingresado',SIN_PRESENTAR:'Sin presentar',PRESENTADO:'Presentado',EN_TRAMITE:'En trámite',ACORDADO:'Acordado',PASADO_A_PAGOS:'Pasado a pagos',PAGADO:'Pagado',RECHAZADO:'Rechazado',DESISTIDO:'Desistido',FALTAN_REPUESTOS:'Faltan repuestos',DAR_TURNO:'Dar turno',CON_TURNO:'Con turno',DEBE_REINGRESAR:'Debe reingresar',REPARADO:'Reparado',NO_DEBE_REPARARSE:'No debe repararse'};
+                    return <option key={code} value={code}>{labels[code] || code}</option>;
+                  })}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Motivo (obligatorio)</Label>
+                <Input value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} placeholder="¿Por qué se cambia manualmente?" />
+              </div>
+            </div>
+            <div className="mt-5 flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setOverrideModal(null)}>Cancelar</Button>
+              <Button className="flex-1" onClick={() => { if (!overrideReason.trim()) { toast.error('El motivo es obligatorio.'); return; } overrideMutation.mutate({ domain: overrideModal.domain, stateCode: overrideModal.currentCode }); }} disabled={overrideMutation.isPending}>Confirmar</Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
     </div>
   );
 };
