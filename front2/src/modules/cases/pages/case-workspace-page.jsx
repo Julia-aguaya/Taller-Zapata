@@ -290,6 +290,11 @@ export const CaseWorkspacePage = () => {
               caseId={caseId}
               caseDetail={caseDetail}
               readinessTab={stageTabs.find((tab) => tab.tabCode === 'FICHA_TECNICA')}
+              budget={budget}
+              latestAppointment={latestAppointment}
+              latestIntake={latestIntake}
+              latestOutcome={latestOutcome}
+              particularFinanceSummary={particularFinanceSummary}
               onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })}
             />
           ) : currentTab?.tabCode === 'PRESUPUESTO' ? (
@@ -456,9 +461,10 @@ const fetchVehicleCatalogs = () => requestJson('/vehicles/catalogs');
 const DOC_TYPE_OPTIONS = ['DNI', 'LE', 'LC', 'CI', 'PASAPORTE', 'CUIT'];
 const CIVIL_STATUS_OPTIONS = ['SOLTERO', 'CASADO', 'VIUDO', 'DIVORCIADO', 'NO_INFORMA'];
 
-const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, onSaved }) => {
+const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAppointment, latestIntake, latestOutcome, particularFinanceSummary, onSaved }) => {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const [fichaSubTab, setFichaSubTab] = useState('ficha');
 
   const personQuery = useQuery({
     queryKey: ['persons', caseDetail.principalCustomerPersonId],
@@ -580,7 +586,7 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, onSaved }) => {
           </div>
           <p className="mt-1 text-sm text-muted-foreground">{editing ? 'Modificá los datos y guardá los cambios.' : 'Datos del cliente y del vehiculo para operar la carpeta.'}</p>
         </div>
-        {editing ? (
+        {fichaSubTab === 'ficha' ? (editing ? (
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setEditing(false)}>Cancelar</Button>
             <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
@@ -589,9 +595,17 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, onSaved }) => {
           </div>
         ) : (
           <Button variant="outline" onClick={() => setEditing(true)}>Editar ficha</Button>
-        )}
+        )) : null}
       </div>
 
+      <div className="mb-5 flex flex-wrap gap-2">
+        {[['ficha','Ficha'],['reparacion','Reparación'],['pagos','Pagos']].map(([k,l]) => (
+          <button key={k} type="button" onClick={() => setFichaSubTab(k)}
+            className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium transition border ${fichaSubTab===k?'border-primary/40 bg-primary/10 text-primary':'border-transparent bg-background/70 text-foreground hover:border-border/60 hover:bg-accent/50'}`}>{l}</button>
+        ))}
+      </div>
+
+      {fichaSubTab === 'ficha' ? (
       <div className="space-y-5">
         <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Datos generales de la carpeta</p>
@@ -696,7 +710,70 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, onSaved }) => {
           </div>
         </div>
       </div>
+      ) : fichaSubTab === 'reparacion' ? (
+        <FichaReparacionSubTab budget={budget} latestAppointment={latestAppointment} latestIntake={latestIntake} latestOutcome={latestOutcome} />
+      ) : fichaSubTab === 'pagos' ? (
+        <FichaPagosSubTab particularFinanceSummary={particularFinanceSummary} caseId={caseId} />
+      ) : null}
     </Card>
+  );
+};
+
+// ── Ficha Técnica: Sub-tab Reparación ──
+const FichaReparacionSubTab = ({ budget, latestAppointment, latestIntake, latestOutcome }) => {
+  const budgetItems = budget?.items ?? [];
+  const totalMO = budgetItems.reduce((sum, i) => sum + (Number(i.laborAmount) || 0), 0);
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Datos de la reparacion</p>
+        <div className="mt-3 grid gap-x-4 md:grid-cols-2">
+          <ReadOnlyField label="Mano de Obra" value={`$ ${totalMO.toLocaleString('es-AR')}`} />
+          <ReadOnlyField label="Turno" value={latestAppointment ? `${latestAppointment.appointmentDate} ${latestAppointment.appointmentTime || ''}` : 'Pendiente'} />
+          {latestAppointment?.notes ? <ReadOnlyField label="Notas del turno" value={latestAppointment.notes} /> : null}
+          <ReadOnlyField label="Ingreso" value={latestIntake?.intakeAt ? latestIntake.intakeAt.slice(0, 16).replace('T', ' ') : 'Pendiente'} />
+          <ReadOnlyField label="Kilometraje ingreso" value={latestIntake?.mileage ? String(latestIntake.mileage) : '—'} />
+          <ReadOnlyField label="Egreso" value={latestOutcome?.outcomeAt ? latestOutcome.outcomeAt.slice(0, 16).replace('T', ' ') : 'Pendiente'} />
+          <ReadOnlyField label="Definitivo" value={latestOutcome?.definitive ? 'Sí' : latestOutcome ? 'No' : '—'} />
+          <ReadOnlyField label="Debe reingresar" value={latestOutcome?.shouldReenter ? 'Sí' : latestOutcome ? 'No' : '—'} />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Ficha Técnica: Sub-tab Pagos ──
+const FichaPagosSubTab = ({ particularFinanceSummary, caseId }) => {
+  const movementsQuery = useQuery({ queryKey: ['cases', String(caseId), 'financial-movements'], queryFn: () => requestJson(`/cases/${caseId}/financial-movements`) });
+  const movements = movementsQuery.data ?? [];
+  const formatCurrency = (v) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(v || 0);
+
+  return (
+    <div className="space-y-5">
+      <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Estado de pagos</p>
+        <div className="mt-3 grid gap-x-4 md:grid-cols-2">
+          <ReadOnlyField label="Total cotizado" value={formatCurrency(particularFinanceSummary?.quotedTotal)} />
+          <ReadOnlyField label="Pagado" value={formatCurrency(particularFinanceSummary?.customerPaid)} />
+          <ReadOnlyField label="Saldo pendiente" value={formatCurrency(particularFinanceSummary?.pendingBalance)} />
+          <ReadOnlyField label="Pago total" value={particularFinanceSummary?.paidInFull ? 'Sí' : 'No'} />
+        </div>
+      </div>
+      {movements.length > 0 ? (
+        <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Historial de movimientos</p>
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full border-collapse text-xs">
+              <thead><tr className="border-b border-border/50 text-muted-foreground"><th className="px-2 py-2 text-left">Fecha</th><th className="px-2 py-2 text-right">Monto</th><th className="px-2 py-2 text-left">Medio</th></tr></thead>
+              <tbody>{movements.map(m => (
+                <tr key={m.id} className="border-b border-border/30"><td className="px-2 py-2">{m.movementAt?.slice(0,16).replace('T',' ')}</td><td className="px-2 py-2 text-right font-medium">{formatCurrency(m.netAmount)}</td><td className="px-2 py-2 text-muted-foreground">{m.paymentMethodCode || '—'}</td></tr>
+              ))}</tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 };
 
