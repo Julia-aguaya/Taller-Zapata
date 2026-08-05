@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Ban, CheckCircle, FileDown, Receipt, Save } from 'lucide-react';
+import { Ban, Building2, CheckCircle, FileDown, Receipt, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { createFinancialMovement, createReceipt, getFinanceCatalogs, getReceiptPdfUrl, listFinancialMovements, listReceipts } from '@/modules/cases/api/finance-api';
 import { useSession } from '@/modules/auth/providers/session-provider';
+import { requestJson } from '@/shared/api/http-client';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
@@ -62,6 +63,10 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const financeCatalogsQuery = useQuery({ queryKey: ['finance', 'catalogs'], queryFn: getFinanceCatalogs });
   const movementsQuery = useQuery({ queryKey: ['cases', String(caseId), 'financial-movements'], queryFn: () => listFinancialMovements(caseId) });
   const receiptsQuery = useQuery({ queryKey: ['cases', String(caseId), 'receipts'], queryFn: () => listReceipts(caseId) });
+  const insuranceProcessingQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance-processing'], queryFn: () => requestJson(`/cases/${caseId}/insurance-processing`), enabled: caseDetail?.caseTypeCode === 'TODO_RIESGO' });
+  const processing = insuranceProcessingQuery.data;
+
+  const isInsurance = caseDetail?.caseTypeCode === 'TODO_RIESGO';
 
   // Derivar MO y repuestos del presupuesto
   const budgetItems = budget?.items ?? [];
@@ -133,6 +138,19 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
     onError: (error) => toast.error(error.message || 'No pude registrar el pago.'),
   });
 
+  const [ciaPayment, setCiaPayment] = useState({ amount: '', movementAt: new Date().toISOString().slice(0, 16), paymentMethodCode: 'TRANSFERENCIA' });
+  const ciaPaymentMutation = useMutation({
+    mutationFn: (payload) => createFinancialMovement(caseId, payload),
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); await onSaved?.(); toast.success('Pago de la Cía. registrado.'); setCiaPayment({ amount: '', movementAt: new Date().toISOString().slice(0, 16), paymentMethodCode: 'TRANSFERENCIA' }); },
+    onError: (error) => toast.error(error.message),
+  });
+
+  // ── Derived for insurance ──
+  const ciaMovements = (movementsQuery.data ?? []).filter(m => m.flowOriginCode === 'CIA' || m.counterpartyTypeCode === 'COMPANY');
+  const ciaTotalPaid = ciaMovements.reduce((sum, m) => sum + toAmount(m.netAmount || 0), 0);
+  const amountToPay = toAmount(processing?.amountToBillCompany || processing?.agreedAmount || 0);
+  const ciaPending = Math.max(0, amountToPay - ciaTotalPaid);
+
   return (
     <div className="mt-5 space-y-5">
       {/* Resumen */}
@@ -151,6 +169,29 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
           {particularFinanceSummary?.paidInFull ? <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400"><CheckCircle className="h-3.5 w-3.5" />Pago total</span> : null}
         </div>
       </div>
+
+      {/* ── Pago de la Compañía (TODO_RIESGO) ── */}
+      {isInsurance ? (
+        <div className="rounded-3xl border border-border/70 bg-card p-5">
+          <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Building2 className="h-5 w-5" /></div>
+          <h4 className="text-lg font-semibold">Facturación y Pago — Compañía</h4>
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <MiniCard label="A facturar Cía." value={formatCurrency(amountToPay)} highlight />
+            <MiniCard label="Pagado Cía." value={formatCurrency(ciaTotalPaid)} />
+            <MiniCard label="Pendiente Cía." value={formatCurrency(ciaPending)} highlight={ciaPending > 0} variant={ciaPending <= 0 ? 'success' : 'warning'} />
+            <MiniCard label="Estado" value={ciaPending <= 0 ? 'Pagado' : 'Pendiente'} variant={ciaPending <= 0 ? 'success' : 'warning'} />
+          </div>
+          <div className="mt-4 rounded-2xl border border-border/60 bg-background/70 p-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Registrar pago de la Cía.</p>
+            <div className="grid gap-3 md:grid-cols-3">
+              <Field label="Monto"><Input type="number" min="0" step="0.01" value={ciaPayment.amount} onChange={(e) => setCiaPayment((c) => ({ ...c, amount: e.target.value }))} /></Field>
+              <Field label="Fecha"><Input type="datetime-local" value={ciaPayment.movementAt} onChange={(e) => setCiaPayment((c) => ({ ...c, movementAt: e.target.value }))} /></Field>
+              <div className="flex items-end"><Button className="w-full" onClick={() => { const m = toAmount(ciaPayment.amount); if (m <= 0) { toast.error('Ingresá un monto.'); return; } ciaPaymentMutation.mutate({ movementTypeCode: 'INGRESO', flowOriginCode: 'CIA', counterpartyTypeCode: 'COMPANY', counterpartyPersonId: null, counterpartyCompanyId: null, movementAt: ciaPayment.movementAt, grossAmount: m, netAmount: m, paymentMethodCode: ciaPayment.paymentMethodCode, paymentMethodDetail: null, cancellationTypeCode: 'PRESUPUESTO', advancePayment: false, bonification: false, reason: null, externalReference: null, retentions: [], applications: [] }); }} disabled={ciaPaymentMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Registrar</Button></div>
+            </div>
+          </div>
+          {ciaMovements.length > 0 ? <div className="mt-3"><p className="text-xs text-muted-foreground">{ciaMovements.length} pago(s) de la Cía.</p></div> : null}
+        </div>
+      ) : null}
 
       {/* Comprobante + Formulario */}
       <div className="rounded-3xl border border-border/70 bg-card p-5">
