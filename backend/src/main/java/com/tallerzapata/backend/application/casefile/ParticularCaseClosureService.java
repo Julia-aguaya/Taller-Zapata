@@ -9,6 +9,8 @@ import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeEnti
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementEntity;
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseFranchiseEntity;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseFranchiseRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleOutcomeEntity;
 import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleOutcomeRepository;
 import org.springframework.data.domain.Sort;
@@ -32,19 +34,22 @@ public class ParticularCaseClosureService {
     private final BudgetRepository budgetRepository;
     private final FinancialMovementRepository financialMovementRepository;
     private final VehicleOutcomeRepository vehicleOutcomeRepository;
+    private final CaseFranchiseRepository caseFranchiseRepository;
 
     public ParticularCaseClosureService(
             CaseRepository caseRepository,
             CaseTypeRepository caseTypeRepository,
             BudgetRepository budgetRepository,
             FinancialMovementRepository financialMovementRepository,
-            VehicleOutcomeRepository vehicleOutcomeRepository
+            VehicleOutcomeRepository vehicleOutcomeRepository,
+            CaseFranchiseRepository caseFranchiseRepository
     ) {
         this.caseRepository = caseRepository;
         this.caseTypeRepository = caseTypeRepository;
         this.budgetRepository = budgetRepository;
         this.financialMovementRepository = financialMovementRepository;
         this.vehicleOutcomeRepository = vehicleOutcomeRepository;
+        this.caseFranchiseRepository = caseFranchiseRepository;
     }
 
     @Transactional
@@ -52,6 +57,7 @@ public class ParticularCaseClosureService {
         CaseEntity caseEntity = caseRepository.findById(caseId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
         if (!isParticular(caseEntity.getCaseTypeId())) {
+            syncTodoRiesgoClosure(caseEntity, caseId);
             return;
         }
 
@@ -73,6 +79,49 @@ public class ParticularCaseClosureService {
         CaseTypeEntity caseType = caseTypeRepository.findById(caseTypeId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el tipo de tramite " + caseTypeId));
         return "PARTICULAR".equals(normalizeCode(caseType.getCode()));
+    }
+
+    private boolean isTodoRiesgo(Long caseTypeId) {
+        CaseTypeEntity caseType = caseTypeRepository.findById(caseTypeId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el tipo de tramite " + caseTypeId));
+        return "TODO_RIESGO".equals(normalizeCode(caseType.getCode()));
+    }
+
+    @Transactional
+    public void syncTodoRiesgoClosure(CaseEntity caseEntity, Long caseId) {
+        if (!isTodoRiesgo(caseEntity.getCaseTypeId())) {
+            return;
+        }
+
+        LocalDateTime definitiveOutcomeAt = resolveDefinitiveOutcomeAt(caseId);
+        CaseFranchiseEntity franchise = caseFranchiseRepository.findByCaseId(caseId).orElse(null);
+
+        boolean franchiseResolved = franchise == null || franchise.getFranchiseStatusCode() == null
+                || !"PENDIENTE".equals(normalizeCode(franchise.getFranchiseStatusCode()));
+
+        if (definitiveOutcomeAt == null || !franchiseResolved) {
+            caseEntity.setClosedAt(null);
+            caseRepository.save(caseEntity);
+            return;
+        }
+
+        // Payment full → TODO when PAGOS TODO_RIESGO is built
+        LocalDateTime paidAt = resolveTodoRiesgoPaidAt(caseId);
+        if (paidAt == null) {
+            caseEntity.setClosedAt(null);
+            caseRepository.save(caseEntity);
+            return;
+        }
+
+        LocalDateTime closedAt = definitiveOutcomeAt.isAfter(paidAt) ? definitiveOutcomeAt : paidAt;
+        caseEntity.setClosedAt(closedAt);
+        caseRepository.save(caseEntity);
+    }
+
+    private LocalDateTime resolveTodoRiesgoPaidAt(Long caseId) {
+        // Placeholder: TODO_RIESGO payment not yet implemented
+        // Will check for insurance company payment + client payment (tareas extras)
+        return null;
     }
 
     private LocalDateTime resolveDefinitiveOutcomeAt(Long caseId) {
