@@ -11,6 +11,8 @@ import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMove
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseFranchiseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseFranchiseRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingEntity;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleOutcomeEntity;
 import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleOutcomeRepository;
 import org.springframework.data.domain.Sort;
@@ -35,6 +37,7 @@ public class ParticularCaseClosureService {
     private final FinancialMovementRepository financialMovementRepository;
     private final VehicleOutcomeRepository vehicleOutcomeRepository;
     private final CaseFranchiseRepository caseFranchiseRepository;
+    private final InsuranceProcessingRepository insuranceProcessingRepository;
 
     public ParticularCaseClosureService(
             CaseRepository caseRepository,
@@ -42,7 +45,8 @@ public class ParticularCaseClosureService {
             BudgetRepository budgetRepository,
             FinancialMovementRepository financialMovementRepository,
             VehicleOutcomeRepository vehicleOutcomeRepository,
-            CaseFranchiseRepository caseFranchiseRepository
+            CaseFranchiseRepository caseFranchiseRepository,
+            InsuranceProcessingRepository insuranceProcessingRepository
     ) {
         this.caseRepository = caseRepository;
         this.caseTypeRepository = caseTypeRepository;
@@ -50,6 +54,7 @@ public class ParticularCaseClosureService {
         this.financialMovementRepository = financialMovementRepository;
         this.vehicleOutcomeRepository = vehicleOutcomeRepository;
         this.caseFranchiseRepository = caseFranchiseRepository;
+        this.insuranceProcessingRepository = insuranceProcessingRepository;
     }
 
     @Transactional
@@ -119,8 +124,32 @@ public class ParticularCaseClosureService {
     }
 
     private LocalDateTime resolveTodoRiesgoPaidAt(Long caseId) {
-        // Placeholder: TODO_RIESGO payment not yet implemented
-        // Will check for insurance company payment + client payment (tareas extras)
+        InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
+        if (processing == null || processing.getAmountToBillCompany() == null) {
+            return null;
+        }
+
+        BigDecimal target = scale(processing.getAmountToBillCompany());
+        BigDecimal accumulated = BigDecimal.ZERO;
+        List<FinancialMovementEntity> movements = financialMovementRepository.findByCaseId(caseId, MOVEMENT_SORT_ASC);
+        for (FinancialMovementEntity movement : movements) {
+            if (!"CIA".equals(normalizeCode(movement.getFlowOriginCode()))) {
+                continue;
+            }
+
+            BigDecimal amount = scale(movement.getNetAmount());
+            String type = normalizeCode(movement.getMovementTypeCode());
+            if ("INGRESO".equals(type) || ("AJUSTE".equals(type) && amount.signum() >= 0)) {
+                accumulated = accumulated.add(amount);
+            } else {
+                accumulated = accumulated.subtract(amount.abs());
+            }
+
+            if (accumulated.compareTo(target) >= 0) {
+                return movement.getMovementAt();
+            }
+        }
+
         return null;
     }
 
