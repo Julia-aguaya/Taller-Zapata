@@ -713,7 +713,7 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
       ) : fichaSubTab === 'reparacion' ? (
         <FichaReparacionSubTab budget={budget} latestAppointment={latestAppointment} latestIntake={latestIntake} latestOutcome={latestOutcome} />
       ) : fichaSubTab === 'pagos' ? (
-        <FichaPagosSubTab particularFinanceSummary={particularFinanceSummary} caseId={caseId} />
+        <FichaPagosSubTab caseDetail={caseDetail} particularFinanceSummary={particularFinanceSummary} caseId={caseId} />
       ) : null}
     </Card>
   );
@@ -744,11 +744,44 @@ const FichaReparacionSubTab = ({ budget, latestAppointment, latestIntake, latest
 };
 
 // ── Ficha Técnica: Sub-tab Pagos ──
-const FichaPagosSubTab = ({ particularFinanceSummary, caseId }) => {
+const FichaPagosSubTab = ({ caseDetail, particularFinanceSummary, caseId }) => {
+  const caseTypeCode = caseDetail?.caseTypeCode;
   const movementsQuery = useQuery({ queryKey: ['cases', String(caseId), 'financial-movements'], queryFn: () => requestJson(`/cases/${caseId}/financial-movements`) });
+  const insuranceProcessingQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance-processing'], queryFn: () => requestJson(`/cases/${caseId}/insurance-processing`), enabled: caseTypeCode === 'TODO_RIESGO' });
   const movements = movementsQuery.data ?? [];
+  const processing = insuranceProcessingQuery.data;
   const formatCurrency = (v) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(v || 0);
 
+  if (caseTypeCode === 'TODO_RIESGO') {
+    return (
+      <div className="space-y-5">
+        <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Cotización con la Cía.</p>
+          <div className="mt-3 grid gap-x-4 md:grid-cols-2">
+            <ReadOnlyField label="Monto acordado" value={processing?.agreedAmount ? formatCurrency(processing.agreedAmount) : 'Pendiente'} />
+            <ReadOnlyField label="Fecha cotización" value={processing?.quotationDate || 'Pendiente'} />
+            <ReadOnlyField label="A facturar Cía." value={processing?.amountToBillCompany ? formatCurrency(processing.amountToBillCompany) : 'Pendiente'} />
+            <ReadOnlyField label="Final a favor Taller" value={processing?.finalAmountForWorkshop ? formatCurrency(processing.finalAmountForWorkshop) : 'Pendiente'} />
+          </div>
+        </div>
+        {movements.length > 0 ? (
+          <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Historial de movimientos</p>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full border-collapse text-xs">
+                <thead><tr className="border-b border-border/50 text-muted-foreground"><th className="px-2 py-2 text-left">Fecha</th><th className="px-2 py-2 text-right">Monto</th><th className="px-2 py-2 text-left">Medio</th></tr></thead>
+                <tbody>{movements.map(m => (
+                  <tr key={m.id} className="border-b border-border/30"><td className="px-2 py-2">{m.movementAt?.slice(0,16).replace('T',' ')}</td><td className="px-2 py-2 text-right font-medium">{formatCurrency(m.netAmount)}</td><td className="px-2 py-2 text-muted-foreground">{m.paymentMethodCode || '—'}</td></tr>
+                ))}</tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  // PARTICULAR (default)
   return (
     <div className="space-y-5">
       <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
@@ -773,6 +806,13 @@ const FichaPagosSubTab = ({ particularFinanceSummary, caseId }) => {
           </div>
         </div>
       ) : null}
+    </div>
+  );
+
+  // Otros trámites (sin readiness específico)
+  return (
+    <div className="rounded-2xl border border-dashed border-border/70 py-8 text-center">
+      <p className="text-sm text-muted-foreground">Información de pagos no disponible para este tipo de trámite.</p>
     </div>
   );
 };
