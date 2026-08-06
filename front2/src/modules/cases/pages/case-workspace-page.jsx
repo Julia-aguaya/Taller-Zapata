@@ -283,6 +283,11 @@ export const CaseWorkspacePage = () => {
               latestOutcome={latestOutcome}
               taskSnapshot={taskSnapshot}
               nextStep={nextStep}
+              overrideModal={overrideModal}
+              setOverrideModal={setOverrideModal}
+              overrideReason={overrideReason}
+              setOverrideReason={setOverrideReason}
+              overrideMutation={overrideMutation}
               onOpenTab={setSelectedTab}
             />
           ) : currentTab?.tabCode === 'FICHA_TECNICA' ? (
@@ -878,7 +883,7 @@ const DetallesTabButton = ({ selectedTab, setSelectedTab }) => {
   );
 };
 
-const CaseDetailsPanel = ({ caseDetail, budget, particularFinanceSummary, widgets, latestAppointment, latestIntake, latestOutcome, taskSnapshot, nextStep, onOpenTab }) => {
+const CaseDetailsPanel = ({ caseDetail, budget, particularFinanceSummary, widgets, latestAppointment, latestIntake, latestOutcome, taskSnapshot, nextStep, onOpenTab, overrideModal, setOverrideModal, overrideReason, setOverrideReason, overrideMutation }) => {
   const paymentsState = !widgets?.budget?.exists
     ? 'Pendiente de presupuesto'
     : particularFinanceSummary?.paidInFull
