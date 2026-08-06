@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Clock, Hammer, Lock, Save, ShieldCheck, User } from 'lucide-react';
+import { Clock, Hammer, Lock, ReceiptText, Save, ShieldCheck, User, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
 import { getCaseWorkspace, overrideVisibleState } from '@/modules/cases/api/cases-api';
 import { Card } from '@/shared/ui/card';
