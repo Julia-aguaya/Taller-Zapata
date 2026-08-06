@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ban, Building2, CheckCircle, FileDown, Receipt, Save } from 'lucide-react';
 import { toast } from 'sonner';
-import { createFinancialMovement, createReceipt, getFinanceCatalogs, getReceiptPdfUrl, listFinancialMovements, listReceipts } from '@/modules/cases/api/finance-api';
+import { createFinancialMovement, createReceipt, getClientPaymentPdfUrl, getFinanceCatalogs, getReceiptPdfUrl, listFinancialMovements, listReceipts } from '@/modules/cases/api/finance-api';
 import { useSession } from '@/modules/auth/providers/session-provider';
 import { requestJson } from '@/shared/api/http-client';
 import { Button } from '@/shared/ui/button';
@@ -336,6 +336,12 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
           </div>
         </div>
       ) : null}
+
+      <div className="mt-5 flex justify-end">
+        <a href={getClientPaymentPdfUrl(caseId, caseDetail?.principalCustomerName || 'Cliente', caseDetail?.principalVehiclePlate || '', comprobanteTipo, form.reason, form.razonSocial, form.facturaNumero)} target="_blank" rel="noopener noreferrer">
+          <Button variant="outline" size="sm"><FileDown className="mr-1.5 h-4 w-4" />Generar PDF</Button>
+        </a>
+      </div>
     </div>
   );
 };

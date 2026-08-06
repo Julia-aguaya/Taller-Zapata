@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -55,6 +56,20 @@ public class FinanceController {
     @PreAuthorize("hasAuthority('finanza.ver')")
     @GetMapping("/cases/{caseId}/receipts")
     public List<IssuedReceiptResponse> listReceipts(@PathVariable Long caseId) { return financeService.listReceiptsByCase(caseId); }
+
+    @Operation(summary = "Generar comprobante de pago para el cliente", description = "PDF con todos los pagos, saldo deudor, factura y firma")
+    @ApiResponse(responseCode = "200", description = "PDF generado")
+    @PreAuthorize("hasAuthority('finanza.ver')")
+    @GetMapping("/cases/{caseId}/finance/client-payment-pdf")
+    public ResponseEntity<byte[]> getClientPaymentPdf(@PathVariable Long caseId,
+            @RequestParam String clientName, @RequestParam String vehiclePlate, 
+            @RequestParam String comprobanteTipo,
+            @RequestParam(required = false) String observaciones,
+            @RequestParam(required = false) String facturaRazonSocial,
+            @RequestParam(required = false) String facturaNumero) {
+        byte[] pdf = financeService.getClientPaymentPdf(caseId, clientName, vehiclePlate, comprobanteTipo, observaciones, facturaRazonSocial, facturaNumero);
+        return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=comprobante-pago-" + caseId + ".pdf").contentType(MediaType.APPLICATION_PDF).body(pdf);
+    }
 
     @Operation(summary = "Crear recibo", description = "Emite un nuevo recibo para un caso")
     @ApiResponse(responseCode = "200", description = "OK")

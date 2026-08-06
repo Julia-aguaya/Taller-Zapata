@@ -58,12 +58,13 @@ public class FinanceService {
     private final OrganizationRepository organizationRepository;
     private final BranchRepository branchRepository;
     private final ReceiptPdfService receiptPdfService;
+    private final ClientPaymentPdfService clientPaymentPdfService;
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService accessControlService;
     private final CaseAuditService caseAuditService;
     private final ParticularCaseClosureService particularCaseClosureService;
 
-    public FinanceService(FinancialMovementRepository movementRepository, FinancialMovementRetentionRepository retentionRepository, FinancialMovementApplicationRepository applicationRepository, IssuedReceiptRepository receiptRepository, BudgetRepository budgetRepository, CaseRepository caseRepository, PersonRepository personRepository, UserRepository userRepository, DocumentRepository documentRepository, FinancialMovementTypeRepository movementTypeRepository, FinancialFlowOriginRepository flowOriginRepository, FinancialCounterpartyTypeRepository counterpartyTypeRepository, FinancialPaymentMethodRepository paymentMethodRepository, FinancialCancellationTypeRepository cancellationTypeRepository, FinancialRetentionTypeRepository retentionTypeRepository, FinancialApplicationConceptRepository applicationConceptRepository, IssuedReceiptTypeRepository issuedReceiptTypeRepository, InsuranceCompanyRepository companyRepository, OrganizationRepository organizationRepository, BranchRepository branchRepository, ReceiptPdfService receiptPdfService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, ParticularCaseClosureService particularCaseClosureService) {
+    public FinanceService(FinancialMovementRepository movementRepository, FinancialMovementRetentionRepository retentionRepository, FinancialMovementApplicationRepository applicationRepository, IssuedReceiptRepository receiptRepository, BudgetRepository budgetRepository, CaseRepository caseRepository, PersonRepository personRepository, UserRepository userRepository, DocumentRepository documentRepository, FinancialMovementTypeRepository movementTypeRepository, FinancialFlowOriginRepository flowOriginRepository, FinancialCounterpartyTypeRepository counterpartyTypeRepository, FinancialPaymentMethodRepository paymentMethodRepository, FinancialCancellationTypeRepository cancellationTypeRepository, FinancialRetentionTypeRepository retentionTypeRepository, FinancialApplicationConceptRepository applicationConceptRepository, IssuedReceiptTypeRepository issuedReceiptTypeRepository, InsuranceCompanyRepository companyRepository, OrganizationRepository organizationRepository, BranchRepository branchRepository,             ReceiptPdfService receiptPdfService, ClientPaymentPdfService clientPaymentPdfService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, ParticularCaseClosureService particularCaseClosureService) {
         this.movementRepository = movementRepository;
         this.retentionRepository = retentionRepository;
         this.applicationRepository = applicationRepository;
@@ -85,6 +86,7 @@ public class FinanceService {
         this.organizationRepository = organizationRepository;
         this.branchRepository = branchRepository;
         this.receiptPdfService = receiptPdfService;
+        this.clientPaymentPdfService = clientPaymentPdfService;
         this.currentUserService = currentUserService;
         this.accessControlService = accessControlService;
         this.caseAuditService = caseAuditService;
@@ -317,6 +319,16 @@ public class FinanceService {
                 if (!SUPPORTED_APPLICATION_ENTITY_TYPES.contains(normalizeCode(app.entityType()))) throw new ConflictException("entityType no soportado para finanzas: " + app.entityType());
             }
         }
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] getClientPaymentPdf(Long caseId, String clientName, String vehiclePlate, String comprobanteTipo, String observaciones, String facturaRazonSocial, String facturaNumero) {
+        CaseEntity caseEntity = caseRepository.findById(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
+        BudgetEntity budget = budgetRepository.findByCaseId(caseId).orElse(null);
+        List<FinancialMovementEntity> movements = movementRepository.findByCaseId(caseId, Sort.by(Sort.Order.asc("movementAt")));
+        OrganizationEntity org = organizationRepository.findAll().stream().findFirst().orElse(null);
+        BranchEntity branch = org != null ? branchRepository.findByOrganizationIdOrderByNameAsc(org.getId()).stream().findFirst().orElse(null) : null;
+        return clientPaymentPdfService.generate(caseEntity, clientName, vehiclePlate, comprobanteTipo, budget, movements, observaciones, facturaRazonSocial, facturaNumero, org, branch);
     }
 
     @Transactional(readOnly = true)
