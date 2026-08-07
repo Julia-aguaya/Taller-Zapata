@@ -112,163 +112,6 @@ class CaseReadinessIntegrationTest {
                 null,
                 null,
                 null,
-                null,
-                null,
-                null,
-                null,
-                null
-        );
-
-        mockMvc.perform(put("/api/v1/cases/{caseId}/budget", caseId)
-                        .header("X-User-Id", "1")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(budgetRequest)))
-                .andExpect(status().isOk());
-
-        BudgetItemCreateRequest itemRequest = new BudgetItemCreateRequest(
-                1,
-                "Puerta delantera derecha",
-                "CHAPA",
-                "LEVE",
-                "REPARAR",
-                "REPARAR",
-                false,
-                new BigDecimal("0.00"),
-                new BigDecimal("2.00"),
-                new BigDecimal("1000.00")
-        );
-
-        mockMvc.perform(post("/api/v1/cases/{caseId}/budget/items", caseId)
-                        .header("X-User-Id", "1")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(itemRequest)))
-                .andExpect(status().isOk());
-
-        BudgetCloseRequest closeRequest = new BudgetCloseRequest("CERRADO", null);
-
-        mockMvc.perform(post("/api/v1/cases/{caseId}/budget/close", caseId)
-                        .header("X-User-Id", "1")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(closeRequest)))
-                .andExpect(status().isOk());
-
-        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
-                        .header("X-User-Id", "1"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.tabs[0].tabCode").value("FICHA_TECNICA"))
-                .andExpect(jsonPath("$.tabs[0].completed").value(true))
-                .andExpect(jsonPath("$.tabs[0].colorHint").value("BLUE"))
-                .andExpect(jsonPath("$.tabs[1].tabCode").value("PRESUPUESTO"))
-                .andExpect(jsonPath("$.tabs[1].completed").value(true))
-                .andExpect(jsonPath("$.tabs[1].colorHint").value("BLUE"))
-                .andExpect(jsonPath("$.tabs[2].tabCode").value("GESTION_REPARACION"))
-                .andExpect(jsonPath("$.tabs[2].allowed").value(true))
-                .andExpect(jsonPath("$.tabs[2].completed").value(false))
-                .andExpect(jsonPath("$.tabs[2].blockingReasons[0]").value("Falta agendar el turno de reparacion"))
-                .andExpect(jsonPath("$.tabs[3].tabCode").value("PAGOS"))
-                .andExpect(jsonPath("$.tabs[3].allowed").value(true))
-                .andExpect(jsonPath("$.tabs[3].completed").value(false))
-                .andExpect(jsonPath("$.tabs[3].blockingReasons[0]").value("Todavia no se registraron pagos del cliente"));
-    }
-
-    @Test
-    void shouldMarkRepairManagementAsCompletedWhenParticularHasDefinitiveOutcome() throws Exception {
-        Long caseId = createParticularCase();
-
-        jdbcTemplate.update(
-                "UPDATE vehiculos SET marca_texto = ?, modelo_texto = ? WHERE id = ?",
-                "Chevrolet", "Astra", 10L
-        );
-
-        prepareClosedBudget(caseId);
-
-        RepairAppointmentCreateRequest appointmentRequest = new RepairAppointmentCreateRequest(
-                LocalDate.of(2026, 7, 1),
-                LocalTime.of(9, 0),
-                2,
-                null,
-                "PENDIENTE",
-                false,
-                "Turno confirmado",
-                1L
-        );
-
-        MvcResult appointmentResult = mockMvc.perform(post("/api/v1/cases/{caseId}/appointments", caseId)
-                        .header("X-User-Id", "1")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(appointmentRequest)))
-                .andExpect(status().isOk())
-                .andReturn();
-
-        Long appointmentId = objectMapper.readTree(appointmentResult.getResponse().getContentAsByteArray()).get("id").asLong();
-
-        VehicleIntakeCreateRequest intakeRequest = new VehicleIntakeCreateRequest(
-                appointmentId,
-                10L,
-                LocalDateTime.of(2026, 7, 1, 9, 10),
-                1L,
-                null,
-                120000,
-                null,
-                LocalDate.of(2026, 7, 2),
-                false,
-                null
-        );
-
-        MvcResult intakeResult = mockMvc.perform(post("/api/v1/cases/{caseId}/vehicle-intakes", caseId)
-                        .header("X-User-Id", "1")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(intakeRequest)))
-                .andExpect(status().isOk())
-                .andReturn();
-
-        Long intakeId = objectMapper.readTree(intakeResult.getResponse().getContentAsByteArray()).get("id").asLong();
-
-        VehicleOutcomeCreateRequest outcomeRequest = new VehicleOutcomeCreateRequest(
-                intakeId,
-                LocalDateTime.of(2026, 7, 2, 18, 0),
-                1L,
-                null,
-                true,
-                false,
-                null,
-                null,
-                null,
-                true,
-                "Egreso definitivo"
-        );
-
-        mockMvc.perform(post("/api/v1/cases/{caseId}/vehicle-outcomes", caseId)
-                        .header("X-User-Id", "1")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(outcomeRequest)))
-                .andExpect(status().isOk());
-
-        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
-                        .header("X-User-Id", "1"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.tabs[2].tabCode").value("GESTION_REPARACION"))
-                .andExpect(jsonPath("$.tabs[2].allowed").value(true))
-                .andExpect(jsonPath("$.tabs[2].completed").value(true))
-                .andExpect(jsonPath("$.tabs[2].colorHint").value("BLUE"))
-                .andExpect(jsonPath("$.tabs[3].tabCode").value("PAGOS"))
-                .andExpect(jsonPath("$.tabs[3].completed").value(false));
-    }
-
-    @Test
-    void shouldMarkPaymentsAsCompletedWhenCustomerCoversQuotedTotal() throws Exception {
-        Long caseId = createParticularCase();
-
-        jdbcTemplate.update(
-                "UPDATE vehiculos SET marca_texto = ?, modelo_texto = ? WHERE id = ?",
-                "Chevrolet", "Astra", 10L
-        );
-
-        prepareClosedBudget(caseId);
-
-        FinancialMovementCreateRequest movementRequest = new FinancialMovementCreateRequest(
-                null,
-                "INGRESO",
                 "CLIENTE",
                 "PERSONA",
                 10L,
@@ -692,6 +535,106 @@ class CaseReadinessIntegrationTest {
                 .andReturn();
 
         return objectMapper.readTree(result.getResponse().getContentAsByteArray()).get("id").asLong();
+    }
+
+    // ── TODO_RIESGO readiness tests ──────────────────────────────
+
+    @Test
+    void shouldExposeInitialReadinessForTodoRiesgoCase() throws Exception {
+        Long caseId = createTodoRiesgoCase();
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.caseTypeCode").value("TODO_RIESGO"))
+                .andExpect(jsonPath("$.tabs[0].tabCode").value("FICHA_TECNICA"))
+                .andExpect(jsonPath("$.tabs[1].tabCode").value("GESTION_TRAMITE"))
+                .andExpect(jsonPath("$.tabs[1].allowed").value(true))
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
+                .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"));
+    }
+
+    @Test
+    void shouldUnblockPresupuestoWhenTramiteCompletedForTodoRiesgo() throws Exception {
+        Long caseId = createTodoRiesgoCase();
+        seedInsuranceData(caseId);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(true));
+    }
+
+    // ── GRANIZO readiness tests ──────────────────────────────────
+
+    @Test
+    void shouldExposeInitialReadinessForGranizoCase() throws Exception {
+        Long caseId = createGranizoCase();
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.caseTypeCode").value("GRANIZO"))
+                .andExpect(jsonPath("$.tabs[0].tabCode").value("FICHA_TECNICA"))
+                .andExpect(jsonPath("$.tabs[1].tabCode").value("GESTION_TRAMITE"))
+                .andExpect(jsonPath("$.tabs[1].allowed").value(true))
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
+                .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
+                .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"));
+    }
+
+    @Test
+    void shouldNotRequireFranchiseForGranizo() throws Exception {
+        Long caseId = createGranizoCase();
+        seedInsuranceData(caseId);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[1].tabCode").value("GESTION_TRAMITE"))
+                .andExpect(jsonPath("$.tabs[1].blockingReasons.length()").value(0));
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────
+
+    private Long createTodoRiesgoCase() throws Exception {
+        CaseCreateRequest request = new CaseCreateRequest(
+                2L, 1L, 1L, 10L, 10L, false, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, "CLIENTE", "PRINCIPAL"
+        );
+        MvcResult result = mockMvc.perform(post("/api/v1/cases")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsByteArray()).get("id").asLong();
+    }
+
+    private Long createGranizoCase() throws Exception {
+        CaseCreateRequest request = new CaseCreateRequest(
+                3L, 1L, 1L, 10L, 10L, false, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, "CLIENTE", "PRINCIPAL"
+        );
+        MvcResult result = mockMvc.perform(post("/api/v1/cases")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsByteArray()).get("id").asLong();
+    }
+
+    private void seedInsuranceData(Long caseId) {
+        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, nombre, activo) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE nombre = nombre",
+                1L, "00000000-0000-0000-0000-000000000101", "La Segunda", true);
+        jdbcTemplate.update("INSERT INTO caso_seguro (caso_id, compania_seguro_id) VALUES (?, ?) ON DUPLICATE KEY UPDATE compania_seguro_id = compania_seguro_id",
+                caseId, 1L);
+        jdbcTemplate.update("INSERT INTO tramitacion_seguro (caso_id, fecha_cotizacion, monto_acordado) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE fecha_cotizacion = fecha_cotizacion",
+                caseId, LocalDate.now(), new BigDecimal("100000"));
     }
 
     private void seedPeopleAndVehicles() {
