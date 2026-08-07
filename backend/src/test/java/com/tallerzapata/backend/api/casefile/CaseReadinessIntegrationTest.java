@@ -691,7 +691,7 @@ class CaseReadinessIntegrationTest {
     private Long createTodoRiesgoCase() throws Exception {
         CaseCreateRequest request = new CaseCreateRequest(
                 2L, 1L, 1L, 10L, 10L, false, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, "CLIENTE", "PRINCIPAL"
+                null, null, null, null, null, null, "CLIENTE", "PRINCIPAL"
         );
         MvcResult result = mockMvc.perform(post("/api/v1/cases")
                         .header("X-User-Id", "1")
@@ -705,7 +705,7 @@ class CaseReadinessIntegrationTest {
     private Long createGranizoCase() throws Exception {
         CaseCreateRequest request = new CaseCreateRequest(
                 3L, 1L, 1L, 10L, 10L, false, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, "CLIENTE", "PRINCIPAL"
+                null, null, null, null, null, null, "CLIENTE", "PRINCIPAL"
         );
         MvcResult result = mockMvc.perform(post("/api/v1/cases")
                         .header("X-User-Id", "1")
