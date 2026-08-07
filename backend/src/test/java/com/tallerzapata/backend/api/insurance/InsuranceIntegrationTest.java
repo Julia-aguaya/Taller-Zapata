@@ -248,6 +248,61 @@ class InsuranceIntegrationTest {
                 .andExpect(jsonPath("$.legalExpensePayerCodes.length()").isNumber());
     }
 
+    // ── Tramitacion flow tests ───────────────────────────────────
+
+    @Test
+    void shouldCreateAndUpdateInsuranceProcessing() throws Exception {
+        // Create insurance
+        mockMvc.perform(put("/api/v1/cases/{caseId}/insurance", 100L)
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"insuranceCompanyId\":null,\"policyNumber\":\"POL-123\",\"certificateNumber\":\"CERT-456\"}"))
+                .andExpect(status().isOk());
+
+        // Create processing (tramitacion)
+        mockMvc.perform(put("/api/v1/cases/{caseId}/insurance-processing", 100L)
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-01-10\",\"inspectionForwardedAt\":\"2026-01-15\",\"modalityCode\":\"PRESENCIAL\",\"opinionCode\":null,\"quotationStatusCode\":null,\"quotationDate\":null,\"agreedAmount\":null,\"minimumCloseAmount\":50000,\"includesParts\":true,\"partsAuthorizationCode\":\"PARCIAL\",\"partsSupplierText\":\"CIA\",\"amountToBillCompany\":null,\"finalAmountForWorkshop\":null}"))
+                .andExpect(status().isOk());
+
+        // Agree quotation
+        mockMvc.perform(put("/api/v1/cases/{caseId}/insurance-processing", 100L)
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-01-10\",\"inspectionForwardedAt\":\"2026-01-15\",\"modalityCode\":\"PRESENCIAL\",\"opinionCode\":\"A_FAVOR\",\"quotationStatusCode\":\"ACORDADA\",\"quotationDate\":\"2026-01-20\",\"agreedAmount\":120000,\"minimumCloseAmount\":50000,\"includesParts\":true,\"partsAuthorizationCode\":\"TOTAL\",\"partsSupplierText\":\"CIA\",\"amountToBillCompany\":120000,\"finalAmountForWorkshop\":120000}"))
+                .andExpect(status().isOk());
+
+        // Verify processing data
+        mockMvc.perform(get("/api/v1/cases/{caseId}/insurance-processing", 100L)
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.agreedAmount").value(120000))
+                .andExpect(jsonPath("$.quotationStatusCode").value("ACORDADA"))
+                .andExpect(jsonPath("$.amountToBillCompany").value(120000));
+    }
+
+    @Test
+    void shouldCreateAndUpdateFranchise() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/{caseId}/franchise", 100L)
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"franchiseStatusCode\":\"PENDIENTE\",\"franchiseAmount\":50000,\"recoveryTypeCode\":\"CIA_DEL_TERCERO\",\"franchiseOpinionCode\":\"A_FAVOR\",\"exceedsFranchise\":true,\"recoveryAmount\":0}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/v1/cases/{caseId}/franchise", 100L)
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"franchiseStatusCode\":\"COBRADA\",\"franchiseAmount\":50000,\"recoveryTypeCode\":\"CIA_DEL_TERCERO\",\"franchiseOpinionCode\":\"A_FAVOR\",\"exceedsFranchise\":true,\"recoveryAmount\":50000}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/franchise", 100L)
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.franchiseStatusCode").value("COBRADA"))
+                .andExpect(jsonPath("$.recoveryAmount").value(50000));
+    }
+
     private void seedBaseData() {
         jdbcTemplate.update("INSERT INTO usuarios (id, public_id, username, email, password_hash, nombre, apellido, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 3L, "00000000-0000-0000-0000-000000000300", "operador", "operador@tallerzapata.local", "hash", "Olivia", "Operadora", true);
         jdbcTemplate.update("INSERT INTO usuario_roles (id, usuario_id, rol_id, organizacion_id, sucursal_id, activo) VALUES (?, ?, ?, ?, ?, ?)", 3L, 3L, 2L, 1L, 1L, true);

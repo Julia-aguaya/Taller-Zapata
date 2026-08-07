@@ -296,6 +296,75 @@ class FinanceIntegrationTest {
                 .andExpect(status().isConflict());
     }
 
+    // ── Receipt PDF tests ─────────────────────────────────────────
+
+    @Test
+    void shouldGenerateReceiptPdfWithComprobanteFiscal() throws Exception {
+        Long receiptId = createReceiptWithComprobanteFiscal();
+
+        mockMvc.perform(get("/api/v1/receipts/{receiptId}/pdf", receiptId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(result -> org.junit.jupiter.api.Assertions.assertTrue(result.getResponse().getContentAsByteArray().length > 0));
+    }
+
+    @Test
+    void shouldGenerateClientPaymentPdf() throws Exception {
+        Long caseId = createCaseWithPayment();
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/finance/client-payment-pdf")
+                        .param("clientName", "Carlos Cliente")
+                        .param("vehiclePlate", "AB123CD")
+                        .param("comprobanteTipo", "A")
+                        .param("totalCotizado", "150000")
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(result -> org.junit.jupiter.api.Assertions.assertTrue(result.getResponse().getContentAsByteArray().length > 0));
+    }
+
+    @Test
+    void shouldReturn404ForNonExistentReceiptPdf() throws Exception {
+        mockMvc.perform(get("/api/v1/receipts/{receiptId}/pdf", 99999L)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isNotFound());
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────
+
+    private Long createReceiptWithComprobanteFiscal() throws Exception {
+        Long caseId = createParticularCase();
+        jdbcTemplate.update("INSERT INTO tramitacion_seguro (caso_id, fecha_cotizacion, monto_acordado, monto_facturar_compania) VALUES (?,?,?,?)",
+                caseId, java.time.LocalDate.now(), new java.math.BigDecimal("100000"), new java.math.BigDecimal("100000"));
+
+        MvcResult result = mockMvc.perform(post("/api/v1/cases/{caseId}/receipts", caseId)
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"receiptTypeCode\":\"FACTURA\",\"receiptNumber\":\"A-0001-00000099\",\"receiverBusinessName\":\"Cliente Test\",\"issuedDate\":\"2026-05-01\",\"taxableNet\":100000,\"vatAmount\":21000,\"total\":121000,\"comprobanteFiscal\":\"A\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
+    }
+
+    private Long createCaseWithPayment() throws Exception {
+        Long caseId = createParticularCase();
+        mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId)
+                .header("X-User-Id", "1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"CLIENTE\",\"counterpartyTypeCode\":\"PERSONA\",\"counterpartyPersonId\":10,\"movementAt\":\"2026-01-15T12:00:00\",\"grossAmount\":100000,\"netAmount\":100000,\"paymentMethodCode\":\"EFECTIVO\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[],\"applications\":[]}"))
+                .andExpect(status().isOk());
+        return caseId;
+    }
+
+    private Long createParticularCase() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/cases")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"caseTypeId\":1,\"organizationId\":1,\"branchId\":1,\"principalVehicleId\":10,\"principalCustomerPersonId\":10,\"referenced\":false,\"customerRoleCode\":\"CLIENTE\",\"principalVehicleRoleCode\":\"PRINCIPAL\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
+    }
+
     private void seedBaseData() {
         jdbcTemplate.update("INSERT INTO usuarios (id, public_id, username, email, password_hash, nombre, apellido, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 3L, "00000000-0000-0000-0000-000000000300", "operador", "operador@tallerzapata.local", "hash", "Olivia", "Operadora", true);
         jdbcTemplate.update("INSERT INTO usuario_roles (id, usuario_id, rol_id, organizacion_id, sucursal_id, activo) VALUES (?, ?, ?, ?, ?, ?)", 3L, 3L, 2L, 1L, 1L, true);
