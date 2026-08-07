@@ -158,6 +158,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const ciaPending = Math.max(0, amountToPay - ciaTotalPaid);
 
   return (
+    <>
     <div className="mt-5 space-y-5">
       {/* Resumen */}
       <div className="rounded-3xl border border-border/70 bg-card p-5">
@@ -415,6 +416,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
         }}>Anular pago</Button>
       </div>
     </Dialog>
+    </>
   );
 };
 
