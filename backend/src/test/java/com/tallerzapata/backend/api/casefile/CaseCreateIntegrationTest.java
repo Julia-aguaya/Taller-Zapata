@@ -58,6 +58,7 @@ class CaseCreateIntegrationTest {
                 null,
                 null,
                 null,
+                null,
                 "MEDIA",
                 null,
                 null,
@@ -105,6 +106,7 @@ class CaseCreateIntegrationTest {
                 null,
                 null,
                 null,
+                null,
                 null
         );
 
@@ -127,6 +129,7 @@ class CaseCreateIntegrationTest {
                 10L,
                 10L,
                 false,
+                null,
                 null,
                 null,
                 "",
@@ -162,6 +165,7 @@ class CaseCreateIntegrationTest {
                 10L,
                 999L,
                 false,
+                null,
                 null,
                 null,
                 "MEDIA",
@@ -207,6 +211,7 @@ class CaseCreateIntegrationTest {
                 10L,
                 10L,
                 false,
+                null,
                 null,
                 null,
                 "MEDIA",

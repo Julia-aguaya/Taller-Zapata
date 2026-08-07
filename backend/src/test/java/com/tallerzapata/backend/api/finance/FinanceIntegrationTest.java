@@ -130,6 +130,7 @@ class FinanceIntegrationTest {
                 new BigDecimal("210.00"),
                 new BigDecimal("1210.00"),
                 null,
+                null,
                 "Factura inicial",
                 null
         );
