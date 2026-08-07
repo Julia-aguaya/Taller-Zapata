@@ -338,9 +338,14 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
       ) : null}
 
       <div className="mt-5 flex justify-end">
-        <a href={getClientPaymentPdfUrl(caseId, caseDetail?.principalCustomerName || 'Cliente', caseDetail?.principalVehiclePlate || '', comprobanteTipo, form.reason, form.razonSocial, form.facturaNumero)} target="_blank" rel="noopener noreferrer">
-          <Button variant="outline" size="sm"><FileDown className="mr-1.5 h-4 w-4" />Generar PDF</Button>
-        </a>
+        <Button variant="outline" size="sm" onClick={async () => {
+          const url = getClientPaymentPdfUrl(caseId, caseDetail?.principalCustomerName || 'Cliente', caseDetail?.principalVehiclePlate || '', comprobanteTipo, form.reason, form.razonSocial, form.facturaNumero);
+          const token = session?.token || localStorage.getItem('token');
+          const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+          if (!res.ok) { toast.error('No se pudo generar el PDF.'); return; }
+          const blob = await res.blob();
+          window.open(URL.createObjectURL(blob), '_blank');
+        }}><FileDown className="mr-1.5 h-4 w-4" />Generar PDF</Button>
       </div>
     </div>
   );
