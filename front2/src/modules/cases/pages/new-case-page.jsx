@@ -269,7 +269,7 @@ export const NewCasePage = () => {
     if (!selectedVehicleId) {
       if (!form.vehicle.brandText?.trim()) fieldErrors.vehicleMarca = 'La marca es obligatoria';
       if (!form.vehicle.modelText?.trim()) fieldErrors.vehicleModelo = 'El modelo es obligatorio';
-      if (!form.vehicle.plate?.trim()) fieldErrors.vehiclePatente = 'La patente es obligatoria';
+      if (!form.vehicle.plate?.trim()) fieldErrors.vehiclePatente = 'El dominio es obligatorio';
     }
 
     if (Object.keys(fieldErrors).length > 0) {
@@ -305,7 +305,7 @@ export const NewCasePage = () => {
     if (!selectedVehicleId) {
       if (!form.vehicle.brandText?.trim()) reasons.push('Falta la marca del vehículo');
       if (!form.vehicle.modelText?.trim()) reasons.push('Falta el modelo del vehículo');
-      if (!form.vehicle.plate?.trim()) reasons.push('Falta la patente del vehículo');
+      if (!form.vehicle.plate?.trim()) reasons.push('Falta el dominio del vehículo');
     }
     return reasons;
   }, [form, selectedPersonId, selectedVehicleId, showOrgSelector, resolvedScope]);
@@ -340,38 +340,6 @@ export const NewCasePage = () => {
               </Select>
             </Field>
 
-            <Field label="Referenciador">
-              {selectedReferenciadorId ? (
-                <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm dark:border-emerald-800 dark:bg-emerald-950">
-                  <span className="font-medium text-emerald-800 dark:text-emerald-200">{referenciadorQuery.data?.find(r => r.id === selectedReferenciadorId)?.displayName || `#${selectedReferenciadorId}`}</span>
-                  <button type="button" className="ml-auto text-xs text-muted-foreground hover:text-destructive" onClick={() => { setSelectedReferenciadorId(null); setReferenciadorSearch(''); }}>✕</button>
-                </div>
-              ) : (
-                <div className="relative">
-                  <Input value={referenciadorSearch} onChange={(e) => setReferenciadorSearch(e.target.value)} placeholder="Buscar por nombre..." />
-                  {(referenciadorQuery.data ?? []).length > 0 ? (
-                    <div className="absolute z-10 mt-1 w-full rounded-2xl border border-border bg-card p-2 shadow-haze">
-                      {referenciadorQuery.data.map((r) => (
-                        <button key={r.id} type="button" className="w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => { setSelectedReferenciadorId(r.id); setReferenciadorSearch(''); }}>
-                          <span className="font-medium">{r.displayName}</span>
-                          {r.telefono ? <span className="ml-2 text-xs text-muted-foreground">{r.telefono}</span> : null}
-                        </button>
-                      ))}
-                    </div>
-                  ) : referenciadorSearch.length >= 2 && !referenciadorQuery.isFetching ? (
-                    <p className="mt-1 text-xs text-muted-foreground">Sin resultados. Escribí el nombre completo para crear uno nuevo.</p>
-                  ) : null}
-                </div>
-              )}
-            </Field>
-
-            <Field label="Referenciado">
-              <Select value={form.referenced} onChange={(event) => setForm((current) => ({ ...current, referenced: event.target.value }))}>
-                <option value="NO">No</option>
-                <option value="SI">Si</option>
-              </Select>
-            </Field>
-
             {showOrgSelector ? (
               <Field label="Organizacion">
                 <Select className={errors.organizacion ? 'border-destructive ring-1 ring-destructive' : ''} value={String(form.organizationId)} onChange={(event) => setForm((current) => ({ ...current, organizationId: event.target.value, branchId: '' }))}>
@@ -401,12 +369,40 @@ export const NewCasePage = () => {
                 {errors.sucursal ? <p className="mt-1 text-xs text-destructive">{errors.sucursal}</p> : null}
               </Field>
             ) : null}
+
+            <Field label="Referenciado">
+              <Select value={form.referenced} onChange={(event) => setForm((current) => ({ ...current, referenced: event.target.value }))}>
+                <option value="NO">No</option>
+                <option value="SI">Si</option>
+              </Select>
+            </Field>
           </div>
 
           {form.referenced === 'SI' ? (
             <div className="mt-4">
-              <Field label="Quien lo refiere">
-                <Input value={form.referredByText} onChange={(event) => setForm((current) => ({ ...current, referredByText: event.target.value }))} />
+              <Field label="Referenciador">
+                {selectedReferenciadorId ? (
+                  <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm dark:border-emerald-800 dark:bg-emerald-950">
+                    <span className="font-medium text-emerald-800 dark:text-emerald-200">{referenciadorQuery.data?.find((referenciador) => referenciador.id === selectedReferenciadorId)?.displayName || `#${selectedReferenciadorId}`}</span>
+                    <button type="button" className="ml-auto text-xs text-muted-foreground hover:text-destructive" onClick={() => { setSelectedReferenciadorId(null); setReferenciadorSearch(''); }}>✕</button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <Input value={referenciadorSearch} onChange={(event) => setReferenciadorSearch(event.target.value)} placeholder="Buscar por nombre..." />
+                    {(referenciadorQuery.data ?? []).length > 0 ? (
+                      <div className="absolute z-10 mt-1 w-full rounded-2xl border border-border bg-card p-2 shadow-haze">
+                        {referenciadorQuery.data.map((referenciador) => (
+                          <button key={referenciador.id} type="button" className="w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => { setSelectedReferenciadorId(referenciador.id); setReferenciadorSearch(''); }}>
+                            <span className="font-medium">{referenciador.displayName}</span>
+                            {referenciador.telefono ? <span className="ml-2 text-xs text-muted-foreground">{referenciador.telefono}</span> : null}
+                          </button>
+                        ))}
+                      </div>
+                    ) : referenciadorSearch.length >= 2 && !referenciadorQuery.isFetching ? (
+                      <p className="mt-1 text-xs text-muted-foreground">Sin resultados. Escribí el nombre completo para crear uno nuevo.</p>
+                    ) : null}
+                  </div>
+                )}
               </Field>
             </div>
           ) : null}
@@ -549,7 +545,7 @@ export const NewCasePage = () => {
                     ) : linkedVehiclesQuery.isFetching ? (
                       <p className="mt-2 text-xs text-amber-600">Buscando vehículos asociados...</p>
                     ) : (
-                      <p className="mt-2 text-xs text-amber-600">Este cliente no tiene vehículos en otras carpetas. Buscá por patente abajo.</p>
+                      <p className="mt-2 text-xs text-amber-600">Este cliente no tiene vehículos en otras carpetas. Buscá por dominio abajo.</p>
                     )}
                   </div>
                 ) : (
@@ -634,7 +630,7 @@ export const NewCasePage = () => {
                 </datalist>
                 {errors.vehicleModelo ? <p className="mt-1 text-xs text-destructive">{errors.vehicleModelo}</p> : null}
               </Field>
-              <Field label="Patente">
+              <Field label="Dominio">
                 <Input className={errors.vehiclePatente ? 'border-destructive ring-1 ring-destructive' : ''} value={form.vehicle.plate} onChange={(event) => updateNested(setForm, 'vehicle', 'plate', event.target.value.toUpperCase())} />
                 {errors.vehiclePatente ? <p className="mt-1 text-xs text-destructive">{errors.vehiclePatente}</p> : null}
               </Field>
@@ -646,14 +642,14 @@ export const NewCasePage = () => {
                   {vehicleTypeOptions.map((option) => <option key={option.code} value={option.code}>{option.name}</option>)}
                 </Select>
               </Field>
-              <Field label="Uso">
-                <Select value={form.vehicle.usageCode} onChange={(event) => updateNested(setForm, 'vehicle', 'usageCode', event.target.value)}>
-                  {usageOptions.map((option) => <option key={option.code} value={option.code}>{option.name}</option>)}
-                </Select>
-              </Field>
               <Field label="Caja">
                 <Select value={form.vehicle.transmissionCode} onChange={(event) => updateNested(setForm, 'vehicle', 'transmissionCode', event.target.value)}>
                   {transmissionOptions.map((option) => <option key={option.code} value={option.code}>{option.name}</option>)}
+                </Select>
+              </Field>
+              <Field label="Uso">
+                <Select value={form.vehicle.usageCode} onChange={(event) => updateNested(setForm, 'vehicle', 'usageCode', event.target.value)}>
+                  {usageOptions.map((option) => <option key={option.code} value={option.code}>{option.name}</option>)}
                 </Select>
               </Field>
               <Field label="Color">

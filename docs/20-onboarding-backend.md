@@ -310,22 +310,22 @@ cd backend
 ./mvnw spring-boot:run -Dspring-boot.run.profiles=local
 
 # En Windows
-mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local
+mvnw.cmd "-Dspring-boot.run.profiles=local" spring-boot:run
 ```
 
 ### Verificar que funciona
 
 1. **Smoke test público:**
    ```bash
-   curl http://localhost:8080/ping
+   curl http://localhost:8081/ping
    ```
    Respuesta esperada: `{"status":"ok","service":"taller-zapata-backend"}`
 
 2. **Swagger UI:**
-   - Abrir `http://localhost:8080/swagger-ui/index.html`
+    - Abrir `http://localhost:8081/swagger-ui.html`
 
 3. **Health:**
-   - `http://localhost:8080/actuator/health`
+    - `http://localhost:8081/actuator/health`
 
 ---
 

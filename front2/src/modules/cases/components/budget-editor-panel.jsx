@@ -178,7 +178,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
 
       {hasIncompleteLines ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
-          ⚠️ {incompleteLines.length} línea(s) sin pieza, tarea o daño.
+          ⚠️ {incompleteLines.length} línea(s) sin pieza, acción o daño.
         </div>
       ) : null}
 

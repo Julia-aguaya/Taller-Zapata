@@ -23,7 +23,7 @@ mvnw.cmd test
 - Levantar app local:
 
 ```bat
-mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local
+mvnw.cmd "-Dspring-boot.run.profiles=local" spring-boot:run
 ```
 
 ## Comandos utiles (bash)
@@ -35,9 +35,9 @@ mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local
 
 ## Probar con Postman
 
-- Base URL local: `http://localhost:8080`
-- Swagger UI: `http://localhost:8080/swagger-ui.html`
-- Health: `GET http://localhost:8080/actuator/health`
+- Base URL local: `http://localhost:8081`
+- Swagger UI: `http://localhost:8081/swagger-ui.html`
+- Health: `GET http://localhost:8081/actuator/health`
 
 ### Seguridad actual (temporal)
 

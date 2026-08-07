@@ -125,7 +125,7 @@ export const LoginPage = () => {
 
         <div className="flex items-center justify-center">
           <Card className="flex w-full max-w-[500px] flex-col justify-center rounded-[30px] border-white/70 bg-white/92 p-6 shadow-[0_24px_60px_-30px_rgba(15,23,42,0.35)] backdrop-blur sm:p-8 lg:min-h-[520px] lg:px-10 lg:py-10">
-            <div className="mb-8 flex items-start gap-4 lg:mb-9">
+            <div className="mb-5 flex items-start gap-4 lg:mb-6">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-600 text-white shadow-[0_12px_32px_-18px_rgba(8,145,178,0.8)]">
                 <ShieldCheck className="h-7 w-7" />
               </div>
@@ -137,7 +137,7 @@ export const LoginPage = () => {
             </div>
 
             <form className="space-y-4" onSubmit={submit} noValidate>
-              <div aria-live="assertive" className="min-h-6">
+              <div aria-live="assertive">
                 {formError ? (
                   <p className="text-sm font-medium text-destructive" id="login-form-error" role="alert">
                     {formError}
@@ -146,13 +146,13 @@ export const LoginPage = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email">Correo electrónico</Label>
+                <Label className="text-slate-700" htmlFor="email">Correo electrónico</Label>
                 <Input
                   ref={emailRef}
                   aria-describedby={formError ? 'login-form-error' : undefined}
                   aria-invalid={Boolean(formError)}
                   autoComplete="email"
-                  className="h-12 rounded-2xl border-slate-200 bg-white text-base shadow-none focus:border-cyan-500 focus:ring-cyan-500/20"
+                  className="login-input h-12 rounded-2xl border-slate-200 bg-white text-base text-black placeholder:text-slate-400 shadow-none focus:border-cyan-500 focus:ring-cyan-500/20"
                   id="email"
                   name="email"
                   type="email"
@@ -167,14 +167,14 @@ export const LoginPage = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password">Contraseña</Label>
+                <Label className="text-slate-700" htmlFor="password">Contraseña</Label>
                 <div className="relative">
                   <Input
                     ref={passwordRef}
                     aria-describedby={formError ? 'login-form-error' : undefined}
                     aria-invalid={Boolean(formError)}
                     autoComplete="current-password"
-                    className="h-12 rounded-2xl border-slate-200 bg-white pr-12 text-base shadow-none focus:border-cyan-500 focus:ring-cyan-500/20"
+                    className="login-input h-12 rounded-2xl border-slate-200 bg-white pr-12 text-base text-black placeholder:text-slate-400 shadow-none focus:border-cyan-500 focus:ring-cyan-500/20"
                     id="password"
                     name="password"
                     type={showPassword ? 'text' : 'password'}
@@ -198,7 +198,7 @@ export const LoginPage = () => {
                 </div>
               </div>
 
-              <Button className="mt-2 h-12 w-full rounded-2xl text-base shadow-[0_18px_30px_-20px_rgba(8,145,178,0.75)] motion-safe:transition-colors motion-reduce:transition-none" disabled={busy} size="lg" type="submit">
+              <Button className="mt-2 h-12 w-full rounded-2xl text-base text-white hover:text-white shadow-[0_18px_30px_-20px_rgba(8,145,178,0.75)] motion-safe:transition-colors motion-reduce:transition-none" disabled={busy} size="lg" type="submit">
                 {busy ? (
                   <>
                     <LoaderCircle className="mr-2 h-4 w-4 animate-spin motion-reduce:animate-none" />

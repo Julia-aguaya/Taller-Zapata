@@ -347,6 +347,37 @@ export const CaseWorkspacePage = () => {
           </div>
         ) : null}
       </Dialog>
+
+      {overrideModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setOverrideModal(null)}>
+          <div className="w-full max-w-sm rounded-3xl border border-border bg-card p-6 shadow-haze" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold">Cambiar estado de {overrideModal.domain === 'tramite' ? 'Trámite' : 'Reparación'}</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Actual: <strong>{overrideModal.domain === 'tramite' ? caseDetail.visibleTramiteState.label : caseDetail.visibleRepairState.label}</strong></p>
+            <div className="mt-4 space-y-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Nuevo estado</Label>
+                <select className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm" value={overrideModal.currentCode} onChange={(e) => setOverrideModal((m) => ({ ...m, currentCode: e.target.value }))}>
+                  {(overrideModal.domain === 'tramite'
+                    ? ['INGRESADO','SIN_PRESENTAR','PRESENTADO','EN_TRAMITE','ACORDADO','PASADO_A_PAGOS','PAGADO','RECHAZADO','DESISTIDO']
+                    : ['EN_TRAMITE','FALTAN_REPUESTOS','DAR_TURNO','CON_TURNO','DEBE_REINGRESAR','REPARADO','NO_DEBE_REPARARSE','RECHAZADO','DESISTIDO']
+                  ).map((code) => {
+                    const labels = {INGRESADO:'Ingresado',SIN_PRESENTAR:'Sin presentar',PRESENTADO:'Presentado',EN_TRAMITE:'En trámite',ACORDADO:'Acordado',PASADO_A_PAGOS:'Pasado a pagos',PAGADO:'Pagado',RECHAZADO:'Rechazado',DESISTIDO:'Desistido',FALTAN_REPUESTOS:'Faltan repuestos',DAR_TURNO:'Dar turno',CON_TURNO:'Con turno',DEBE_REINGRESAR:'Debe reingresar',REPARADO:'Reparado',NO_DEBE_REPARARSE:'No debe repararse'};
+                    return <option key={code} value={code}>{labels[code] || code}</option>;
+                  })}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Motivo (obligatorio)</Label>
+                <Input value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} placeholder="¿Por qué se cambia manualmente?" />
+              </div>
+            </div>
+            <div className="mt-5 flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setOverrideModal(null)}>Cancelar</Button>
+              <Button className="flex-1" onClick={() => { if (!overrideReason.trim()) { toast.error('El motivo es obligatorio.'); return; } overrideMutation.mutate({ domain: overrideModal.domain, stateCode: overrideModal.currentCode }); }} disabled={overrideMutation.isPending}>Confirmar</Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -985,38 +1016,6 @@ const CaseDetailsPanel = ({ caseDetail, budget, particularFinanceSummary, widget
           <WidgetRow label="Proximo vencimiento" value={taskSnapshot.nextDueTask?.dueDate ? formatDate(taskSnapshot.nextDueTask.dueDate) : 'Sin tareas pendientes'} />
         </MiniCard>
       </div>
-
-      {/* ── Override modal for visible states ── */}
-      {overrideModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setOverrideModal(null)}>
-          <div className="w-full max-w-sm rounded-3xl border border-border bg-card p-6 shadow-haze" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold">Cambiar estado de {overrideModal.domain === 'tramite' ? 'Trámite' : 'Reparación'}</h3>
-            <p className="mt-1 text-sm text-muted-foreground">Actual: <strong>{overrideModal.domain === 'tramite' ? caseDetail.visibleTramiteState.label : caseDetail.visibleRepairState.label}</strong></p>
-            <div className="mt-4 space-y-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs">Nuevo estado</Label>
-                <select className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm" value={overrideModal.currentCode} onChange={(e) => setOverrideModal((m) => ({ ...m, currentCode: e.target.value }))}>
-                  {(overrideModal.domain === 'tramite'
-                    ? ['INGRESADO','SIN_PRESENTAR','PRESENTADO','EN_TRAMITE','ACORDADO','PASADO_A_PAGOS','PAGADO','RECHAZADO','DESISTIDO']
-                    : ['EN_TRAMITE','FALTAN_REPUESTOS','DAR_TURNO','CON_TURNO','DEBE_REINGRESAR','REPARADO','NO_DEBE_REPARARSE','RECHAZADO','DESISTIDO']
-                  ).map((code) => {
-                    const labels = {INGRESADO:'Ingresado',SIN_PRESENTAR:'Sin presentar',PRESENTADO:'Presentado',EN_TRAMITE:'En trámite',ACORDADO:'Acordado',PASADO_A_PAGOS:'Pasado a pagos',PAGADO:'Pagado',RECHAZADO:'Rechazado',DESISTIDO:'Desistido',FALTAN_REPUESTOS:'Faltan repuestos',DAR_TURNO:'Dar turno',CON_TURNO:'Con turno',DEBE_REINGRESAR:'Debe reingresar',REPARADO:'Reparado',NO_DEBE_REPARARSE:'No debe repararse'};
-                    return <option key={code} value={code}>{labels[code] || code}</option>;
-                  })}
-                </select>
-              </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs">Motivo (obligatorio)</Label>
-                <Input value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} placeholder="¿Por qué se cambia manualmente?" />
-              </div>
-            </div>
-            <div className="mt-5 flex gap-3">
-              <Button variant="outline" className="flex-1" onClick={() => setOverrideModal(null)}>Cancelar</Button>
-              <Button className="flex-1" onClick={() => { if (!overrideReason.trim()) { toast.error('El motivo es obligatorio.'); return; } overrideMutation.mutate({ domain: overrideModal.domain, stateCode: overrideModal.currentCode }); }} disabled={overrideMutation.isPending}>Confirmar</Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
     </div>
   );
