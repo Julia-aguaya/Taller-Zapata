@@ -600,7 +600,7 @@ class CaseReadinessIntegrationTest {
         Long caseId = createTodoRiesgoCase();
         seedInsuranceData(caseId);
         // Crear franquicia PENDIENTE
-        jdbcTemplate.update("INSERT INTO franquicias_caso (caso_id, estado_codigo, monto, modo_recupero_codigo) VALUES (?, ?, ?, ?)",
+        jdbcTemplate.update("INSERT INTO caso_franquicia (caso_id, estado_franquicia_codigo, monto_franquicia, tipo_recupero_codigo) VALUES (?, ?, ?, ?)",
                 caseId, "PENDIENTE", new BigDecimal("50000"), "CIA_DEL_TERCERO");
 
         mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
@@ -614,7 +614,7 @@ class CaseReadinessIntegrationTest {
     void shouldAllowPaymentsWhenFranchiseResolvedForTodoRiesgo() throws Exception {
         Long caseId = createTodoRiesgoCase();
         seedInsuranceData(caseId);
-        jdbcTemplate.update("INSERT INTO franquicias_caso (caso_id, estado_codigo, monto, modo_recupero_codigo) VALUES (?, ?, ?, ?)",
+        jdbcTemplate.update("INSERT INTO caso_franquicia (caso_id, estado_franquicia_codigo, monto_franquicia, tipo_recupero_codigo) VALUES (?, ?, ?, ?)",
                 caseId, "COBRADA", new BigDecimal("50000"), "CIA_DEL_TERCERO");
 
         mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
@@ -676,7 +676,7 @@ class CaseReadinessIntegrationTest {
                 1L, "00000000-0000-0000-0000-000000000101", "LA_SEGUNDA", "La Segunda", true);
         jdbcTemplate.update("INSERT INTO caso_seguro (caso_id, compania_seguro_id) VALUES (?,?)",
                 caseId, 1L);
-        jdbcTemplate.update("INSERT INTO tramitacion_seguro (caso_id, fecha_cotizacion, monto_acordado) VALUES (?,?,?)",
+        jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_cotizacion, monto_acordado) VALUES (?,?,?)",
                 caseId, LocalDate.now(), new BigDecimal("100000"));
     }
 
