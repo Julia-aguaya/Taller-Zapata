@@ -16,7 +16,7 @@ const fmt = (v) => (v == null ? '-' : currency.format(v));
 const yesNoAV = ['NO', 'SI', 'A/V'];
 
 const createEmptyItem = (visualOrder = 1, defaults = {}) => ({
-  id: null, visualOrder, affectedPiece: '', taskCode: defaults.taskCode || '',
+  id: null, visualOrder, affectedPiece: '', taskCode: 'CHAPA',
   damageLevelCode: defaults.damageLevelCode || '', partDecisionCode: defaults.partDecisionCode || '',
   actionCode: defaults.actionCode || '', requiresReplacement: false,
   partValue: '0', estimatedHours: '0', laborAmount: '0', active: true,
@@ -78,7 +78,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
   useEffect(() => { setHeader(toHeaderState(budget)); setItems(budget?.items?.length ? budget.items.map(toItemState) : [createEmptyItem(1, defaults)]); }, [budget, defaults, toHeaderState]);
 
   const normalizedItems = useMemo(() => items.map((item, index) => ({ ...item, visualOrder: index + 1 })), [items]);
-  const incompleteLines = useMemo(() => normalizedItems.filter((i) => !i.affectedPiece?.trim() || !i.taskCode?.trim() || !i.damageLevelCode?.trim()), [normalizedItems]);
+  const incompleteLines = useMemo(() => normalizedItems.filter((i) => !i.affectedPiece?.trim() || !i.actionCode?.trim() || !i.damageLevelCode?.trim()), [normalizedItems]);
   const hasIncompleteLines = incompleteLines.length > 0;
   const lastLineIncomplete = items.length > 0 && incompleteLines.some((i) => i.visualOrder === items.length);
 
@@ -208,7 +208,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
             <thead className="bg-muted/50 text-left">
               <tr>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Pieza afectada</th>
-                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Tarea a ejecutar</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Acción a ejecutar</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Nivel de daño</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Decisión</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">$ Repuestos</th>
@@ -219,7 +219,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
               {normalizedItems.map((item, index) => (
                 <tr key={`${item.id || 'new'}-${index}`} className="border-t border-border/40 hover:bg-accent/20">
                   <td className="px-4 py-2"><Input className="h-10 rounded-xl text-sm" value={item.affectedPiece} onChange={(e) => updateItem(setItems, index, 'affectedPiece', e.target.value)} placeholder="Ej: Guardabarros del. der." /></td>
-                  <td className="px-4 py-2"><select className="h-10 w-full min-w-[130px] rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-primary" value={item.taskCode} onChange={(e) => updateItem(setItems, index, 'taskCode', e.target.value)}>{taskOptions.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}</select></td>
+                  <td className="px-4 py-2"><select className="h-10 w-full min-w-[130px] rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-primary" value={item.actionCode} onChange={(e) => updateItem(setItems, index, 'actionCode', e.target.value)}>{actionOptions.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}</select></td>
                   <td className="px-4 py-2"><select className="h-10 w-full min-w-[130px] rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-primary" value={item.damageLevelCode} onChange={(e) => updateItem(setItems, index, 'damageLevelCode', e.target.value)}>{damageOptions.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}</select></td>
                   <td className="px-4 py-2"><select className="h-10 w-full min-w-[110px] rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-primary" value={item.partDecisionCode} onChange={(e) => updateItem(setItems, index, 'partDecisionCode', e.target.value)}>{decisionOptions.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}</select></td>
                   <td className="px-4 py-2"><Input className="h-10 w-28 rounded-xl text-right text-sm" type="number" min="0" step="0.01" value={item.partValue} onChange={(e) => updateItem(setItems, index, 'partValue', e.target.value)} /></td>
