@@ -321,6 +321,7 @@ public class CaseService {
         entity.setPrincipalCustomerPersonId(request.principalCustomerPersonId());
         entity.setReferenced(Boolean.TRUE.equals(request.referenced()));
         entity.setReferredByPersonId(request.referredByPersonId());
+        entity.setReferenciadorId(request.referenciadorId());
         entity.setReferredByText(blankToNull(request.referredByText()));
         entity.setCreatedByUserId(currentUser.id());
         entity.setCurrentCaseStateId(initialCaseState.getId());

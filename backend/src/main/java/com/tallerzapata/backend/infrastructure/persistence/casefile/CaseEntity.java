@@ -51,6 +51,9 @@ public class CaseEntity {
     @Column(name = "referido_por_persona_id")
     private Long referredByPersonId;
 
+    @Column(name = "referenciador_id")
+    private Long referenciadorId;
+
     @Column(name = "referido_por_texto")
     private String referredByText;
 
@@ -128,6 +131,8 @@ public class CaseEntity {
     public void setReferenced(Boolean referenced) { this.referenced = referenced; }
     public Long getReferredByPersonId() { return referredByPersonId; }
     public void setReferredByPersonId(Long referredByPersonId) { this.referredByPersonId = referredByPersonId; }
+    public Long getReferenciadorId() { return referenciadorId; }
+    public void setReferenciadorId(Long referenciadorId) { this.referenciadorId = referenciadorId; }
     public String getReferredByText() { return referredByText; }
     public void setReferredByText(String referredByText) { this.referredByText = referredByText; }
     public Long getCreatedByUserId() { return createdByUserId; }

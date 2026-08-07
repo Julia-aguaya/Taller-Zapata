@@ -35,3 +35,10 @@ export const listCases = (params = {}) => {
   const qs = searchParams.toString();
   return requestJson(`/cases${qs ? `?${qs}` : ''}`);
 };
+
+export const searchReferenciadores = (q) => requestJson(`/referenciadores?q=${encodeURIComponent(q)}`);
+
+export const createReferenciador = (data) => requestJson('/referenciadores', {
+  method: 'POST',
+  body: JSON.stringify(data),
+});

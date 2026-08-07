@@ -13,6 +13,7 @@ public record CaseCreateRequest(
         @NotNull Long principalCustomerPersonId,
         Boolean referenced,
         Long referredByPersonId,
+        Long referenciadorId,
         String referredByText,
         String priorityCode,
         String generalObservations,
