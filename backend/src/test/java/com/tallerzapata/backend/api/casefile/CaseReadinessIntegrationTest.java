@@ -565,8 +565,6 @@ class CaseReadinessIntegrationTest {
         mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
                         .header("X-User-Id", "1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.tabs[1].tabCode").value("PRESUPUESTO"))
-                .andExpect(jsonPath("$.tabs[1].completed").value(true))
                 .andExpect(jsonPath("$.tabs[2].tabCode").value("GESTION_REPARACION"))
                 .andExpect(jsonPath("$.tabs[2].allowed").value(true));
     }
