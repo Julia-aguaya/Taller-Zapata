@@ -133,7 +133,7 @@ class CaseClosureIntegrationTest {
     }
 
     private void createDefinitiveOutcome(Long caseId) throws Exception {
-        // Create appointment
+        // Create appointment via API
         String appt = mockMvc.perform(post("/api/v1/cases/{caseId}/appointments", caseId)
                         .header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"appointmentDate\":\"2026-01-10\",\"appointmentTime\":\"09:00\",\"estimatedDays\":2,\"statusCode\":\"PENDIENTE\",\"reentry\":false,\"userId\":1}"))
@@ -141,16 +141,16 @@ class CaseClosureIntegrationTest {
         Long apptId = objectMapper.readTree(appt).get("id").asLong();
 
         // Create intake
-        String intake = mockMvc.perform(post("/api/v1/cases/{caseId}/intakes", caseId)
+        var intakeResult = mockMvc.perform(post("/api/v1/cases/{caseId}/intakes", caseId)
                         .header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"appointmentId\":" + apptId + ",\"vehicleId\":10,\"intakeAt\":\"2026-01-10T10:00:00\",\"mileage\":15000,\"receivedByUserId\":1,\"hasObservations\":false}"))
-                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-        Long intakeId = objectMapper.readTree(intake).get("id").asLong();
+                        .content("{\"appointmentId\":" + apptId + ",\"vehicleId\":10,\"intakeAt\":\"2026-01-10T10:00:00\",\"mileage\":15000,\"receivedByUserId\":1,\"fuelCode\":null,\"estimatedExitDate\":\"2026-01-13\",\"hasObservations\":false}"))
+                .andReturn();
+        Long intakeId = objectMapper.readTree(intakeResult.getResponse().getContentAsString()).get("id").asLong();
 
         // Create definitive outcome
         mockMvc.perform(post("/api/v1/cases/{caseId}/outcomes", caseId)
                         .header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"intakeId\":" + intakeId + ",\"outcomeAt\":\"2026-01-12T18:00:00\",\"deliveredByUserId\":1,\"definitive\":true,\"shouldReenter\":false,\"repairedPhotosUploaded\":false}"))
+                        .content("{\"intakeId\":" + intakeId + ",\"outcomeAt\":\"2026-01-12T18:00:00\",\"deliveredByUserId\":1,\"receivedByPersonId\":null,\"definitive\":true,\"shouldReenter\":false,\"repairedPhotosUploaded\":false,\"notes\":null}"))
                 .andExpect(status().isOk());
     }
 
