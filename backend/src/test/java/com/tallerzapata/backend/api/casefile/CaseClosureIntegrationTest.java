@@ -70,10 +70,13 @@ class CaseClosureIntegrationTest {
     @Test
     void shouldCloseWhenDefinitiveOutcomeAndFullyPaid() throws Exception {
         Long caseId = createParticularCase();
-        createDefinitiveOutcome(caseId);
-        addPayment(caseId, new BigDecimal("100000"));
+        // Create budget so closure has a target amount
+        mockMvc.perform(put("/api/v1/cases/{caseId}/budget", caseId)
+                .header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"items\":[{\"visualOrder\":1,\"affectedPiece\":\"Puerta\",\"taskCode\":\"CHAPA\",\"damageLevelCode\":\"LEVE\",\"partDecisionCode\":\"REPARAR\",\"actionCode\":\"REPARAR\",\"requiresReplacement\":false,\"partValue\":0,\"estimatedHours\":1,\"laborAmount\":50000,\"active\":true}]}"))
+                .andExpect(status().isOk());
 
-        // Trigger closure via finance sync
+        createDefinitiveOutcome(caseId);
         addPayment(caseId, new BigDecimal("50000"));
 
         mockMvc.perform(get("/api/v1/cases/{caseId}", caseId)
