@@ -340,6 +340,59 @@ class PartSupplierQuoteIntegrationTest {
                 .andExpect(jsonPath("$.partsWithoutQuotes").value(1));
     }
 
+    // ── Sync from budget + delete tests ──────────────────────────
+
+    @Test
+    void shouldSyncPartsFromBudget() throws Exception {
+        // Create budget with items that have REEMPLAZAR decision
+        mockMvc.perform(put("/api/v1/cases/100/budget")
+                        .header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"items\":[{\"visualOrder\":1,\"affectedPiece\":\"Puerta\",\"taskCode\":\"CHAPA\",\"damageLevelCode\":\"LEVE\",\"partDecisionCode\":\"REEMPLAZAR\",\"actionCode\":\"REEMPLAZAR\",\"requiresReplacement\":true,\"partValue\":50000,\"estimatedHours\":2,\"laborAmount\":100000,\"active\":true}]}"))
+                .andExpect(status().isOk());
+
+        // Sync parts from budget
+        mockMvc.perform(post("/api/v1/cases/100/parts/sync-from-budget")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk());
+
+        // Verify parts exist
+        mockMvc.perform(get("/api/v1/cases/100/parts")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].description").value("Puerta"))
+                .andExpect(jsonPath("$[0].budgetedPrice").value(50000));
+    }
+
+    @Test
+    void shouldDeletePartWithoutAffectingBudget() throws Exception {
+        // Create a part
+        String createResult = mockMvc.perform(post("/api/v1/cases/100/parts")
+                        .header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\":\"Espejo\",\"statusCode\":\"PENDIENTE\",\"purchasedByCode\":\"TALLER\",\"budgetedPrice\":10000,\"finalPrice\":10000,\"used\":false,\"returned\":false}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        Long partId = objectMapper.readTree(createResult).get("id").asLong();
+
+        // Delete the part
+        mockMvc.perform(delete("/api/v1/cases/100/parts/{partId}", partId)
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk());
+
+        // Verify deleted
+        mockMvc.perform(get("/api/v1/cases/100/parts")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    void shouldReturn404WhenDeletingNonExistentPart() throws Exception {
+        mockMvc.perform(delete("/api/v1/cases/100/parts/99999")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isNotFound());
+    }
+
     private void seedBaseData() {
         jdbcTemplate.update("INSERT INTO usuarios (id, public_id, username, email, password_hash, nombre, apellido, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 3L, "00000000-0000-0000-0000-000000000300", "operador", "operador@tallerzapata.local", "hash", "Olivia", "Operadora", true);
         jdbcTemplate.update("INSERT INTO usuario_roles (id, usuario_id, rol_id, organizacion_id, sucursal_id, activo) VALUES (?, ?, ?, ?, ?, ?)", 3L, 3L, 2L, 1L, 1L, true);
