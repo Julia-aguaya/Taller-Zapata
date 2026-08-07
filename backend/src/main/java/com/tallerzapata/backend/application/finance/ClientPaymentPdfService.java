@@ -79,8 +79,8 @@ public class ClientPaymentPdfService {
             addInfoRow(info, "Cliente:", clientName, normalFont);
             addInfoRow(info, "Vehículo:", vehiclePlate, normalFont);
             addInfoRow(info, "Carpeta:", caseEntity.getFolderCode() != null ? caseEntity.getFolderCode() : "#" + caseEntity.getId(), normalFont);
-            if (budget != null && budget.getReportDate() != null) {
-                addInfoRow(info, "Presupuesto:", budget.getReportDate().format(DATE_FMT), normalFont);
+            if (budget != null && budget.getBudgetDate() != null) {
+                addInfoRow(info, "Presupuesto:", budget.getBudgetDate().format(DATE_FMT), normalFont);
             }
             addInfoRow(info, "Total cotizado:", formatCurrency(budget != null ? budget.getTotalQuoted() : BigDecimal.ZERO), boldFont);
             addInfoRow(info, "Comprobante:", comprobanteTipo != null ? comprobanteTipo : "A", normalFont);
@@ -100,12 +100,11 @@ public class ClientPaymentPdfService {
                 if (!"CLIENTE".equalsIgnoreCase(m.getFlowOriginCode() != null ? m.getFlowOriginCode() : "")) continue;
                 boolean isAdvance = Boolean.TRUE.equals(m.getAdvancePayment());
                 boolean isBonification = Boolean.TRUE.equals(m.getBonification());
-                String tipoLabel = isAdvance ? "SEÑA" : isBonification ? "BONIFICACIÓN" : saldo.compareTo(m.getNetAmount()) > 0 ? "PAGO PARCIAL" : "PAGO TOTAL";
-
-                Font tipoFont = isAdvance ? boldFont : saldo.compareTo(m.getNetAmount()) <= 0 ? greenFont : redFont;
-
                 BigDecimal monto = m.getNetAmount() != null ? m.getNetAmount() : BigDecimal.ZERO;
                 saldo = saldo.subtract(monto);
+                String tipoLabel = isAdvance ? "SEÑA" : isBonification ? "BONIFICACIÓN" : saldo.compareTo(BigDecimal.ZERO) > 0 ? "PAGO PARCIAL" : "PAGO TOTAL";
+
+                Font tipoFont = isAdvance ? boldFont : saldo.compareTo(BigDecimal.ZERO) <= 0 ? greenFont : redFont;
 
                 PdfPTable pagoTable = new PdfPTable(2);
                 pagoTable.setWidthPercentage(100);
@@ -120,7 +119,8 @@ public class ClientPaymentPdfService {
                 PdfPCell detCell = new PdfPCell();
                 detCell.setBorder(Rectangle.NO_BORDER);
                 detCell.addElement(new Paragraph("Monto: " + formatCurrency(monto), boldFont));
-                detCell.addElement(new Paragraph("Fecha: " + (m.getMovementAt() != null ? m.getMovementAt().toLocalDate().format(DATE_FMT) : "—"), normalFont));
+                String fechaStr = m.getMovementAt() != null ? m.getMovementAt().toLocalDate().format(DATE_FMT) : "—";
+                detCell.addElement(new Paragraph("Fecha: " + fechaStr, normalFont));
                 detCell.addElement(new Paragraph("Modo: " + (m.getPaymentMethodCode() != null ? m.getPaymentMethodCode() : "—"), normalFont));
                 detCell.addElement(new Paragraph("Saldo deudor: " + formatCurrency(saldo), saldo.signum() > 0 ? redFont : greenFont));
                 pagoTable.addCell(detCell);
