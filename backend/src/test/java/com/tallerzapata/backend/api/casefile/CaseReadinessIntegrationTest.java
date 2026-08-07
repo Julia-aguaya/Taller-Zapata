@@ -704,7 +704,7 @@ class CaseReadinessIntegrationTest {
         mockMvc.perform(post("/api/v1/cases/{caseId}/budget/close", caseId)
                 .header("X-User-Id", "1")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"reportStatusCode\":\"CERRADO\",\"reportDate\":\"2026-01-01\",\"authorizedByUserDisplayName\":\"Admin\",\"interestedPartyDisplayName\":\"Cliente\",\"items\":[{\"visualOrder\":1,\"affectedPiece\":\"Puerta\",\"taskCode\":\"CHAPA\",\"damageLevelCode\":\"LEVE\",\"partDecisionCode\":\"REPARAR\",\"actionCode\":\"REPARAR\",\"requiresReplacement\":false,\"partValue\":0,\"estimatedHours\":2,\"laborAmount\":100000,\"active\":true}]}"))
+                .content("{\"reportStatusCode\":\"CERRADO\"}"))
                 .andExpect(status().isOk());
     }
 
