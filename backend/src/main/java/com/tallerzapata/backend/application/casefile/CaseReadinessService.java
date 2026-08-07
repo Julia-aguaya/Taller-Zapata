@@ -381,7 +381,7 @@ public class CaseReadinessService {
         CaseFranchiseEntity franchise = caseFranchiseRepository.findByCaseId(caseId).orElse(null);
         if (franchise != null && franchise.getFranchiseStatusCode() != null) {
             String franchiseStatus = franchise.getFranchiseStatusCode().toUpperCase();
-            if ("PENDIENTE".equals(franchiseStatus)) {
+            if ("SIN_DEFINIR".equals(franchiseStatus)) {
                 blocking.add("La franquicia sigue pendiente de resolucion");
             }
         }
