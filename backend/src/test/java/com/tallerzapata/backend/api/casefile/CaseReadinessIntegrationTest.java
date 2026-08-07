@@ -692,7 +692,7 @@ class CaseReadinessIntegrationTest {
     }
 
     private void completeVehicle(Long caseId) {
-        jdbcTemplate.update("UPDATE vehiculos SET marca_texto = 'Ford', modelo_texto = 'Focus', anio = 2020, tipo_vehiculo_codigo = 'SEDAN', uso_codigo = 'PARTICULAR', caja_codigo = 'MANUAL' WHERE id = 10");
+        jdbcTemplate.update("UPDATE vehiculos SET marca_texto = 'Ford', modelo_texto = 'Focus', anio = 2020, tipo_vehiculo_codigo = 'SEDAN', uso_codigo = 'PARTICULAR', transmision_codigo = 'MANUAL' WHERE id = 10");
     }
 
     private void createAndCloseBudget(Long caseId) throws Exception {

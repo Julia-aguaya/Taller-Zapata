@@ -39,7 +39,7 @@ class CaseClosureIntegrationTest {
         jdbcTemplate.update("INSERT INTO vehiculos (id, public_id, dominio, dominio_normalizado, activo) VALUES (?,?,?,?,?)",
                 10L, "00000000-0000-0000-0000-000000002010", "AB123CD", "AB123CD", true);
         // Marca y modelo para que el vehículo esté comercialmente completo
-        jdbcTemplate.update("UPDATE vehiculos SET marca_texto='Ford',modelo_texto='Focus',anio=2020,tipo_vehiculo_codigo='SEDAN',uso_codigo='PARTICULAR',caja_codigo='MANUAL' WHERE id=10");
+        jdbcTemplate.update("UPDATE vehiculos SET marca_texto='Ford',modelo_texto='Focus',anio=2020,tipo_vehiculo_codigo='SEDAN',uso_codigo='PARTICULAR',transmision_codigo='MANUAL' WHERE id=10");
     }
 
     // ── PARTICULAR closure ──────────────────────────────────────
