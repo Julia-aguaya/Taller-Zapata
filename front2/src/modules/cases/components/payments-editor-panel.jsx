@@ -60,6 +60,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
     externalReference: '',
     reason: '',
   });
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   const financeCatalogsQuery = useQuery({ queryKey: ['finance', 'catalogs'], queryFn: getFinanceCatalogs });
   const movementsQuery = useQuery({ queryKey: ['cases', String(caseId), 'financial-movements'], queryFn: () => listFinancialMovements(caseId) });
@@ -133,6 +134,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
       await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] });
       await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'receipts'] });
       await onSaved?.();
+      setShowPaymentModal(false);
       toast.success(form.factura === 'SI' ? 'Pago y factura registrados.' : 'Pago registrado.');
       setForm((c) => ({ ...c, amount: '', reason: '', externalReference: '', paymentMethodDetail: '', bonificacionMonto: '', bonificacionMotivo: '', razonSocial: '', facturaNumero: '' }));
     },
@@ -196,7 +198,17 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
 
       {/* Comprobante + Formulario */}
       <div className="rounded-3xl border border-border/70 bg-card p-5">
-        <h5 className="mb-4 text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Nuevo pago</h5>
+        <div className="flex items-center justify-between">
+          <h5 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Nuevo pago</h5>
+          <Button size="sm" onClick={() => setShowPaymentModal(true)}>+ Registrar pago</Button>
+        </div>
+      </div>
+
+      {/* Modal: Registrar pago */}
+      {showPaymentModal ? (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm py-10" onClick={() => setShowPaymentModal(false)}>
+          <div className="w-full max-w-lg rounded-3xl border border-border bg-card p-6 shadow-haze my-auto" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold">Registrar pago</h3>
 
         {/* Tipo de comprobante */}
         <div className="mb-5 rounded-2xl border border-border/60 bg-background/70 p-4">
@@ -260,13 +272,19 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
         </div>
 
         <div className="mt-5 flex gap-3">
+          <Button variant="outline" className="flex-1" onClick={() => setShowPaymentModal(false)}>Cancelar</Button>
           <Button className="flex-1" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !caseDetail.principalCustomerPersonId}><Save className="mr-1.5 h-4 w-4" />Registrar pago</Button>
         </div>
-      </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Historial */}
       <div className="rounded-3xl border border-border/70 bg-card p-5">
-        <h5 className="mb-4 text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Historial de movimientos</h5>
+        <div className="flex items-center justify-between mb-4">
+          <h5 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Historial de movimientos</h5>
+          <Button size="sm" onClick={() => setShowPaymentModal(true)}>+ Registrar pago</Button>
+        </div>
         {(movementsQuery.data ?? []).length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border/70 py-6 text-center text-sm text-muted-foreground">Sin movimientos registrados.</p>
         ) : (
@@ -295,17 +313,39 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
                     <td className="px-3 py-3">{m.cancellationTypeCode ? <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/50 px-2.5 py-0.5 text-xs font-medium">{m.cancellationTypeCode}</span> : '—'}</td>
                     <td className="px-3 py-3 text-xs text-muted-foreground max-w-[150px] truncate">{m.reason || '—'}</td>
                     <td className="px-3 py-3">
-                      <button type="button" className="rounded-lg p-1 text-muted-foreground transition hover:bg-primary/10 hover:text-primary" title="Descargar comprobante" onClick={async () => {
-                        const stored = readStoredAuth();
-                        const url = getClientPaymentPdfUrl(caseId, caseDetail?.principalCustomerName || 'Cliente', caseDetail?.principalVehiclePlate || '', comprobanteTipo, m.netAmount, m.reason || '', '', '');
-                        const res = await fetch(url, { headers: { Authorization: `Bearer ${stored?.accessToken}` } });
-                        if (!res.ok) { toast.error('No se pudo generar el PDF.'); return; }
-                        const blob = await res.blob();
-                        const a = document.createElement('a');
-                        a.href = URL.createObjectURL(blob);
-                        a.download = `comprobante-${m.id}.pdf`;
-                        a.click();
-                      }}><FileDown className="h-4 w-4" /></button>
+                      <div className="flex items-center gap-1">
+                        <button type="button" className="rounded-lg px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-primary/10 hover:text-primary" title="Descargar comprobante" onClick={async () => {
+                          const stored = readStoredAuth();
+                          const url = getClientPaymentPdfUrl(caseId, caseDetail?.principalCustomerName || 'Cliente', caseDetail?.principalVehiclePlate || '', comprobanteTipo, m.netAmount || 0, m.reason || '', '', '');
+                          const res = await fetch(url, { headers: { Authorization: `Bearer ${stored?.accessToken}` } });
+                          if (!res.ok) { toast.error('No se pudo generar el PDF.'); return; }
+                          const blob = await res.blob();
+                          const a = document.createElement('a');
+                          a.href = URL.createObjectURL(blob);
+                          a.download = `comprobante-${m.id}.pdf`;
+                          a.click();
+                        }}><FileDown className="mr-1 h-3.5 w-3.5" />Descargar comprobante</button>
+                        <button type="button" className="rounded-lg px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950" title="Anular pago" onClick={async () => {
+                          if (!confirm('¿Anular este pago? Se registrará un egreso por el mismo monto.')) return;
+                          try {
+                            await createFinancialMovement(caseId, {
+                              movementTypeCode: 'EGRESO', flowOriginCode: m.flowOriginCode || 'CLIENTE',
+                              counterpartyTypeCode: m.counterpartyTypeCode || 'PERSONA',
+                              counterpartyPersonId: m.counterpartyPersonId || null,
+                              counterpartyCompanyId: null,
+                              movementAt: new Date().toISOString(),
+                              grossAmount: m.netAmount, netAmount: m.netAmount,
+                              paymentMethodCode: m.paymentMethodCode || null,
+                              cancellationTypeCode: null, advancePayment: false, bonification: false,
+                              reason: `Anulación de pago #${m.id}`, externalReference: null, retentions: [], applications: [],
+                            });
+                            await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] });
+                            await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
+                            await onSaved?.();
+                            toast.success('Pago anulado.');
+                          } catch (e) { toast.error('No se pudo anular el pago.'); }
+                        }}><Ban className="mr-1 h-3.5 w-3.5" />Anular</button>
+                      </div>
                     </td>
                   </tr>
                 ))}
