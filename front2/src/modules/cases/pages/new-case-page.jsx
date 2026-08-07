@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { FolderOpen, FolderPlus, Search, UserPlus, Car } from 'lucide-react';
 import { toast } from 'sonner';
 import { createCase, createPerson, createVehicle, getCaseCatalogs, getPersonVehicles, getVehicleCatalogs, listBranches, listOrganizations, listVehicleBrands, listVehicleModels, searchPersons, searchVehicles } from '@/modules/cases/api/new-case-api';
+import { searchReferenciadores } from '@/modules/cases/api/cases-api';
 import { useSession } from '@/modules/auth/providers/session-provider';
 import { Card } from '@/shared/ui/card';
 import { Input } from '@/shared/ui/input';
@@ -49,6 +50,8 @@ export const NewCasePage = () => {
   const [selectedVehicleId, setSelectedVehicleId] = useState(null);
   const [personSearch, setPersonSearch] = useState('');
   const [vehicleSearch, setVehicleSearch] = useState('');
+  const [referenciadorSearch, setReferenciadorSearch] = useState('');
+  const [selectedReferenciadorId, setSelectedReferenciadorId] = useState(null);
   const [errors, setErrors] = useState({});
   const [form, setForm] = useState(createInitialState());
   const personTimer = useRef(null);
@@ -67,6 +70,12 @@ export const NewCasePage = () => {
     queryKey: ['vehicles', 'search', vehicleDebounced],
     queryFn: () => searchVehicles({ q: vehicleDebounced, plate: vehicleDebounced }),
     enabled: vehicleDebounced.length >= 2 && !selectedVehicleId,
+  });
+
+  const referenciadorQuery = useQuery({
+    queryKey: ['referenciadores', 'search', referenciadorSearch],
+    queryFn: () => searchReferenciadores(referenciadorSearch),
+    enabled: referenciadorSearch.length >= 2 && !selectedReferenciadorId,
   });
 
   const linkedVehiclesQuery = useQuery({
@@ -222,6 +231,7 @@ export const NewCasePage = () => {
         branchId: form.branchId ? Number(form.branchId) : null,
         principalVehicleId: vehicleId,
         principalCustomerPersonId: personId,
+        referenciadorId: selectedReferenciadorId,
         referenced: form.referenced === 'SI',
         referredByPersonId: null,
         referredByText: form.referenced === 'SI' ? form.referredByText || null : null,
@@ -328,6 +338,31 @@ export const NewCasePage = () => {
                   <option key={option.id} value={option.id}>{option.name}</option>
                 ))}
               </Select>
+            </Field>
+
+            <Field label="Referenciador">
+              {selectedReferenciadorId ? (
+                <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm dark:border-emerald-800 dark:bg-emerald-950">
+                  <span className="font-medium text-emerald-800 dark:text-emerald-200">{referenciadorQuery.data?.find(r => r.id === selectedReferenciadorId)?.displayName || `#${selectedReferenciadorId}`}</span>
+                  <button type="button" className="ml-auto text-xs text-muted-foreground hover:text-destructive" onClick={() => { setSelectedReferenciadorId(null); setReferenciadorSearch(''); }}>✕</button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <Input value={referenciadorSearch} onChange={(e) => setReferenciadorSearch(e.target.value)} placeholder="Buscar por nombre..." />
+                  {(referenciadorQuery.data ?? []).length > 0 ? (
+                    <div className="absolute z-10 mt-1 w-full rounded-2xl border border-border bg-card p-2 shadow-haze">
+                      {referenciadorQuery.data.map((r) => (
+                        <button key={r.id} type="button" className="w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => { setSelectedReferenciadorId(r.id); setReferenciadorSearch(''); }}>
+                          <span className="font-medium">{r.displayName}</span>
+                          {r.telefono ? <span className="ml-2 text-xs text-muted-foreground">{r.telefono}</span> : null}
+                        </button>
+                      ))}
+                    </div>
+                  ) : referenciadorSearch.length >= 2 && !referenciadorQuery.isFetching ? (
+                    <p className="mt-1 text-xs text-muted-foreground">Sin resultados. Escribí el nombre completo para crear uno nuevo.</p>
+                  ) : null}
+                </div>
+              )}
             </Field>
 
             <Field label="Referenciado">
