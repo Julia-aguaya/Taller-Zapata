@@ -598,6 +598,93 @@ class CaseReadinessIntegrationTest {
                 .andExpect(jsonPath("$.tabs[1].blockingReasons.length()").value(0));
     }
 
+    // ── PARTICULAR: presupuesto cerrado desbloquea reparación ──
+
+    @Test
+    void shouldUnblockRepairWhenBudgetClosedForParticular() throws Exception {
+        Long caseId = createParticularCase();
+        completeVehicle(caseId);
+        createAndCloseBudget(caseId);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[1].tabCode").value("PRESUPUESTO"))
+                .andExpect(jsonPath("$.tabs[1].completed").value(true))
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("GESTION_REPARACION"))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(true));
+    }
+
+    // ── PARTICULAR: reparación definitiva desbloquea pagos ──
+
+    @Test
+    void shouldUnblockPaymentsWhenRepairDoneForParticular() throws Exception {
+        Long caseId = createParticularCase();
+        completeVehicle(caseId);
+        createAndCloseBudget(caseId);
+
+        // Agendar turno + ingreso + egreso definitivo
+        createAppointment(caseId);
+        createIntake(caseId);
+        createDefinitiveOutcome(caseId);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("GESTION_REPARACION"))
+                .andExpect(jsonPath("$.tabs[2].completed").value(true))
+                .andExpect(jsonPath("$.tabs[3].tabCode").value("PAGOS"))
+                .andExpect(jsonPath("$.tabs[3].allowed").value(true));
+    }
+
+    // ── TODO_RIESGO: franquicia PENDIENTE bloquea pagos ──
+
+    @Test
+    void shouldBlockPaymentsWhenFranchisePendingForTodoRiesgo() throws Exception {
+        Long caseId = createTodoRiesgoCase();
+        seedInsuranceData(caseId);
+        // Crear franquicia PENDIENTE
+        jdbcTemplate.update("INSERT INTO franquicias_caso (caso_id, estado_codigo, monto, modo_recupero_codigo) VALUES (?, ?, ?, ?)",
+                caseId, "PENDIENTE", new BigDecimal("50000"), "CIA_DEL_TERCERO");
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))
+                .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("La franquicia sigue pendiente de resolucion"));
+    }
+
+    @Test
+    void shouldAllowPaymentsWhenFranchiseResolvedForTodoRiesgo() throws Exception {
+        Long caseId = createTodoRiesgoCase();
+        seedInsuranceData(caseId);
+        jdbcTemplate.update("INSERT INTO franquicias_caso (caso_id, estado_codigo, monto, modo_recupero_codigo) VALUES (?, ?, ?, ?)",
+                caseId, "COBRADA", new BigDecimal("50000"), "CIA_DEL_TERCERO");
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))
+                .andExpect(jsonPath("$.tabs[4].blockingReasons.length()").value(0));
+    }
+
+    // ── TODO_RIESGO: cotización pendiente bloquea todo ──
+
+    @Test
+    void shouldBlockDownstreamWhenQuotationNotAgreedForTodoRiesgo() throws Exception {
+        Long caseId = createTodoRiesgoCase();
+        // Sin seguro → GESTION_TRAMITE bloquea PRESUPUESTO, REPARACION y PAGOS
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
+                .andExpect(jsonPath("$.tabs[3].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))
+                .andExpect(jsonPath("$.tabs[4].allowed").value(false));
+    }
+
     // ── Helpers ──────────────────────────────────────────────────
 
     private Long createTodoRiesgoCase() throws Exception {
@@ -646,5 +733,46 @@ class CaseReadinessIntegrationTest {
                 "INSERT INTO vehiculos (id, public_id, dominio, dominio_normalizado, activo) VALUES (?, ?, ?, ?, ?)",
                 10L, "00000000-0000-0000-0000-000000002010", "AB123CD", "AB123CD", true
         );
+    }
+
+    private void completeVehicle(Long caseId) {
+        jdbcTemplate.update("UPDATE vehiculos SET marca_texto = 'Ford', modelo_texto = 'Focus', anio = 2020, tipo_vehiculo_codigo = 'SEDAN', uso_codigo = 'PARTICULAR', caja_codigo = 'MANUAL' WHERE id = 10");
+    }
+
+    private void createAndCloseBudget(Long caseId) throws Exception {
+        mockMvc.perform(put("/api/v1/cases/{caseId}/budget", caseId)
+                .header("X-User-Id", "1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"items\":[{\"visualOrder\":1,\"affectedPiece\":\"Puerta\",\"taskCode\":\"CHAPA\",\"damageLevelCode\":\"LEVE\",\"partDecisionCode\":\"REPARAR\",\"actionCode\":\"REPARAR\",\"requiresReplacement\":false,\"partValue\":0,\"estimatedHours\":2,\"laborAmount\":100000,\"active\":true}]}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/cases/{caseId}/budget/close", caseId)
+                .header("X-User-Id", "1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"reportStatusCode\":\"CERRADO\",\"reportDate\":\"2026-01-01\",\"authorizedByUserDisplayName\":\"Admin\",\"interestedPartyDisplayName\":\"Cliente\",\"items\":[{\"visualOrder\":1,\"affectedPiece\":\"Puerta\",\"taskCode\":\"CHAPA\",\"damageLevelCode\":\"LEVE\",\"partDecisionCode\":\"REPARAR\",\"actionCode\":\"REPARAR\",\"requiresReplacement\":false,\"partValue\":0,\"estimatedHours\":2,\"laborAmount\":100000,\"active\":true}]}"))
+                .andExpect(status().isOk());
+    }
+
+    private void createAppointment(Long caseId) throws Exception {
+        mockMvc.perform(post("/api/v1/cases/{caseId}/appointments", caseId)
+                .header("X-User-Id", "1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"appointmentDate\":\"2026-01-10\",\"appointmentTime\":\"09:00\",\"estimatedDays\":2,\"statusCode\":\"PENDIENTE\",\"reentry\":false,\"notes\":null,\"userId\":1}"))
+                .andExpect(status().isOk());
+    }
+
+    private void createIntake(Long caseId) throws Exception {
+        mockMvc.perform(post("/api/v1/cases/{caseId}/intakes", caseId)
+                .header("X-User-Id", "1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"appointmentId\":1,\"vehicleId\":10,\"intakeAt\":\"2026-01-10T10:00:00\",\"mileage\":15000,\"receivedByUserId\":1,\"fuelCode\":null,\"estimatedExitDate\":\"2026-01-12\",\"hasObservations\":false,\"observationDetail\":null}"))
+                .andExpect(status().isOk());
+    }
+
+    private void createDefinitiveOutcome(Long caseId) throws Exception {
+        mockMvc.perform(post("/api/v1/cases/{caseId}/outcomes", caseId)
+                .header("X-User-Id", "1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"intakeId\":1,\"outcomeAt\":\"2026-01-12T18:00:00\",\"deliveredByUserId\":1,\"definitive\":true,\"shouldReenter\":false,\"repairedPhotosUploaded\":false,\"notes\":null}"))
+                .andExpect(status().isOk());
     }
 }
