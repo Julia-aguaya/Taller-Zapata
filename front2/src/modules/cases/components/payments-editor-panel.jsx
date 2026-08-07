@@ -63,6 +63,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
     reason: '',
   });
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [cancelMovement, setCancelMovement] = useState(null);
 
   const financeCatalogsQuery = useQuery({ queryKey: ['finance', 'catalogs'], queryFn: getFinanceCatalogs });
   const movementsQuery = useQuery({ queryKey: ['cases', String(caseId), 'financial-movements'], queryFn: () => listFinancialMovements(caseId) });
@@ -322,26 +323,8 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
                           a.download = `comprobante-${m.id}.pdf`;
                           a.click();
                         }}><FileDown className="mr-1 h-3.5 w-3.5" />Descargar comprobante</button>
-                        <button type="button" className="rounded-lg px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950" title="Anular pago" onClick={async () => {
-                          if (!confirm('¿Anular este pago? Se registrará un egreso por el mismo monto.')) return;
-                          try {
-                            await createFinancialMovement(caseId, {
-                              movementTypeCode: 'EGRESO', flowOriginCode: m.flowOriginCode || 'CLIENTE',
-                              counterpartyTypeCode: m.counterpartyTypeCode || 'PERSONA',
-                              counterpartyPersonId: m.counterpartyPersonId || null,
-                              counterpartyCompanyId: null,
-                              movementAt: new Date().toISOString(),
-                              grossAmount: m.netAmount, netAmount: m.netAmount,
-                              paymentMethodCode: m.paymentMethodCode || null,
-                              cancellationTypeCode: null, advancePayment: false, bonification: false,
-                              reason: `Anulación de pago #${m.id}`, externalReference: null, retentions: [], applications: [],
-                            });
-                            await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] });
-                            await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
-                            await onSaved?.();
-                            toast.success('Pago anulado.');
-                          } catch (e) { toast.error('No se pudo anular el pago.'); }
-                        }}><Ban className="mr-1 h-3.5 w-3.5" />Anular</button>
+                        <button type="button" className="rounded-lg px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950" title="Anular pago"
+                          onClick={() => setCancelMovement(m)}><Ban className="mr-1 h-3.5 w-3.5" />Anular</button>
                       </div>
                     </td>
                   </tr>
@@ -405,6 +388,33 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
         }}><FileDown className="mr-1.5 h-4 w-4" />Generar PDF</Button>
       </div>
     </div>
+
+    {/* Confirmación anular pago */}
+    <Dialog open={!!cancelMovement} onClose={() => setCancelMovement(null)} title="¿Anular este pago?" description="Se registrará un egreso por el mismo monto para revertir el movimiento.">
+      <div className="mt-4 flex gap-3">
+        <Button variant="outline" className="flex-1" onClick={() => setCancelMovement(null)}>Cancelar</Button>
+        <Button variant="destructive" className="flex-1" onClick={async () => {
+          const m = cancelMovement;
+          setCancelMovement(null);
+          try {
+            await createFinancialMovement(caseId, {
+              movementTypeCode: 'EGRESO', flowOriginCode: m.flowOriginCode || 'CLIENTE',
+              counterpartyTypeCode: m.counterpartyTypeCode || 'PERSONA',
+              counterpartyPersonId: m.counterpartyPersonId || null, counterpartyCompanyId: null,
+              movementAt: new Date().toISOString(),
+              grossAmount: m.netAmount, netAmount: m.netAmount,
+              paymentMethodCode: m.paymentMethodCode || null,
+              cancellationTypeCode: null, advancePayment: false, bonification: false,
+              reason: `Anulación de pago #${m.id}`, externalReference: null, retentions: [], applications: [],
+            });
+            await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] });
+            await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
+            await onSaved?.();
+            toast.success('Pago anulado.');
+          } catch (e) { toast.error('No se pudo anular el pago.'); }
+        }}>Anular pago</Button>
+      </div>
+    </Dialog>
   );
 };
 
