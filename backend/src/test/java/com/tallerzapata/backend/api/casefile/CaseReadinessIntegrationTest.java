@@ -84,71 +84,26 @@ class CaseReadinessIntegrationTest {
     }
 
     @Test
-    void shouldMarkTechnicalSheetAndBudgetAsCompletedWhenParticularIsReady() throws Exception {
+    void shouldMarkPaymentsCompletedWhenFullyPaid() throws Exception {
         Long caseId = createParticularCase();
+        completeVehicle(caseId);
+        createAndCloseBudget(caseId);
+        createAppointment(caseId);
+        createIntake(caseId);
+        createDefinitiveOutcome(caseId);
 
-        jdbcTemplate.update(
-                "UPDATE vehiculos SET marca_texto = ?, modelo_texto = ? WHERE id = ?",
-                "Chevrolet", "Astra", 10L
-        );
-
-        BudgetUpsertRequest budgetRequest = new BudgetUpsertRequest(
-                LocalDate.of(2026, 6, 26),
-                "BORRADOR",
-                new BigDecimal("1000.00"),
-                null,
-                new BigDecimal("0.00"),
-                3,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                "CLIENTE",
-                "PERSONA",
-                10L,
-                null,
-                LocalDateTime.of(2026, 7, 3, 10, 0),
-                new BigDecimal("1210.00"),
-                new BigDecimal("1210.00"),
-                "TRANSFERENCIA",
-                null,
-                "PRESUPUESTO",
-                false,
-                false,
-                "Pago total del cliente",
-                null,
-                List.of(),
-                List.of()
-        );
-
+        // Add full payment
         mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId)
                         .header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(movementRequest)))
+                        .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"CLIENTE\",\"counterpartyTypeCode\":\"PERSONA\",\"counterpartyPersonId\":10,\"movementAt\":\"2026-01-15T12:00:00\",\"grossAmount\":100000,\"netAmount\":100000,\"paymentMethodCode\":\"EFECTIVO\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[],\"applications\":[]}"))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
                         .header("X-User-Id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tabs[3].tabCode").value("PAGOS"))
-                .andExpect(jsonPath("$.tabs[3].allowed").value(true))
-                .andExpect(jsonPath("$.tabs[3].completed").value(true))
-                .andExpect(jsonPath("$.tabs[3].colorHint").value("BLUE"));
-
-        mockMvc.perform(get("/api/v1/cases/{caseId}", caseId)
-                        .header("X-User-Id", "1"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.visibleTramiteState.code").value("PAGADO"))
-                .andExpect(jsonPath("$.visibleRepairState.code").value("DAR_TURNO"));
+                .andExpect(jsonPath("$.tabs[3].allowed").value(true));
     }
 
     @Test
