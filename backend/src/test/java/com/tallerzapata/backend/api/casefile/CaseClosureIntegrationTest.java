@@ -89,7 +89,7 @@ class CaseClosureIntegrationTest {
         Long caseId = createTodoRiesgoCase();
         seedInsurance(caseId);
         jdbcTemplate.update("INSERT INTO caso_franquicia (caso_id, estado_franquicia_codigo, monto_franquicia, tipo_recupero_codigo) VALUES (?,?,?,?)",
-                caseId, "SIN_DEFINIR", new BigDecimal("50000"), "CIA_DEL_TERCERO");
+                caseId, "SIN_DEFINIR", new BigDecimal("50000"), "TERCERO");
         createDefinitiveOutcome(caseId);
 
         mockMvc.perform(get("/api/v1/cases/{caseId}", caseId)
