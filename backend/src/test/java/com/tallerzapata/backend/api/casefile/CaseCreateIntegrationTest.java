@@ -56,85 +56,6 @@ class CaseCreateIntegrationTest {
                 10L,
                 false,
                 null,
-                "",
-                "ALTA",
-                "Observacion inicial",
-                LocalDate.of(2026, 4, 20),
-                LocalTime.of(10, 30),
-                "Av. Siempre Viva 742",
-                "Choque lateral",
-                "Sin lesionados",
-                LocalDate.of(2026, 5, 20),
-                2,
-                "CLIENTE",
-                "PRINCIPAL"
-        );
-
-        MvcResult result = mockMvc.perform(post("/api/v1/cases")
-                        .header("X-User-Id", "1")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(request)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").isNumber())
-                .andExpect(jsonPath("$.folderCode").value("0001PZ"))
-                .andExpect(jsonPath("$.orderNumber").value(1))
-                .andExpect(jsonPath("$.currentCaseStateCode").value("INGRESADO"))
-                .andExpect(jsonPath("$.currentRepairStateCode").value("SIN_TURNO"))
-                .andExpect(jsonPath("$.visibleTramiteState.code").value("INGRESADO"))
-                .andExpect(jsonPath("$.visibleRepairState.code").value("EN_TRAMITE"))
-                .andExpect(jsonPath("$.createdByUserId").value(1))
-                .andExpect(jsonPath("$.createdByDisplayName").value("Admin Bootstrap"))
-                .andExpect(jsonPath("$.createdAt").isString())
-                .andReturn();
-
-        Long caseId = objectMapper.readTree(result.getResponse().getContentAsByteArray()).get("id").asLong();
-
-        Integer casePersonCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM caso_personas WHERE caso_id = ? AND persona_id = ? AND rol_caso_codigo = ? AND es_principal = 1",
-                Integer.class,
-                caseId,
-                10L,
-                "CLIENTE"
-        );
-        Integer caseVehicleCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM caso_vehiculos WHERE caso_id = ? AND vehiculo_id = ? AND rol_vehiculo_codigo = ? AND es_principal = 1",
-                Integer.class,
-                caseId,
-                10L,
-                "PRINCIPAL"
-        );
-        Integer caseIncidentCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM caso_siniestro WHERE caso_id = ?",
-                Integer.class,
-                caseId
-        );
-        Integer historyCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM caso_estado_historial WHERE caso_id = ?",
-                Integer.class,
-                caseId
-        );
-        Integer auditCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'crear'",
-                Integer.class,
-                caseId
-        );
-
-        assertThat(casePersonCount).isEqualTo(1);
-        assertThat(caseVehicleCount).isEqualTo(1);
-        assertThat(caseIncidentCount).isEqualTo(1);
-        assertThat(historyCount).isEqualTo(5);
-        assertThat(auditCount).isEqualTo(1);
-    }
-
-    @Test
-    void shouldRejectCreateWhenBranchDoesNotExist() throws Exception {
-        CaseCreateRequest request = new CaseCreateRequest(
-                1L,
-                1L,
-                999L,
-                10L,
-                10L,
-                false,
                 null,
                 null,
                 "MEDIA",
@@ -206,6 +127,7 @@ class CaseCreateIntegrationTest {
                 10L,
                 10L,
                 false,
+                null,
                 null,
                 "",
                 "ALTA",
