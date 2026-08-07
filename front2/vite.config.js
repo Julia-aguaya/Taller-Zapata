@@ -31,7 +31,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    setupFiles: [],
+    setupFiles: ['./src/test/setupTests.js'],
     deps: { inline: [/react/, /react-dom/] },
     resolve: {
       alias: {

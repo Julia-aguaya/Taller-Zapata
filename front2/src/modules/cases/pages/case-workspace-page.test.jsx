@@ -5,6 +5,7 @@ import { CaseWorkspacePage, countCompletedStages, formatDisplayValue, getFichaSu
 
 const mockGetCaseWorkspace = vi.fn();
 const mockRequestJson = vi.fn();
+const mockSearchReferenciadores = vi.fn();
 const mockInvalidateQueries = vi.fn();
 const mockUseQuery = vi.fn();
 
@@ -14,6 +15,7 @@ vi.mock('react-router-dom', () => ({
 
 vi.mock('@/modules/cases/api/cases-api', () => ({
   getCaseWorkspace: (...args) => mockGetCaseWorkspace(...args),
+  searchReferenciadores: (...args) => mockSearchReferenciadores(...args),
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -147,6 +149,8 @@ const vehicleCatalogs = {
   transmissionCodes: [{ code: 'MANUAL' }],
 };
 
+let referenciadorSearchResults = [];
+
 const renderPage = async (workspace = baseWorkspace) => {
   mockGetCaseWorkspace.mockResolvedValue(workspace);
   mockUseQuery.mockImplementation(({ queryKey }) => {
@@ -155,6 +159,7 @@ const renderPage = async (workspace = baseWorkspace) => {
     if (queryKey[1] === 11 || queryKey[1] === '11') return { data: personResponse, isLoading: false, isError: false };
     if (queryKey[1] === 22 || queryKey[1] === '22') return { data: vehicleResponse, isLoading: false, isError: false };
     if (queryKey[0] === 'vehicles' && queryKey[1] === 'catalogs') return { data: vehicleCatalogs, isLoading: false, isError: false };
+    if (queryKey[0] === 'referenciadores') return { data: referenciadorSearchResults, isLoading: false, isError: false, isFetching: false };
     if (queryKey[2] === 'audit') return { data: [], isLoading: false, isError: false };
     return { data: undefined, isLoading: false, isError: false };
   });
@@ -226,6 +231,8 @@ describe('CaseWorkspacePage UI', () => {
     mockRequestJson.mockReset();
     mockUseQuery.mockReset();
     mockInvalidateQueries.mockReset();
+    mockSearchReferenciadores.mockReset();
+    referenciadorSearchResults = [];
   });
 
   it('mantiene solo una seccion activa y deja pagos accesible', async () => {
@@ -234,7 +241,7 @@ describe('CaseWorkspacePage UI', () => {
     const selectedTabs = screen.getAllByRole('tab').filter((tab) => tab.getAttribute('aria-selected') === 'true');
     expect(selectedTabs).toHaveLength(1);
     expect(screen.getByRole('tab', { name: /pagos/i })).toHaveAttribute('aria-disabled', 'false');
-    expect(screen.getByRole('tab', { name: /gestion de reparacion/i })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('tab', { name: /gesti[oó]n reparaci[oó]n/i })).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByText('0 de 4 etapas completas')).toBeInTheDocument();
   });
 
@@ -249,7 +256,7 @@ describe('CaseWorkspacePage UI', () => {
   it('oculta ids y normalizados en ficha tecnica sin perder los datos visibles', async () => {
     await renderPage();
 
-    await userEvent.click(screen.getByRole('tab', { name: /ficha tecnica/i }));
+    await userEvent.click(screen.getByRole('tab', { name: /ficha t[eé]cnica/i }));
     await screen.findByRole('heading', { name: 'Ficha tecnica' });
 
     expect(screen.getAllByText('Sin informar').length).toBeGreaterThan(0);
@@ -267,7 +274,7 @@ describe('CaseWorkspacePage UI', () => {
   it('conserva los campos de edicion existentes', async () => {
     await renderPage();
 
-    await userEvent.click(screen.getByRole('tab', { name: /ficha tecnica/i }));
+    await userEvent.click(screen.getByRole('tab', { name: /ficha t[eé]cnica/i }));
     await userEvent.click(screen.getByRole('button', { name: /editar ficha/i }));
 
     expect(screen.getByLabelText('Nombre')).toBeInTheDocument();
@@ -276,6 +283,53 @@ describe('CaseWorkspacePage UI', () => {
     expect(screen.getByLabelText('Modelo')).toBeInTheDocument();
     expect(screen.getByLabelText('Patente')).toBeInTheDocument();
     expect(screen.getByLabelText('Kilometraje')).toBeInTheDocument();
+  });
+
+  it('persiste el referenciador seleccionado al guardar la ficha tecnica', async () => {
+    const user = userEvent.setup();
+    const referenciador = { id: 77, displayName: 'Ana Referidora', telefono: '3415552222' };
+    referenciadorSearchResults = [referenciador];
+    await renderPage();
+
+    await user.click(screen.getByRole('tab', { name: /ficha t[eé]cnica/i }));
+    await user.click(screen.getByRole('button', { name: /editar ficha/i }));
+    await user.selectOptions(screen.getByLabelText('Referenciado'), 'SI');
+    await user.type(screen.getByPlaceholderText('Buscar por nombre...'), 'An');
+    await user.click(await screen.findByRole('button', { name: /ana referidora/i }));
+    await user.click(screen.getByRole('button', { name: /guardar cambios/i }));
+
+    expect(mockRequestJson).toHaveBeenLastCalledWith('/cases/1', {
+      method: 'PUT',
+      body: JSON.stringify({
+        referenced: true,
+        referredByPersonId: null,
+        referenciadorId: 77,
+        referredByText: null,
+        priorityCode: null,
+        generalObservations: null,
+        closedAt: null,
+        archivedAt: null,
+      }),
+    });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '1', 'workspace'] });
+  });
+
+  it('limpia el referenciador al desmarcar una carpeta referenciada', async () => {
+    const user = userEvent.setup();
+    await renderPage({
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, referenced: true, referenciadorId: 77 },
+    });
+
+    await user.click(screen.getByRole('tab', { name: /ficha t[eé]cnica/i }));
+    await user.click(screen.getByRole('button', { name: /editar ficha/i }));
+    await user.selectOptions(screen.getByLabelText('Referenciado'), 'NO');
+    await user.click(screen.getByRole('button', { name: /guardar cambios/i }));
+
+    expect(JSON.parse(mockRequestJson.mock.calls.at(-1)[1].body)).toMatchObject({
+      referenced: false,
+      referenciadorId: null,
+    });
   });
 
   it('usa scroll horizontal controlado para tabs responsive', async () => {

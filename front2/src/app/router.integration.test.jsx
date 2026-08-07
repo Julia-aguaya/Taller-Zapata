@@ -235,6 +235,6 @@ describe('AppRouter integration', () => {
     await user.click(within(managementLinks).getByRole('button', { name: 'Taller y sucursales' }));
     expect(screen.getByRole('button', { name: 'Gestión' })).not.toHaveAttribute('aria-current');
     expect(within(managementLinks).getByRole('button', { name: 'Taller y sucursales' })).toHaveAttribute('aria-current', 'page');
-    await waitFor(() => expect(screen.getByText('Taller y sucursales')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getAllByRole('heading', { name: 'Taller y sucursales' }).length).toBeGreaterThan(0));
   });
 });

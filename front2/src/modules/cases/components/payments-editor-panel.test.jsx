@@ -54,6 +54,10 @@ const mount = () => {
   return render(<PaymentsEditorPanel {...baseProps} />);
 };
 
+const openPaymentForm = () => {
+  fireEvent.click(screen.getAllByRole('button', { name: /registrar pago/i })[0]);
+};
+
 describe('PaymentsEditorPanel', () => {
   it('shows cliente and vehiculo from case detail', () => {
     mount();
@@ -70,6 +74,7 @@ describe('PaymentsEditorPanel', () => {
 
   it('renders seña, cancela, modo, and factura selects', () => {
     mount();
+    openPaymentForm();
     expect(screen.getByText('Seña')).toBeTruthy();
     expect(screen.getByText('Cancela saldo')).toBeTruthy();
     expect(screen.getByText('Modo')).toBeTruthy();
@@ -78,7 +83,8 @@ describe('PaymentsEditorPanel', () => {
 
   it('renders Registrar pago button', () => {
     mount();
-    expect(screen.getByText('Registrar pago')).toBeTruthy();
+    openPaymentForm();
+    expect(screen.getByRole('button', { name: /^registrar pago$/i })).toBeTruthy();
   });
 
   it('shows historial section', () => {
@@ -88,14 +94,16 @@ describe('PaymentsEditorPanel', () => {
 
   it('calls createFinancialMovement on save', async () => {
     mount();
+    openPaymentForm();
     const montoInput = document.querySelector('input[type="number"]');
     if (montoInput) fireEvent.change(montoInput, { target: { value: '100000' } });
-    fireEvent.click(screen.getByText('Registrar pago'));
+    fireEvent.click(screen.getByRole('button', { name: /^registrar pago$/i }));
     await waitFor(() => expect(mockCreateFinancialMovement).toHaveBeenCalled());
   });
 
   it('shows factura fields when Factura = SI', () => {
     mount();
+    openPaymentForm();
     const selects = document.querySelectorAll('select');
     const facturaSelect = Array.from(selects).find(s => s.parentElement?.textContent?.includes('Factura'));
     if (facturaSelect) fireEvent.change(facturaSelect, { target: { value: 'SI' } });

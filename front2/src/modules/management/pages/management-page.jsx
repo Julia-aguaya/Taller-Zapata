@@ -14,6 +14,7 @@ const fetchOrganizations = () => requestJson('/organizations');
 const fetchBranches = (orgId) => requestJson(`/branches?organizationId=${orgId}`);
 const updateOrganization = (id, payload) => requestJson(`/organizations/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
 const updateBranch = (id, payload) => requestJson(`/branches/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+const EMPTY_BRANCHES = [];
 
 const createOrgForm = (org) => ({
   name: org?.name || '',
@@ -51,7 +52,7 @@ export const ManagementPage = () => {
   const branchesQuery = useQuery({ queryKey: ['branches', selectedOrgId], queryFn: () => fetchBranches(selectedOrgId), enabled: Boolean(selectedOrgId) });
 
   const org = (orgsQuery.data ?? []).find((item) => item.id === selectedOrgId);
-  const branches = branchesQuery.data ?? [];
+  const branches = branchesQuery.data ?? EMPTY_BRANCHES;
 
   useEffect(() => {
     if (org) {

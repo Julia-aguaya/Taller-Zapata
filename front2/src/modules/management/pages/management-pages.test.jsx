@@ -168,12 +168,13 @@ describe('management pages', () => {
     expect(screen.queryByText('VEH-001')).not.toBeInTheDocument();
   });
 
-  it('referenciadores sin backend no presenta formularios falsos', () => {
+  it('referenciadores permite cargar datos con el formulario disponible', () => {
     renderWithQuery(<ManagementReferrersPage />);
 
-    expect(screen.getByText(/sin CRUD real confirmado/i)).toBeInTheDocument();
-    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /guardar/i })).not.toBeInTheDocument();
+    expect(screen.getByText('Nuevo referenciador')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Nombre')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Apellido')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /agregar/i })).toBeInTheDocument();
   });
 
   it('taller y sucursales entra en edición solo al presionar editar', async () => {
@@ -191,10 +192,10 @@ describe('management pages', () => {
 
     renderWithQuery(<ManagementPage />);
 
-    expect(await screen.findByText('Taller Zapata')).toBeInTheDocument();
+    expect((await screen.findAllByRole('heading', { name: 'Taller Zapata' })).length).toBeGreaterThan(0);
     expect(screen.queryByDisplayValue('Taller Zapata SA')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /^Editar$/i }));
+    await user.click(screen.getAllByRole('button', { name: /^Editar$/i })[0]);
     expect(await screen.findByDisplayValue('Taller Zapata SA')).toBeInTheDocument();
   });
 
