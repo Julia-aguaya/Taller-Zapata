@@ -136,6 +136,13 @@ public class CaseReadinessService {
             tabs.add(budgetTab);
             tabs.add(buildTodoRiesgoReparacionReadiness(caseId, budgetTab.completed(), tramiteTab.completed()));
             tabs.add(buildTodoRiesgoPagosReadiness(caseId));
+        } else if ("GRANIZO".equals(caseType.getCode())) {
+            CaseReadinessTabResponse tramiteTab = buildGranizoGestionTramiteReadiness(caseId);
+            tabs.add(tramiteTab);
+            CaseReadinessTabResponse budgetTab = buildTodoRiesgoPresupuestoReadiness(caseId, principalVehicle, tramiteTab.completed());
+            tabs.add(budgetTab);
+            tabs.add(buildTodoRiesgoReparacionReadiness(caseId, budgetTab.completed(), tramiteTab.completed()));
+            tabs.add(buildGranizoPagosReadiness(caseId));
         }
 
         return new CaseReadinessResponse(caseId, caseType.getCode(), tabs);
@@ -377,6 +384,39 @@ public class CaseReadinessService {
             if ("PENDIENTE".equals(franchiseStatus)) {
                 blocking.add("La franquicia sigue pendiente de resolucion");
             }
+        }
+
+        return toTab("PAGOS", true, blocking, List.of());
+    }
+
+    // ── GRANIZO ────────────────────────────────────────────────
+
+    private CaseReadinessTabResponse buildGranizoGestionTramiteReadiness(Long caseId) {
+        List<String> blocking = new ArrayList<>();
+        CaseInsuranceEntity insurance = caseInsuranceRepository.findByCaseId(caseId).orElse(null);
+        InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
+
+        if (insurance == null || insurance.getInsuranceCompanyId() == null) {
+            blocking.add("Falta seleccionar compania de seguro");
+        }
+        if (processing == null || processing.getAgreedAmount() == null || processing.getQuotationDate() == null) {
+            blocking.add("Falta acordar cotizacion con la Cia.");
+        }
+
+        boolean hasPendingTasks = operationalTaskRepository.findAll().stream()
+                .anyMatch(t -> t.getCaseId().equals(caseId) && !Boolean.TRUE.equals(t.getResolved()));
+        if (hasPendingTasks) blocking.add("Hay tareas pendientes en la agenda");
+
+        return toTab("GESTION_TRAMITE", true, blocking, List.of());
+    }
+
+    private CaseReadinessTabResponse buildGranizoPagosReadiness(Long caseId) {
+        List<String> blocking = new ArrayList<>();
+        InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
+
+        if (processing == null || processing.getAgreedAmount() == null || processing.getQuotationDate() == null) {
+            blocking.add("Falta acordar cotizacion con la Cia. antes de registrar pagos");
+            return toTab("PAGOS", false, blocking, List.of());
         }
 
         return toTab("PAGOS", true, blocking, List.of());
