@@ -134,19 +134,23 @@ class CaseClosureIntegrationTest {
 
     private void createDefinitiveOutcome(Long caseId) throws Exception {
         // Create appointment
-        mockMvc.perform(post("/api/v1/cases/{caseId}/appointments", caseId)
-                .header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"appointmentDate\":\"2026-01-10\",\"appointmentTime\":\"09:00\",\"estimatedDays\":2,\"statusCode\":\"PENDIENTE\",\"reentry\":false,\"userId\":1}"))
-                .andExpect(status().isOk());
+        String appt = mockMvc.perform(post("/api/v1/cases/{caseId}/appointments", caseId)
+                        .header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"appointmentDate\":\"2026-01-10\",\"appointmentTime\":\"09:00\",\"estimatedDays\":2,\"statusCode\":\"PENDIENTE\",\"reentry\":false,\"userId\":1}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        Long apptId = objectMapper.readTree(appt).get("id").asLong();
+
         // Create intake
-        mockMvc.perform(post("/api/v1/cases/{caseId}/intakes", caseId)
-                .header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"appointmentId\":1,\"vehicleId\":10,\"intakeAt\":\"2026-01-10T10:00:00\",\"mileage\":15000,\"receivedByUserId\":1,\"hasObservations\":false}"))
-                .andExpect(status().isOk());
+        String intake = mockMvc.perform(post("/api/v1/cases/{caseId}/intakes", caseId)
+                        .header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"appointmentId\":" + apptId + ",\"vehicleId\":10,\"intakeAt\":\"2026-01-10T10:00:00\",\"mileage\":15000,\"receivedByUserId\":1,\"hasObservations\":false}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        Long intakeId = objectMapper.readTree(intake).get("id").asLong();
+
         // Create definitive outcome
         mockMvc.perform(post("/api/v1/cases/{caseId}/outcomes", caseId)
-                .header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"intakeId\":1,\"outcomeAt\":\"2026-01-12T18:00:00\",\"deliveredByUserId\":1,\"definitive\":true,\"shouldReenter\":false,\"repairedPhotosUploaded\":false}"))
+                        .header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"intakeId\":" + intakeId + ",\"outcomeAt\":\"2026-01-12T18:00:00\",\"deliveredByUserId\":1,\"definitive\":true,\"shouldReenter\":false,\"repairedPhotosUploaded\":false}"))
                 .andExpect(status().isOk());
     }
 
@@ -158,11 +162,11 @@ class CaseClosureIntegrationTest {
     }
 
     private void seedInsurance(Long caseId) {
-        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, nombre, activo) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE nombre = nombre",
-                1L, "00000000-0000-0000-0000-000000000101", "La Segunda", true);
-        jdbcTemplate.update("INSERT INTO caso_seguro (caso_id, compania_seguro_id) VALUES (?,?) ON DUPLICATE KEY UPDATE compania_seguro_id = compania_seguro_id",
+        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, activo) VALUES (?,?,?,?,?)",
+                1L, "00000000-0000-0000-0000-000000000101", "LA_SEGUNDA", "La Segunda", true);
+        jdbcTemplate.update("INSERT INTO caso_seguro (caso_id, compania_seguro_id) VALUES (?,?)",
                 caseId, 1L);
-        jdbcTemplate.update("INSERT INTO tramitacion_seguro (caso_id, fecha_cotizacion, monto_acordado, monto_facturar_compania) VALUES (?,?,?,?) ON DUPLICATE KEY UPDATE fecha_cotizacion = fecha_cotizacion",
+        jdbcTemplate.update("INSERT INTO tramitacion_seguro (caso_id, fecha_cotizacion, monto_acordado, monto_facturar_compania) VALUES (?,?,?,?)",
                 caseId, LocalDate.now(), new BigDecimal("100000"), new BigDecimal("100000"));
     }
 }
