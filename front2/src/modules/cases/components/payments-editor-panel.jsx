@@ -4,6 +4,8 @@ import { Ban, Building2, CheckCircle, FileDown, Receipt, Save } from 'lucide-rea
 import { toast } from 'sonner';
 import { createFinancialMovement, createReceipt, getClientPaymentPdfUrl, getFinanceCatalogs, getReceiptPdfUrl, listFinancialMovements, listReceipts } from '@/modules/cases/api/finance-api';
 import { useSession } from '@/modules/auth/providers/session-provider';
+import { requestJson } from '@/shared/api/http-client';
+import { readStoredAuth } from '@/shared/auth/session-storage';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
