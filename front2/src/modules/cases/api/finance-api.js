@@ -18,8 +18,8 @@ export const listReceipts = (caseId) => requestJson(`/cases/${caseId}/receipts`)
 
 export const getReceiptPdfUrl = (receiptId) => `/api/v1/receipts/${receiptId}/pdf`;
 
-export const getClientPaymentPdfUrl = (caseId, clientName, vehiclePlate, comprobanteTipo, observaciones, razonSocial, facturaNumero) => {
-  const p = new URLSearchParams({ clientName, vehiclePlate, comprobanteTipo });
+export const getClientPaymentPdfUrl = (caseId, clientName, vehiclePlate, comprobanteTipo, totalCotizado, observaciones, razonSocial, facturaNumero) => {
+  const p = new URLSearchParams({ clientName, vehiclePlate, comprobanteTipo, totalCotizado: String(Math.round(totalCotizado)) });
   if (observaciones) p.set('observaciones', observaciones);
   if (razonSocial) p.set('facturaRazonSocial', razonSocial);
   if (facturaNumero) p.set('facturaNumero', facturaNumero);

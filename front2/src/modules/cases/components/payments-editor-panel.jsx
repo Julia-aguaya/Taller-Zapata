@@ -340,14 +340,17 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
 
       <div className="mt-5 flex justify-end">
         <Button variant="outline" size="sm" onClick={async () => {
-          const url = getClientPaymentPdfUrl(caseId, caseDetail?.principalCustomerName || 'Cliente', caseDetail?.principalVehiclePlate || '', comprobanteTipo, form.reason, form.razonSocial, form.facturaNumero);
+          const url = getClientPaymentPdfUrl(caseId, caseDetail?.principalCustomerName || 'Cliente', caseDetail?.principalVehiclePlate || '', comprobanteTipo, cotizadoConIva, form.reason, form.razonSocial, form.facturaNumero);
           const stored = readStoredAuth();
           const token = stored?.accessToken;
           if (!token) { toast.error('No hay sesión activa.'); return; }
           const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
           if (!res.ok) { toast.error('No se pudo generar el PDF.'); return; }
           const blob = await res.blob();
-          window.open(URL.createObjectURL(blob), '_blank');
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = `comprobante-pago-${caseId}.pdf`;
+          a.click();
         }}><FileDown className="mr-1.5 h-4 w-4" />Generar PDF</Button>
       </div>
     </div>

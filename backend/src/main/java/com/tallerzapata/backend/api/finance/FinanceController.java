@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import java.math.BigDecimal;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -63,11 +64,11 @@ public class FinanceController {
     @GetMapping("/cases/{caseId}/finance/client-payment-pdf")
     public ResponseEntity<byte[]> getClientPaymentPdf(@PathVariable Long caseId,
             @RequestParam String clientName, @RequestParam String vehiclePlate, 
-            @RequestParam String comprobanteTipo,
+            @RequestParam String comprobanteTipo, @RequestParam BigDecimal totalCotizado,
             @RequestParam(required = false) String observaciones,
             @RequestParam(required = false) String facturaRazonSocial,
             @RequestParam(required = false) String facturaNumero) {
-        byte[] pdf = financeService.getClientPaymentPdf(caseId, clientName, vehiclePlate, comprobanteTipo, observaciones, facturaRazonSocial, facturaNumero);
+        byte[] pdf = financeService.getClientPaymentPdf(caseId, clientName, vehiclePlate, comprobanteTipo, totalCotizado, observaciones, facturaRazonSocial, facturaNumero);
         return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=comprobante-pago-" + caseId + ".pdf").contentType(MediaType.APPLICATION_PDF).body(pdf);
     }
 

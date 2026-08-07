@@ -322,13 +322,12 @@ public class FinanceService {
     }
 
     @Transactional(readOnly = true)
-    public byte[] getClientPaymentPdf(Long caseId, String clientName, String vehiclePlate, String comprobanteTipo, String observaciones, String facturaRazonSocial, String facturaNumero) {
+    public byte[] getClientPaymentPdf(Long caseId, String clientName, String vehiclePlate, String comprobanteTipo, BigDecimal totalCotizado, String observaciones, String facturaRazonSocial, String facturaNumero) {
         CaseEntity caseEntity = caseRepository.findById(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
-        BudgetEntity budget = budgetRepository.findByCaseId(caseId).orElse(null);
         List<FinancialMovementEntity> movements = movementRepository.findByCaseId(caseId, Sort.by(Sort.Order.asc("movementAt")));
         OrganizationEntity org = organizationRepository.findAll().stream().findFirst().orElse(null);
         BranchEntity branch = org != null ? branchRepository.findByOrganizationIdOrderByNameAsc(org.getId()).stream().findFirst().orElse(null) : null;
-        return clientPaymentPdfService.generate(caseEntity, clientName, vehiclePlate, comprobanteTipo, budget, movements, observaciones, facturaRazonSocial, facturaNumero, org, branch);
+        return clientPaymentPdfService.generate(caseEntity, clientName, vehiclePlate, comprobanteTipo, totalCotizado, movements, observaciones, facturaRazonSocial, facturaNumero, org, branch);
     }
 
     @Transactional(readOnly = true)

@@ -25,7 +25,7 @@ public class ClientPaymentPdfService {
     private static final Locale AR = new Locale("es", "AR");
 
     public byte[] generate(CaseEntity caseEntity, String clientName, String vehiclePlate,
-                           String comprobanteTipo, BudgetEntity budget,
+                           String comprobanteTipo, BigDecimal totalCotizado,
                            List<FinancialMovementEntity> movements,
                            String observaciones, String facturaRazonSocial, String facturaNumero,
                            OrganizationEntity org, BranchEntity branch) {
@@ -79,18 +79,14 @@ public class ClientPaymentPdfService {
             addInfoRow(info, "Cliente:", clientName, normalFont);
             addInfoRow(info, "Vehículo:", vehiclePlate, normalFont);
             addInfoRow(info, "Carpeta:", caseEntity.getFolderCode() != null ? caseEntity.getFolderCode() : "#" + caseEntity.getId(), normalFont);
-            if (budget != null && budget.getBudgetDate() != null) {
-                addInfoRow(info, "Presupuesto:", budget.getBudgetDate().format(DATE_FMT), normalFont);
-            }
-            addInfoRow(info, "Total cotizado:", formatCurrency(budget != null ? budget.getTotalQuoted() : BigDecimal.ZERO), boldFont);
+            addInfoRow(info, "Total cotizado:", formatCurrency(totalCotizado != null ? totalCotizado : BigDecimal.ZERO), boldFont);
             addInfoRow(info, "Comprobante:", comprobanteTipo != null ? comprobanteTipo : "A", normalFont);
             document.add(info);
             document.add(new Paragraph(" "));
             document.add(separator());
 
             // ══ PAGOS ══
-            BigDecimal totalCotizado = budget != null && budget.getTotalQuoted() != null ? budget.getTotalQuoted() : BigDecimal.ZERO;
-            BigDecimal saldo = totalCotizado;
+            BigDecimal saldo = totalCotizado != null ? totalCotizado : BigDecimal.ZERO;
 
             List<FinancialMovementEntity> sorted = movements.stream()
                     .sorted(Comparator.comparing(FinancialMovementEntity::getMovementAt))
@@ -98,11 +94,11 @@ public class ClientPaymentPdfService {
 
             for (FinancialMovementEntity m : sorted) {
                 if (!"CLIENTE".equalsIgnoreCase(m.getFlowOriginCode() != null ? m.getFlowOriginCode() : "")) continue;
+                BigDecimal monto = m.getNetAmount() != null ? m.getNetAmount() : BigDecimal.ZERO;
                 boolean isAdvance = Boolean.TRUE.equals(m.getAdvancePayment());
                 boolean isBonification = Boolean.TRUE.equals(m.getBonification());
-                BigDecimal monto = m.getNetAmount() != null ? m.getNetAmount() : BigDecimal.ZERO;
+                String tipoLabel = isAdvance ? "SEÑA" : isBonification ? "BONIFICACIÓN" : saldo.compareTo(monto) > 0 ? "PAGO PARCIAL" : "PAGO TOTAL";
                 saldo = saldo.subtract(monto);
-                String tipoLabel = isAdvance ? "SEÑA" : isBonification ? "BONIFICACIÓN" : saldo.compareTo(BigDecimal.ZERO) > 0 ? "PAGO PARCIAL" : "PAGO TOTAL";
 
                 Font tipoFont = isAdvance ? boldFont : saldo.compareTo(BigDecimal.ZERO) <= 0 ? greenFont : redFont;
 
