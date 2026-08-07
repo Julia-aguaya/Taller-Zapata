@@ -378,6 +378,44 @@ const CaseHistorySection = ({ caseId }) => {
   });
 
   const events = auditQuery.data ?? [];
+  const [auditFilter, setAuditFilter] = useState('');
+
+  const ACTION_LABELS = {
+    nota_manual: 'Nota manual',
+    crear_caso: 'Creación de carpeta',
+    cerrar_caso: 'Cierre de carpeta',
+    crear_presupuesto: 'Creación de presupuesto',
+    cerrar_presupuesto: 'Cierre de presupuesto',
+    actualizar_presupuesto: 'Actualización de presupuesto',
+    crear_movimiento_financiero: 'Se realizó movimiento financiero',
+    actualizar_movimiento_financiero: 'Se actualizó movimiento financiero',
+    eliminar_movimiento_financiero: 'Se eliminó movimiento financiero',
+    crear_recibo: 'Se emitió recibo',
+    crear_repuesto_caso: 'Se agregó repuesto',
+    actualizar_repuesto_caso: 'Se actualizó repuesto',
+    eliminar_repuesto_caso: 'Se eliminó repuesto',
+    agendar_turno: 'Se agendó turno',
+    cancelar_turno: 'Se canceló turno',
+    registrar_ingreso: 'Se registró ingreso del vehículo',
+    registrar_egreso: 'Se registró egreso del vehículo',
+    actualizar_ficha_tecnica: 'Se actualizó ficha técnica',
+    override_estado_visible: 'Cambio manual de estado',
+    crear_cotizacion: 'Se creó cotización',
+    acordar_cotizacion: 'Se acordó cotización con la Cía.',
+  };
+  const DOMAIN_LABELS = {
+    presupuestos: 'Presupuesto',
+    finanzas: 'Finanzas',
+    reparacion: 'Reparación',
+    repuestos_caso: 'Repuestos',
+    tramite: 'Trámite',
+    ficha_tecnica: 'Ficha Técnica',
+    caso: 'Caso',
+  };
+  const labelFor = (code) => ACTION_LABELS[code] || code?.replace(/_/g, ' ') || '';
+  const domainLabel = (d) => DOMAIN_LABELS[d] || d || '';
+  const filteredEvents = auditFilter ? events.filter(e => e.domain === auditFilter) : events;
+  const uniqueDomains = [...new Set(events.map(e => e.domain).filter(Boolean))];
 
   return (
     <Card className="border-white/50 bg-card/90 p-5 shadow-haze">
@@ -403,6 +441,12 @@ const CaseHistorySection = ({ caseId }) => {
             <Clock className="h-4 w-4" />
             Historial
           </button>
+          {uniqueDomains.length > 0 ? (
+            <select className="h-9 rounded-2xl border border-border/60 bg-background/70 px-3 text-xs" value={auditFilter} onChange={(e) => setAuditFilter(e.target.value)}>
+              <option value="">Todos los eventos</option>
+              {uniqueDomains.map((d) => (<option key={d} value={d}>{domainLabel(d)}</option>))}
+            </select>
+          ) : null}
         </div>
         <Button variant="outline" size="sm" onClick={() => setShowNoteModal(true)}>
           + Agregar nota
@@ -416,7 +460,7 @@ const CaseHistorySection = ({ caseId }) => {
           <p className="py-8 text-center text-sm text-muted-foreground">Todavía no hay eventos registrados para esta carpeta.</p>
         ) : (
           <div className="max-h-96 space-y-2 overflow-y-auto">
-            {events.map((event) => (
+            {filteredEvents.map((event) => (
               <div key={event.id} className={`rounded-2xl border px-4 py-3 text-sm ${event.actionCode === 'nota_manual' ? 'border-amber-200 bg-amber-50/60' : 'border-border/50 bg-background/60'}`}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
@@ -424,12 +468,9 @@ const CaseHistorySection = ({ caseId }) => {
                     {event.actionCode === 'nota_manual' ? (
                       <Badge variant="outline" className="border-amber-300 text-[10px] text-amber-700">Nota</Badge>
                     ) : (
-                      <>
-                        <Badge variant="outline" className="text-[10px]">{event.domain}</Badge>
-                        <Badge variant="secondary" className="text-[10px]">{event.actionCode}</Badge>
-                      </>
+                      <Badge variant="outline" className="text-[10px]">{domainLabel(event.domain)}</Badge>
                     )}
-                  </div>
+                    <span className="text-[11px] text-muted-foreground">{labelFor(event.actionCode)}</span>
                   <span className="text-xs text-muted-foreground">{formatDateTime(event.createdAt)}</span>
                 </div>
                 {event.changeNote ? <p className="mt-1.5 leading-relaxed text-foreground">{event.changeNote}</p> : null}
