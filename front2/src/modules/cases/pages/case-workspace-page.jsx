@@ -471,6 +471,7 @@ const CaseHistorySection = ({ caseId }) => {
                       <Badge variant="outline" className="text-[10px]">{domainLabel(event.domain)}</Badge>
                     )}
                     <span className="text-[11px] text-muted-foreground">{labelFor(event.actionCode)}</span>
+                  </div>
                   <span className="text-xs text-muted-foreground">{formatDateTime(event.createdAt)}</span>
                 </div>
                 {event.changeNote ? <p className="mt-1.5 leading-relaxed text-foreground">{event.changeNote}</p> : null}
