@@ -4,12 +4,12 @@ import { Ban, Building2, CheckCircle, FileDown, Receipt, Save } from 'lucide-rea
 import { toast } from 'sonner';
 import { createFinancialMovement, createReceipt, getClientPaymentPdfUrl, getFinanceCatalogs, getReceiptPdfUrl, listFinancialMovements, listReceipts } from '@/modules/cases/api/finance-api';
 import { useSession } from '@/modules/auth/providers/session-provider';
-import { requestJson } from '@/shared/api/http-client';
-import { readStoredAuth } from '@/shared/auth/session-storage';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
+import { Select } from '@/shared/ui/select';
+import { Dialog } from '@/shared/ui/dialog';
 
 const toAmount = (value) => {
   const parsed = Number(value);
@@ -205,10 +205,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
       </div>
 
       {/* Modal: Registrar pago */}
-      {showPaymentModal ? (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm py-10" onClick={() => setShowPaymentModal(false)}>
-          <div className="w-full max-w-lg rounded-3xl border border-border bg-card p-6 shadow-haze my-auto" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold">Registrar pago</h3>
+      <Dialog open={showPaymentModal} onClose={() => setShowPaymentModal(false)} title="Registrar pago" description={`Cliente: ${caseDetail?.principalCustomerName || ''} — ${caseDetail?.principalVehiclePlate || ''}`}>
 
         {/* Tipo de comprobante */}
         <div className="mb-5 rounded-2xl border border-border/60 bg-background/70 p-4">
@@ -275,9 +272,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
           <Button variant="outline" className="flex-1" onClick={() => setShowPaymentModal(false)}>Cancelar</Button>
           <Button className="flex-1" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !caseDetail.principalCustomerPersonId}><Save className="mr-1.5 h-4 w-4" />Registrar pago</Button>
         </div>
-          </div>
-        </div>
-      ) : null}
+      </Dialog>
 
       {/* Historial */}
       <div className="rounded-3xl border border-border/70 bg-card p-5">
