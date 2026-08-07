@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { createFinancialMovement, createReceipt, getClientPaymentPdfUrl, getFinanceCatalogs, getReceiptPdfUrl, listFinancialMovements, listReceipts } from '@/modules/cases/api/finance-api';
 import { useSession } from '@/modules/auth/providers/session-provider';
 import { requestJson } from '@/shared/api/http-client';
+import { readStoredAuth } from '@/shared/auth/session-storage';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
@@ -340,7 +341,9 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
       <div className="mt-5 flex justify-end">
         <Button variant="outline" size="sm" onClick={async () => {
           const url = getClientPaymentPdfUrl(caseId, caseDetail?.principalCustomerName || 'Cliente', caseDetail?.principalVehiclePlate || '', comprobanteTipo, form.reason, form.razonSocial, form.facturaNumero);
-          const token = session?.token || localStorage.getItem('token');
+          const stored = readStoredAuth();
+          const token = stored?.accessToken;
+          if (!token) { toast.error('No hay sesión activa.'); return; }
           const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
           if (!res.ok) { toast.error('No se pudo generar el PDF.'); return; }
           const blob = await res.blob();
