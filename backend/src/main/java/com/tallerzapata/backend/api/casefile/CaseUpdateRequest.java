@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 public record CaseUpdateRequest(
         Boolean referenced,
         Long referredByPersonId,
+        Long referenciadorId,
         String referredByText,
         String priorityCode,
         String generalObservations,

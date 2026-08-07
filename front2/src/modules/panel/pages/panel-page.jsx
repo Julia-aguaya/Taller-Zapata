@@ -578,8 +578,8 @@ export const PanelPage = () => {
 
   return (
     <div className="space-y-5">
-      <Card className="overflow-hidden border-white/60 bg-card/95 p-4 shadow-haze sm:p-6">
-        <div className="absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.14),_transparent_48%),radial-gradient(circle_at_top_right,_rgba(14,116,144,0.14),_transparent_40%)]" />
+      <Card className="relative overflow-hidden border-white/60 bg-card/95 p-4 shadow-haze sm:p-6">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.14),_transparent_48%),radial-gradient(circle_at_top_right,_rgba(14,116,144,0.14),_transparent_40%)]" />
         <div className="relative flex flex-col gap-6">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-2">

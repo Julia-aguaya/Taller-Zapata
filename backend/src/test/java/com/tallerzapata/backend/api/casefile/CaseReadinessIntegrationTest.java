@@ -523,6 +523,7 @@ class CaseReadinessIntegrationTest {
                 null,
                 null,
                 null,
+                null,
                 "CLIENTE",
                 "PRINCIPAL"
         );

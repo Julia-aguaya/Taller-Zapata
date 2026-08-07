@@ -448,6 +448,7 @@ public class CaseReadinessService {
 
         if (Boolean.TRUE.equals(caseEntity.getReferenced())
                 && caseEntity.getReferredByPersonId() == null
+                && caseEntity.getReferenciadorId() == null
                 && isBlank(caseEntity.getReferredByText())) {
             reasons.add("El caso esta marcado como referenciado pero falta indicar quien lo refiere");
         }

@@ -428,6 +428,7 @@ public class CaseService {
         Map<String, Object> before = new LinkedHashMap<>();
         before.put("referenced", entity.getReferenced());
         before.put("referredByPersonId", entity.getReferredByPersonId());
+        before.put("referenciadorId", entity.getReferenciadorId());
         before.put("referredByText", entity.getReferredByText());
         before.put("priorityCode", entity.getPriorityCode());
         before.put("generalObservations", entity.getGeneralObservations());
@@ -436,9 +437,21 @@ public class CaseService {
 
         if (request.referenced() != null) {
             entity.setReferenced(request.referenced());
+            if (!request.referenced()) {
+                entity.setReferredByPersonId(null);
+                entity.setReferenciadorId(null);
+                entity.setReferredByText(null);
+            } else {
+                entity.setReferredByPersonId(request.referredByPersonId());
+                if (request.referenciadorId() != null) {
+                    entity.setReferenciadorId(request.referenciadorId());
+                }
+                entity.setReferredByText(blankToNull(request.referredByText()));
+            }
+        } else {
+            entity.setReferredByPersonId(request.referredByPersonId());
+            entity.setReferredByText(blankToNull(request.referredByText()));
         }
-        entity.setReferredByPersonId(request.referredByPersonId());
-        entity.setReferredByText(blankToNull(request.referredByText()));
         entity.setPriorityCode(normalizeCode(request.priorityCode()));
 
         if (entity.getPriorityCode() != null && !casePriorityRepository.existsByCodeAndActiveTrue(entity.getPriorityCode())) {
@@ -457,6 +470,7 @@ public class CaseService {
         Map<String, Object> after = new LinkedHashMap<>();
         after.put("referenced", entity.getReferenced());
         after.put("referredByPersonId", entity.getReferredByPersonId());
+        after.put("referenciadorId", entity.getReferenciadorId());
         after.put("referredByText", entity.getReferredByText());
         after.put("priorityCode", entity.getPriorityCode());
         after.put("generalObservations", entity.getGeneralObservations());
@@ -790,6 +804,7 @@ public class CaseService {
                 entity.getPrincipalVehicleId(),
                 entity.getPrincipalCustomerPersonId(),
                 entity.getReferenced(),
+                entity.getReferenciadorId(),
                 entity.getCurrentCaseStateId(),
                 caseState == null ? null : caseState.getCode(),
                 entity.getCurrentRepairStateId(),
@@ -858,6 +873,7 @@ public class CaseService {
                 entity.getPrincipalVehicleId(),
                 entity.getPrincipalCustomerPersonId(),
                 entity.getReferenced(),
+                entity.getReferenciadorId(),
                 entity.getCurrentCaseStateId(),
                 caseState == null ? null : caseState.getCode(),
                 entity.getCurrentRepairStateId(),

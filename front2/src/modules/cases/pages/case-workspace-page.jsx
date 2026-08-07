@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Clock, Hammer, Lock, ReceiptText, Save, ShieldCheck, User, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
-import { getCaseWorkspace, overrideVisibleState } from '@/modules/cases/api/cases-api';
+import { getCaseWorkspace, overrideVisibleState, searchReferenciadores } from '@/modules/cases/api/cases-api';
 import { Card } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
@@ -26,6 +26,7 @@ const formatDateTime = (value) => (!value ? '-' : new Date(value).toLocaleString
 
 const updatePerson = (personId, payload) => requestJson(`/persons/${personId}`, { method: 'PUT', body: JSON.stringify(payload) });
 const updateVehicle = (vehicleId, payload) => requestJson(`/vehicles/${vehicleId}`, { method: 'PUT', body: JSON.stringify(payload) });
+const updateCase = (caseId, payload) => requestJson(`/cases/${caseId}`, { method: 'PUT', body: JSON.stringify(payload) });
 
 const toSentenceCase = (value) => value
   .toLowerCase()
@@ -567,6 +568,7 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
   const fichaSummary = getFichaSummary(readinessTab);
 
   const [form, setForm] = useState({});
+  const [referenciadorSearch, setReferenciadorSearch] = useState('');
   useEffect(() => {
     if (person || vehicle) {
       setForm({
@@ -594,9 +596,17 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
         motor: vehicle?.motor || '',
         mileage: vehicle?.mileage ? String(vehicle.mileage) : '',
         observacionesVehiculo: vehicle?.observaciones || '',
+        referenced: Boolean(caseDetail.referenced),
+        referenciadorId: caseDetail.referenciadorId || null,
       });
     }
   }, [person, vehicle]);
+
+  const referenciadoresQuery = useQuery({
+    queryKey: ['referenciadores', 'ficha', referenciadorSearch],
+    queryFn: () => searchReferenciadores(referenciadorSearch),
+    enabled: editing && form.referenced && referenciadorSearch.length >= 2 && !form.referenciadorId,
+  });
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -638,6 +648,16 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
           activo: true,
         });
       }
+      await updateCase(caseId, {
+        referenced: form.referenced,
+        referredByPersonId: null,
+        referenciadorId: form.referenced ? form.referenciadorId : null,
+        referredByText: null,
+        priorityCode: caseDetail.priorityCode || null,
+        generalObservations: caseDetail.generalObservations || null,
+        closedAt: null,
+        archivedAt: caseDetail.archivedAt || null,
+      });
     },
     onSuccess: async () => {
       setEditing(false);
@@ -689,8 +709,41 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Datos generales de la carpeta</p>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             <ReadOnlyField label="Tipo de tramite" value="Particular" />
-            <ReadOnlyField label="Referenciado" value={caseDetail.referenced} />
+            {editing ? (
+              <SelectField label="Referenciado" value={form.referenced ? 'SI' : 'NO'} editing onChange={(value) => setForm((current) => ({ ...current, referenced: value === 'SI', referenciadorId: value === 'SI' ? current.referenciadorId : null }))} options={['NO', 'SI']} />
+            ) : (
+              <ReadOnlyField label="Referenciado" value={caseDetail.referenced} />
+            )}
           </div>
+          {editing && form.referenced ? (
+            <div className="mt-3">
+              <div className="space-y-1.5">
+                <Label>Referenciador</Label>
+                {form.referenciadorId ? (
+                  <div className="flex h-12 items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 text-sm dark:border-emerald-800 dark:bg-emerald-950">
+                    <span className="font-medium text-emerald-800 dark:text-emerald-200">{referenciadoresQuery.data?.find((referenciador) => referenciador.id === form.referenciadorId)?.displayName || `#${form.referenciadorId}`}</span>
+                    <button type="button" className="ml-auto text-xs text-muted-foreground hover:text-destructive" onClick={() => { setForm((current) => ({ ...current, referenciadorId: null })); setReferenciadorSearch(''); }}>✕</button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <Input value={referenciadorSearch} onChange={(event) => setReferenciadorSearch(event.target.value)} placeholder="Buscar por nombre..." />
+                    {(referenciadoresQuery.data ?? []).length > 0 ? (
+                      <div className="absolute z-10 mt-1 w-full rounded-2xl border border-border bg-card p-2 shadow-haze">
+                        {referenciadoresQuery.data.map((referenciador) => (
+                          <button key={referenciador.id} type="button" className="w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => { setForm((current) => ({ ...current, referenciadorId: referenciador.id })); setReferenciadorSearch(''); }}>
+                            <span className="font-medium">{referenciador.displayName}</span>
+                            {referenciador.telefono ? <span className="ml-2 text-xs text-muted-foreground">{referenciador.telefono}</span> : null}
+                          </button>
+                        ))}
+                      </div>
+                    ) : referenciadorSearch.length >= 2 && !referenciadoresQuery.isFetching ? (
+                      <p className="mt-1 text-xs text-muted-foreground">Sin resultados.</p>
+                    ) : null}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="grid gap-5 xl:grid-cols-2">

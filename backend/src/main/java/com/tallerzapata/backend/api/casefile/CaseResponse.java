@@ -15,6 +15,7 @@ public record CaseResponse(
         Long principalVehicleId,
         Long principalCustomerPersonId,
         Boolean referenced,
+        Long referenciadorId,
         Long currentCaseStateId,
         String currentCaseStateCode,
         Long currentRepairStateId,
