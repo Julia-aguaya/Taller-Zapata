@@ -280,6 +280,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
                   <th className="px-3 py-3 text-left">Medio</th>
                   <th className="px-3 py-3 text-left">Cancela</th>
                   <th className="px-3 py-3 text-left">Motivo</th>
+                  <th className="px-3 py-3 w-10"></th>
                 </tr>
               </thead>
               <tbody>
@@ -293,6 +294,19 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
                     <td className="px-3 py-3 text-muted-foreground">{m.paymentMethodCode || '—'}</td>
                     <td className="px-3 py-3">{m.cancellationTypeCode ? <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/50 px-2.5 py-0.5 text-xs font-medium">{m.cancellationTypeCode}</span> : '—'}</td>
                     <td className="px-3 py-3 text-xs text-muted-foreground max-w-[150px] truncate">{m.reason || '—'}</td>
+                    <td className="px-3 py-3">
+                      <button type="button" className="rounded-lg p-1 text-muted-foreground transition hover:bg-primary/10 hover:text-primary" title="Descargar comprobante" onClick={async () => {
+                        const stored = readStoredAuth();
+                        const url = getClientPaymentPdfUrl(caseId, caseDetail?.principalCustomerName || 'Cliente', caseDetail?.principalVehiclePlate || '', comprobanteTipo, m.netAmount, m.reason || '', '', '');
+                        const res = await fetch(url, { headers: { Authorization: `Bearer ${stored?.accessToken}` } });
+                        if (!res.ok) { toast.error('No se pudo generar el PDF.'); return; }
+                        const blob = await res.blob();
+                        const a = document.createElement('a');
+                        a.href = URL.createObjectURL(blob);
+                        a.download = `comprobante-${m.id}.pdf`;
+                        a.click();
+                      }}><FileDown className="h-4 w-4" /></button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
