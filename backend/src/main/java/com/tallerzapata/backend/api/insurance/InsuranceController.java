@@ -1,5 +1,6 @@
 package com.tallerzapata.backend.api.insurance;
 
+import com.tallerzapata.backend.application.casefile.TramitePdfService;
 import com.tallerzapata.backend.application.insurance.InsuranceCatalogService;
 import com.tallerzapata.backend.application.insurance.InsuranceService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -7,6 +8,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,10 +22,12 @@ import java.util.List;
 public class InsuranceController {
     private final InsuranceCatalogService insuranceCatalogService;
     private final InsuranceService insuranceService;
+    private final TramitePdfService tramitePdfService;
 
-    public InsuranceController(InsuranceCatalogService insuranceCatalogService, InsuranceService insuranceService) {
+    public InsuranceController(InsuranceCatalogService insuranceCatalogService, InsuranceService insuranceService, TramitePdfService tramitePdfService) {
         this.insuranceCatalogService = insuranceCatalogService;
         this.insuranceService = insuranceService;
+        this.tramitePdfService = tramitePdfService;
     }
 
     @Operation(summary = "Listar catalogos de seguros", description = "Devuelve los catalogos disponibles para seguros")
@@ -149,4 +155,16 @@ public class InsuranceController {
     @PreAuthorize("hasAuthority('seguro.crear')")
     @PostMapping("/cases/{caseId}/legal-expenses")
     public LegalExpenseResponse createCaseLegalExpense(@PathVariable Long caseId, @RequestBody LegalExpenseCreateRequest request, HttpServletRequest httpRequest) { return insuranceService.createCaseLegalExpense(caseId, request, httpRequest); }
+
+    @Operation(summary = "Generar PDF de gestion del tramite", description = "Genera un PDF con todos los datos del tramite del caso")
+    @ApiResponse(responseCode = "200", description = "PDF generado")
+    @PreAuthorize("hasAuthority('seguro.ver')")
+    @GetMapping("/cases/{caseId}/tramite/pdf")
+    public ResponseEntity<byte[]> getTramitePdf(@PathVariable Long caseId) {
+        byte[] pdf = tramitePdfService.generate(caseId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=tramite-" + caseId + ".pdf")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdf);
+    }
 }

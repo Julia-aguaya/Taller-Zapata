@@ -8,6 +8,7 @@ public record CaseIncidentResponse(
         String location,
         String dynamics,
         String observations,
-        LocalDate prescriptionDate
+        LocalDate prescriptionDate,
+        Integer daysInProcess
 ) {
 }

@@ -878,12 +878,12 @@ const FichaReparacionSubTab = ({ budget, latestAppointment, latestIntake, latest
 const FichaPagosSubTab = ({ caseDetail, particularFinanceSummary, caseId }) => {
   const caseTypeCode = caseDetail?.caseTypeCode;
   const movementsQuery = useQuery({ queryKey: ['cases', String(caseId), 'financial-movements'], queryFn: () => requestJson(`/cases/${caseId}/financial-movements`) });
-  const insuranceProcessingQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance-processing'], queryFn: () => requestJson(`/cases/${caseId}/insurance-processing`), enabled: caseTypeCode === 'TODO_RIESGO' });
+  const insuranceProcessingQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance-processing'], queryFn: () => requestJson(`/cases/${caseId}/insurance-processing`), enabled: caseTypeCode === 'TODO_RIESGO' || caseTypeCode === 'GRANIZO' });
   const movements = movementsQuery.data ?? [];
   const processing = insuranceProcessingQuery.data;
   const formatCurrency = (v) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(v || 0);
 
-  if (caseTypeCode === 'TODO_RIESGO') {
+  if (caseTypeCode === 'TODO_RIESGO' || caseTypeCode === 'GRANIZO') {
     return (
       <div className="space-y-5">
         <div className="rounded-2xl border border-border/60 bg-background/70 p-4">

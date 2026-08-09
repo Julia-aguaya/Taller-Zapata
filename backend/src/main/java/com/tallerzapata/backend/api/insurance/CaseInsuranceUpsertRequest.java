@@ -9,6 +9,7 @@ public record CaseInsuranceUpsertRequest(
         String coverageDetail,
         Long thirdPartyCompanyId,
         String cleasNumber,
+        String claimNumber,
         Long processorCasePersonId,
         Long inspectorCasePersonId
 ) {

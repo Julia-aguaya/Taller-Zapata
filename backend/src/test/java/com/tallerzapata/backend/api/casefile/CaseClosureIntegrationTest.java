@@ -106,6 +106,61 @@ class CaseClosureIntegrationTest {
                 .andExpect(jsonPath("$.closedAt").value(nullValue()));
     }
 
+    // ── GRANIZO closure ──────────────────────────────────────────
+
+    @Test
+    void shouldNotCloseGranizoWhenNoDefinitiveOutcome() throws Exception {
+        Long caseId = createGranizoCase();
+        seedInsurance(caseId);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}", caseId)
+                .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.closedAt").value(nullValue()));
+    }
+
+    @Test
+    void shouldNotCloseGranizoWhenCompanyNotPaid() throws Exception {
+        Long caseId = createGranizoCase();
+        seedInsurance(caseId);
+        createDefinitiveOutcome(caseId);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}", caseId)
+                .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.closedAt").value(nullValue()));
+    }
+
+    @Test
+    void shouldCloseGranizoWhenCompanyPaidAndDefinitiveOutcome() throws Exception {
+        Long caseId = createGranizoCase();
+        seedInsurance(caseId);
+        createDefinitiveOutcome(caseId);
+        addCompanyPayment(caseId, new BigDecimal("100000"));
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}", caseId)
+                .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.closedAt").value(notNullValue()));
+    }
+
+    @Test
+    void shouldCloseGranizoEvenWhenFranchisePending() throws Exception {
+        // GRANIZO no tiene franquicia — la franquicia NO debe bloquear el cierre
+        Long caseId = createGranizoCase();
+        seedInsurance(caseId);
+        // Explicitly set a "pending" franchise to prove it's ignored
+        jdbcTemplate.update("INSERT INTO caso_franquicia (caso_id, estado_franquicia_codigo, monto_franquicia, tipo_recupero_codigo) VALUES (?,?,?,?)",
+                caseId, "SIN_DEFINIR", new BigDecimal("50000"), "NINGUNO");
+        createDefinitiveOutcome(caseId);
+        addCompanyPayment(caseId, new BigDecimal("100000"));
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}", caseId)
+                .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.closedAt").value(notNullValue()));
+    }
+
     // ── Helpers ──────────────────────────────────────────────────
 
     private Long createParticularCase() throws Exception {
@@ -123,6 +178,16 @@ class CaseClosureIntegrationTest {
                 .header("X-User-Id", "1")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"caseTypeId\":2,\"organizationId\":1,\"branchId\":1,\"principalVehicleId\":10,\"principalCustomerPersonId\":10,\"referenced\":false,\"priorityCode\":null,\"customerRoleCode\":\"CLIENTE\",\"principalVehicleRoleCode\":\"PRINCIPAL\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(response).get("id").asLong();
+    }
+
+    private Long createGranizoCase() throws Exception {
+        String response = mockMvc.perform(post("/api/v1/cases")
+                .header("X-User-Id", "1")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"caseTypeId\":3,\"organizationId\":1,\"branchId\":1,\"principalVehicleId\":10,\"principalCustomerPersonId\":10,\"referenced\":false,\"priorityCode\":null,\"customerRoleCode\":\"CLIENTE\",\"principalVehicleRoleCode\":\"PRINCIPAL\"}"))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return objectMapper.readTree(response).get("id").asLong();
@@ -154,6 +219,13 @@ class CaseClosureIntegrationTest {
         mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId)
                 .header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"CLIENTE\",\"counterpartyTypeCode\":\"PERSONA\",\"counterpartyPersonId\":10,\"movementAt\":\"2026-01-15T12:00:00\",\"grossAmount\":" + amount + ",\"netAmount\":" + amount + ",\"paymentMethodCode\":\"EFECTIVO\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[],\"applications\":[]}"))
+                .andExpect(status().isOk());
+    }
+
+    private void addCompanyPayment(Long caseId, BigDecimal amount) throws Exception {
+        mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId)
+                .header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"ASEGURADORA\",\"counterpartyTypeCode\":\"PERSONA\",\"counterpartyPersonId\":10,\"movementAt\":\"2026-01-20T12:00:00\",\"grossAmount\":" + amount + ",\"netAmount\":" + amount + ",\"paymentMethodCode\":\"TRANSFERENCIA\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[],\"applications\":[]}"))
                 .andExpect(status().isOk());
     }
 

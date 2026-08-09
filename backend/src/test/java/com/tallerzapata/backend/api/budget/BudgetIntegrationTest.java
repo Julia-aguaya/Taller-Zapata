@@ -92,7 +92,7 @@ class BudgetIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(new BudgetItemCreateRequest(
                                 1, "Paragolpes delantero", "CHAPA", "MEDIO",
-                                "REPARAR", "DESABOLLAR", false,
+                                "REPARAR", "REPARAR", false,
                                 new BigDecimal("0.00"), new BigDecimal("3.50"), new BigDecimal("350.00")
                         ))))
                 .andExpect(status().isOk())
@@ -129,7 +129,7 @@ class BudgetIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(new BudgetItemCreateRequest(
                                 1, "Paragolpes delantero", "CHAPA", "MEDIO",
-                                "REPARAR", "DESABOLLAR", false,
+                                "REPARAR", "REPARAR", false,
                                 new BigDecimal("0.00"), new BigDecimal("3.50"), new BigDecimal("350.00")
                         ))))
                 .andExpect(status().isOk())
@@ -142,7 +142,7 @@ class BudgetIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(new BudgetItemUpdateRequest(
                                 1, "Paragolpes trasero", "PINTURA", "LEVE",
-                                "PULIR", "PINTAR", false,
+                                "PULIR", "REPARAR", false,
                                 new BigDecimal("0.00"), new BigDecimal("2.00"), new BigDecimal("200.00"),
                                 true
                         ))))
@@ -264,7 +264,7 @@ class BudgetIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(new BudgetItemCreateRequest(
                                 1, "Paragolpes", "INVALIDO", "MEDIO",
-                                "REPARAR", "DESABOLLAR", false,
+                                "REPARAR", "REPARAR", false,
                                 new BigDecimal("0.00"), new BigDecimal("3.50"), new BigDecimal("350.00")
                         ))))
                 .andExpect(status().isConflict());
@@ -288,7 +288,7 @@ class BudgetIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(new BudgetItemCreateRequest(
                                 1, "Paragolpes delantero", "CHAPA", "MEDIO",
-                                "REPARAR", "DESABOLLAR", false,
+                                "REPARAR", "REPARAR", false,
                                 new BigDecimal("0.00"), new BigDecimal("3.50"), new BigDecimal("350.00")
                         ))))
                 .andExpect(status().isOk());
@@ -327,7 +327,7 @@ class BudgetIntegrationTest {
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(new BudgetItemCreateRequest(
-                                1, "Paragolpes", "CHAPA", "MEDIO", "REPARAR", "DESABOLLAR", false,
+                                1, "Paragolpes", "CHAPA", "MEDIO", "REPARAR", "REPARAR", false,
                                 new BigDecimal("0.00"), new BigDecimal("3.50"), new BigDecimal("350.00")
                         ))))
                 .andExpect(status().isOk());
@@ -336,7 +336,7 @@ class BudgetIntegrationTest {
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(new BudgetItemCreateRequest(
-                                2, "Optica", "ELECTRICIDAD", "LEVE", "REEMPLAZAR", "CAMBIAR", true,
+                                2, "Optica", "ELECTRICIDAD", "LEVE", "REEMPLAZAR", "REEMPLAZAR", true,
                                 new BigDecimal("800.00"), new BigDecimal("1.00"), new BigDecimal("100.00")
                         ))))
                 .andExpect(status().isOk());

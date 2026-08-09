@@ -347,7 +347,7 @@ class PartSupplierQuoteIntegrationTest {
         // Create budget with items that have REEMPLAZAR decision
         mockMvc.perform(put("/api/v1/cases/100/budget")
                         .header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"items\":[{\"visualOrder\":1,\"affectedPiece\":\"Puerta\",\"taskCode\":\"CHAPA\",\"damageLevelCode\":\"LEVE\",\"partDecisionCode\":\"REEMPLAZAR\",\"actionCode\":\"REEMPLAZAR\",\"requiresReplacement\":true,\"partValue\":50000,\"estimatedHours\":2,\"laborAmount\":100000,\"active\":true}]}"))
+                        .content("{\"budgetDate\":\"2026-01-01\",\"reportStatusCode\":\"BORRADOR\",\"laborWithoutVat\":100000,\"vatRate\":21,\"partsTotal\":50000,\"estimatedDays\":2,\"items\":[{\"visualOrder\":1,\"affectedPiece\":\"Puerta\",\"taskCode\":\"CHAPA\",\"damageLevelCode\":\"LEVE\",\"partDecisionCode\":\"REEMPLAZAR\",\"actionCode\":\"REEMPLAZAR\",\"requiresReplacement\":true,\"partValue\":50000,\"estimatedHours\":2,\"laborAmount\":100000,\"active\":true}]}"))
                 .andExpect(status().isOk());
 
         // Sync parts from budget

@@ -18,6 +18,7 @@ public class CaseInsuranceEntity {
     @Column(name = "detalle_cobertura") private String coverageDetail;
     @Column(name = "compania_tercero_id") private Long thirdPartyCompanyId;
     @Column(name = "numero_cleas") private String cleasNumber;
+    @Column(name = "numero_siniestro") private String claimNumber;
     @Column(name = "tramitador_caso_persona_id") private Long processorCasePersonId;
     @Column(name = "inspector_caso_persona_id") private Long inspectorCasePersonId;
     public Long getId() { return id; }
@@ -35,6 +36,8 @@ public class CaseInsuranceEntity {
     public void setThirdPartyCompanyId(Long thirdPartyCompanyId) { this.thirdPartyCompanyId = thirdPartyCompanyId; }
     public String getCleasNumber() { return cleasNumber; }
     public void setCleasNumber(String cleasNumber) { this.cleasNumber = cleasNumber; }
+    public String getClaimNumber() { return claimNumber; }
+    public void setClaimNumber(String claimNumber) { this.claimNumber = claimNumber; }
     public Long getProcessorCasePersonId() { return processorCasePersonId; }
     public void setProcessorCasePersonId(Long processorCasePersonId) { this.processorCasePersonId = processorCasePersonId; }
     public Long getInspectorCasePersonId() { return inspectorCasePersonId; }

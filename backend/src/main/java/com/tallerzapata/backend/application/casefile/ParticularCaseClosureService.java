@@ -61,11 +61,37 @@ public class ParticularCaseClosureService {
     public void syncClosure(Long caseId) {
         CaseEntity caseEntity = caseRepository.findById(caseId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
-        if (!isParticular(caseEntity.getCaseTypeId())) {
-            syncTodoRiesgoClosure(caseEntity, caseId);
-            return;
-        }
 
+        if (isParticular(caseEntity.getCaseTypeId())) {
+            syncParticularClosure(caseEntity, caseId);
+        } else if (isGranizo(caseEntity.getCaseTypeId())) {
+            syncGranizoClosure(caseEntity, caseId);
+        } else if (isTodoRiesgo(caseEntity.getCaseTypeId())) {
+            syncTodoRiesgoClosure(caseEntity, caseId);
+        }
+    }
+
+    private boolean isParticular(Long caseTypeId) {
+        CaseTypeEntity caseType = caseTypeRepository.findById(caseTypeId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el tipo de tramite " + caseTypeId));
+        return "PARTICULAR".equals(normalizeCode(caseType.getCode()));
+    }
+
+    private boolean isGranizo(Long caseTypeId) {
+        CaseTypeEntity caseType = caseTypeRepository.findById(caseTypeId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el tipo de tramite " + caseTypeId));
+        return "GRANIZO".equals(normalizeCode(caseType.getCode()));
+    }
+
+    private boolean isTodoRiesgo(Long caseTypeId) {
+        CaseTypeEntity caseType = caseTypeRepository.findById(caseTypeId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el tipo de tramite " + caseTypeId));
+        return "TODO_RIESGO".equals(normalizeCode(caseType.getCode()));
+    }
+
+    // ── PARTICULAR: egreso definitivo + pago total del cliente ──────
+
+    private void syncParticularClosure(CaseEntity caseEntity, Long caseId) {
         LocalDateTime definitiveOutcomeAt = resolveDefinitiveOutcomeAt(caseId);
         LocalDateTime paidInFullAt = resolvePaidInFullAt(caseId);
 
@@ -80,20 +106,36 @@ public class ParticularCaseClosureService {
         caseRepository.save(caseEntity);
     }
 
-    private boolean isParticular(Long caseTypeId) {
-        CaseTypeEntity caseType = caseTypeRepository.findById(caseTypeId)
-                .orElseThrow(() -> new ResourceNotFoundException("No existe el tipo de tramite " + caseTypeId));
-        return "PARTICULAR".equals(normalizeCode(caseType.getCode()));
+    // ── GRANIZO: egreso definitivo + pago completo de la Cía. (sin franquicia) ──
+
+    private void syncGranizoClosure(CaseEntity caseEntity, Long caseId) {
+        LocalDateTime definitiveOutcomeAt = resolveDefinitiveOutcomeAt(caseId);
+
+        if (definitiveOutcomeAt == null) {
+            caseEntity.setClosedAt(null);
+            caseRepository.save(caseEntity);
+            return;
+        }
+
+        // GRANIZO no tiene franquicia — solo verificamos que la Cía. haya pagado
+        LocalDateTime paidAt = resolveTodoRiesgoPaidAt(caseId);
+        if (paidAt == null) {
+            caseEntity.setClosedAt(null);
+            caseRepository.save(caseEntity);
+            return;
+        }
+
+        LocalDateTime closedAt = definitiveOutcomeAt.isAfter(paidAt) ? definitiveOutcomeAt : paidAt;
+        caseEntity.setClosedAt(closedAt);
+        caseRepository.save(caseEntity);
     }
 
-    private boolean isTodoRiesgo(Long caseTypeId) {
-        CaseTypeEntity caseType = caseTypeRepository.findById(caseTypeId)
-                .orElseThrow(() -> new ResourceNotFoundException("No existe el tipo de tramite " + caseTypeId));
-        return "TODO_RIESGO".equals(normalizeCode(caseType.getCode()));
-    }
+    // ── TODO_RIESGO: egreso definitivo + franquicia resuelta + pago Cía. ──
 
     @Transactional
     public void syncTodoRiesgoClosure(CaseEntity caseEntity, Long caseId) {
+        // Guard clause kept for backward compatibility with direct callers,
+        // though the canonical dispatch is now in syncClosure().
         if (!isTodoRiesgo(caseEntity.getCaseTypeId())) {
             return;
         }
@@ -133,7 +175,7 @@ public class ParticularCaseClosureService {
         BigDecimal accumulated = BigDecimal.ZERO;
         List<FinancialMovementEntity> movements = financialMovementRepository.findByCaseId(caseId, MOVEMENT_SORT_ASC);
         for (FinancialMovementEntity movement : movements) {
-            if (!"CIA".equals(normalizeCode(movement.getFlowOriginCode()))) {
+            if (!"ASEGURADORA".equals(normalizeCode(movement.getFlowOriginCode()))) {
                 continue;
             }
 

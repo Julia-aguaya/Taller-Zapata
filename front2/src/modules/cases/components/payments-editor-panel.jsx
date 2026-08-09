@@ -67,10 +67,10 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const financeCatalogsQuery = useQuery({ queryKey: ['finance', 'catalogs'], queryFn: getFinanceCatalogs });
   const movementsQuery = useQuery({ queryKey: ['cases', String(caseId), 'financial-movements'], queryFn: () => listFinancialMovements(caseId) });
   const receiptsQuery = useQuery({ queryKey: ['cases', String(caseId), 'receipts'], queryFn: () => listReceipts(caseId) });
-  const insuranceProcessingQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance-processing'], queryFn: () => requestJson(`/cases/${caseId}/insurance-processing`), enabled: caseDetail?.caseTypeCode === 'TODO_RIESGO' });
+  const insuranceProcessingQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance-processing'], queryFn: () => requestJson(`/cases/${caseId}/insurance-processing`), enabled: caseDetail?.caseTypeCode === 'TODO_RIESGO' || caseDetail?.caseTypeCode === 'GRANIZO' });
   const processing = insuranceProcessingQuery.data;
 
-  const isInsurance = caseDetail?.caseTypeCode === 'TODO_RIESGO';
+  const isInsurance = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
 
   // Derivar MO y repuestos del presupuesto
   const budgetItems = budget?.items ?? [];
@@ -151,7 +151,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   });
 
   // ── Derived for insurance ──
-  const ciaMovements = (movementsQuery.data ?? []).filter(m => m.flowOriginCode === 'CIA' || m.counterpartyTypeCode === 'COMPANY');
+  const ciaMovements = (movementsQuery.data ?? []).filter(m => m.flowOriginCode === 'ASEGURADORA' || m.counterpartyTypeCode === 'COMPANY');
   const ciaTotalPaid = ciaMovements.reduce((sum, m) => sum + toAmount(m.netAmount || 0), 0);
   const amountToPay = toAmount(processing?.amountToBillCompany || processing?.agreedAmount || 0);
   const ciaPending = Math.max(0, amountToPay - ciaTotalPaid);
@@ -192,7 +192,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
             <div className="grid gap-3 md:grid-cols-3">
               <Field label="Monto"><Input type="number" min="0" step="0.01" value={ciaPayment.amount} onChange={(e) => setCiaPayment((c) => ({ ...c, amount: e.target.value }))} /></Field>
               <Field label="Fecha"><Input type="datetime-local" value={ciaPayment.movementAt} onChange={(e) => setCiaPayment((c) => ({ ...c, movementAt: e.target.value }))} /></Field>
-              <div className="flex items-end"><Button className="w-full" onClick={() => { const m = toAmount(ciaPayment.amount); if (m <= 0) { toast.error('Ingresá un monto.'); return; } ciaPaymentMutation.mutate({ movementTypeCode: 'INGRESO', flowOriginCode: 'CIA', counterpartyTypeCode: 'COMPANY', counterpartyPersonId: null, counterpartyCompanyId: null, movementAt: ciaPayment.movementAt, grossAmount: m, netAmount: m, paymentMethodCode: ciaPayment.paymentMethodCode, paymentMethodDetail: null, cancellationTypeCode: 'PRESUPUESTO', advancePayment: false, bonification: false, reason: null, externalReference: null, retentions: [], applications: [] }); }} disabled={ciaPaymentMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Registrar</Button></div>
+              <div className="flex items-end"><Button className="w-full" onClick={() => { const m = toAmount(ciaPayment.amount); if (m <= 0) { toast.error('Ingresá un monto.'); return; } ciaPaymentMutation.mutate({ movementTypeCode: 'INGRESO', flowOriginCode: 'ASEGURADORA', counterpartyTypeCode: 'COMPANY', counterpartyPersonId: null, counterpartyCompanyId: null, movementAt: ciaPayment.movementAt, grossAmount: m, netAmount: m, paymentMethodCode: ciaPayment.paymentMethodCode, paymentMethodDetail: null, cancellationTypeCode: 'PRESUPUESTO', advancePayment: false, bonification: false, reason: null, externalReference: null, retentions: [], applications: [] }); }} disabled={ciaPaymentMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Registrar</Button></div>
             </div>
           </div>
           {ciaMovements.length > 0 ? <div className="mt-3"><p className="text-xs text-muted-foreground">{ciaMovements.length} pago(s) de la Cía.</p></div> : null}

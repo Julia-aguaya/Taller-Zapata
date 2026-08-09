@@ -178,7 +178,7 @@ public class CaseManagementService {
 
         return caseIncidentRepository.findByCaseId(caseId)
                 .map(this::toIncidentResponse)
-                .orElse(new CaseIncidentResponse(null, null, null, null, null, null));
+                .orElse(new CaseIncidentResponse(null, null, null, null, null, null, null));
     }
 
     private CaseEntity requireCase(Long caseId) {
@@ -208,7 +208,8 @@ public class CaseManagementService {
                 entity.getLugar(),
                 entity.getDinamica(),
                 entity.getObservaciones(),
-                entity.getPrescriptionDate()
+                entity.getPrescriptionDate(),
+                entity.getDaysInProcess()
         );
     }
 }

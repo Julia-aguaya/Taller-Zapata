@@ -12,57 +12,54 @@ vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
 }));
 
-vi.mock('@/modules/cases/components/documentacion-editor', () => ({
-  DocumentacionEditor: () => <div>Documentación panel</div>,
-}));
-
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('@/shared/auth/session-storage', () => ({ readStoredAuth: () => ({ userId: '1' }) }));
 
-const mount = () => render(<GestionTramiteEditor
+global.fetch = vi.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob()) });
+
+const mount = (overrides = {}) => render(<GestionTramiteEditor
   caseId={42}
-  caseDetail={{ caseTypeCode: 'TODO_RIESGO' }}
+  caseDetail={{ caseTypeCode: 'TODO_RIESGO', ...overrides }}
   budget={{ items: [{ laborAmount: 100000, partValue: 50000 }] }}
   onSaved={vi.fn()}
 />);
 
 describe('GestionTramiteEditor', () => {
-  it('renders all 5 sub-tabs', () => {
+  it('renders all 6 sections for TODO_RIESGO', () => {
     mount();
-    expect(screen.getAllByText('Datos del Seguro').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Datos del Siniestro').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Franquicia').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Documentación').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('Tramitación').length).toBeGreaterThan(0);
+    expect(screen.getByText('Datos generales del trámite')).toBeTruthy();
+    expect(screen.getByText('Datos del seguro')).toBeTruthy();
+    expect(screen.getByText('Datos del siniestro')).toBeTruthy();
+    expect(screen.getByText('Franquicia')).toBeTruthy();
+    expect(screen.getByText('Documentación')).toBeTruthy();
+    expect(screen.getByText('Tramitación')).toBeTruthy();
   });
 
-  it('shows seguro form by default', () => {
+  it('renders agenda de tareas', () => {
     mount();
-    expect(screen.getByText('Compañía, póliza, cobertura y contactos de la cía.')).toBeTruthy();
+    expect(screen.getByText('Agenda de tareas')).toBeTruthy();
   });
 
-  it('switches to siniestro tab on click', () => {
-    mount();
-    fireEvent.click(screen.getByText('Datos del Siniestro'));
-    expect(screen.getByText('Fecha de presentación, inspección, modalidad y dictamen.')).toBeTruthy();
+  it('hides Franquicia for GRANIZO cases', () => {
+    mount({ caseTypeCode: 'GRANIZO' });
+    expect(screen.getByText('Datos generales del trámite')).toBeTruthy();
+    expect(screen.getByText('Datos del seguro')).toBeTruthy();
+    expect(screen.getByText('Datos del siniestro')).toBeTruthy();
+    expect(screen.queryByText('Franquicia')).toBeNull();
   });
 
-  it('switches to franquicia tab on click', () => {
+  it('shows Generar PDF button', () => {
     mount();
-    fireEvent.click(screen.getByText('Franquicia'));
-    expect(screen.getByText('Estado, monto, recupero y dictamen.')).toBeTruthy();
+    expect(screen.getByText('Generar PDF')).toBeTruthy();
   });
 
-  it('switches to documentacion tab on click', () => {
+  it('shows Agregar item button for tasks', () => {
     mount();
-    fireEvent.click(screen.getByText('Documentación'));
-    expect(screen.getByText('Documentación panel')).toBeTruthy();
+    expect(screen.getByText('Agregar item')).toBeTruthy();
   });
 
-  it('switches to tramitacion tab and shows sections', () => {
+  it('shows Agregar items button for documents', () => {
     mount();
-    fireEvent.click(screen.getByText('Tramitación'));
-    expect(screen.getByText('Cotización')).toBeTruthy();
-    expect(screen.getByText('Repuestos')).toBeTruthy();
-    expect(screen.getByText('Montos')).toBeTruthy();
+    expect(screen.getByText('Agregar items')).toBeTruthy();
   });
 });

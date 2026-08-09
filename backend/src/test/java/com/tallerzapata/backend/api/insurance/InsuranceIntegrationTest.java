@@ -71,7 +71,7 @@ class InsuranceIntegrationTest {
         mockMvc.perform(put("/api/v1/cases/100/insurance")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(new CaseInsuranceUpsertRequest(1L, "POL-123", "CERT-1", "Todo riesgo", null, null, 1L, null))))
+                        .content(objectMapper.writeValueAsBytes(new CaseInsuranceUpsertRequest(1L, "POL-123", "CERT-1", "Todo riesgo", null, null, null, 1L, null))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.insuranceCompanyId").value(1));
 

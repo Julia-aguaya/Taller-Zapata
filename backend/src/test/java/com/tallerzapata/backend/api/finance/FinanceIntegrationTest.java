@@ -312,7 +312,7 @@ class FinanceIntegrationTest {
     void shouldGenerateClientPaymentPdf() throws Exception {
         Long caseId = createCaseWithPayment();
 
-        mockMvc.perform(get("/api/v1/cases/{caseId}/finance/client-payment-pdf")
+        mockMvc.perform(get("/api/v1/cases/{caseId}/finance/client-payment-pdf", caseId)
                         .param("clientName", "Carlos Cliente")
                         .param("vehiclePlate", "AB123CD")
                         .param("comprobanteTipo", "A")
@@ -333,7 +333,7 @@ class FinanceIntegrationTest {
 
     private Long createReceiptWithComprobanteFiscal() throws Exception {
         Long caseId = createParticularCase();
-        jdbcTemplate.update("INSERT INTO tramitacion_seguro (caso_id, fecha_cotizacion, monto_acordado, monto_facturar_compania) VALUES (?,?,?,?)",
+        jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_cotizacion, monto_acordado, monto_facturar_compania) VALUES (?,?,?,?)",
                 caseId, java.time.LocalDate.now(), new java.math.BigDecimal("100000"), new java.math.BigDecimal("100000"));
 
         MvcResult result = mockMvc.perform(post("/api/v1/cases/{caseId}/receipts", caseId)
