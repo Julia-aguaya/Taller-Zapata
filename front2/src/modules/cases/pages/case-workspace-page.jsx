@@ -37,6 +37,21 @@ const toSentenceCase = (value) => value
 
 const pluralize = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;
 
+const PARTICULAR_OVERRIDE_OPTIONS = {
+  tramite: ['INGRESADO', 'PASADO_A_PAGOS', 'PAGADO', 'RECHAZADO', 'DESISTIDO'],
+  reparacion: ['EN_TRAMITE', 'DAR_TURNO', 'FALTAN_REPUESTOS', 'CON_TURNO', 'DEBE_REINGRESAR', 'REPARADO', 'RECHAZADO', 'DESISTIDO'],
+};
+
+const DEFAULT_OVERRIDE_OPTIONS = {
+  tramite: ['INGRESADO', 'SIN_PRESENTAR', 'PRESENTADO', 'EN_TRAMITE', 'ACORDADO', 'PASADO_A_PAGOS', 'PAGADO', 'RECHAZADO', 'DESISTIDO'],
+  reparacion: ['EN_TRAMITE', 'FALTAN_REPUESTOS', 'DAR_TURNO', 'CON_TURNO', 'DEBE_REINGRESAR', 'REPARADO', 'NO_DEBE_REPARARSE', 'RECHAZADO', 'DESISTIDO'],
+};
+
+const TODO_RIESGO_OVERRIDE_OPTIONS = {
+  tramite: [],
+  reparacion: [],
+};
+
 export const formatDisplayValue = (value) => {
   if (value == null || value === '') return 'Sin informar';
   if (typeof value === 'boolean') return value ? 'Si' : 'No';
@@ -122,9 +137,14 @@ export const CaseWorkspacePage = () => {
   const [overrideModal, setOverrideModal] = useState(null); // { domain, currentCode }
   const [overrideReason, setOverrideReason] = useState('');
 
+  const refreshCaseProjection = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['cases'] });
+    await queryClient.invalidateQueries({ queryKey: ['panel'] });
+  };
+
   const overrideMutation = useMutation({
     mutationFn: ({ domain, stateCode }) => overrideVisibleState(caseId, domain, stateCode, overrideReason),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] }); setOverrideModal(null); setOverrideReason(''); toast.success('Estado actualizado.'); },
+    onSuccess: async (_, { stateCode }) => { await refreshCaseProjection(); setOverrideModal(null); setOverrideReason(''); toast.success(stateCode ? 'Estado actualizado.' : 'Seguimiento automático restablecido.'); },
     onError: (e) => toast.error(e.message || 'No se pudo cambiar el estado.'),
   });
 
@@ -147,6 +167,9 @@ export const CaseWorkspacePage = () => {
   if (workspaceQuery.isError) return <EmptyState title="No pude abrir la carpeta" description={workspaceQuery.error.message} />;
 
   const { caseDetail, readiness, budget, particularFinanceSummary, latestAppointment, latestIntake, latestOutcome, widgets, workshopInfo } = workspaceQuery.data;
+  const overrideOptions = caseDetail.caseTypeCode === 'PARTICULAR'
+    ? PARTICULAR_OVERRIDE_OPTIONS
+    : caseDetail.caseTypeCode === 'TODO_RIESGO' ? TODO_RIESGO_OVERRIDE_OPTIONS : DEFAULT_OVERRIDE_OPTIONS;
   const stageTabs = getOperationalTabs(readiness.tabs);
   const completedStages = countCompletedStages(readiness.tabs);
   const taskSnapshot = getTaskSnapshot(tasksQuery.data?.items ?? []);
@@ -175,7 +198,7 @@ export const CaseWorkspacePage = () => {
             <div className="flex flex-wrap gap-2">
               {/* Trámite state — clickeable para override */}
               <div className="relative">
-                <button type="button" onClick={() => setOverrideModal({ domain: 'tramite', currentCode: caseDetail.visibleTramiteState.code })}
+                <button type="button" disabled={caseDetail.caseTypeCode === 'TODO_RIESGO'} onClick={() => setOverrideModal({ domain: 'tramite', currentCode: caseDetail.visibleTramiteState.code })}
                   className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition hover:ring-2 hover:ring-primary/30 ${
                     caseDetail.visibleTramiteState.code === 'PAGADO' ? 'border-emerald-200 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400' :
                     caseDetail.visibleTramiteState.code === 'RECHAZADO' || caseDetail.visibleTramiteState.code === 'DESISTIDO' ? 'border-red-200 bg-red-100 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-400' :
@@ -187,7 +210,7 @@ export const CaseWorkspacePage = () => {
 
               {/* Reparación state — clickeable para override */}
               <div className="relative">
-                <button type="button" onClick={() => setOverrideModal({ domain: 'reparacion', currentCode: caseDetail.visibleRepairState.code })}
+                <button type="button" disabled={caseDetail.caseTypeCode === 'TODO_RIESGO'} onClick={() => setOverrideModal({ domain: 'reparacion', currentCode: caseDetail.visibleRepairState.code })}
                   className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition hover:ring-2 hover:ring-primary/30 ${
                     caseDetail.visibleRepairState.code === 'REPARADO' ? 'border-emerald-200 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400' :
                     caseDetail.visibleRepairState.code === 'NO_DEBE_REPARARSE' ? 'border-blue-200 bg-blue-100 text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400' :
@@ -358,10 +381,7 @@ export const CaseWorkspacePage = () => {
               <div className="space-y-1.5">
                 <Label className="text-xs">Nuevo estado</Label>
                 <select className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm" value={overrideModal.currentCode} onChange={(e) => setOverrideModal((m) => ({ ...m, currentCode: e.target.value }))}>
-                  {(overrideModal.domain === 'tramite'
-                    ? ['INGRESADO','SIN_PRESENTAR','PRESENTADO','EN_TRAMITE','ACORDADO','PASADO_A_PAGOS','PAGADO','RECHAZADO','DESISTIDO']
-                    : ['EN_TRAMITE','FALTAN_REPUESTOS','DAR_TURNO','CON_TURNO','DEBE_REINGRESAR','REPARADO','NO_DEBE_REPARARSE','RECHAZADO','DESISTIDO']
-                  ).map((code) => {
+                  {overrideOptions[overrideModal.domain].map((code) => {
                     const labels = {INGRESADO:'Ingresado',SIN_PRESENTAR:'Sin presentar',PRESENTADO:'Presentado',EN_TRAMITE:'En trámite',ACORDADO:'Acordado',PASADO_A_PAGOS:'Pasado a pagos',PAGADO:'Pagado',RECHAZADO:'Rechazado',DESISTIDO:'Desistido',FALTAN_REPUESTOS:'Faltan repuestos',DAR_TURNO:'Dar turno',CON_TURNO:'Con turno',DEBE_REINGRESAR:'Debe reingresar',REPARADO:'Reparado',NO_DEBE_REPARARSE:'No debe repararse'};
                     return <option key={code} value={code}>{labels[code] || code}</option>;
                   })}
@@ -374,6 +394,9 @@ export const CaseWorkspacePage = () => {
             </div>
             <div className="mt-5 flex gap-3">
               <Button variant="outline" className="flex-1" onClick={() => setOverrideModal(null)}>Cancelar</Button>
+              {(overrideModal.domain === 'tramite' ? caseDetail.visibleTramiteState : caseDetail.visibleRepairState)?.manualOverride ? (
+                <Button variant="outline" className="flex-1" onClick={() => overrideMutation.mutate({ domain: overrideModal.domain, stateCode: null })} disabled={overrideMutation.isPending}>Volver a automático</Button>
+              ) : null}
               <Button className="flex-1" onClick={() => { if (!overrideReason.trim()) { toast.error('El motivo es obligatorio.'); return; } overrideMutation.mutate({ domain: overrideModal.domain, stateCode: overrideModal.currentCode }); }} disabled={overrideMutation.isPending}>Confirmar</Button>
             </div>
           </div>

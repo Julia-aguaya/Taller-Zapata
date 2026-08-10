@@ -7,6 +7,8 @@ import com.tallerzapata.backend.api.operation.VehicleIntakeResponse;
 import com.tallerzapata.backend.api.operation.VehicleIntakeUpdateRequest;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.CaseWorkflowService;
+import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
+import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
@@ -56,6 +58,8 @@ public class VehicleIntakeService {
     private final CaseAccessControlService caseAccessControlService;
     private final CaseAuditService caseAuditService;
     private final CaseWorkflowService caseWorkflowService;
+    private final ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
+    private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
 
     public VehicleIntakeService(
             VehicleIntakeRepository vehicleIntakeRepository,
@@ -72,7 +76,8 @@ public class VehicleIntakeService {
             CurrentUserService currentUserService,
             CaseAccessControlService caseAccessControlService,
             CaseAuditService caseAuditService,
-            CaseWorkflowService caseWorkflowService
+            CaseWorkflowService caseWorkflowService,
+            ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator
     ) {
         this.vehicleIntakeRepository = vehicleIntakeRepository;
         this.vehicleIntakeItemRepository = vehicleIntakeItemRepository;
@@ -89,6 +94,8 @@ public class VehicleIntakeService {
         this.caseAccessControlService = caseAccessControlService;
         this.caseAuditService = caseAuditService;
         this.caseWorkflowService = caseWorkflowService;
+        this.particularEffectiveStateRecalculator = particularEffectiveStateRecalculator;
+        this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
     }
 
     @Transactional(readOnly = true)
@@ -158,6 +165,8 @@ public class VehicleIntakeService {
                 "Ingreso de vehiculo registrado",
                 httpRequest
         );
+        particularEffectiveStateRecalculator.recalculate(caseId);
+        todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
 
         return toResponse(entity);
     }
@@ -204,6 +213,8 @@ public class VehicleIntakeService {
                 caseAuditService.toJson(Map.of("domain", "operacion")),
                 httpRequest
         );
+        particularEffectiveStateRecalculator.recalculate(caseEntity.getId());
+        todoRiesgoEffectiveStateRecalculator.recalculate(caseEntity.getId());
 
         return toResponse(entity);
     }

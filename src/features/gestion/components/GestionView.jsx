@@ -23,7 +23,7 @@ import PagosTab from './PagosTab';
 import AbogadoTab from './AbogadoTab';
 import { money, numberValue, TODO_RIESGO_TURNO_WARNING_MESSAGE } from '../lib/gestionUtils';
 import { todayIso } from '../../cases/lib/caseAgendaHelpers';
-import { MANUAL_VISIBLE_STATE_OPTIONS } from '../../cases/lib/backendVisibleStates';
+import { MANUAL_VISIBLE_STATE_OPTIONS, PARTICULAR_VISIBLE_STATE_OPTIONS } from '../../cases/lib/backendVisibleStates';
 
 function isAdminRole(role) {
   const normalized = String(role || '').trim().toLowerCase();
@@ -51,6 +51,14 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
   }
 
   const franchiseRecovery = isFranchiseRecoveryCase(item);
+  const visibleStateOptions = isTodoRiesgoCase(item)
+    ? { tramite: [], reparacion: [] }
+    : !isCleasCase(item)
+    && !isThirdPartyWorkshopCase(item)
+    && !isThirdPartyLawyerCase(item)
+    && !isFranchiseRecoveryCase(item)
+    ? PARTICULAR_VISIBLE_STATE_OPTIONS
+    : MANUAL_VISIBLE_STATE_OPTIONS;
   const canManageAdministrativeStates = isAdminRole(currentUserRole);
   const detailMatchesSelectedCase = detailState?.item?.id != null
     && item?.id != null
@@ -100,7 +108,7 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
       { id: 'pagos', label: 'Pagos' },
     ];
 
-  const hasInteractiveInsuranceControls = isTodoRiesgoCase(item) || isCleasCase(item);
+  const hasInteractiveInsuranceControls = isCleasCase(item);
   const tramiteStepper = getTramiteStepperConfig(item);
   const repairStepper = getRepairStepperConfig(item);
   const tramiteActions = hasInteractiveInsuranceControls
@@ -163,6 +171,10 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
       ? `${activeTabLabel}: tenés cambios pendientes. Guardalos para mantener la carpeta sincronizada.`
       : `${activeTabLabel}: los datos visibles ya están sincronizados.`;
   const handleTramiteAction = async ({ label, backendAction }) => {
+    if (isTodoRiesgoCase(item)) {
+      flash('TODO_RIESGO usa el estado canónico informado por el servidor.');
+      return;
+    }
     const transitioned = await onRunWorkflowTransition?.({
       changeNote: changeNoteDraft,
       caseId: item.id,
@@ -248,6 +260,10 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
   };
 
   const handleRepairAction = async ({ label, backendAction }) => {
+    if (isTodoRiesgoCase(item)) {
+      flash('TODO_RIESGO usa el estado canónico informado por el servidor.');
+      return;
+    }
     const transitioned = await onRunWorkflowTransition?.({
       changeNote: changeNoteDraft,
       caseId: item.id,
@@ -265,7 +281,6 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
 
     if (label === 'En trámite') {
       updateCase((draft) => {
-        draft.todoRisk.processing.noRepairNeeded = false;
         draft.repair.turno.date = '';
         draft.repair.egreso.date = '';
         draft.repair.egreso.definitiveExit = false;
@@ -273,21 +288,8 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
       return;
     }
 
-    if (label === 'No debe repararse') {
-      if (!item.todoRisk.processing.adminTurnOverride && item.computed.repairStatus !== 'No debe repararse') {
-        flash('No debe repararse queda reservado como excepción controlada por administración.');
-        return;
-      }
-
-      updateCase((draft) => {
-        draft.todoRisk.processing.noRepairNeeded = true;
-      });
-      return;
-    }
-
     if (label === 'Reparado') {
       updateCase((draft) => {
-        draft.todoRisk.processing.noRepairNeeded = false;
         draft.repair.egreso.date = draft.repair.egreso.date || today;
         draft.repair.egreso.shouldReenter = 'NO';
         draft.repair.egreso.definitiveExit = true;
@@ -297,7 +299,6 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
 
     if (label === 'Debe reingresar') {
       updateCase((draft) => {
-        draft.todoRisk.processing.noRepairNeeded = false;
         draft.repair.egreso.date = draft.repair.egreso.date || today;
         draft.repair.egreso.shouldReenter = 'SI';
         draft.repair.egreso.definitiveExit = false;
@@ -307,7 +308,6 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
 
     if (label === 'Faltan repuestos / Dar Turno') {
       updateCase((draft) => {
-        draft.todoRisk.processing.noRepairNeeded = false;
         const hasPendingAuthorizedPart = draft.repair.parts.some(
           (part) => part.source === 'budget' && part.authorized === 'SI' && part.state !== 'Recibido',
         );
@@ -334,7 +334,6 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
     }
 
     updateCase((draft) => {
-      draft.todoRisk.processing.noRepairNeeded = false;
       draft.repair.parts.forEach((part) => {
         if (part.source === 'budget' && part.authorized === 'SI') {
           part.state = 'Recibido';
@@ -425,14 +424,14 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
               </div>
             )
           )}
-          {canManageAdministrativeStates ? (
+          {canManageAdministrativeStates && !isTodoRiesgoCase(item) ? (
             <div className="status-group muted-restricted">
               <span>Administración</span>
               <div className="status-toolbar-admin-row">
                 <label className="admin-state-picker">
                   <span>Trámite visible</span>
                   <select onChange={(event) => setManualVisibleStateDraft((current) => ({ ...current, tramite: event.target.value }))} value={manualVisibleStateDraft.tramite}>
-                    {MANUAL_VISIBLE_STATE_OPTIONS.tramite.map((option) => (
+                    {visibleStateOptions.tramite.map((option) => (
                       <option key={option.code || 'auto-tramite'} value={option.code}>{option.label}</option>
                     ))}
                   </select>
@@ -444,7 +443,7 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
                 <label className="admin-state-picker">
                   <span>Reparación visible</span>
                   <select onChange={(event) => setManualVisibleStateDraft((current) => ({ ...current, reparacion: event.target.value }))} value={manualVisibleStateDraft.reparacion}>
-                    {MANUAL_VISIBLE_STATE_OPTIONS.reparacion.map((option) => (
+                    {visibleStateOptions.reparacion.map((option) => (
                       <option key={option.code || 'auto-reparacion'} value={option.code}>{option.label}</option>
                     ))}
                   </select>

@@ -1,0 +1,43 @@
+CREATE TABLE particular_effective_state (
+    caso_id BIGINT UNSIGNED NOT NULL,
+    tramite_codigo VARCHAR(40) NOT NULL,
+    reparacion_codigo VARCHAR(40) NOT NULL,
+    tramite_terminal_override_codigo VARCHAR(40) NULL,
+    reparacion_terminal_override_codigo VARCHAR(40) NULL,
+    outcome_origen_id BIGINT UNSIGNED NULL,
+    turno_reingreso_origen_id BIGINT UNSIGNED NULL,
+    recalculated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (caso_id),
+    CONSTRAINT fk_particular_effective_state_caso FOREIGN KEY (caso_id) REFERENCES casos (id) ON DELETE CASCADE,
+    CONSTRAINT chk_particular_effective_state_tramite CHECK (tramite_codigo IN ('INGRESADO', 'PASADO_A_PAGOS', 'PAGADO', 'RECHAZADO', 'DESISTIDO')),
+    CONSTRAINT chk_particular_effective_state_reparacion CHECK (reparacion_codigo IN ('EN_TRAMITE', 'DAR_TURNO', 'FALTAN_REPUESTOS', 'CON_TURNO', 'DEBE_REINGRESAR', 'REPARADO', 'RECHAZADO', 'DESISTIDO')),
+    CONSTRAINT chk_particular_effective_state_tramite_override CHECK (tramite_terminal_override_codigo IS NULL OR tramite_terminal_override_codigo IN ('RECHAZADO', 'DESISTIDO')),
+    CONSTRAINT chk_particular_effective_state_reparacion_override CHECK (reparacion_terminal_override_codigo IS NULL OR reparacion_terminal_override_codigo IN ('RECHAZADO', 'DESISTIDO'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE particular_effective_state_history (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+    caso_id BIGINT UNSIGNED NOT NULL,
+    prior_tramite_codigo VARCHAR(40) NULL,
+    new_tramite_codigo VARCHAR(40) NOT NULL,
+    prior_reparacion_codigo VARCHAR(40) NULL,
+    new_reparacion_codigo VARCHAR(40) NOT NULL,
+    change_scope VARCHAR(20) NOT NULL,
+    cause VARCHAR(80) NOT NULL,
+    actor_usuario_id BIGINT UNSIGNED NULL,
+    reason VARCHAR(255) NULL,
+    override_dimension VARCHAR(20) NULL,
+    override_prior_codigo VARCHAR(40) NULL,
+    override_new_codigo VARCHAR(40) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    KEY idx_particular_effective_state_history_caso_created (caso_id, created_at, id),
+    CONSTRAINT fk_particular_effective_state_history_caso FOREIGN KEY (caso_id) REFERENCES casos (id) ON DELETE CASCADE,
+    CONSTRAINT chk_particular_effective_state_history_scope CHECK (change_scope IN ('TRAMITE', 'REPARACION', 'DUAL', 'OVERRIDE', 'REVERT')),
+    CONSTRAINT chk_particular_effective_state_history_prior_tramite CHECK (prior_tramite_codigo IS NULL OR prior_tramite_codigo IN ('INGRESADO', 'PASADO_A_PAGOS', 'PAGADO', 'RECHAZADO', 'DESISTIDO')),
+    CONSTRAINT chk_particular_effective_state_history_new_tramite CHECK (new_tramite_codigo IN ('INGRESADO', 'PASADO_A_PAGOS', 'PAGADO', 'RECHAZADO', 'DESISTIDO')),
+    CONSTRAINT chk_particular_effective_state_history_prior_reparacion CHECK (prior_reparacion_codigo IS NULL OR prior_reparacion_codigo IN ('EN_TRAMITE', 'DAR_TURNO', 'FALTAN_REPUESTOS', 'CON_TURNO', 'DEBE_REINGRESAR', 'REPARADO', 'RECHAZADO', 'DESISTIDO')),
+    CONSTRAINT chk_particular_effective_state_history_new_reparacion CHECK (new_reparacion_codigo IN ('EN_TRAMITE', 'DAR_TURNO', 'FALTAN_REPUESTOS', 'CON_TURNO', 'DEBE_REINGRESAR', 'REPARADO', 'RECHAZADO', 'DESISTIDO')),
+    CONSTRAINT chk_particular_effective_state_history_tramite_override CHECK (override_dimension <> 'TRAMITE' OR override_new_codigo IS NULL OR override_new_codigo IN ('RECHAZADO', 'DESISTIDO')),
+    CONSTRAINT chk_particular_effective_state_history_reparacion_override CHECK (override_dimension <> 'REPARACION' OR override_new_codigo IS NULL OR override_new_codigo IN ('RECHAZADO', 'DESISTIDO'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

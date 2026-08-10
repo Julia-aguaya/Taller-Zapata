@@ -13,6 +13,8 @@ public record InsuranceProcessingResponse(
         String quotationStatusCode,
         LocalDate quotationDate,
         BigDecimal agreedAmount,
+        LocalDate agreementDate,
+        LocalDate passedToPaymentsDate,
         BigDecimal minimumCloseAmount,
         Boolean includesParts,
         String partsAuthorizationCode,

@@ -4,7 +4,7 @@ import { getCaseHash, getCaseRouteFromHash, CASE_TABS, REPAIR_TABS } from './fea
 import { normalizeDocument, normalizePlate, normalizeLookupText } from './features/cases/lib/caseNormalizers';
 import { formatBackendState, formatCaseNumber, formatDate, formatDateTime, formatCurrency } from './features/cases/lib/caseFormatters';
 import { getFriendlyErrorMessage } from './features/cases/lib/caseErrorMessages';
-import { resolvePartsAuthorizationCode, resolveReportStatusCode } from './features/cases/lib/operationCatalogResolvers';
+import { resolvePartsAuthorizationCode, resolveReportStatusCode, toTodoRiesgoPartAuthorizationCode } from './features/cases/lib/operationCatalogResolvers';
 import {
   getCasesTechnicalDetail,
   getCaseRelationsItems,
@@ -4103,7 +4103,9 @@ function App() {
           const modalityCode = resolveCatalogCode(selectedCase.todoRisk?.processing?.modality, modalityEntries, TODO_RIESGO_MODALITY_OPTIONS);
           const processingOpinionCode = resolveCatalogCode(selectedCase.todoRisk?.processing?.dictamen, opinionEntries, [...TODO_RIESGO_DICTAMEN_OPTIONS, ...CLEAS_DICTAMEN_OPTIONS]);
           const quotationStatusCode = resolveCatalogCode(selectedCase.todoRisk?.processing?.quoteStatus, quoteStatusEntries, TODO_RIESGO_QUOTE_STATUS_OPTIONS);
-          const partsAuthorizationCode = resolvePartsAuthorizationCode(selectedCase.computed?.todoRisk?.partsAuthorization, operationCatalogs);
+           const partsAuthorizationCode = isTodoRiesgoCase(selectedCase)
+             ? null
+             : resolvePartsAuthorizationCode(selectedCase.computed?.todoRisk?.partsAuthorization, operationCatalogs);
 
           const invalidFields = [];
           if (!insuranceCompanyId && selectedCase.todoRisk?.insurance?.company) invalidFields.push('Compañía de seguro');
@@ -4116,7 +4118,7 @@ function App() {
           if (selectedCase.todoRisk?.processing?.modality && !modalityCode) invalidFields.push('Trámite: modalidad');
           if (selectedCase.todoRisk?.processing?.clientChargeStatus && !customerPaymentStatusCode) invalidFields.push('CLEAS: estado pago cliente');
           if (selectedCase.todoRisk?.processing?.companyFranchisePaymentStatus && !companyPaymentStatusCode) invalidFields.push('CLEAS: estado pago compañía');
-          if (selectedCase.computed?.todoRisk?.partsAuthorization && selectedCase.computed.todoRisk.partsAuthorization !== 'Sin repuestos' && !partsAuthorizationCode) {
+           if (!isTodoRiesgoCase(selectedCase) && selectedCase.computed?.todoRisk?.partsAuthorization && selectedCase.computed.todoRisk.partsAuthorization !== 'Sin repuestos' && !partsAuthorizationCode) {
             invalidFields.push('Trámite: autorizacion de repuestos');
           }
 
@@ -4170,14 +4172,15 @@ function App() {
               quotationStatusCode,
               quotationDate: toDate(selectedCase.todoRisk?.processing?.quoteDate),
               agreedAmount: toDecimal(selectedCase.todoRisk?.processing?.agreedAmount),
+              agreementDate: toDate(selectedCase.todoRisk?.processing?.agreementDate || selectedCase.todoRisk?.processing?.quoteDate),
+              passedToPaymentsDate: toDate(selectedCase.payments?.passedToPaymentsDate),
               minimumCloseAmount: toDecimal(selectedCase.computed?.todoRisk?.minimumClosingAmount),
               includesParts: Boolean(selectedCase.computed?.hasReplacementParts),
               partsAuthorizationCode,
               partsSupplierText: selectedCase.todoRisk?.processing?.cleasScope || null,
               amountToBillCompany: toDecimal(selectedCase.computed?.todoRisk?.amountToInvoice || selectedCase.computed?.thirdParty?.amountToInvoice),
               finalAmountForWorkshop: toDecimal(selectedCase.computed?.thirdParty?.finalInFavorTaller || selectedCase.computed?.todoRisk?.amountToInvoice),
-              noRepair: Boolean(selectedCase.todoRisk?.processing?.noRepairNeeded),
-              adminOverrideAppointment: Boolean(selectedCase.todoRisk?.processing?.adminTurnOverride),
+               adminOverrideAppointment: Boolean(selectedCase.todoRisk?.processing?.adminTurnOverride),
             }, { changeNote }));
         }
 
@@ -4398,7 +4401,9 @@ function App() {
               description: part.name || null,
               partCode: null,
               finalSupplier: part.provider || null,
-              authorizationCode: part.authorization || null,
+               authorizationCode: isTodoRiesgoCase(selectedCase)
+                 ? toTodoRiesgoPartAuthorizationCode(part.authorization)
+                 : part.authorization || null,
               statusCode: part.state || null,
               purchasedByCode: part.purchaseBy || null,
               paymentStatusCode: part.paymentStatus || null,
@@ -4731,7 +4736,7 @@ function App() {
       await readWithStoredToken(async (accessToken) => {
         await updateAuthenticatedCaseVisibleStates(accessToken, numericCaseId, {
           domain,
-          stateCode,
+          stateCode: stateCode || null,
           reason: stateCode ? 'Ajuste manual desde gestion' : 'Volver a seguimiento automatico',
         }, { changeNote });
         await openAuthenticatedCaseDetail({ id: numericCaseId });

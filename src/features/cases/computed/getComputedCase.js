@@ -954,44 +954,45 @@ export function getComputedCase(item) {
     const retentionsReady = hasTodoRiskRetentionsDefined(item.payments);
     const franchiseReadyForPayments = todoRisk.franchise.status !== 'Pendiente';
     const paymentsReady = Boolean(item.payments.paymentDate && numberValue(item.payments.depositedAmount) > 0 && retentionsReady && franchiseReadyForPayments);
-    const noRepairNeeded = todoRisk.processing.noRepairNeeded;
+    const effectiveTramiteState = item?.backendVisibleStates?.tramite || item?.visibleTramiteState || null;
+    const effectiveRepairState = item?.backendVisibleStates?.reparacion || item?.visibleRepairState || null;
+    const noRepairNeeded = isTodoRiesgo && effectiveRepairState?.code === 'NO_DEBE_REPARARSE';
     const managementAdvanced = Boolean(operativePartsReady && quoteAgreed && amountMeetsMinimum && resolvedAgenda);
     const turnWarningRequired = !noRepairNeeded && !quoteAgreed;
     const canProgressFromPresentation = Boolean(presentedDate);
     const canCompleteProcessingCore = Boolean(incidentDate && hasRecoveryType);
     const latestPaymentDate = item.payments.paymentDate || item.payments.passedToPaymentsDate || item.payments.estimatedPaymentDate;
 
-    const hasScheduledTurn = Boolean(item.repair.turno.date);
+    let repairStatus = effectiveRepairState?.label || '';
+    let tramiteStatus = effectiveTramiteState?.label || '';
+    if (!isTodoRiesgo) {
+      const hasScheduledTurn = Boolean(item.repair.turno.date);
+      repairStatus = 'En trámite';
+      if (repairResolved) {
+        repairStatus = 'Reparado';
+      } else if (item.repair.egreso.shouldReenter === 'SI' && item.repair.egreso.date) {
+        repairStatus = 'Debe reingresar';
+      } else if (hasScheduledTurn) {
+        repairStatus = 'Con Turno';
+      } else if (quoteAgreed && hasAuthorizedPendingParts) {
+        repairStatus = 'Faltan repuestos';
+      } else if (quoteAgreed && (!hasAuthorizedParts || !hasAuthorizedPendingParts) && (noPartsNeeded || allPartsDenied || hasPartsAuthorizationDefined)) {
+        repairStatus = 'Dar Turno';
+      }
 
-    // Prioridad Todo Riesgo: No debe repararse > Reparado > Debe reingresar > Con Turno > Faltan repuestos > Dar Turno > En trámite.
-    let repairStatus = 'En trámite';
-    if (noRepairNeeded) {
-      repairStatus = 'No debe repararse';
-    } else if (repairResolved) {
-      repairStatus = 'Reparado';
-    } else if (item.repair.egreso.shouldReenter === 'SI' && item.repair.egreso.date) {
-      repairStatus = 'Debe reingresar';
-    } else if (hasScheduledTurn) {
-      repairStatus = 'Con Turno';
-    } else if (quoteAgreed && hasAuthorizedPendingParts) {
-      repairStatus = 'Faltan repuestos';
-    } else if (quoteAgreed && (!hasAuthorizedParts || !hasAuthorizedPendingParts) && (noPartsNeeded || allPartsDenied || hasPartsAuthorizationDefined)) {
-      repairStatus = 'Dar Turno';
-    }
-
-    // Prioridad Todo Riesgo: Pagado > Pasado a pagos > Acordado > En trámite > Presentado (PD) > Sin presentar.
-    let tramiteStatus = 'Sin presentar';
-    if (presentedDate) {
-      tramiteStatus = documentationComplete ? 'En trámite' : 'Presentado (PD)';
-    }
-    if (quoteAgreed) {
-      tramiteStatus = 'Acordado';
-    }
-    if (item.payments.passedToPaymentsDate && !item.payments.paymentDate) {
-      tramiteStatus = 'Pasado a pagos';
-    }
-    if (item.payments.paymentDate) {
-      tramiteStatus = 'Pagado';
+      tramiteStatus = 'Sin presentar';
+      if (presentedDate) {
+        tramiteStatus = documentationComplete ? 'En trámite' : 'Presentado (PD)';
+      }
+      if (quoteAgreed) {
+        tramiteStatus = 'Acordado';
+      }
+      if (item.payments.passedToPaymentsDate && !item.payments.paymentDate) {
+        tramiteStatus = 'Pasado a pagos';
+      }
+      if (item.payments.paymentDate) {
+        tramiteStatus = 'Pagado';
+      }
     }
 
     const closeReady = noRepairNeeded || (repairResolved && paymentsReady);
@@ -1094,36 +1095,9 @@ export function getComputedCase(item) {
     };
   }
 
-  // Prioridad Particular: Reparado > Debe reingresar > Con Turno > Faltan repuestos > Dar Turno > En trámite.
-  let repairStatus = 'En trámite';
-  const hasSelectedComprobante = Boolean(item.payments.comprobante);
-  const hasTotalSettlement = item.payments.settlements.some((settlement) => settlement.kind === 'Total');
-
-  if (budgetReady && turnoReady) {
-    repairStatus = 'Con Turno';
-  } else if (budgetReady && hasReplacementParts && !allPartsReceived) {
-    repairStatus = 'Faltan repuestos';
-  } else if (budgetReady && hasSelectedComprobante) {
-    repairStatus = 'Dar Turno';
-  }
-  if (item.repair.egreso.shouldReenter === 'SI' && item.repair.egreso.date) {
-    repairStatus = 'Debe reingresar';
-  }
-  if (repairResolved) {
-    repairStatus = 'Reparado';
-  }
-
-  // Prioridad Particular: Pagado > Pasado a pagos > Ingresado.
-  let tramiteStatus = 'Ingresado';
-  if (item.folderCreated) {
-    tramiteStatus = 'Ingresado';
-  }
-  if (repairStatus === 'Reparado' && balance > 0) {
-    tramiteStatus = 'Pasado a pagos';
-  }
-  if (hasTotalSettlement && balance === 0) {
-    tramiteStatus = 'Pagado';
-  }
+  // PARTICULAR state authority lives in the persisted backend projection.
+  const tramiteStatus = item?.backendVisibleStates?.tramite?.label || item?.visibleTramiteState?.label || '';
+  const repairStatus = item?.backendVisibleStates?.reparacion?.label || item?.visibleRepairState?.label || '';
 
   const closeReady = repairResolved && balance === 0;
   const latestPaymentDate = item.payments.settlements.reduce((latest, settlement) => maxDate(latest, settlement.date), item.payments.senaDate);

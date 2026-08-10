@@ -4,6 +4,8 @@ import com.tallerzapata.backend.api.budget.*;
 import com.tallerzapata.backend.api.casefile.CodeCatalogResponse;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.ParticularCaseClosureService;
+import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
+import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
@@ -52,9 +54,11 @@ public class BudgetService {
     private final ParticularCaseClosureService particularCaseClosureService;
     private final OrganizationRepository organizationRepository;
     private final BranchRepository branchRepository;
+    private final ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
+    private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
 
     public BudgetService(BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CasePartRepository casePartRepository, CaseRepository caseRepository, BudgetReportStatusRepository budgetReportStatusRepository, BudgetTaskRepository budgetTaskRepository, DamageLevelRepository damageLevelRepository, PartDecisionRepository partDecisionRepository, BudgetActionRepository budgetActionRepository, PartStatusRepository partStatusRepository, PartPurchaserRepository partPurchaserRepository, PartPaymentStatusRepository partPaymentStatusRepository, InsurancePartsAuthorizationRepository insurancePartsAuthorizationRepository, PersonRepository personRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService,             BudgetPdfService budgetPdfService, ParticularCaseClosureService particularCaseClosureService,
-            OrganizationRepository organizationRepository, BranchRepository branchRepository) {
+            OrganizationRepository organizationRepository, BranchRepository branchRepository, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator) {
         this.budgetRepository = budgetRepository;
         this.budgetItemRepository = budgetItemRepository;
         this.casePartRepository = casePartRepository;
@@ -76,6 +80,8 @@ public class BudgetService {
         this.particularCaseClosureService = particularCaseClosureService;
         this.organizationRepository = organizationRepository;
         this.branchRepository = branchRepository;
+        this.particularEffectiveStateRecalculator = particularEffectiveStateRecalculator;
+        this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
     }
 
     @Transactional(readOnly = true)
@@ -182,6 +188,8 @@ public class BudgetService {
         entity = budgetRepository.save(entity);
         caseAuditService.register(currentUser.id(), caseId, "presupuestos", entity.getId(), "upsert_presupuesto", null, caseAuditService.toJson(Map.of("reportStatusCode", entity.getReportStatusCode(), "totalQuoted", entity.getTotalQuoted())), caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
         particularCaseClosureService.syncClosure(caseId);
+        particularEffectiveStateRecalculator.recalculate(caseId);
+        todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
         List<BudgetItemResponse> items = budgetItemRepository.findByBudgetIdOrderByVisualOrderAsc(entity.getId()).stream().map(this::toBudgetItemResponse).toList();
         return toBudgetResponse(entity, items);
     }
@@ -198,6 +206,8 @@ public class BudgetService {
         entity = budgetRepository.save(entity);
         caseAuditService.register(currentUser.id(), caseId, "presupuestos", entity.getId(), "cerrar_presupuesto", null, caseAuditService.toJson(Map.of("reportStatusCode", entity.getReportStatusCode())), caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
         particularCaseClosureService.syncClosure(caseId);
+        particularEffectiveStateRecalculator.recalculate(caseId);
+        todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
         List<BudgetItemResponse> items = budgetItemRepository.findByBudgetIdOrderByVisualOrderAsc(entity.getId()).stream().map(this::toBudgetItemResponse).toList();
         return toBudgetResponse(entity, items);
     }
@@ -293,6 +303,8 @@ public class BudgetService {
         entity.setReturned(Boolean.TRUE.equals(request.returned()));
         entity = casePartRepository.save(entity);
         caseAuditService.register(currentUser.id(), caseId, "repuestos_caso", entity.getId(), "crear_repuesto_caso", null, caseAuditService.toJson(Map.of("description", entity.getDescription(), "statusCode", entity.getStatusCode())), caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
+        particularEffectiveStateRecalculator.recalculate(caseId);
+        todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
         return toCasePartResponse(entity);
     }
 
@@ -319,7 +331,9 @@ public class BudgetService {
         entity.setUsed(Boolean.TRUE.equals(request.used()));
         entity.setReturned(Boolean.TRUE.equals(request.returned()));
         entity = casePartRepository.save(entity);
-    caseAuditService.register(currentUser.id(), caseId, "repuestos_caso", entity.getId(), "actualizar_repuesto_caso", null, caseAuditService.toJson(Map.of("description", entity.getDescription(), "statusCode", entity.getStatusCode())), caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
+        caseAuditService.register(currentUser.id(), caseId, "repuestos_caso", entity.getId(), "actualizar_repuesto_caso", null, caseAuditService.toJson(Map.of("description", entity.getDescription(), "statusCode", entity.getStatusCode())), caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
+        particularEffectiveStateRecalculator.recalculate(caseId);
+        todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
         return toCasePartResponse(entity);
     }
 
@@ -338,6 +352,8 @@ public class BudgetService {
                 caseAuditService.toJson(Map.of("description", entity.getDescription(), "statusCode", entity.getStatusCode())),
                 null,
                 caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
+        particularEffectiveStateRecalculator.recalculate(caseId);
+        todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
     }
 
     @Transactional
@@ -368,6 +384,8 @@ public class BudgetService {
             part = casePartRepository.save(part);
             created.add(toCasePartResponse(part));
         }
+        particularEffectiveStateRecalculator.recalculate(caseId);
+        todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
         return created;
     }
 

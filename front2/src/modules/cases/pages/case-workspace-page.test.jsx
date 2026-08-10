@@ -6,6 +6,7 @@ import { CaseWorkspacePage, countCompletedStages, formatDisplayValue, getFichaSu
 const mockGetCaseWorkspace = vi.fn();
 const mockRequestJson = vi.fn();
 const mockSearchReferenciadores = vi.fn();
+const mockOverrideVisibleState = vi.fn();
 const mockInvalidateQueries = vi.fn();
 const mockUseQuery = vi.fn();
 
@@ -16,6 +17,7 @@ vi.mock('react-router-dom', () => ({
 vi.mock('@/modules/cases/api/cases-api', () => ({
   getCaseWorkspace: (...args) => mockGetCaseWorkspace(...args),
   searchReferenciadores: (...args) => mockSearchReferenciadores(...args),
+  overrideVisibleState: (...args) => mockOverrideVisibleState(...args),
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -232,6 +234,7 @@ describe('CaseWorkspacePage UI', () => {
     mockUseQuery.mockReset();
     mockInvalidateQueries.mockReset();
     mockSearchReferenciadores.mockReset();
+    mockOverrideVisibleState.mockReset();
     referenciadorSearchResults = [];
   });
 
@@ -336,6 +339,47 @@ describe('CaseWorkspacePage UI', () => {
     await renderPage();
 
     expect(screen.getByTestId('workspace-tabs-scroll')).toHaveClass('overflow-x-auto');
+  });
+
+  it('limita los overrides de PARTICULAR y permite volver a automático', async () => {
+    const user = userEvent.setup();
+    mockOverrideVisibleState.mockResolvedValue(undefined);
+    await renderPage({
+      ...baseWorkspace,
+      caseDetail: {
+        ...baseWorkspace.caseDetail,
+        visibleTramiteState: { code: 'RECHAZADO', label: 'Rechazado', manualOverride: true },
+      },
+    });
+
+    await user.click(screen.getByRole('button', { name: /trámite: rechazado/i }));
+
+    expect(screen.queryByRole('option', { name: 'Sin presentar' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Acordado' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /volver a automático/i }));
+
+    expect(mockOverrideVisibleState).toHaveBeenCalledWith('1', 'tramite', null, '');
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases'] });
+  });
+
+  it('no ofrece overrides manuales para TODO_RIESGO', async () => {
+    const user = userEvent.setup();
+    await renderPage({
+      ...baseWorkspace,
+      caseDetail: {
+        ...baseWorkspace.caseDetail,
+        caseTypeCode: 'TODO_RIESGO',
+        visibleTramiteState: { code: 'PAGADO', label: 'Pagado' },
+        visibleRepairState: { code: 'NO_DEBE_REPARARSE', label: 'No debe repararse' },
+      },
+    });
+
+    const tramiteButton = screen.getByRole('button', { name: /trámite: pagado/i });
+    const repairButton = screen.getByRole('button', { name: /reparación: no debe repararse/i });
+    expect(tramiteButton).toBeDisabled();
+    expect(repairButton).toBeDisabled();
+    await user.click(tramiteButton);
+    expect(screen.queryByText('Cambiar estado de Trámite')).not.toBeInTheDocument();
   });
 
   it('muestra el proximo paso operativo en resumen', async () => {

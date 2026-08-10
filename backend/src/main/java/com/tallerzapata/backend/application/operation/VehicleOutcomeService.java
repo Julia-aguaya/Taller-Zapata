@@ -6,6 +6,8 @@ import com.tallerzapata.backend.api.operation.VehicleOutcomeUpdateRequest;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.ParticularCaseClosureService;
 import com.tallerzapata.backend.application.casefile.CaseWorkflowService;
+import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
+import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
@@ -46,6 +48,8 @@ public class VehicleOutcomeService {
     private final CaseWorkflowService caseWorkflowService;
     private final RepairAppointmentService repairAppointmentService;
     private final ParticularCaseClosureService particularCaseClosureService;
+    private final ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
+    private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
 
     public VehicleOutcomeService(
             VehicleOutcomeRepository vehicleOutcomeRepository,
@@ -59,7 +63,7 @@ public class VehicleOutcomeService {
             CaseAuditService caseAuditService,
             CaseWorkflowService caseWorkflowService,
             RepairAppointmentService repairAppointmentService,
-            ParticularCaseClosureService particularCaseClosureService
+                ParticularCaseClosureService particularCaseClosureService, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator
     ) {
         this.vehicleOutcomeRepository = vehicleOutcomeRepository;
         this.vehicleIntakeRepository = vehicleIntakeRepository;
@@ -73,6 +77,8 @@ public class VehicleOutcomeService {
         this.caseWorkflowService = caseWorkflowService;
         this.repairAppointmentService = repairAppointmentService;
         this.particularCaseClosureService = particularCaseClosureService;
+        this.particularEffectiveStateRecalculator = particularEffectiveStateRecalculator;
+        this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
     }
 
     @Transactional(readOnly = true)
@@ -150,6 +156,8 @@ public class VehicleOutcomeService {
 
         syncReentryAppointment(entity, currentUser.id(), httpRequest);
         particularCaseClosureService.syncClosure(caseId);
+        particularEffectiveStateRecalculator.recalculate(caseId);
+        todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
 
         return toResponse(entity);
     }
@@ -209,6 +217,8 @@ public class VehicleOutcomeService {
 
         syncReentryAppointment(entity, currentUser.id(), httpRequest);
         particularCaseClosureService.syncClosure(caseEntity.getId());
+        particularEffectiveStateRecalculator.recalculate(caseEntity.getId());
+        todoRiesgoEffectiveStateRecalculator.recalculate(caseEntity.getId());
 
         return toResponse(entity);
     }

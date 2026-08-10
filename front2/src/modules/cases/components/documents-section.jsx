@@ -15,6 +15,13 @@ export const DocumentsSection = ({ caseId }) => {
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadCategory, setUploadCategory] = useState('');
+  const invalidateCaseViews = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['cases'] }),
+    queryClient.invalidateQueries({ queryKey: ['cases', String(caseId)] }),
+    queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }),
+    queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'documents'] }),
+    queryClient.invalidateQueries({ queryKey: ['panel'] }),
+  ]);
 
   const docsQuery = useQuery({
     queryKey: ['cases', String(caseId), 'documents'],
@@ -31,7 +38,7 @@ export const DocumentsSection = ({ caseId }) => {
 
   const deleteMutation = useMutation({
     mutationFn: (docId) => requestJson(`/documents/${docId}`, { method: 'DELETE' }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'documents'] }); toast.success('Documento eliminado.'); },
+    onSuccess: async () => { await invalidateCaseViews(); toast.success('Documento eliminado.'); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -47,7 +54,7 @@ export const DocumentsSection = ({ caseId }) => {
       if (!resp.ok) throw new Error(await resp.text());
       return resp.json();
     },
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'documents'] }); toast.success('Documento subido.'); setShowUpload(false); setUploadFile(null); },
+    onSuccess: async () => { await invalidateCaseViews(); toast.success('Documento subido.'); setShowUpload(false); setUploadFile(null); },
     onError: (e) => toast.error(e.message),
   });
 

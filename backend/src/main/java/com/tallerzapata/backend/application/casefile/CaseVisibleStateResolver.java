@@ -25,6 +25,8 @@ import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleInta
 import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleIntakeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleOutcomeEntity;
 import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleOutcomeRepository;
+import com.tallerzapata.backend.infrastructure.persistence.particularstate.ParticularEffectiveStateRepository;
+import com.tallerzapata.backend.infrastructure.persistence.todoriskstate.TodoRiesgoEffectiveStateRepository;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
@@ -101,6 +103,8 @@ public class CaseVisibleStateResolver {
     private final CasePartRepository casePartRepository;
     private final FinancialMovementRepository financialMovementRepository;
     private final IssuedReceiptRepository issuedReceiptRepository;
+    private final ParticularEffectiveStateRepository particularEffectiveStateRepository;
+    private final TodoRiesgoEffectiveStateRepository todoRiesgoEffectiveStateRepository;
 
     public CaseVisibleStateResolver(
             CaseTypeRepository caseTypeRepository,
@@ -114,7 +118,9 @@ public class CaseVisibleStateResolver {
             VehicleOutcomeRepository vehicleOutcomeRepository,
             CasePartRepository casePartRepository,
             FinancialMovementRepository financialMovementRepository,
-            IssuedReceiptRepository issuedReceiptRepository
+            IssuedReceiptRepository issuedReceiptRepository,
+            ParticularEffectiveStateRepository particularEffectiveStateRepository,
+            TodoRiesgoEffectiveStateRepository todoRiesgoEffectiveStateRepository
     ) {
         this.caseTypeRepository = caseTypeRepository;
         this.insuranceProcessingRepository = insuranceProcessingRepository;
@@ -128,11 +134,35 @@ public class CaseVisibleStateResolver {
         this.casePartRepository = casePartRepository;
         this.financialMovementRepository = financialMovementRepository;
         this.issuedReceiptRepository = issuedReceiptRepository;
+        this.particularEffectiveStateRepository = particularEffectiveStateRepository;
+        this.todoRiesgoEffectiveStateRepository = todoRiesgoEffectiveStateRepository;
     }
 
     public Map<String, CaseVisibleStateResponse> resolveForCase(CaseEntity caseEntity) {
         CaseTypeEntity caseType = caseTypeRepository.findById(caseEntity.getCaseTypeId())
                 .orElseThrow(() -> new ConflictException("No existe el tipo de tramite " + caseEntity.getCaseTypeId()));
+        if ("PARTICULAR".equals(normalizeCode(caseType.getCode()))) {
+            return particularEffectiveStateRepository.findById(caseEntity.getId()).map(state -> {
+                Map<String, CaseVisibleStateResponse> result = new LinkedHashMap<>();
+                result.put(DOMAIN_TRAMITE, buildVisibleState(DOMAIN_TRAMITE, state.getProcedureCode(), state.getProcedureTerminalOverrideCode()));
+                result.put(DOMAIN_REPARACION, buildVisibleState(DOMAIN_REPARACION, state.getRepairCode(), state.getRepairTerminalOverrideCode()));
+                return result;
+            }).orElseGet(() -> Map.of(
+                    DOMAIN_TRAMITE, buildVisibleState(DOMAIN_TRAMITE, "INGRESADO", null),
+                    DOMAIN_REPARACION, buildVisibleState(DOMAIN_REPARACION, "EN_TRAMITE", null)
+            ));
+        }
+        if ("TODO_RIESGO".equals(normalizeCode(caseType.getCode()))) {
+            return todoRiesgoEffectiveStateRepository.findByCaseId(caseEntity.getId()).map(state -> {
+                Map<String, CaseVisibleStateResponse> result = new LinkedHashMap<>();
+                result.put(DOMAIN_TRAMITE, buildVisibleState(DOMAIN_TRAMITE, state.getProcedureCode(), null));
+                result.put(DOMAIN_REPARACION, buildVisibleState(DOMAIN_REPARACION, state.getRepairCode(), null));
+                return result;
+            }).orElseGet(() -> Map.of(
+                    DOMAIN_TRAMITE, buildVisibleState(DOMAIN_TRAMITE, "SIN_PRESENTAR", null),
+                    DOMAIN_REPARACION, buildVisibleState(DOMAIN_REPARACION, "EN_TRAMITE", null)
+            ));
+        }
 
         Optional<InsuranceProcessingEntity> insuranceProcessing = insuranceProcessingRepository.findByCaseId(caseEntity.getId());
         Optional<CaseFranchiseEntity> franchise = caseFranchiseRepository.findByCaseId(caseEntity.getId());

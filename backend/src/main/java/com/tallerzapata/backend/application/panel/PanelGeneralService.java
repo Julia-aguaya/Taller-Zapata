@@ -154,6 +154,8 @@ public class PanelGeneralService {
                         caseEntity.getFolderCode() != null ? caseEntity.getFolderCode() : "SIN_CODIGO",
                         title,
                         caseType == null ? null : caseType.getCode(),
+                        isParticular(caseType) ? tramiteCode : null,
+                        isParticular(caseType) ? repairCode : null,
                         tramiteState,
                         repairState,
                         reasons,
@@ -190,6 +192,10 @@ public class PanelGeneralService {
                 new PanelSummaryResponse(openCases, pendingPayments, casesWithoutAppointment, casesNearPrescription, pendingTasks),
                 buckets
         );
+    }
+
+    private boolean isParticular(CaseTypeEntity caseType) {
+        return caseType != null && "PARTICULAR".equalsIgnoreCase(caseType.getCode());
     }
 
     private boolean isPendingTask(String statusCode) {

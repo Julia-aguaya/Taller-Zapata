@@ -3,6 +3,8 @@ package com.tallerzapata.backend.application.finance;
 import com.tallerzapata.backend.api.finance.*;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.ParticularCaseClosureService;
+import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
+import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
@@ -63,8 +65,10 @@ public class FinanceService {
     private final CaseAccessControlService accessControlService;
     private final CaseAuditService caseAuditService;
     private final ParticularCaseClosureService particularCaseClosureService;
+    private final ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
+    private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
 
-    public FinanceService(FinancialMovementRepository movementRepository, FinancialMovementRetentionRepository retentionRepository, FinancialMovementApplicationRepository applicationRepository, IssuedReceiptRepository receiptRepository, BudgetRepository budgetRepository, CaseRepository caseRepository, PersonRepository personRepository, UserRepository userRepository, DocumentRepository documentRepository, FinancialMovementTypeRepository movementTypeRepository, FinancialFlowOriginRepository flowOriginRepository, FinancialCounterpartyTypeRepository counterpartyTypeRepository, FinancialPaymentMethodRepository paymentMethodRepository, FinancialCancellationTypeRepository cancellationTypeRepository, FinancialRetentionTypeRepository retentionTypeRepository, FinancialApplicationConceptRepository applicationConceptRepository, IssuedReceiptTypeRepository issuedReceiptTypeRepository, InsuranceCompanyRepository companyRepository, OrganizationRepository organizationRepository, BranchRepository branchRepository,             ReceiptPdfService receiptPdfService, ClientPaymentPdfService clientPaymentPdfService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, ParticularCaseClosureService particularCaseClosureService) {
+    public FinanceService(FinancialMovementRepository movementRepository, FinancialMovementRetentionRepository retentionRepository, FinancialMovementApplicationRepository applicationRepository, IssuedReceiptRepository receiptRepository, BudgetRepository budgetRepository, CaseRepository caseRepository, PersonRepository personRepository, UserRepository userRepository, DocumentRepository documentRepository, FinancialMovementTypeRepository movementTypeRepository, FinancialFlowOriginRepository flowOriginRepository, FinancialCounterpartyTypeRepository counterpartyTypeRepository, FinancialPaymentMethodRepository paymentMethodRepository, FinancialCancellationTypeRepository cancellationTypeRepository, FinancialRetentionTypeRepository retentionTypeRepository, FinancialApplicationConceptRepository applicationConceptRepository, IssuedReceiptTypeRepository issuedReceiptTypeRepository, InsuranceCompanyRepository companyRepository, OrganizationRepository organizationRepository, BranchRepository branchRepository, ReceiptPdfService receiptPdfService, ClientPaymentPdfService clientPaymentPdfService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, ParticularCaseClosureService particularCaseClosureService, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator) {
         this.movementRepository = movementRepository;
         this.retentionRepository = retentionRepository;
         this.applicationRepository = applicationRepository;
@@ -91,6 +95,8 @@ public class FinanceService {
         this.accessControlService = accessControlService;
         this.caseAuditService = caseAuditService;
         this.particularCaseClosureService = particularCaseClosureService;
+        this.particularEffectiveStateRecalculator = particularEffectiveStateRecalculator;
+        this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
     }
 
     @Transactional(readOnly = true)
@@ -134,6 +140,12 @@ public class FinanceService {
 
         caseAuditService.register(currentUser.id(), caseId, "movimientos_financieros", entity.getId(), "crear_movimiento_financiero", null, caseAuditService.toJson(movementSnapshot(entity)), caseAuditService.toJson(Map.of("domain", "finanzas")), httpRequest);
         particularCaseClosureService.syncClosure(caseId);
+        particularEffectiveStateRecalculator.recalculate(caseId);
+        if ("INGRESO".equals(entity.getMovementTypeCode()) && "ASEGURADORA".equals(entity.getFlowOriginCode())) {
+            todoRiesgoEffectiveStateRecalculator.recordPaymentFact(caseId, entity.getMovementAt().toLocalDate(), currentUser.id());
+        } else {
+            todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+        }
         return toMovementResponse(entity);
     }
 
@@ -168,6 +180,8 @@ public class FinanceService {
         entity = receiptRepository.save(entity);
 
         caseAuditService.register(currentUser.id(), caseId, "comprobantes_emitidos", entity.getId(), "crear_comprobante_emitido", null, caseAuditService.toJson(Map.of("receiptTypeCode", entity.getReceiptTypeCode(), "total", entity.getTotal())), caseAuditService.toJson(Map.of("domain", "finanzas")), httpRequest);
+        particularEffectiveStateRecalculator.recalculate(caseId);
+        todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
         return toReceiptResponse(entity);
     }
 

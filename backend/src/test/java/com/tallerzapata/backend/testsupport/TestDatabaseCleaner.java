@@ -71,6 +71,11 @@ public class TestDatabaseCleaner {
             "repuestos_caso",
 
             // Caso
+            "todo_riesgo_effective_state_history",
+            "todo_riesgo_effective_state",
+            "todo_riesgo_state_facts",
+            "particular_effective_state_history",
+            "particular_effective_state",
             "auditoria_eventos",
             "caso_estado_historial",
             "caso_relaciones",

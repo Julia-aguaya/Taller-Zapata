@@ -199,6 +199,22 @@ public class CaseController {
         caseWorkflowService.overrideVisibleState(caseId, request, httpRequest);
     }
 
+    @Operation(summary = "Marcar TODO_RIESGO como no reparable")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PostMapping("/{caseId}/todo-riesgo/no-repair")
+    public CaseResponse markTodoRiesgoNoRepair(@PathVariable Long caseId, @Valid @RequestBody TodoRiesgoNoRepairRequest request) {
+        caseWorkflowService.markTodoRiesgoNoRepair(caseId, request.reason());
+        return caseService.getById(caseId);
+    }
+
+    @Operation(summary = "Revertir no reparable en TODO_RIESGO")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PostMapping("/{caseId}/todo-riesgo/no-repair/revert")
+    public CaseResponse revertTodoRiesgoNoRepair(@PathVariable Long caseId, @Valid @RequestBody TodoRiesgoNoRepairRequest request) {
+        caseWorkflowService.revertTodoRiesgoNoRepair(caseId, request.reason());
+        return caseService.getById(caseId);
+    }
+
     @Operation(summary = "Agregar nota al caso", description = "Registra una anotacion manual en la auditoria del caso")
     @ApiResponse(responseCode = "200", description = "OK")
     @PostMapping("/{caseId}/notes")

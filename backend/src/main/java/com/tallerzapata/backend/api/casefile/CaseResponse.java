@@ -1,5 +1,7 @@
 package com.tallerzapata.backend.api.casefile;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import java.time.LocalDateTime;
 
 public record CaseResponse(
@@ -33,6 +35,8 @@ public record CaseResponse(
         Long createdByUserId,
         String createdByDisplayName,
         LocalDateTime createdAt,
+        @JsonInclude(JsonInclude.Include.NON_NULL) String tramiteCode,
+        @JsonInclude(JsonInclude.Include.NON_NULL) String reparacionCode,
         CaseVisibleStateResponse visibleTramiteState,
         CaseVisibleStateResponse visibleRepairState,
         String principalCustomerName,

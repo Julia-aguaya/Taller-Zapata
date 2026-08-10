@@ -5,8 +5,12 @@ export function applyBackendVisibleStatesToCase(item) {
 
   const tramite = item?.backendVisibleStates?.tramite || item?.visibleTramiteState || null;
   const reparacion = item?.backendVisibleStates?.reparacion || item?.visibleRepairState || null;
+  const isProjectionBacked = item?.tramiteType === 'Particular'
+    || item?.caseTypeCode === 'PARTICULAR'
+    || item?.tramiteType === 'Todo Riesgo'
+    || item?.caseTypeCode === 'TODO_RIESGO';
 
-  if (!tramite?.label && !reparacion?.label) {
+  if (!tramite?.label && !reparacion?.label && !isProjectionBacked) {
     return item;
   }
 
@@ -14,8 +18,8 @@ export function applyBackendVisibleStatesToCase(item) {
     ...item,
     computed: {
       ...item.computed,
-      tramiteStatus: tramite?.label || item.computed.tramiteStatus,
-      repairStatus: reparacion?.label || item.computed.repairStatus,
+      tramiteStatus: tramite?.label || (isProjectionBacked ? '' : item.computed.tramiteStatus),
+      repairStatus: reparacion?.label || (isProjectionBacked ? '' : item.computed.repairStatus),
     },
   };
 }
@@ -41,6 +45,28 @@ export const MANUAL_VISIBLE_STATE_OPTIONS = {
     { code: 'DEBE_REINGRESAR', label: 'Debe reingresar' },
     { code: 'REPARADO', label: 'Reparado' },
     { code: 'NO_DEBE_REPARARSE', label: 'No debe repararse' },
+    { code: 'RECHAZADO', label: 'Rechazado' },
+    { code: 'DESISTIDO', label: 'Desistido' },
+  ],
+};
+
+export const PARTICULAR_VISIBLE_STATE_OPTIONS = {
+  tramite: [
+    { code: '', label: 'Seguimiento automatico' },
+    { code: 'INGRESADO', label: 'Ingresado' },
+    { code: 'PASADO_A_PAGOS', label: 'Pasado a pagos' },
+    { code: 'PAGADO', label: 'Pagado' },
+    { code: 'RECHAZADO', label: 'Rechazado' },
+    { code: 'DESISTIDO', label: 'Desistido' },
+  ],
+  reparacion: [
+    { code: '', label: 'Seguimiento automatico' },
+    { code: 'EN_TRAMITE', label: 'En tramite' },
+    { code: 'DAR_TURNO', label: 'Dar turno' },
+    { code: 'FALTAN_REPUESTOS', label: 'Faltan repuestos' },
+    { code: 'CON_TURNO', label: 'Con turno' },
+    { code: 'DEBE_REINGRESAR', label: 'Debe reingresar' },
+    { code: 'REPARADO', label: 'Reparado' },
     { code: 'RECHAZADO', label: 'Rechazado' },
     { code: 'DESISTIDO', label: 'Desistido' },
   ],

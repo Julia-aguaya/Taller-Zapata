@@ -1,6 +1,8 @@
 package com.tallerzapata.backend.application.casefile;
 
 import com.tallerzapata.backend.api.casefile.CaseCreateRequest;
+import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
+import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
 import com.tallerzapata.backend.api.casefile.CaseCatalogsResponse;
 import com.tallerzapata.backend.api.casefile.CasePageResponse;
 import com.tallerzapata.backend.api.casefile.CaseVisibleStateResponse;
@@ -95,6 +97,8 @@ public class CaseService {
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService caseAccessControlService;
     private final CaseVisibleStateResolver caseVisibleStateResolver;
+    private final ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
+    private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
 
     public CaseService(
             CaseRepository caseRepository,
@@ -121,7 +125,8 @@ public class CaseService {
             UserRepository userRepository,
             CurrentUserService currentUserService,
             CaseAccessControlService caseAccessControlService,
-            CaseVisibleStateResolver caseVisibleStateResolver
+            CaseVisibleStateResolver caseVisibleStateResolver, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator,
+            TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator
     ) {
         this.caseRepository = caseRepository;
         this.caseTypeRepository = caseTypeRepository;
@@ -148,6 +153,8 @@ public class CaseService {
         this.currentUserService = currentUserService;
         this.caseAccessControlService = caseAccessControlService;
         this.caseVisibleStateResolver = caseVisibleStateResolver;
+        this.particularEffectiveStateRecalculator = particularEffectiveStateRecalculator;
+        this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
     }
 
     @Transactional(readOnly = true)
@@ -403,6 +410,8 @@ public class CaseService {
                 caseAuditService.toJson(metadata),
                 httpRequest
         );
+        particularEffectiveStateRecalculator.recalculate(entity.getId());
+        todoRiesgoEffectiveStateRecalculator.recalculate(entity.getId());
 
         return toResponse(entity);
     }
@@ -822,6 +831,8 @@ public class CaseService {
                 entity.getCreatedByUserId(),
                 createdByDisplayName,
                 entity.getCreatedAt(),
+                compatibleVisibleCode(caseType.getCode(), visibleStates.get("tramite")),
+                compatibleVisibleCode(caseType.getCode(), visibleStates.get("reparacion")),
                 visibleStates.get("tramite"),
                 visibleStates.get("reparacion"),
                 principalCustomerName,
@@ -891,11 +902,18 @@ public class CaseService {
                 entity.getCreatedByUserId(),
                 createdByDisplayName,
                 entity.getCreatedAt(),
+                compatibleVisibleCode(caseType.getCode(), visibleStates.get("tramite")),
+                compatibleVisibleCode(caseType.getCode(), visibleStates.get("reparacion")),
                 visibleStates.get("tramite"),
                 visibleStates.get("reparacion"),
                 principalCustomerName,
                 principalVehiclePlate
         );
+    }
+
+    private String compatibleVisibleCode(String caseTypeCode, CaseVisibleStateResponse visibleState) {
+        return ("PARTICULAR".equalsIgnoreCase(caseTypeCode) || "TODO_RIESGO".equalsIgnoreCase(caseTypeCode))
+                && visibleState != null ? visibleState.code() : null;
     }
 
     private String blankToNull(String value) {

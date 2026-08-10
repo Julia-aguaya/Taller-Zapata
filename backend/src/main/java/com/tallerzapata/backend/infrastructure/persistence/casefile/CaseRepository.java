@@ -4,12 +4,33 @@ import com.tallerzapata.backend.infrastructure.persistence.person.PersonEntity;
 import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleEntity;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
+import jakarta.persistence.LockModeType;
 
 public interface CaseRepository extends JpaRepository<CaseEntity, Long> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from CaseEntity c where c.id = :caseId")
+    Optional<CaseEntity> findByIdForUpdate(Long caseId);
+
+    @Query("""
+        select c from CaseEntity c join CaseTypeEntity t on t.id = c.caseTypeId
+        where upper(trim(t.code)) = 'PARTICULAR'
+        order by c.id asc
+        """)
+    List<CaseEntity> findParticularCasesOrderByIdAsc();
+
+    @Query("""
+        select c from CaseEntity c join CaseTypeEntity t on t.id = c.caseTypeId
+        where upper(trim(t.code)) = 'TODO_RIESGO'
+        order by c.id asc
+        """)
+    List<CaseEntity> findTodoRiesgoCasesOrderByIdAsc();
 
     @Query("select coalesce(max(c.orderNumber), 0) from CaseEntity c where c.organizationId = :organizationId")
     Long findMaxOrderNumberByOrganizationId(Long organizationId);

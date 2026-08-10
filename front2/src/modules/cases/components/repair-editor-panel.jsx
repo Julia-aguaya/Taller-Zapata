@@ -43,6 +43,15 @@ const createIntakeState = (intake, fallbackVehicleId) => ({
   observationCreatedAt: intake?.observationCreatedAt || null,
 });
 
+export const invalidateCaseProjection = async (queryClient, caseId) => {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ['cases'] }),
+    queryClient.invalidateQueries({ queryKey: ['cases', String(caseId)] }),
+    queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }),
+    queryClient.invalidateQueries({ queryKey: ['panel'] }),
+  ]);
+};
+
 export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, latestIntake, latestOutcome, onSaved }) => {
   const queryClient = useQueryClient();
   const { session } = useSession();
@@ -70,10 +79,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const [egresoForm, setEgresoForm] = useState({ outcomeAt: '', definitive: 'SI', shouldReenter: 'NO', expectedReentryDate: '', estimatedReentryDays: '0', reentryStatusCode: '', repairedPhotosUploaded: 'NO', notes: '' });
 
   const refreshWorkspace = async (message) => {
-    await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
-    await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'appointments'] });
-    await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'intakes'] });
-    await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'outcomes'] });
+    await invalidateCaseProjection(queryClient, caseId);
     await onSaved?.();
     toast.success(message);
   };
@@ -175,6 +181,28 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     [partsCatalogsQuery.data?.paymentStatusCodes],
   );
 
+  const authorizationCodeOptions = useMemo(
+    () => (partsCatalogsQuery.data?.authorizationCodes ?? []).map((item) => ({ value: item.code, label: item.name || item.code })),
+    [partsCatalogsQuery.data?.authorizationCodes],
+  );
+  const isTodoRiesgo = caseDetail?.caseTypeCode === 'TODO_RIESGO';
+  const isNoRepair = caseDetail?.visibleRepairState?.code === 'NO_DEBE_REPARARSE';
+  const [noRepairDialog, setNoRepairDialog] = useState(null);
+  const [noRepairReason, setNoRepairReason] = useState('');
+
+  const noRepairMutation = useMutation({
+    mutationFn: ({ revert, reason }) => requestJson(`/cases/${caseId}/todo-riesgo/no-repair${revert ? '/revert' : ''}`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+    onSuccess: async (_, { revert }) => {
+      setNoRepairDialog(null);
+      setNoRepairReason('');
+      await refreshWorkspace(revert ? 'Reparación devuelta a seguimiento automático.' : 'Marcada como no debe repararse.');
+    },
+    onError: (error) => toast.error(error.message || 'No pude actualizar la excepción de reparación.'),
+  });
+
   const [editMode, setEditMode] = useState(false);
   const [draftParts, setDraftParts] = useState([]);
   const [newPartForm, setNewPartForm] = useState({ description: '', finalSupplier: '', finalPrice: '0', budgetedPrice: '0', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' });
@@ -186,16 +214,35 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     onError: (error) => toast.error(error.message || 'No pude actualizar el repuesto.'),
   });
 
+  const updatePartAuthorization = (part, authorizationCode) => updatePartMutation.mutate({
+    partId: part.id,
+    payload: {
+      budgetItemId: part.budgetItemId || null,
+      description: part.description,
+      partCode: part.partCode || null,
+      finalSupplier: part.finalSupplier || null,
+      authorizationCode: authorizationCode || null,
+      statusCode: part.statusCode || null,
+      purchasedByCode: part.purchasedByCode || null,
+      paymentStatusCode: part.paymentStatusCode || null,
+      budgetedPrice: Number(part.budgetedPrice) || 0,
+      finalPrice: Number(part.finalPrice) || 0,
+      receivedDate: part.receivedDate || null,
+      used: Boolean(part.used),
+      returned: Boolean(part.returned),
+    },
+  });
+
   const [deletePartConfirm, setDeletePartConfirm] = useState(null);
   const deletePartMutation = useMutation({
     mutationFn: (partId) => deleteCasePart(caseId, partId),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'parts'] }); toast.success('Repuesto eliminado.'); setDeletePartConfirm(null); },
+    onSuccess: async () => { await refreshWorkspace('Repuesto eliminado.'); setDeletePartConfirm(null); },
     onError: (error) => toast.error(error.message || 'No pude eliminar el repuesto.'),
   });
 
   const syncPartsMutation = useMutation({
     mutationFn: () => syncPartsFromBudget(caseId),
-    onSuccess: async (data) => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'parts'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); toast.success(`${data.length} repuesto(s) sincronizado(s) desde el presupuesto.`); },
+    onSuccess: async (data) => { await refreshWorkspace(`${data.length} repuesto(s) sincronizado(s) desde el presupuesto.`); },
     onError: (error) => toast.error(error.message || 'No pude sincronizar.'),
   });
 
@@ -257,7 +304,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
             description: draft.description,
             partCode: null,
             finalSupplier: draft.finalSupplier || null,
-            authorizationCode: null,
+            authorizationCode: draft.authorizationCode || null,
             statusCode: draft.statusCode || original.statusCode,
             purchasedByCode: draft.purchasedByCode || original.purchasedByCode,
             paymentStatusCode: draft.paymentStatusCode || original.paymentStatusCode || null,
@@ -276,7 +323,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
             description: draft.description,
             partCode: null,
             finalSupplier: draft.finalSupplier || null,
-            authorizationCode: null,
+            authorizationCode: draft.authorizationCode || null,
             statusCode: draft.statusCode,
             purchasedByCode: draft.purchasedByCode,
             paymentStatusCode: draft.paymentStatusCode || null,
@@ -289,10 +336,9 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
         }
       }
       await Promise.all(promises);
-      await queryClient.refetchQueries({ queryKey: ['cases', String(caseId), 'parts'] });
+      await refreshWorkspace('Cambios guardados.');
       setEditMode(false);
       setDraftParts([]);
-      toast.success('Cambios guardados.');
     } catch (err) {
       toast.error('Error al guardar: ' + (err.message || ''));
     } finally {
@@ -349,7 +395,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
       await requestJson(`/documents/${doc.id}/relations`, { method: 'POST', body: JSON.stringify({ caseId: Number(caseId), entityType: 'CASO', entityId: Number(caseId), moduleCode: 'OPERACION', principal: false, visibleToCustomer: false, visualOrder: 0 }) });
       return doc;
     },
-    onSuccess: async () => { toast.success('Foto de reparado subida.'); if (repairPhotoRef.current) repairPhotoRef.current.value = ''; },
+    onSuccess: async () => { await refreshWorkspace('Foto de reparado subida.'); if (repairPhotoRef.current) repairPhotoRef.current.value = ''; },
     onError: (error) => toast.error(error.message),
   });
 
@@ -406,6 +452,11 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
             <h4 className="text-lg font-semibold">Repuestos</h4>
             <p className="mt-1 text-sm text-muted-foreground">Total: {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(partsTotal)}</p>
           </div>
+          {isTodoRiesgo ? (
+            <Button variant={isNoRepair ? 'outline' : 'destructive'} size="sm" onClick={() => setNoRepairDialog(isNoRepair ? 'revert' : 'apply')}>
+              {isNoRepair ? 'Volver a automático' : 'No debe repararse'}
+            </Button>
+          ) : null}
           {editMode ? (
             <div className="ml-auto flex gap-2">
               <Button variant="outline" size="sm" onClick={cancelEdit}>Cancelar</Button>
@@ -445,7 +496,8 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                   <th className="px-3 py-3 text-right">Importe</th>
                   <th className="px-3 py-3 text-left">Estado</th>
                   <th className="px-3 py-3 text-left">Compra</th>
-                  <th className="px-3 py-3 text-left">Pago</th>
+                   <th className="px-3 py-3 text-left">Pago</th>
+                   {isTodoRiesgo ? <th className="px-3 py-3 text-left">Autorización</th> : null}
                   <th className="px-3 py-3 w-10"></th>
                 </tr>
               </thead>
@@ -497,6 +549,20 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                         <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/50 px-2.5 py-0.5 text-xs font-medium">{paymentStatusCodeOptions.find(o => o.value === part.paymentStatusCode)?.label || part.paymentStatusCode || '—'}</span>
                       )}
                     </td>
+                    {isTodoRiesgo ? (
+                      <td className="px-3 py-3">
+                        <select
+                          aria-label={`Autorización ${part.description || part.id}`}
+                          className="h-9 w-full min-w-[130px] rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                          value={part.authorizationCode || ''}
+                          disabled={editMode || updatePartMutation.isPending}
+                          onChange={(event) => updatePartAuthorization(part, event.target.value)}
+                        >
+                          <option value="">Pendiente</option>
+                          {authorizationCodeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                        </select>
+                      </td>
+                    ) : null}
                     <td className="px-3 py-3">
                       <button type="button" className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950"
                         onClick={() => editMode ? removeFromDraft(part._tempId || part.id) : setDeletePartConfirm(part)}
@@ -516,6 +582,16 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
               <h3 className="text-lg font-semibold">¿Eliminar repuesto?</h3>
               <p className="mt-2 text-sm text-muted-foreground">Se va a borrar <strong>{deletePartConfirm.description}</strong>. Esta acción no modifica el presupuesto.</p>
               <div className="mt-5 flex gap-3"><Button variant="outline" className="flex-1" onClick={() => setDeletePartConfirm(null)}>Cancelar</Button><Button variant="destructive" className="flex-1" onClick={() => deletePartMutation.mutate(deletePartConfirm.id)} disabled={deletePartMutation.isPending}><Trash2 className="mr-1.5 h-4 w-4" />Eliminar</Button></div>
+            </div>
+          </div>
+        ) : null}
+        {noRepairDialog ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setNoRepairDialog(null)}>
+            <div className="w-full max-w-sm rounded-3xl border border-border bg-card p-6 shadow-haze" onClick={(event) => event.stopPropagation()}>
+              <h3 className="text-lg font-semibold">{noRepairDialog === 'revert' ? '¿Volver a seguimiento automático?' : '¿No debe repararse?'}</h3>
+              <p className="mt-2 text-sm text-muted-foreground">El motivo queda registrado en el historial de la carpeta.</p>
+              <div className="mt-4"><Field label="Motivo"><Textarea value={noRepairReason} rows={3} onChange={(event) => setNoRepairReason(event.target.value)} /></Field></div>
+              <div className="mt-5 flex gap-3"><Button variant="outline" className="flex-1" onClick={() => setNoRepairDialog(null)}>Cancelar</Button><Button variant={noRepairDialog === 'revert' ? 'outline' : 'destructive'} className="flex-1" disabled={noRepairMutation.isPending} onClick={() => { if (!noRepairReason.trim()) { toast.error('El motivo es obligatorio.'); return; } noRepairMutation.mutate({ revert: noRepairDialog === 'revert', reason: noRepairReason.trim() }); }}>{noRepairDialog === 'revert' ? 'Volver a automático' : 'Confirmar'}</Button></div>
             </div>
           </div>
         ) : null}

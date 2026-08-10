@@ -562,13 +562,12 @@ export default function GestionReparacionTab({ item, updateCase, activeRepairTab
           <article className="card inner-card">
             <div className="section-head small-gap">
               <h3>Egreso</h3>
-              <StatusBadge tone={item.computed.repairResolved || item.todoRisk.processing.noRepairNeeded ? 'success' : 'danger'}>{item.computed.repairStatus}</StatusBadge>
+              <StatusBadge tone={item.computed.repairResolved ? 'success' : 'danger'}>{item.computed.repairStatus}</StatusBadge>
             </div>
             <div className="form-grid four-columns compact-grid">
               <DataField label="Fecha egreso" onChange={(value) => updateCase((draft) => { draft.repair.egreso.date = value; })} type="date" value={item.repair.egreso.date} />
               <ToggleField label="Debe reingresar" onChange={(value) => updateCase((draft) => { draft.repair.egreso.shouldReenter = value; })} value={item.repair.egreso.shouldReenter} />
               <button className={`toggle-button ${item.repair.egreso.definitiveExit ? 'is-on' : ''}`} onClick={() => updateCase((draft) => { draft.repair.egreso.definitiveExit = !draft.repair.egreso.definitiveExit; })} type="button">Cierre operativo</button>
-              <button className={`toggle-button ${item.todoRisk.processing.noRepairNeeded ? 'is-on' : ''}`} disabled={!item.todoRisk.processing.adminTurnOverride && !item.todoRisk.processing.noRepairNeeded} onClick={() => updateCase((draft) => { draft.todoRisk.processing.noRepairNeeded = !draft.todoRisk.processing.noRepairNeeded; })} type="button">No debe repararse</button>
             </div>
             <label className="field">
               <span>Anotaciones de egreso</span>

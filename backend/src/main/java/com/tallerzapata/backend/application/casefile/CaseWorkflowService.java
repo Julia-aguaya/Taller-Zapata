@@ -10,6 +10,9 @@ import com.tallerzapata.backend.api.casefile.CaseWorkflowTransitionRequest;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
+import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
+import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
 import com.tallerzapata.backend.infrastructure.persistence.workflow.CaseStateHistoryEntity;
@@ -44,6 +47,9 @@ public class CaseWorkflowService {
     private final CaseAccessControlService caseAccessControlService;
     private final ObjectMapper objectMapper;
     private final CaseVisibleStateResolver caseVisibleStateResolver;
+    private final ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
+    private final CaseTypeRepository caseTypeRepository;
+    private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
 
     public CaseWorkflowService(
             CaseRepository caseRepository,
@@ -54,7 +60,8 @@ public class CaseWorkflowService {
             CurrentUserService currentUserService,
             CaseAccessControlService caseAccessControlService,
             ObjectMapper objectMapper,
-            CaseVisibleStateResolver caseVisibleStateResolver
+            CaseVisibleStateResolver caseVisibleStateResolver, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator,
+            CaseTypeRepository caseTypeRepository, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator
     ) {
         this.caseRepository = caseRepository;
         this.workflowTransitionRepository = workflowTransitionRepository;
@@ -65,6 +72,9 @@ public class CaseWorkflowService {
         this.caseAccessControlService = caseAccessControlService;
         this.objectMapper = objectMapper;
         this.caseVisibleStateResolver = caseVisibleStateResolver;
+        this.particularEffectiveStateRecalculator = particularEffectiveStateRecalculator;
+        this.caseTypeRepository = caseTypeRepository;
+        this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
     }
 
     @Transactional
@@ -79,12 +89,26 @@ public class CaseWorkflowService {
         String stateCode = caseVisibleStateResolver.normalizeCode(request.stateCode());
         caseVisibleStateResolver.validateOverrideCode(domain, stateCode);
 
-        if ("tramite".equals(domain)) {
+        if (isParticular(caseEntity)) {
+            if (stateCode != null && !"RECHAZADO".equals(stateCode) && !"DESISTIDO".equals(stateCode)) {
+                throw new ConflictException("PARTICULAR solo admite overrides terminales");
+            }
+            particularEffectiveStateRecalculator.override(caseId, domain, stateCode, currentUser.id(), request.reason());
+        } else if (isTodoRiesgo(caseEntity)) {
+            if (!"reparacion".equals(domain) || (stateCode != null && !"NO_DEBE_REPARARSE".equals(stateCode))) {
+                throw new ConflictException("TODO_RIESGO solo admite NO_DEBE_REPARARSE mediante la accion explicita");
+            }
+            if (stateCode == null) {
+                todoRiesgoEffectiveStateRecalculator.revertNoRepair(caseId, request.reason(), currentUser.id());
+            } else {
+                todoRiesgoEffectiveStateRecalculator.markNoRepair(caseId, request.reason(), currentUser.id());
+            }
+        } else if ("tramite".equals(domain)) {
             caseEntity.setVisibleCaseStateOverrideCode(stateCode);
         } else {
             caseEntity.setVisibleRepairStateOverrideCode(stateCode);
         }
-        caseRepository.save(caseEntity);
+        if (!isParticular(caseEntity) && !isTodoRiesgo(caseEntity)) caseRepository.save(caseEntity);
 
         Map<String, Object> after = new LinkedHashMap<>();
         after.put("domain", domain);
@@ -106,6 +130,27 @@ public class CaseWorkflowService {
                 caseAuditService.toJson(metadata),
                 httpRequest
         );
+        todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+    }
+
+    @Transactional
+    public void markTodoRiesgoNoRepair(Long caseId, String reason) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = caseRepository.findById(caseId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
+        caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "caso.ver");
+        caseAccessControlService.requirePermission(currentUser, "workflow.estado.visible.override");
+        todoRiesgoEffectiveStateRecalculator.markNoRepair(caseId, reason, currentUser.id());
+    }
+
+    @Transactional
+    public void revertTodoRiesgoNoRepair(Long caseId, String reason) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = caseRepository.findById(caseId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
+        caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "caso.ver");
+        caseAccessControlService.requirePermission(currentUser, "workflow.estado.visible.override");
+        todoRiesgoEffectiveStateRecalculator.revertNoRepair(caseId, reason, currentUser.id());
     }
 
     @Transactional
@@ -290,6 +335,7 @@ public class CaseWorkflowService {
         CaseEntity caseEntity = caseRepository.findById(caseId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
 
+        if (isParticular(caseEntity)) return;
         Long currentStateId = caseEntity.getCurrentRepairStateId();
         if (currentStateId == null) {
             throw new ConflictException("El caso no tiene un estado actual para el dominio reparacion");
@@ -350,6 +396,14 @@ public class CaseWorkflowService {
                 caseAuditService.toJson(metadata),
                 httpRequest
         );
+    }
+
+    private boolean isParticular(CaseEntity caseEntity) {
+        return caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> "PARTICULAR".equalsIgnoreCase(type.getCode())).orElse(false);
+    }
+
+    private boolean isTodoRiesgo(CaseEntity caseEntity) {
+        return caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> "TODO_RIESGO".equalsIgnoreCase(type.getCode())).orElse(false);
     }
 
     private Long resolveCurrentStateId(CaseEntity caseEntity, String domain) {

@@ -78,9 +78,11 @@ class InsuranceIntegrationTest {
         mockMvc.perform(put("/api/v1/cases/100/insurance-processing")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(new InsuranceProcessingUpsertRequest(LocalDate.of(2026, 5, 12), LocalDate.of(2026, 5, 13), "CONVENIO", "APROBADO", "ACEPTADA", LocalDate.of(2026, 5, 14), new BigDecimal("2500.00"), new BigDecimal("1200.00"), true, "AUTORIZADO", "Proveedor X", new BigDecimal("2200.00"), new BigDecimal("1800.00"), false, true))))
+                        .content(objectMapper.writeValueAsBytes(new InsuranceProcessingUpsertRequest(LocalDate.of(2026, 5, 12), LocalDate.of(2026, 5, 13), "CONVENIO", "APROBADO", "ACEPTADA", LocalDate.of(2026, 5, 14), new BigDecimal("2500.00"), LocalDate.of(2026, 5, 15), LocalDate.of(2026, 5, 16), new BigDecimal("1200.00"), true, "AUTORIZADO", "Proveedor X", new BigDecimal("2200.00"), new BigDecimal("1800.00"), false, true))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.modalityCode").value("CONVENIO"));
+                .andExpect(jsonPath("$.modalityCode").value("CONVENIO"))
+                .andExpect(jsonPath("$.agreementDate").value("2026-05-15"))
+                .andExpect(jsonPath("$.passedToPaymentsDate").value("2026-05-16"));
 
         mockMvc.perform(put("/api/v1/cases/100/franchise")
                         .header("X-User-Id", "3")
@@ -308,7 +310,7 @@ class InsuranceIntegrationTest {
         jdbcTemplate.update("INSERT INTO usuario_roles (id, usuario_id, rol_id, organizacion_id, sucursal_id, activo) VALUES (?, ?, ?, ?, ?, ?)", 3L, 3L, 2L, 1L, 1L, true);
         jdbcTemplate.update("INSERT INTO personas (id, public_id, tipo_persona, nombre, apellido, nombre_mostrar, tipo_documento_codigo, numero_documento, numero_documento_normalizado, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 10L, "00000000-0000-0000-0000-000000001010", "fisica", "Carlos", "Cliente", "Carlos Cliente", "DNI", "30111222", "30111222", true);
         jdbcTemplate.update("INSERT INTO vehiculos (id, public_id, dominio, dominio_normalizado, activo) VALUES (?, ?, ?, ?, ?)", 10L, "00000000-0000-0000-0000-000000002010", "AB123CD", "AB123CD", true);
-        jdbcTemplate.update("INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, estado_tramite_actual_id, estado_reparacion_actual_id, estado_pago_actual_id, estado_documentacion_actual_id, estado_legal_actual_id, prioridad_codigo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 100L, "00000000-0000-0000-0000-000000003100", "0100PZ", 100L, 1L, 1L, 1L, 10L, 10L, false, 1L, 1L, 4L, 7L, 9L, 11L, "MEDIA");
+        jdbcTemplate.update("INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, estado_tramite_actual_id, estado_reparacion_actual_id, estado_pago_actual_id, estado_documentacion_actual_id, estado_legal_actual_id, prioridad_codigo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 100L, "00000000-0000-0000-0000-000000003100", "0100PZ", 100L, 2L, 1L, 1L, 10L, 10L, false, 1L, 1L, 4L, 7L, 9L, 11L, "MEDIA");
         jdbcTemplate.update("INSERT INTO caso_personas (id, caso_id, persona_id, rol_caso_codigo, vehiculo_id, es_principal, notas) VALUES (?, ?, ?, ?, ?, ?, ?)", 1L, 100L, 10L, "CLIENTE", null, true, null);
     }
 }

@@ -30,7 +30,16 @@ export const ProcedureSection = ({ caseId }) => {
 
   const mutation = useMutation({
     mutationFn: (payload) => requestJson(`/cases/${caseId}/insurance-processing`, { method: 'PUT', body: JSON.stringify(payload) }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] }); toast.success('Tramitación guardada.'); },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['cases'] }),
+        queryClient.invalidateQueries({ queryKey: ['cases', String(caseId)] }),
+        queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }),
+        queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] }),
+        queryClient.invalidateQueries({ queryKey: ['panel'] }),
+      ]);
+      toast.success('Tramitación guardada.');
+    },
     onError: (e) => toast.error(e.message),
   });
 

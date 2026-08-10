@@ -51,3 +51,11 @@ export function resolvePartsAuthorizationCode(value, catalogs) {
     fallbackMap: PARTS_AUTHORIZATION_FALLBACKS,
   });
 }
+
+export function toTodoRiesgoPartAuthorizationCode(value) {
+  const normalizedValue = normalizeLookupText(value);
+  if (!normalizedValue || normalizedValue === 'pendiente') return null;
+  if (['si', 'sí', 'autorizado'].includes(normalizedValue)) return 'AUTORIZADO';
+  if (['no', 'rechazado'].includes(normalizedValue)) return 'RECHAZADO';
+  return String(value).trim().toUpperCase();
+}

@@ -5,6 +5,8 @@ import com.tallerzapata.backend.api.operation.RepairAppointmentResponse;
 import com.tallerzapata.backend.api.operation.RepairAppointmentUpdateRequest;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.CaseWorkflowService;
+import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
+import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
@@ -44,6 +46,8 @@ public class RepairAppointmentService {
     private final CaseWorkflowService caseWorkflowService;
     private final HolidayRepository holidayRepository;
     private final BusinessDayCalculator businessDayCalculator;
+    private final ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
+    private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
 
     public RepairAppointmentService(
             RepairAppointmentRepository repairAppointmentRepository,
@@ -55,7 +59,7 @@ public class RepairAppointmentService {
             CaseAuditService caseAuditService,
             CaseWorkflowService caseWorkflowService,
             HolidayRepository holidayRepository,
-            BusinessDayCalculator businessDayCalculator
+            BusinessDayCalculator businessDayCalculator, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator
     ) {
         this.repairAppointmentRepository = repairAppointmentRepository;
         this.repairAppointmentStatusRepository = repairAppointmentStatusRepository;
@@ -67,6 +71,8 @@ public class RepairAppointmentService {
         this.caseWorkflowService = caseWorkflowService;
         this.holidayRepository = holidayRepository;
         this.businessDayCalculator = businessDayCalculator;
+        this.particularEffectiveStateRecalculator = particularEffectiveStateRecalculator;
+        this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
     }
 
     @Transactional(readOnly = true)
@@ -124,6 +130,8 @@ public class RepairAppointmentService {
                 "Turno de reparacion creado",
                 httpRequest
         );
+        particularEffectiveStateRecalculator.recalculate(caseId);
+        todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
 
         return toResponse(entity);
     }
@@ -161,6 +169,8 @@ public class RepairAppointmentService {
                 caseAuditService.toJson(Map.of("domain", "operacion")),
                 httpRequest
         );
+        particularEffectiveStateRecalculator.recalculate(entity.getCaseId());
+        todoRiesgoEffectiveStateRecalculator.recalculate(entity.getCaseId());
 
         return toResponse(entity);
     }
@@ -209,6 +219,8 @@ public class RepairAppointmentService {
                 "Turno de reingreso generado automaticamente",
                 httpRequest
         );
+        particularEffectiveStateRecalculator.recalculate(caseId);
+        todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
 
         return entity;
     }
@@ -257,6 +269,8 @@ public class RepairAppointmentService {
                 "Turno de reingreso actualizado automaticamente",
                 httpRequest
         );
+        particularEffectiveStateRecalculator.recalculate(entity.getCaseId());
+        todoRiesgoEffectiveStateRecalculator.recalculate(entity.getCaseId());
 
         return entity;
     }
@@ -283,6 +297,8 @@ public class RepairAppointmentService {
                 caseAuditService.toJson(Map.of("domain", "operacion", "automatic", true)),
                 httpRequest
         );
+        particularEffectiveStateRecalculator.recalculate(entity.getCaseId());
+        todoRiesgoEffectiveStateRecalculator.recalculate(entity.getCaseId());
     }
 
     private CaseEntity requireCase(Long caseId) {
