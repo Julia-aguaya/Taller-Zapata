@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -7,7 +7,12 @@ const mockSearchPersons = vi.fn();
 const mockGetPersonVehicles = vi.fn();
 const mockSearchVehicles = vi.fn();
 const mockGetVehicleCatalogs = vi.fn();
-const mockGetInsuranceCatalogs = vi.fn();
+const mockGetVehiclePersons = vi.fn();
+const mockCatalogList = vi.fn();
+const mockCatalogGet = vi.fn();
+const mockCatalogCreate = vi.fn();
+const mockCatalogUpdate = vi.fn();
+const mockCatalogDeactivate = vi.fn();
 const mockRequestJson = vi.fn();
 
 vi.mock('sonner', () => ({
@@ -22,7 +27,16 @@ vi.mock('@/modules/cases/api/new-case-api', () => ({
   getPersonVehicles: (...args) => mockGetPersonVehicles(...args),
   searchVehicles: (...args) => mockSearchVehicles(...args),
   getVehicleCatalogs: (...args) => mockGetVehicleCatalogs(...args),
-  getInsuranceCatalogs: (...args) => mockGetInsuranceCatalogs(...args),
+  getVehiclePersons: (...args) => mockGetVehiclePersons(...args),
+}));
+
+vi.mock('@/modules/management/api/catalogs-api', () => ({
+  referrersApi: { list: (...args) => mockCatalogList(...args), get: (...args) => mockCatalogGet(...args), create: (...args) => mockCatalogCreate(...args), update: (...args) => mockCatalogUpdate(...args), deactivate: (...args) => mockCatalogDeactivate(...args) },
+  providersApi: { list: (...args) => mockCatalogList(...args), get: (...args) => mockCatalogGet(...args), create: (...args) => mockCatalogCreate(...args), update: (...args) => mockCatalogUpdate(...args), deactivate: (...args) => mockCatalogDeactivate(...args) },
+  insuranceCompaniesApi: { list: (...args) => mockCatalogList(...args), get: (...args) => mockCatalogGet(...args), create: (...args) => mockCatalogCreate(...args), update: (...args) => mockCatalogUpdate(...args), deactivate: (...args) => mockCatalogDeactivate(...args) },
+  listInsuranceCompanyContacts: vi.fn(() => Promise.resolve([])),
+  createInsuranceCompanyContact: vi.fn(),
+  deleteInsuranceCompanyContact: vi.fn(),
 }));
 
 vi.mock('@/shared/api/http-client', () => ({
@@ -41,6 +55,7 @@ const { ManagementClientsPage } = await import('./management-clients-page');
 const { ManagementVehiclesPage } = await import('./management-vehicles-page');
 const { ManagementReferrersPage } = await import('./management-referrers-page');
 const { ManagementInsurancePage } = await import('./management-insurance-page');
+const { ManagementProvidersPage } = await import('./management-providers-page');
 const { ManagementPage } = await import('./management-page');
 
 function renderWithQuery(ui) {
@@ -58,7 +73,12 @@ beforeEach(() => {
   mockGetPersonVehicles.mockReset();
   mockSearchVehicles.mockReset();
   mockGetVehicleCatalogs.mockReset();
-  mockGetInsuranceCatalogs.mockReset();
+  mockGetVehiclePersons.mockReset();
+  mockCatalogList.mockReset();
+  mockCatalogGet.mockReset();
+  mockCatalogCreate.mockReset();
+  mockCatalogUpdate.mockReset();
+  mockCatalogDeactivate.mockReset();
   mockRequestJson.mockReset();
 });
 
@@ -117,7 +137,7 @@ describe('management pages', () => {
     expect(screen.queryByText('PER-001')).not.toBeInTheDocument();
   });
 
-  it('vehículos usa datos reales, oculta ids técnicos y no inventa cliente asociado', async () => {
+  it('vehículos usa datos reales, oculta ids técnicos y muestra relaciones reales', async () => {
     const user = userEvent.setup();
 
     mockSearchVehicles.mockResolvedValue([
@@ -136,6 +156,7 @@ describe('management pages', () => {
       usageCodes: [{ code: 'PARTICULAR' }],
       transmissionCodes: [{ code: 'MANUAL' }],
     });
+    mockGetVehiclePersons.mockResolvedValue([{ id: 5, rolVehiculoCodigo: 'TITULAR', esActual: true }]);
     mockRequestJson.mockImplementation((path) => {
       if (path === '/vehicles/22') {
         return Promise.resolve({
@@ -164,17 +185,29 @@ describe('management pages', () => {
 
     await user.click(screen.getByRole('button', { name: /Toyota Corolla/i }));
 
-    expect(await screen.findByText(/no expone relación global vehículo-cliente/i)).toBeInTheDocument();
+    expect(await screen.findByText('Personas vinculadas')).toBeInTheDocument();
+    expect(screen.getByText('TITULAR')).toBeInTheDocument();
     expect(screen.queryByText('VEH-001')).not.toBeInTheDocument();
   });
 
-  it('referenciadores permite cargar datos con el formulario disponible', () => {
+  it('referenciadores busca, edita y desactiva usando el shell compartido', async () => {
+    const user = userEvent.setup();
+    mockCatalogList.mockResolvedValue([{ id: 1, nombre: 'Ana', apellido: 'Ruiz', displayName: 'Ana Ruiz', activo: true }]);
+    mockCatalogGet.mockResolvedValue({ id: 1, nombre: 'Ana', apellido: 'Ruiz', telefono: '341', activo: true });
+    mockCatalogUpdate.mockResolvedValue({ id: 1, nombre: 'Ana', apellido: 'Rios', displayName: 'Ana Rios', activo: true });
+    mockCatalogDeactivate.mockResolvedValue({ id: 1, activo: false });
     renderWithQuery(<ManagementReferrersPage />);
-
-    expect(screen.getByText('Nuevo referenciador')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Nombre')).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Apellido')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /agregar/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Ana Ruiz/i })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Ana Ruiz/i }));
+    expect(await screen.findByRole('heading', { name: 'Ana Ruiz' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Editar' }));
+    await user.clear(screen.getByLabelText('Apellido'));
+    await user.type(screen.getByLabelText('Apellido'), 'Rios');
+    await user.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(mockCatalogUpdate).toHaveBeenCalledWith(1, expect.objectContaining({ apellido: 'Rios' })));
+    await user.click(screen.getByRole('button', { name: 'Desactivar' }));
+    await user.click(screen.getAllByRole('button', { name: 'Desactivar' })[1]);
+    await waitFor(() => expect(mockCatalogDeactivate).toHaveBeenCalledWith(1));
   });
 
   it('taller y sucursales entra en edición solo al presionar editar', async () => {
@@ -199,16 +232,30 @@ describe('management pages', () => {
     expect(await screen.findByDisplayValue('Taller Zapata SA')).toBeInTheDocument();
   });
 
-  it('seguros muestra solo lectura parcial sin CRUD falso', async () => {
-    mockGetInsuranceCatalogs.mockResolvedValue({
-      opinionCodes: [{ code: 'APROBADO', name: 'Aprobado' }],
-      paymentStatusCodes: [{ code: 'PAGADO', name: 'Pagado' }],
-    });
-
+  it('seguros y proveedores exponen sus catálogos operativos', async () => {
+    mockCatalogList.mockResolvedValue([{ id: 3, code: 'SURA', name: 'Sura', active: true }]);
     renderWithQuery(<ManagementInsurancePage />);
+    expect(await screen.findByRole('button', { name: /Sura/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /nuevo/i })).toBeInTheDocument();
+    renderWithQuery(<ManagementProvidersPage />);
+    expect(await screen.findByText('Proveedores')).toBeInTheDocument();
+  });
 
-    expect(await screen.findByText('Aprobado')).toBeInTheDocument();
-    expect(screen.getByText(/CRUD de compañías pendiente/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /guardar/i })).not.toBeInTheDocument();
+  it('advierte al salir con cambios sin guardar y conserva un layout responsive', async () => {
+    const user = userEvent.setup();
+    mockCatalogList.mockResolvedValue([{ id: 1, nombre: 'Ana', apellido: 'Ruiz', displayName: 'Ana Ruiz', activo: true }]);
+    mockCatalogGet.mockResolvedValue({ id: 1, nombre: 'Ana', apellido: 'Ruiz', telefono: '341', activo: true });
+    renderWithQuery(<ManagementReferrersPage />);
+
+    await user.click(await screen.findByRole('button', { name: /Ana Ruiz/i }));
+    await user.click(await screen.findByRole('button', { name: 'Editar' }));
+    await user.clear(screen.getByLabelText('Apellido'));
+    await user.type(screen.getByLabelText('Apellido'), 'Rios');
+
+    const unload = new Event('beforeunload', { cancelable: true });
+    fireEvent(window, unload);
+
+    expect(unload.defaultPrevented).toBe(true);
+    expect(document.querySelector('[class*="xl:grid-cols"]')).toBeInTheDocument();
   });
 });

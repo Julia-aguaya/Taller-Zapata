@@ -26,6 +26,7 @@ public class InsuranceProcessingEntity {
     @Column(name = "lleva_repuestos", nullable = false) private Boolean includesParts;
     @Column(name = "autorizacion_repuestos_codigo") private String partsAuthorizationCode;
     @Column(name = "proveedor_repuestos_texto") private String partsSupplierText;
+    @Column(name = "proveedor_id") private Long providerId;
     @Column(name = "monto_facturar_compania") private BigDecimal amountToBillCompany;
     @Column(name = "monto_final_favor_taller") private BigDecimal finalAmountForWorkshop;
     @Column(name = "no_repara", nullable = false) private Boolean noRepair;
@@ -55,6 +56,8 @@ public class InsuranceProcessingEntity {
     public void setPartsAuthorizationCode(String partsAuthorizationCode) { this.partsAuthorizationCode = partsAuthorizationCode; }
     public String getPartsSupplierText() { return partsSupplierText; }
     public void setPartsSupplierText(String partsSupplierText) { this.partsSupplierText = partsSupplierText; }
+    public Long getProviderId() { return providerId; }
+    public void setProviderId(Long providerId) { this.providerId = providerId; }
     public BigDecimal getAmountToBillCompany() { return amountToBillCompany; }
     public void setAmountToBillCompany(BigDecimal amountToBillCompany) { this.amountToBillCompany = amountToBillCompany; }
     public BigDecimal getFinalAmountForWorkshop() { return finalAmountForWorkshop; }

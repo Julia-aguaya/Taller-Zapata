@@ -35,16 +35,22 @@ const createPersonForm = (person) => ({
 export const ManagementClientsPage = () => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedPersonId, setSelectedPersonId] = useState(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(createPersonForm(null));
 
-  const normalizedSearch = search.trim();
+  const normalizedSearch = debouncedSearch.trim();
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedSearch(search), 300);
+    return () => window.clearTimeout(timeout);
+  }, [search]);
 
   const personsQuery = useQuery({
     queryKey: ['management', 'clients', 'search', normalizedSearch],
     queryFn: () => searchPersons({ q: normalizedSearch, document: normalizedSearch }),
-    enabled: normalizedSearch.length >= 2,
+    enabled: true,
   });
 
   const personQuery = useQuery({
@@ -92,7 +98,6 @@ export const ManagementClientsPage = () => {
 
   const selectedPerson = personQuery.data;
   const visibleResults = personsQuery.data ?? [];
-  const hasSearch = normalizedSearch.length >= 2;
   const personDisplayName = selectedPerson?.nombreMostrar || [selectedPerson?.nombre, selectedPerson?.apellido].filter(Boolean).join(' ') || 'Cliente';
   const relatedVehicles = vehiclesQuery.data ?? [];
   const primaryRows = useMemo(() => ([
@@ -114,10 +119,10 @@ export const ManagementClientsPage = () => {
               Consultá clientes reales por nombre o documento. La edición impacta en todas las carpetas donde ese cliente ya está vinculado.
             </p>
           </div>
-          <Badge variant="outline">Consulta real + edición global</Badge>
+          <Badge variant="outline">Catálogo de clientes</Badge>
         </div>
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,0.9fr)]">
+        <div className="mt-5">
           <label className="space-y-2">
             <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Búsqueda</span>
             <div className="relative">
@@ -130,10 +135,6 @@ export const ManagementClientsPage = () => {
               />
             </div>
           </label>
-          <div className="rounded-3xl border border-border/60 bg-background/70 p-4 text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">Contrato confirmado</p>
-            <p className="mt-2"><code>GET /persons?q=</code> y <code>GET /persons/:id</code> permiten búsqueda y detalle. <code>PUT /persons/:id</code> ya se usa en la ficha técnica de carpeta.</p>
-          </div>
         </div>
       </Card>
 
@@ -142,17 +143,15 @@ export const ManagementClientsPage = () => {
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <h3 className="text-xl font-semibold tracking-tight">Resultados</h3>
-              <p className="text-sm text-muted-foreground">No se muestra ningún cliente hasta tener una búsqueda real.</p>
+              <p className="text-sm text-muted-foreground">Seleccioná un cliente para consultar y actualizar sus datos.</p>
             </div>
-            {hasSearch && !personsQuery.isLoading ? <Badge variant="outline">{visibleResults.length} encontrados</Badge> : null}
+            {!personsQuery.isLoading ? <Badge variant="outline">{visibleResults.length} encontrados</Badge> : null}
           </div>
 
-          {!hasSearch ? (
-            <EmptyState title="Empezá con una búsqueda" description="Escribí al menos 2 caracteres para consultar clientes reales del backend." />
-          ) : personsQuery.isError ? (
+          {personsQuery.isError ? (
             <EmptyState title="No pude consultar clientes" description={personsQuery.error.message} />
           ) : visibleResults.length === 0 && !personsQuery.isLoading ? (
-            <EmptyState title="Sin coincidencias" description="No llegaron clientes para esa búsqueda." />
+            <EmptyState title="Sin coincidencias" description="Probá con otra búsqueda." />
           ) : (
             <Table>
               <TableHeader>
@@ -262,14 +261,14 @@ export const ManagementClientsPage = () => {
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
                     <h4 className="font-semibold">Vehículos relacionados</h4>
-                    <p className="text-sm text-muted-foreground">Solo se muestran si llegan por <code>GET /persons/:id/vehicles</code>.</p>
+                    <p className="text-sm text-muted-foreground">Vehículos vinculados históricamente a este cliente.</p>
                   </div>
                   {!vehiclesQuery.isLoading ? <Badge variant="outline">{relatedVehicles.length}</Badge> : null}
                 </div>
                 {vehiclesQuery.isLoading ? (
                   <p className="text-sm text-muted-foreground">Buscando vehículos del cliente...</p>
                 ) : relatedVehicles.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">El contrato actual no devolvió vehículos relacionados para este cliente.</p>
+                  <p className="text-sm text-muted-foreground">No hay vehículos vinculados.</p>
                 ) : (
                   <div className="grid gap-3 md:grid-cols-2">
                     {relatedVehicles.map((vehicle) => (
@@ -282,10 +281,6 @@ export const ManagementClientsPage = () => {
                 )}
               </div>
 
-              <div className="rounded-3xl border border-border/60 bg-background/70 p-4 text-sm text-muted-foreground">
-                <p className="font-medium text-foreground">Carpetas relacionadas</p>
-                <p className="mt-2">No se muestran porque el contrato actual no expone historial de carpetas por cliente.</p>
-              </div>
             </div>
           )}
         </Card>

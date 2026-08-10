@@ -1,10 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ClipboardList, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { requestJson } from '@/shared/api/http-client';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
+import { ProviderSelector } from '@/modules/cases/components/provider-selector';
 
 const Field = ({ label, children, className = '' }) => (
   <div className={`min-w-0 ${className}`}>
@@ -18,6 +19,7 @@ const toAmount = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0
 
 export const ProcedureSection = ({ caseId }) => {
   const queryClient = useQueryClient();
+  const [provider, setProvider] = useState({ providerId: null, snapshot: '' });
 
   const processingQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance-processing'], queryFn: () => requestJson(`/cases/${caseId}/insurance-processing`) });
   const catalogsQuery = useQuery({ queryKey: ['insurance', 'catalogs'], queryFn: () => requestJson('/insurance/catalogs') });
@@ -27,6 +29,10 @@ export const ProcedureSection = ({ caseId }) => {
   const quotationStatuses = catalogsQuery.data?.insuranceQuotationStatusCodes ?? [];
   const partsAuthCodes = catalogsQuery.data?.insurancePartsAuthorizationCodes ?? [];
   const opinionCodes = catalogsQuery.data?.insuranceOpinionCodes ?? [];
+
+  useEffect(() => {
+    setProvider({ providerId: processing?.providerId ?? null, snapshot: processing?.partsSupplierText ?? '' });
+  }, [processing?.providerId, processing?.partsSupplierText]);
 
   const mutation = useMutation({
     mutationFn: (payload) => requestJson(`/cases/${caseId}/insurance-processing`, { method: 'PUT', body: JSON.stringify(payload) }),
@@ -57,7 +63,8 @@ export const ProcedureSection = ({ caseId }) => {
       minimumCloseAmount: toAmount(fd.get('minimumCloseAmount')) || null,
       includesParts: fd.get('includesParts') === 'SI',
       partsAuthorizationCode: fd.get('partsAuthorizationCode') || null,
-      partsSupplierText: fd.get('partsSupplierText') || null,
+      partsSupplierText: provider.snapshot || null,
+      providerId: provider.providerId,
       amountToBillCompany: toAmount(fd.get('amountToBillCompany')) || null,
       finalAmountForWorkshop: toAmount(fd.get('finalAmountForWorkshop')) || null,
     });
@@ -118,14 +125,7 @@ export const ProcedureSection = ({ caseId }) => {
         <Field label="A facturar Cía.">
           <Input name="amountToBillCompany" type="number" min="0" step="0.01" defaultValue={processing?.amountToBillCompany ?? ''} placeholder="900000" />
         </Field>
-        <Field label="Provee repuestos">
-          <select name="partsSupplierText" defaultValue={processing?.partsSupplierText ?? ''} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
-            <option value="">—</option>
-            <option value="CIA">Provee Cía.</option>
-            <option value="TALLER">Provee Taller</option>
-            <option value="CLIENTE">Provee Cliente</option>
-          </select>
-        </Field>
+        <Field label="Proveedor de repuestos"><ProviderSelector value={provider.snapshot} providerId={provider.providerId} onChange={setProvider} /></Field>
         <Field label="Autorización repuestos">
           <select name="partsAuthorizationCode" defaultValue={processing?.partsAuthorizationCode ?? ''} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
             <option value="">—</option>

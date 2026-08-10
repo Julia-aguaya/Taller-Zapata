@@ -37,6 +37,7 @@ public record BudgetResponse(
         Boolean mechanicalWorkApplies,
         String mechanicalWorkCode,
         LocalDate quotedPartsDate,
-        String quotedPartsSupplier
+        String quotedPartsSupplier,
+        Long providerId
 ) {
 }

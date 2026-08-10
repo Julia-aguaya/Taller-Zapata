@@ -19,6 +19,7 @@ public record InsuranceProcessingResponse(
         Boolean includesParts,
         String partsAuthorizationCode,
         String partsSupplierText,
+        Long providerId,
         BigDecimal amountToBillCompany,
         BigDecimal finalAmountForWorkshop,
         Boolean noRepair,

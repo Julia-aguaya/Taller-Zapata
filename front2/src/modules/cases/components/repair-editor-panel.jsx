@@ -10,6 +10,7 @@ import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
+import { ProviderSelector } from '@/modules/cases/components/provider-selector';
 
 const addBusinessDays = (startDateStr, days) => {
   if (!startDateStr || !days || days <= 0) return startDateStr || '';
@@ -205,7 +206,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
 
   const [editMode, setEditMode] = useState(false);
   const [draftParts, setDraftParts] = useState([]);
-  const [newPartForm, setNewPartForm] = useState({ description: '', finalSupplier: '', finalPrice: '0', budgetedPrice: '0', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' });
+  const [newPartForm, setNewPartForm] = useState({ description: '', finalSupplier: '', providerId: null, finalPrice: '0', budgetedPrice: '0', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' });
   const [saving, setSaving] = useState(false);
 
   const updatePartMutation = useMutation({
@@ -221,6 +222,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
       description: part.description,
       partCode: part.partCode || null,
       finalSupplier: part.finalSupplier || null,
+      providerId: part.providerId || null,
       authorizationCode: authorizationCode || null,
       statusCode: part.statusCode || null,
       purchasedByCode: part.purchasedByCode || null,
@@ -265,7 +267,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
 
   const cancelEdit = () => {
     setDraftParts([]);
-    setNewPartForm({ description: '', finalSupplier: '', finalPrice: '0', budgetedPrice: '0', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' });
+    setNewPartForm({ description: '', finalSupplier: '', providerId: null, finalPrice: '0', budgetedPrice: '0', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' });
     setEditMode(false);
   };
 
@@ -277,7 +279,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     if (!newPartForm.description.trim()) { toast.error('Falta la descripción.'); return; }
     const tempId = -Date.now();
     setDraftParts(prev => [...prev, { ...newPartForm, _tempId: tempId, id: tempId, budgetedPrice: Number(newPartForm.budgetedPrice) || 0, finalPrice: Number(newPartForm.finalPrice) || 0 }]);
-    setNewPartForm({ description: '', finalSupplier: '', finalPrice: '0', budgetedPrice: '0', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' });
+    setNewPartForm({ description: '', finalSupplier: '', providerId: null, finalPrice: '0', budgetedPrice: '0', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' });
   };
 
   const removeFromDraft = (tempId) => {
@@ -294,6 +296,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
         if (!original) continue;
         const changes = {};
         if ((draft.finalSupplier || '') !== (original.finalSupplier || '')) changes.finalSupplier = draft.finalSupplier || null;
+        if ((draft.providerId || null) !== (original.providerId || null)) changes.providerId = draft.providerId || null;
         if (Number(draft.finalPrice || 0) !== Number(original.finalPrice || 0)) changes.finalPrice = Number(draft.finalPrice) || 0;
         if (draft.statusCode !== original.statusCode) changes.statusCode = draft.statusCode;
         if (draft.purchasedByCode !== original.purchasedByCode) changes.purchasedByCode = draft.purchasedByCode;
@@ -304,6 +307,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
             description: draft.description,
             partCode: null,
             finalSupplier: draft.finalSupplier || null,
+            providerId: draft.providerId || null,
             authorizationCode: draft.authorizationCode || null,
             statusCode: draft.statusCode || original.statusCode,
             purchasedByCode: draft.purchasedByCode || original.purchasedByCode,
@@ -323,6 +327,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
             description: draft.description,
             partCode: null,
             finalSupplier: draft.finalSupplier || null,
+            providerId: draft.providerId || null,
             authorizationCode: draft.authorizationCode || null,
             statusCode: draft.statusCode,
             purchasedByCode: draft.purchasedByCode,
@@ -473,7 +478,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
           <div className="mb-4 rounded-2xl border border-dashed border-border/60 bg-background/70 p-4">
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div className="space-y-1"><Label className="text-xs">Descripción</Label><Input className="h-9 rounded-xl text-sm" value={newPartForm.description} onChange={(e) => setNewPartForm(f => ({...f, description: e.target.value}))} placeholder="Repuesto a agregar" /></div>
-              <div className="space-y-1"><Label className="text-xs">Proveedor</Label><Input className="h-9 rounded-xl text-sm" value={newPartForm.finalSupplier} onChange={(e) => setNewPartForm(f => ({...f, finalSupplier: e.target.value}))} placeholder="Proveedor" /></div>
+              <div className="space-y-1"><Label className="text-xs">Proveedor</Label><ProviderSelector value={newPartForm.finalSupplier} providerId={newPartForm.providerId} onChange={({ providerId, snapshot }) => setNewPartForm((current) => ({ ...current, providerId, finalSupplier: snapshot || '' }))} /></div>
               <div className="space-y-1"><Label className="text-xs">Importe</Label><Input className="h-9 rounded-xl text-sm" type="number" min="0" step="0.01" value={newPartForm.finalPrice} onChange={(e) => setNewPartForm(f => ({...f, finalPrice: e.target.value}))} /></div>
               <div className="space-y-1"><Label className="text-xs">Estado</Label><select className="h-9 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" value={newPartForm.statusCode} onChange={(e) => setNewPartForm(f => ({...f, statusCode: e.target.value}))}><option value="">—</option>{statusCodeOptions.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}</select></div>
               <div className="space-y-1"><Label className="text-xs">Compra</Label><select className="h-9 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" value={newPartForm.purchasedByCode} onChange={(e) => setNewPartForm(f => ({...f, purchasedByCode: e.target.value}))}><option value="">—</option>{purchasedByCodeOptions.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}</select></div>
@@ -507,7 +512,10 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                     <td className="px-3 py-3 font-medium max-w-[200px] truncate">{part.description || 'Sin descripción'}</td>
                     <td className="px-3 py-3">
                       {editMode ? (
-                        <Input className="h-9 rounded-xl text-sm" value={part.finalSupplier || ''} onChange={(e) => updateDraftField(part._tempId || part.id, 'finalSupplier', e.target.value)} placeholder="Proveedor" />
+                        <ProviderSelector value={part.finalSupplier || ''} providerId={part.providerId} onChange={({ providerId, snapshot }) => {
+                          updateDraftField(part._tempId || part.id, 'providerId', providerId);
+                          updateDraftField(part._tempId || part.id, 'finalSupplier', snapshot || '');
+                        }} />
                       ) : (
                         <span className="text-sm">{part.finalSupplier || '—'}</span>
                       )}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CarFront, Pencil, Save, Search, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { getVehicleCatalogs, searchVehicles } from '@/modules/cases/api/new-case-api';
+import { getVehicleCatalogs, getVehiclePersons, searchVehicles } from '@/modules/cases/api/new-case-api';
 import { requestJson } from '@/shared/api/http-client';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
@@ -33,16 +33,22 @@ const createVehicleForm = (vehicle) => ({
 export const ManagementVehiclesPage = () => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedVehicleId, setSelectedVehicleId] = useState(null);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(createVehicleForm(null));
 
-  const normalizedSearch = search.trim();
+  const normalizedSearch = debouncedSearch.trim();
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedSearch(search), 300);
+    return () => window.clearTimeout(timeout);
+  }, [search]);
 
   const vehiclesQuery = useQuery({
     queryKey: ['management', 'vehicles', 'search', normalizedSearch],
     queryFn: () => searchVehicles({ q: normalizedSearch, plate: normalizedSearch }),
-    enabled: normalizedSearch.length >= 2,
+    enabled: true,
   });
 
   const vehicleQuery = useQuery({
@@ -54,6 +60,11 @@ export const ManagementVehiclesPage = () => {
   const catalogsQuery = useQuery({
     queryKey: ['management', 'vehicles', 'catalogs'],
     queryFn: getVehicleCatalogs,
+  });
+  const personsQuery = useQuery({
+    queryKey: ['management', 'vehicles', selectedVehicleId, 'persons'],
+    queryFn: () => getVehiclePersons(selectedVehicleId),
+    enabled: Boolean(selectedVehicleId),
   });
 
   useEffect(() => {
@@ -91,7 +102,6 @@ export const ManagementVehiclesPage = () => {
 
   const selectedVehicle = vehicleQuery.data;
   const visibleResults = vehiclesQuery.data ?? [];
-  const hasSearch = normalizedSearch.length >= 2;
   const vehicleTypeOptions = (catalogsQuery.data?.vehicleTypeCodes ?? []).map((item) => item.code);
   const usageOptions = (catalogsQuery.data?.usageCodes ?? []).map((item) => item.code);
   const transmissionOptions = (catalogsQuery.data?.transmissionCodes ?? []).map((item) => item.code);
@@ -113,10 +123,10 @@ export const ManagementVehiclesPage = () => {
               Consultá vehículos reales por patente o texto libre. La edición impacta en todas las carpetas donde ese vehículo ya está vinculado.
             </p>
           </div>
-          <Badge variant="outline">Consulta real + edición global</Badge>
+          <Badge variant="outline">Catálogo de vehículos</Badge>
         </div>
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,0.9fr)]">
+        <div className="mt-5">
           <label className="space-y-2">
             <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Búsqueda</span>
             <div className="relative">
@@ -129,10 +139,6 @@ export const ManagementVehiclesPage = () => {
               />
             </div>
           </label>
-          <div className="rounded-3xl border border-border/60 bg-background/70 p-4 text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">Contrato confirmado</p>
-            <p className="mt-2"><code>GET /vehicles?q=</code> y <code>GET /vehicles/:id</code> permiten búsqueda y detalle. <code>PUT /vehicles/:id</code> ya se usa en la ficha técnica de carpeta.</p>
-          </div>
         </div>
       </Card>
 
@@ -141,17 +147,15 @@ export const ManagementVehiclesPage = () => {
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <h3 className="text-xl font-semibold tracking-tight">Resultados</h3>
-              <p className="text-sm text-muted-foreground">No se muestra ningún vehículo hasta tener una búsqueda real.</p>
+              <p className="text-sm text-muted-foreground">Seleccioná un vehículo para consultar y actualizar sus datos.</p>
             </div>
-            {hasSearch && !vehiclesQuery.isLoading ? <Badge variant="outline">{visibleResults.length} encontrados</Badge> : null}
+            {!vehiclesQuery.isLoading ? <Badge variant="outline">{visibleResults.length} encontrados</Badge> : null}
           </div>
 
-          {!hasSearch ? (
-            <EmptyState title="Empezá con una búsqueda" description="Escribí al menos 2 caracteres para consultar vehículos reales del backend." />
-          ) : vehiclesQuery.isError ? (
+          {vehiclesQuery.isError ? (
             <EmptyState title="No pude consultar vehículos" description={vehiclesQuery.error.message} />
           ) : visibleResults.length === 0 && !vehiclesQuery.isLoading ? (
-            <EmptyState title="Sin coincidencias" description="No llegaron vehículos para esa búsqueda." />
+            <EmptyState title="Sin coincidencias" description="Probá con otra búsqueda." />
           ) : (
             <Table>
               <TableHeader>
@@ -260,8 +264,8 @@ export const ManagementVehiclesPage = () => {
               </div>
 
               <div className="rounded-3xl border border-border/60 bg-background/70 p-4 text-sm text-muted-foreground">
-                <p className="font-medium text-foreground">Cliente asociado y carpetas relacionadas</p>
-                <p className="mt-2">El contrato actual no expone relación global vehículo-cliente ni historial de carpetas por vehículo.</p>
+                <p className="font-medium text-foreground">Personas vinculadas</p>
+                {personsQuery.isLoading ? <p className="mt-2">Cargando relaciones...</p> : personsQuery.isError ? <p className="mt-2">No pude cargar las relaciones.</p> : personsQuery.data?.length ? <div className="mt-3 space-y-2">{personsQuery.data.map((relation) => <div key={relation.id} className="rounded-2xl border border-border/60 p-3"><p className="font-medium">{relation.rolVehiculoCodigo}</p><p className="text-xs">Relación {relation.esActual ? 'actual' : 'histórica'}</p></div>)}</div> : <p className="mt-2">No hay personas vinculadas.</p>}
               </div>
             </div>
           )}

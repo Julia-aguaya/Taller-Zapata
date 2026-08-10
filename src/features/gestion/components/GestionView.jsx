@@ -30,7 +30,7 @@ function isAdminRole(role) {
   return ['admin', 'administrador', 'administrator', 'superadmin'].includes(normalized);
 }
 
-export default function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRepairTab, updateCase, flash, onSyncCase, onRunWorkflowTransition, onSetVisibleStateOverride, onPreviewBudgetPdf, onDownloadBudgetPdf, isSavingCase = false, hasUnsavedChanges = false, insuranceCatalogs = null, financeCatalogs = null, debugCodeIssues = [], allCases = [], currentUserRole = '', detailState = null, isPreviewingBudgetPdf = false, isDownloadingBudgetPdf = false }) {
+export default function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRepairTab, updateCase, flash, onSyncCase, onRunWorkflowTransition, onSetVisibleStateOverride, onPreviewBudgetPdf, onDownloadBudgetPdf, isSavingCase = false, hasUnsavedChanges = false, insuranceCatalogs = null, financeCatalogs = null, allCases = [], currentUserRole = '', detailState = null, isPreviewingBudgetPdf = false, isDownloadingBudgetPdf = false }) {
   const [manualVisibleStateDraft, setManualVisibleStateDraft] = useState({ tramite: '', reparacion: '' });
   const [changeNoteDraft, setChangeNoteDraft] = useState('');
   const [visibleAuditCount, setVisibleAuditCount] = useState(3);
@@ -456,12 +456,6 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
           ) : null}
         </div>
       </section>
-
-      {import.meta.env.DEV && debugCodeIssues.length ? (
-        <div className="inline-alert warning-banner" role="status" aria-live="polite">
-          <strong>Revisión técnica:</strong> {debugCodeIssues.join(' | ')}
-        </div>
-      ) : null}
 
       <div className="tab-strip">
         {tabs.map((tab) => (

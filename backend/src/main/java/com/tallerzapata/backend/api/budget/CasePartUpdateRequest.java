@@ -16,6 +16,10 @@ public record CasePartUpdateRequest(
         BigDecimal finalPrice,
         LocalDate receivedDate,
         Boolean used,
-        Boolean returned
+        Boolean returned,
+        Long providerId
 ) {
+    public CasePartUpdateRequest(Long budgetItemId, String description, String partCode, String finalSupplier, String authorizationCode, String statusCode, String purchasedByCode, String paymentStatusCode, BigDecimal budgetedPrice, BigDecimal finalPrice, LocalDate receivedDate, Boolean used, Boolean returned) {
+        this(budgetItemId, description, partCode, finalSupplier, authorizationCode, statusCode, purchasedByCode, paymentStatusCode, budgetedPrice, finalPrice, receivedDate, used, returned, null);
+    }
 }

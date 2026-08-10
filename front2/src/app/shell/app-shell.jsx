@@ -31,7 +31,7 @@ const MANAGEMENT_ITEMS = [
   { code: 'VEHICLES', label: 'Vehículos', path: '/management/vehicles', icon: CarFront },
   { code: 'REFERRERS', label: 'Referenciadores', path: '/management/referrers', icon: UserRound },
   { code: 'INSURANCE', label: 'Compañías de seguros', path: '/management/insurance', icon: ShieldCheck },
-  { code: 'SUPPLIERS', label: 'Proveedores', unavailable: true, icon: Building2 },
+  { code: 'SUPPLIERS', label: 'Proveedores', path: '/management/providers', icon: Building2 },
   { code: 'ORGANIZATION', label: 'Taller y sucursales', path: '/management/organization', icon: Building2 },
 ];
 
@@ -200,10 +200,6 @@ export const AppShell = () => {
                       {managementNavigationItems.map((item) => {
                         const Icon = item.icon;
                          const isActive = item.code === activeNavigation.managementCode;
-
-                        if (item.unavailable) {
-                          return <button key={item.code} type="button" disabled aria-label="Proveedores" aria-describedby="providers-unavailable" className="flex min-h-11 w-full cursor-not-allowed items-center gap-3 rounded-2xl px-3 py-2.5 text-left text-sm text-[hsl(var(--shell-sidebar-muted)/0.65)]"><Icon className="h-4 w-4 flex-shrink-0" /><span>Proveedores</span><span id="providers-unavailable" className="sr-only">No disponible: falta el contrato backend de proveedores.</span></button>;
-                        }
 
                         return (
                           <button

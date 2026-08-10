@@ -40,7 +40,8 @@ function renderShell(initialEntries = ['/panel']) {
             <Route path="management/clients" element={<div>Contenido Clientes</div>} />
             <Route path="management/vehicles" element={<div>Contenido Vehículos</div>} />
             <Route path="management/referrers" element={<div>Contenido Referenciadores</div>} />
-            <Route path="management/insurance" element={<div>Contenido Compañías</div>} />
+             <Route path="management/insurance" element={<div>Contenido Compañías</div>} />
+             <Route path="management/providers" element={<div>Contenido Proveedores</div>} />
             <Route path="management/organization" element={<div>Contenido Taller y sucursales</div>} />
           </Route>
         </Routes>
@@ -113,7 +114,7 @@ describe('AppShell theme', () => {
 
     expect(screen.getByLabelText('Subsecciones de gestión')).toBeInTheDocument();
     const submenu = screen.getByLabelText('Subsecciones de gestión');
-    expect(within(submenu).getByRole('button', { name: 'Proveedores' })).toBeDisabled();
+    expect(within(submenu).getByRole('button', { name: 'Proveedores' })).toBeInTheDocument();
     expect(within(submenu).queryByRole('button', { name: 'Carpetas' })).not.toBeInTheDocument();
     expect(within(submenu).queryByRole('button', { name: 'Agenda' })).not.toBeInTheDocument();
 

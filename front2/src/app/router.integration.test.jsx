@@ -227,7 +227,7 @@ describe('AppRouter integration', () => {
     expect(within(managementLinks).getByRole('button', { name: 'Vehículos' })).toBeInTheDocument();
     expect(within(managementLinks).getByRole('button', { name: 'Referenciadores' })).toBeInTheDocument();
     expect(within(managementLinks).getByRole('button', { name: 'Compañías de seguros' })).toBeInTheDocument();
-    expect(within(managementLinks).getByRole('button', { name: 'Proveedores' })).toBeDisabled();
+    expect(within(managementLinks).getByRole('button', { name: 'Proveedores' })).toBeInTheDocument();
     expect(within(managementLinks).getByRole('button', { name: 'Taller y sucursales' })).toBeInTheDocument();
     expect(within(managementLinks).queryByRole('button', { name: 'Carpetas' })).not.toBeInTheDocument();
     expect(within(managementLinks).queryByRole('button', { name: 'Agenda' })).not.toBeInTheDocument();

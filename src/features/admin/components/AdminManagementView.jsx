@@ -10,15 +10,12 @@ import {
   saveWorkshopCatalogToBackend,
 } from '../../gestion/lib/workshopCatalog';
 import {
-  createAuthenticatedReferralContact,
   createAuthenticatedUser,
   readAuthenticatedBranches,
   readAuthenticatedOrganizations,
-  readAuthenticatedReferralContacts,
   readAuthenticatedRoles,
   readAuthenticatedUserRoles,
   readAuthenticatedUsers,
-  updateAuthenticatedReferralContact,
   updateAuthenticatedUserRoles,
 } from '../../../lib/api/backend';
 
@@ -31,16 +28,6 @@ function emptyUserForm() {
     password: '',
     roleId: '',
     branchId: '',
-  };
-}
-
-function emptyReferralForm() {
-  return {
-    id: null,
-    name: '',
-    phone: '',
-    email: '',
-    notes: '',
   };
 }
 
@@ -70,13 +57,10 @@ export default function AdminManagementView({ backendSession }) {
   const [branches, setBranches] = useState([]);
   const [roles, setRoles] = useState([]);
   const [users, setUsers] = useState([]);
-  const [referralContacts, setReferralContacts] = useState([]);
   const [screenState, setScreenState] = useState({ status: 'idle', message: '' });
-  const [savingState, setSavingState] = useState({ users: false, referrals: false, message: '' });
+  const [savingState, setSavingState] = useState({ users: false, message: '' });
   const [userForm, setUserForm] = useState(emptyUserForm());
-  const [referralForm, setReferralForm] = useState(emptyReferralForm());
   const [workshopForm, setWorkshopForm] = useState(emptyWorkshopForm());
-  const [referralSearch, setReferralSearch] = useState('');
   const [workshops, setWorkshops] = useState(() => readWorkshopCatalog());
 
   const branchOptions = useMemo(
@@ -87,12 +71,6 @@ export default function AdminManagementView({ backendSession }) {
     () => roles.map((role) => ({ value: String(role.id), label: role.name })),
     [roles],
   );
-  const filteredReferrals = useMemo(() => {
-    const search = referralSearch.trim().toLowerCase();
-    if (!search) return referralContacts;
-    return referralContacts.filter((item) => [item.name, item.email, item.phone].filter(Boolean).some((value) => String(value).toLowerCase().includes(search)));
-  }, [referralContacts, referralSearch]);
-
   const loadWorkshops = async () => {
     if (!accessToken || !isAdminRole(currentRole)) {
       setWorkshops(readWorkshopCatalog());
@@ -115,12 +93,11 @@ export default function AdminManagementView({ backendSession }) {
     setScreenState({ status: 'loading', message: '' });
 
     try {
-      const [organizationsResult, branchesResult, rolesResult, usersResult, referralsResult] = await Promise.all([
+      const [organizationsResult, branchesResult, rolesResult, usersResult] = await Promise.all([
         readAuthenticatedOrganizations(accessToken),
         readAuthenticatedBranches(accessToken),
         readAuthenticatedRoles(accessToken),
         readAuthenticatedUsers(accessToken),
-        readAuthenticatedReferralContacts(accessToken),
       ]);
 
       const usersWithAssignments = await Promise.all(
@@ -144,7 +121,6 @@ export default function AdminManagementView({ backendSession }) {
       setBranches(Array.isArray(branchesResult.data) ? branchesResult.data : []);
       setRoles(Array.isArray(rolesResult.data) ? rolesResult.data : []);
       setUsers(usersWithAssignments);
-      setReferralContacts(Array.isArray(referralsResult.data) ? referralsResult.data : []);
       setScreenState({ status: 'success', message: '' });
     } catch (error) {
       setScreenState({ status: 'error', message: error?.message || 'No pudimos cargar la gestión administrativa.' });
@@ -162,11 +138,11 @@ export default function AdminManagementView({ backendSession }) {
   const handleCreateUser = async () => {
     const selectedBranch = branches.find((branch) => String(branch.id) === String(userForm.branchId));
     if (!selectedBranch || !userForm.roleId || !userForm.firstName || !userForm.username || !userForm.email || !userForm.password) {
-      setSavingState({ users: false, referrals: false, message: 'Completá nombre, username, email, password, rol y sucursal.' });
+      setSavingState({ users: false, message: 'Completá nombre, username, email, password, rol y sucursal.' });
       return;
     }
 
-    setSavingState({ users: true, referrals: false, message: '' });
+    setSavingState({ users: true, message: '' });
     try {
       await createAuthenticatedUser(accessToken, {
         firstName: userForm.firstName,
@@ -181,20 +157,20 @@ export default function AdminManagementView({ backendSession }) {
       });
       setUserForm(emptyUserForm());
       await loadAdminData();
-      setSavingState({ users: false, referrals: false, message: 'Usuario creado correctamente.' });
+      setSavingState({ users: false, message: 'Usuario creado correctamente.' });
     } catch (error) {
-      setSavingState({ users: false, referrals: false, message: error?.message || 'No pudimos crear el usuario.' });
+      setSavingState({ users: false, message: error?.message || 'No pudimos crear el usuario.' });
     }
   };
 
   const handleUpdateUserScope = async (user) => {
     const selectedBranch = branches.find((branch) => String(branch.id) === String(user.branchId));
     if (!selectedBranch || !user.roleId) {
-      setSavingState({ users: false, referrals: false, message: 'Seleccioná rol y sucursal para guardar.' });
+      setSavingState({ users: false, message: 'Seleccioná rol y sucursal para guardar.' });
       return;
     }
 
-    setSavingState({ users: true, referrals: false, message: '' });
+    setSavingState({ users: true, message: '' });
     try {
       await updateAuthenticatedUserRoles(accessToken, user.id, {
         assignments: [
@@ -207,53 +183,20 @@ export default function AdminManagementView({ backendSession }) {
         ],
       });
       await loadAdminData();
-      setSavingState({ users: false, referrals: false, message: 'Sucursal del usuario actualizada.' });
+      setSavingState({ users: false, message: 'Sucursal del usuario actualizada.' });
     } catch (error) {
-      setSavingState({ users: false, referrals: false, message: error?.message || 'No pudimos actualizar el usuario.' });
-    }
-  };
-
-  const handleSaveReferral = async () => {
-    if (!referralForm.name.trim()) {
-      setSavingState({ users: false, referrals: false, message: 'El nombre del referenciado es obligatorio.' });
-      return;
-    }
-
-    setSavingState({ users: false, referrals: true, message: '' });
-    try {
-      if (referralForm.id) {
-        await updateAuthenticatedReferralContact(accessToken, referralForm.id, {
-          name: referralForm.name,
-          phone: referralForm.phone,
-          email: referralForm.email,
-          notes: referralForm.notes,
-          active: true,
-        });
-      } else {
-        await createAuthenticatedReferralContact(accessToken, {
-          name: referralForm.name,
-          phone: referralForm.phone,
-          email: referralForm.email,
-          notes: referralForm.notes,
-          active: true,
-        });
-      }
-      setReferralForm(emptyReferralForm());
-      await loadAdminData();
-      setSavingState({ users: false, referrals: false, message: 'Referenciado guardado correctamente.' });
-    } catch (error) {
-      setSavingState({ users: false, referrals: false, message: error?.message || 'No pudimos guardar el referenciado.' });
+      setSavingState({ users: false, message: error?.message || 'No pudimos actualizar el usuario.' });
     }
   };
 
   const handleSaveWorkshop = async () => {
     if (!workshopForm.id) {
-      setSavingState({ users: false, referrals: false, message: 'Seleccioná primero qué taller querés editar.' });
+      setSavingState({ users: false, message: 'Seleccioná primero qué taller querés editar.' });
       return;
     }
 
     if (!workshopForm.label.trim()) {
-      setSavingState({ users: false, referrals: false, message: 'El nombre visible del taller es obligatorio.' });
+      setSavingState({ users: false, message: 'El nombre visible del taller es obligatorio.' });
       return;
     }
 
@@ -273,7 +216,7 @@ export default function AdminManagementView({ backendSession }) {
         : workshop
     ));
 
-    setSavingState({ users: false, referrals: true, message: '' });
+    setSavingState({ users: false, message: '' });
 
     try {
       const savedCatalog = accessToken && isAdminRole(currentRole)
@@ -282,9 +225,9 @@ export default function AdminManagementView({ backendSession }) {
 
       setWorkshops(savedCatalog);
       setWorkshopForm(emptyWorkshopForm());
-      setSavingState({ users: false, referrals: false, message: 'Datos del taller guardados para la plantilla de presupuesto.' });
+      setSavingState({ users: false, message: 'Datos del taller guardados para la plantilla de presupuesto.' });
     } catch (error) {
-      setSavingState({ users: false, referrals: false, message: error?.message || 'No pudimos guardar los datos del taller.' });
+      setSavingState({ users: false, message: error?.message || 'No pudimos guardar los datos del taller.' });
     }
   };
 
@@ -292,7 +235,7 @@ export default function AdminManagementView({ backendSession }) {
     const defaults = getDefaultWorkshops();
     setWorkshops(saveWorkshopCatalog(defaults));
     setWorkshopForm(emptyWorkshopForm());
-    setSavingState({ users: false, referrals: false, message: 'Se restauró el catálogo original de talleres.' });
+    setSavingState({ users: false, message: 'Se restauró el catálogo original de talleres.' });
   };
 
   if (!isAdminRole(currentRole)) {
@@ -311,7 +254,7 @@ export default function AdminManagementView({ backendSession }) {
       <section className="hero-panel compact-hero">
         <div className="stack-tight">
           <p className="eyebrow">Gestión</p>
-          <h1>Administración de usuarios, referenciados y talleres</h1>
+          <h1>Administración de usuarios y talleres</h1>
           <p className="muted">Asigná usuarios a sucursales y mantené los catálogos generales reutilizables en Nuevo caso y Presupuesto.</p>
         </div>
         <div className="tag-row">
@@ -434,48 +377,6 @@ export default function AdminManagementView({ backendSession }) {
         </div>
       </section>
 
-      <section className="card simple-panel-section">
-        <div className="section-head small-gap">
-          <div>
-            <p className="eyebrow">Referenciados</p>
-            <h2>Catálogo general</h2>
-          </div>
-          <StatusBadge tone="info">{referralContacts.length} cargado(s)</StatusBadge>
-        </div>
-
-        <div className="form-grid three-columns">
-          <DataField label="Nombre" onChange={(value) => setReferralForm((current) => ({ ...current, name: value }))} value={referralForm.name} />
-          <DataField label="Teléfono" onChange={(value) => setReferralForm((current) => ({ ...current, phone: value }))} value={referralForm.phone} />
-          <DataField label="Mail" onChange={(value) => setReferralForm((current) => ({ ...current, email: value }))} value={referralForm.email} />
-        </div>
-        <label className="field">
-          <span>Observaciones</span>
-          <textarea onChange={(event) => setReferralForm((current) => ({ ...current, notes: event.target.value }))} value={referralForm.notes} />
-        </label>
-        <div className="actions-row">
-          <button className="primary-button" disabled={savingState.referrals} onClick={() => { void handleSaveReferral(); }} type="button">{referralForm.id ? 'Actualizar referenciado' : 'Agregar referenciado'}</button>
-          {referralForm.id ? <button className="ghost-button" onClick={() => setReferralForm(emptyReferralForm())} type="button">Cancelar edición</button> : null}
-        </div>
-
-        <div className="lookup-form">
-          <DataField label="Buscar referenciado" onChange={setReferralSearch} value={referralSearch} />
-        </div>
-
-        <div className="notification-list">
-          {filteredReferrals.map((item) => (
-            <article className="notification-card" key={item.id}>
-              <div className="stack-tight">
-                <strong>{item.name}</strong>
-                <small>{item.phone || 'Sin teléfono'} · {item.email || 'Sin mail'}</small>
-                {item.notes ? <small>{item.notes}</small> : null}
-              </div>
-              <div className="notification-card-actions">
-                <button className="secondary-button compact-button" onClick={() => setReferralForm({ id: item.id, name: item.name || '', phone: item.phone || '', email: item.email || '', notes: item.notes || '' })} type="button">Editar</button>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
     </div>
   );
 }

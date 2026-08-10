@@ -11,6 +11,7 @@ import { ManagementClientsPage } from '@/modules/management/pages/management-cli
 import { ManagementVehiclesPage } from '@/modules/management/pages/management-vehicles-page';
 import { ManagementReferrersPage } from '@/modules/management/pages/management-referrers-page';
 import { ManagementInsurancePage } from '@/modules/management/pages/management-insurance-page';
+import { ManagementProvidersPage } from '@/modules/management/pages/management-providers-page';
 import { AuthGate } from '@/modules/auth/components/auth-gate';
 
 export const AppRouter = () => (
@@ -35,6 +36,7 @@ export const AppRouter = () => (
       <Route path="management/vehicles" element={<ManagementVehiclesPage />} />
       <Route path="management/referrers" element={<ManagementReferrersPage />} />
       <Route path="management/insurance" element={<ManagementInsurancePage />} />
+      <Route path="management/providers" element={<ManagementProvidersPage />} />
       <Route path="management/organization" element={<ManagementPage />} />
       <Route path="management/settings" element={<Navigate to="/management/organization" replace />} />
     </Route>

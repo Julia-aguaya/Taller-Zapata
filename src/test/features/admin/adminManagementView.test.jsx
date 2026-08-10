@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import userEvent from '@testing-library/user-event';
 import AdminManagementView from '../../../features/admin/components/AdminManagementView';
@@ -106,5 +106,26 @@ describe('AdminManagementView', () => {
     expect(JSON.parse(savedPayload.value)[0].legalName).toBe('Taller Zapata Backend SRL');
     expect(savedPayload.dataTypeCode).toBe('JSON');
     expect(screen.getByText('Datos del taller guardados para la plantilla de presupuesto.')).toBeInTheDocument();
+  });
+
+  it('no expone ni consulta el catálogo legado de referenciados', async () => {
+    let legacyRequests = 0;
+    server.use(
+      http.get('*/api/v1/organizations', () => HttpResponse.json([])),
+      http.get('*/api/v1/branches', () => HttpResponse.json([])),
+      http.get('*/api/v1/roles', () => HttpResponse.json([])),
+      http.get('*/api/v1/users', () => HttpResponse.json([])),
+      http.get('*/api/v1/system/parameters/WORKSHOP_CATALOG', () => HttpResponse.json({ value: '[]' })),
+      http.all('*/api/v1/referral-contacts', () => {
+        legacyRequests += 1;
+        return HttpResponse.json([]);
+      }),
+    );
+
+    render(<AdminManagementView backendSession={{ user: { role: 'admin' }, accessToken: 'mock-access-token-12345' }} />);
+
+    await waitFor(() => expect(screen.getByText('Administración de usuarios y talleres')).toBeInTheDocument());
+    expect(screen.queryByText('Catálogo general')).not.toBeInTheDocument();
+    expect(legacyRequests).toBe(0);
   });
 });

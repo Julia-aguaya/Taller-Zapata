@@ -120,6 +120,57 @@ class CaseCreateIntegrationTest {
     }
 
     @Test
+    void shouldRejectMissingOrInactiveReferenciadorOnCreate() throws Exception {
+        jdbcTemplate.update(
+                "INSERT INTO referenciadores (id, nombre, activo) VALUES (?, ?, ?)",
+                90L, "Referenciador inactivo", false
+        );
+        CaseCreateRequest request = new CaseCreateRequest(1L, 1L, 1L, 10L, 10L, true, null, 90L, null, "MEDIA", null, null, null, null, null, null, null, null, "CLIENTE", "PRINCIPAL");
+
+        mockMvc.perform(post("/api/v1/cases")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("El referenciador esta inactivo: 90"));
+
+        CaseCreateRequest missing = new CaseCreateRequest(1L, 1L, 1L, 10L, 10L, true, null, 91L, null, "MEDIA", null, null, null, null, null, null, null, null, "CLIENTE", "PRINCIPAL");
+        mockMvc.perform(post("/api/v1/cases")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(missing)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.message").value("No existe el referenciador 91"));
+    }
+
+    @Test
+    void shouldManageReferenciadorLifecycleThroughApi() throws Exception {
+        String response = mockMvc.perform(post("/api/v1/referenciadores")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nombre\":\"Ana\",\"apellido\":\"Referenciadora\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.activo").value(true))
+                .andReturn().getResponse().getContentAsString();
+        Long referenciadorId = objectMapper.readTree(response).get("id").asLong();
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put("/api/v1/referenciadores/{id}", referenciadorId)
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nombre\":\"Ana Actualizada\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.displayName").value("Ana Actualizada"));
+        mockMvc.perform(post("/api/v1/referenciadores/{id}/deactivate", referenciadorId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.activo").value(false));
+        mockMvc.perform(get("/api/v1/referenciadores?q=Ana%20Actualizada")
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
     void shouldCreateLawyerThirdPartyCaseWithLawyerFolderCode() throws Exception {
         CaseCreateRequest request = new CaseCreateRequest(
                 6L,

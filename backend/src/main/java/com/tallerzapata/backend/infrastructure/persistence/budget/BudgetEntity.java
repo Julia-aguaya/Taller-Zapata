@@ -107,6 +107,9 @@ public class BudgetEntity {
     @Column(name = "repuestos_cotizados_proveedor")
     private String quotedPartsSupplier;
 
+    @Column(name = "proveedor_id")
+    private Long providerId;
+
     @Column(name = "version_actual", nullable = false)
     private Integer currentVersion;
 
@@ -171,6 +174,8 @@ public class BudgetEntity {
     public void setQuotedPartsDate(LocalDate quotedPartsDate) { this.quotedPartsDate = quotedPartsDate; }
     public String getQuotedPartsSupplier() { return quotedPartsSupplier; }
     public void setQuotedPartsSupplier(String quotedPartsSupplier) { this.quotedPartsSupplier = quotedPartsSupplier; }
+    public Long getProviderId() { return providerId; }
+    public void setProviderId(Long providerId) { this.providerId = providerId; }
     public Integer getCurrentVersion() { return currentVersion; }
     public void setCurrentVersion(Integer currentVersion) { this.currentVersion = currentVersion; }
 }

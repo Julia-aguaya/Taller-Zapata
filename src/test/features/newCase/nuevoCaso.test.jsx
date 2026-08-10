@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { http, HttpResponse } from 'msw';
 import NuevoCaso from '../../../features/newCase/components/NuevoCaso';
+import { server } from '../../setupTests';
 
 function buildProps(overrides = {}) {
   return {
@@ -23,6 +25,7 @@ function buildProps(overrides = {}) {
       vehicleUse: '',
       paint: '',
       referenced: 'NO',
+      referenciadorId: '',
       referencedName: '',
     },
     isCreating: false,
@@ -96,5 +99,22 @@ describe('NuevoCaso', () => {
     expect(screen.getByRole('button', { name: /buscando vehículo por patente/i })).toBeDisabled();
     expect(screen.getByText(/estamos buscando el cliente con dni 30111888/i)).toBeInTheDocument();
     expect(screen.getByText(/estamos buscando el vehículo con patente aa123bb/i)).toBeInTheDocument();
+  });
+
+  it('consulta y selecciona el referenciador canónico por id', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    server.use(http.get('*/api/v1/referenciadores', () => HttpResponse.json([
+      { id: 12, nombre: 'Ana', apellido: 'Ruiz', displayName: 'Ana Ruiz', activo: true },
+    ])));
+
+    render(<NuevoCaso {...buildProps({ accessToken: 'token', form: { ...buildProps().form, referenced: 'SI' }, onChange })} />);
+
+    const referrerField = await screen.findByText('Referenciador');
+    await user.selectOptions(referrerField.parentElement.querySelector('select'), '12');
+
+    expect(onChange).toHaveBeenNthCalledWith(1, 'referenciadorId', '12');
+    expect(onChange).toHaveBeenNthCalledWith(2, 'referencedName', 'Ana Ruiz');
+    expect(screen.queryByLabelText('Nombre del referenciado')).not.toBeInTheDocument();
   });
 });

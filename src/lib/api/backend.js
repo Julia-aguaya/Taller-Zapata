@@ -20,6 +20,7 @@ const BRANCHES_PATH = '/branches';
 const ROLES_PATH = '/roles';
 const USERS_PATH = '/users';
 const REFERRAL_CONTACTS_PATH = '/referral-contacts';
+const REFERRERS_PATH = '/referenciadores';
 const SESSION_STORAGE_KEY = 'tallerDemo.backendSession';
 
 function buildCaseDetailPath(caseId) {
@@ -331,6 +332,10 @@ export function getUsersUrl() {
 
 export function getReferralContactsUrl() {
   return buildApiUrl(REFERRAL_CONTACTS_PATH);
+}
+
+export function getReferrersUrl() {
+  return buildApiUrl(REFERRERS_PATH);
 }
 
 export function getUserRolesUrl(userId) {
@@ -1841,43 +1846,26 @@ export async function readAuthenticatedReferralContacts(accessToken, filters = {
   return { data: payload, endpoint: endpoint.toString(), httpStatus: response.status };
 }
 
-export async function createAuthenticatedReferralContact(accessToken, body, options = {}) {
-  const endpoint = getReferralContactsUrl();
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: JSON.stringify(body),
-    signal: options.signal,
-  });
-  const payload = await readJson(response);
-
-  if (!response.ok) {
-    throw buildHttpError(response, 'No pude crear el referenciado.', payload);
+export async function readAuthenticatedReferrers(accessToken, filters = {}, options = {}) {
+  const endpoint = buildApiUrlObject(REFERRERS_PATH);
+  if (filters.q) {
+    endpoint.searchParams.set('q', String(filters.q));
   }
-
-  return { data: payload, endpoint: endpoint.toString(), httpStatus: response.status };
-}
-
-export async function updateAuthenticatedReferralContact(accessToken, referralId, body, options = {}) {
-  const endpoint = `${getReferralContactsUrl()}/${referralId}`;
+  if (filters.active != null) {
+    endpoint.searchParams.set('active', String(filters.active));
+  }
   const response = await fetch(endpoint, {
-    method: 'PUT',
+    method: 'GET',
     headers: {
       Accept: 'application/json',
-      'Content-Type': 'application/json',
       Authorization: `Bearer ${accessToken}`,
     },
-    body: JSON.stringify(body),
     signal: options.signal,
   });
   const payload = await readJson(response);
 
   if (!response.ok) {
-    throw buildHttpError(response, 'No pude actualizar el referenciado.', payload);
+    throw buildHttpError(response, 'No pude leer los referenciadores.', payload);
   }
 
   return { data: payload, endpoint: endpoint.toString(), httpStatus: response.status };

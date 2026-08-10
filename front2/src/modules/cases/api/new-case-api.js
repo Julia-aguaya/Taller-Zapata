@@ -46,3 +46,5 @@ export const searchVehicles = (params = {}) => {
 };
 
 export const getPersonVehicles = (personId) => requestJson(`/persons/${personId}/vehicles`);
+
+export const getVehiclePersons = (vehicleId) => requestJson(`/vehicles/${vehicleId}/persons`);

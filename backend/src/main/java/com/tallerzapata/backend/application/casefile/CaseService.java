@@ -35,6 +35,8 @@ import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseLegalRe
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingRepository;
 import com.tallerzapata.backend.infrastructure.persistence.organization.BranchEntity;
 import com.tallerzapata.backend.infrastructure.persistence.organization.BranchRepository;
+import com.tallerzapata.backend.infrastructure.persistence.organization.ReferenciadorEntity;
+import com.tallerzapata.backend.infrastructure.persistence.organization.ReferenciadorRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.OperationalTaskEntity;
 import com.tallerzapata.backend.infrastructure.persistence.operation.OperationalTaskRepository;
 import com.tallerzapata.backend.infrastructure.persistence.person.PersonEntity;
@@ -77,6 +79,7 @@ public class CaseService {
     private final BranchRepository branchRepository;
     private final PersonRepository personRepository;
     private final VehicleRepository vehicleRepository;
+    private final ReferenciadorRepository referenciadorRepository;
     private final WorkflowStateRepository workflowStateRepository;
     private final CasePersonRepository casePersonRepository;
     private final CaseVehicleRepository caseVehicleRepository;
@@ -106,6 +109,7 @@ public class CaseService {
             BranchRepository branchRepository,
             PersonRepository personRepository,
             VehicleRepository vehicleRepository,
+            ReferenciadorRepository referenciadorRepository,
             WorkflowStateRepository workflowStateRepository,
             CasePersonRepository casePersonRepository,
             CaseVehicleRepository caseVehicleRepository,
@@ -133,6 +137,7 @@ public class CaseService {
         this.branchRepository = branchRepository;
         this.personRepository = personRepository;
         this.vehicleRepository = vehicleRepository;
+        this.referenciadorRepository = referenciadorRepository;
         this.workflowStateRepository = workflowStateRepository;
         this.casePersonRepository = casePersonRepository;
         this.caseVehicleRepository = caseVehicleRepository;
@@ -294,6 +299,7 @@ public class CaseService {
                 .orElseThrow(() -> new ResourceNotFoundException("No existe la persona principal " + request.principalCustomerPersonId()));
         vehicleRepository.findById(request.principalVehicleId())
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el vehiculo principal " + request.principalVehicleId()));
+        validateActiveReferenciador(request.referenciadorId());
 
         String customerRoleCode = request.customerRoleCode() == null || request.customerRoleCode().isBlank()
                 ? "CLIENTE"
@@ -433,6 +439,7 @@ public class CaseService {
             personRepository.findById(request.referredByPersonId())
                     .orElseThrow(() -> new ResourceNotFoundException("No existe la persona referida " + request.referredByPersonId()));
         }
+        validateActiveReferenciador(request.referenciadorId());
 
         Map<String, Object> before = new LinkedHashMap<>();
         before.put("referenced", entity.getReferenced());
@@ -983,6 +990,17 @@ public class CaseService {
         }
         if (normalizedPriorityCode != null && !casePriorityRepository.existsByCodeAndActiveTrue(normalizedPriorityCode)) {
             throw new ConflictException("priorityCode no permitido: " + priorityCode);
+        }
+    }
+
+    private void validateActiveReferenciador(Long referenciadorId) {
+        if (referenciadorId == null) {
+            return;
+        }
+        ReferenciadorEntity referenciador = referenciadorRepository.findById(referenciadorId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el referenciador " + referenciadorId));
+        if (!referenciador.isActivo()) {
+            throw new ConflictException("El referenciador esta inactivo: " + referenciadorId);
         }
     }
 

@@ -40,13 +40,25 @@ public class InsuranceController {
     @ApiResponse(responseCode = "200", description = "OK")
     @PreAuthorize("hasAuthority('seguro.ver')")
     @GetMapping("/insurance/companies")
-    public List<InsuranceCompanyResponse> listCompanies() { return insuranceService.listCompanies(); }
+    public List<InsuranceCompanyResponse> listCompanies(@RequestParam(defaultValue = "") String q, @RequestParam(required = false) Boolean active) { return insuranceService.listCompanies(q, active); }
+
+    @PreAuthorize("hasAuthority('seguro.ver')")
+    @GetMapping("/insurance/companies/{companyId}")
+    public InsuranceCompanyResponse getCompany(@PathVariable Long companyId) { return insuranceService.getCompany(companyId); }
 
     @Operation(summary = "Crear compania aseguradora", description = "Crea una nueva compania de seguro")
     @ApiResponse(responseCode = "200", description = "OK")
     @PreAuthorize("hasAuthority('seguro.crear')")
     @PostMapping("/insurance/companies")
     public InsuranceCompanyResponse createCompany(@Valid @RequestBody InsuranceCompanyCreateRequest request, HttpServletRequest httpRequest) { return insuranceService.createCompany(request, httpRequest); }
+
+    @PreAuthorize("hasAuthority('seguro.crear')")
+    @PutMapping("/insurance/companies/{companyId}")
+    public InsuranceCompanyResponse updateCompany(@PathVariable Long companyId, @Valid @RequestBody InsuranceCompanyUpdateRequest request, HttpServletRequest httpRequest) { return insuranceService.updateCompany(companyId, request, httpRequest); }
+
+    @PreAuthorize("hasAuthority('seguro.crear')")
+    @PostMapping("/insurance/companies/{companyId}/deactivate")
+    public InsuranceCompanyResponse deactivateCompany(@PathVariable Long companyId, HttpServletRequest httpRequest) { return insuranceService.deactivateCompany(companyId, httpRequest); }
 
     @Operation(summary = "Listar contactos de aseguradora", description = "Devuelve los contactos de una compania de seguro")
     @ApiResponse(responseCode = "200", description = "OK")
@@ -59,6 +71,10 @@ public class InsuranceController {
     @PreAuthorize("hasAuthority('seguro.crear')")
     @PostMapping("/insurance/companies/{companyId}/contacts")
     public InsuranceCompanyContactResponse createCompanyContact(@PathVariable Long companyId, @Valid @RequestBody InsuranceCompanyContactCreateRequest request, HttpServletRequest httpRequest) { return insuranceService.createCompanyContact(companyId, request, httpRequest); }
+
+    @PreAuthorize("hasAuthority('seguro.crear')")
+    @DeleteMapping("/insurance/companies/{companyId}/contacts/{contactId}")
+    public void deleteCompanyContact(@PathVariable Long companyId, @PathVariable Long contactId, HttpServletRequest httpRequest) { insuranceService.deleteCompanyContact(companyId, contactId, httpRequest); }
 
     @Operation(summary = "Obtener seguro de caso", description = "Devuelve la informacion de seguro de un caso")
     @ApiResponse(responseCode = "200", description = "OK")

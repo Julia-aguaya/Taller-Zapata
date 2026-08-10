@@ -9,6 +9,7 @@ import com.tallerzapata.backend.application.security.CaseAccessControlService;
 import com.tallerzapata.backend.infrastructure.persistence.budget.*;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
+import com.tallerzapata.backend.infrastructure.persistence.provider.ProviderRepository;
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
 import com.tallerzapata.backend.infrastructure.security.CurrentUserService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -29,8 +30,9 @@ public class PartSupplierQuoteService {
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService accessControlService;
     private final CaseAuditService caseAuditService;
+    private final ProviderRepository providerRepository;
 
-    public PartSupplierQuoteService(PartSupplierQuoteRepository quoteRepository, CasePartRepository casePartRepository, CaseRepository caseRepository, QuoteBillingRepository billingRepository, QuotePaymentMethodRepository paymentMethodRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService) {
+    public PartSupplierQuoteService(PartSupplierQuoteRepository quoteRepository, CasePartRepository casePartRepository, CaseRepository caseRepository, QuoteBillingRepository billingRepository, QuotePaymentMethodRepository paymentMethodRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, ProviderRepository providerRepository) {
         this.quoteRepository = quoteRepository;
         this.casePartRepository = casePartRepository;
         this.caseRepository = caseRepository;
@@ -39,6 +41,7 @@ public class PartSupplierQuoteService {
         this.currentUserService = currentUserService;
         this.accessControlService = accessControlService;
         this.caseAuditService = caseAuditService;
+        this.providerRepository = providerRepository;
     }
 
     @Transactional(readOnly = true)
@@ -63,7 +66,7 @@ public class PartSupplierQuoteService {
 
         PartSupplierQuoteEntity entity = new PartSupplierQuoteEntity();
         entity.setPartId(partId);
-        entity.setSupplier(request.supplier().trim());
+        if (request.providerId() != null) { var provider = providerRepository.findById(request.providerId()).orElseThrow(() -> new ResourceNotFoundException("No existe el proveedor " + request.providerId())); if (!Boolean.TRUE.equals(provider.getActive())) throw new ConflictException("El proveedor esta inactivo: " + request.providerId()); entity.setProviderId(provider.getId()); entity.setSupplier(provider.getName()); } else { if (request.supplier() == null || request.supplier().isBlank()) throw new ConflictException("supplier es obligatorio sin providerId"); entity.setProviderId(null); entity.setSupplier(request.supplier().trim()); }
         entity.setAmount(request.amount());
         entity.setBillingCode(normalizeCode(request.billingCode()));
         entity.setPaymentMethodCode(normalizeCode(request.paymentMethodCode()));
@@ -122,7 +125,7 @@ public class PartSupplierQuoteService {
     }
 
     private PartSupplierQuoteResponse toResponse(PartSupplierQuoteEntity e) {
-        return new PartSupplierQuoteResponse(e.getId(), e.getPartId(), e.getSupplier(), e.getAmount(), e.getBillingCode(), e.getPaymentMethodCode());
+        return new PartSupplierQuoteResponse(e.getId(), e.getPartId(), e.getSupplier(), e.getProviderId(), e.getAmount(), e.getBillingCode(), e.getPaymentMethodCode());
     }
 
     private String normalizeCode(String value) { return value == null || value.isBlank() ? null : value.trim().toUpperCase(); }

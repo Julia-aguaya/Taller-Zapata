@@ -10,6 +10,7 @@ import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
+import { ProviderSelector, providerPayload } from '@/modules/cases/components/provider-selector';
 
 const currency = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 });
 const fmt = (v) => (v == null ? '-' : currency.format(v));
@@ -70,6 +71,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
     mechanicalWorkCode: budget?.mechanicalWorkCode || '',
     quotedPartsDate: budget?.quotedPartsDate || new Date().toISOString().slice(0, 10),
     quotedPartsSupplier: budget?.quotedPartsSupplier || '',
+    providerId: budget?.providerId || null,
   }), [session, caseDetail]);
 
   const [header, setHeader] = useState(() => toHeaderState(budget));
@@ -86,7 +88,17 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
   const laborWithoutVat = toDecimal(header.laborWithoutVat);
   const laborWithVat = laborWithoutVat * 1.21;
 
-  const invalidateWorkspace = async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); await onSaved?.(); };
+  const invalidateWorkspace = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['cases'] }),
+      queryClient.invalidateQueries({ queryKey: ['cases', String(caseId)] }),
+      queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }),
+      queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'parts'] }),
+      queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] }),
+      queryClient.invalidateQueries({ queryKey: ['panel'] }),
+    ]);
+    await onSaved?.();
+  };
 
   const saveMutation = useMutation({
     mutationFn: async ({ closeAfterSave = false }) => {
@@ -102,7 +114,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
         glassReplacementApplies: header.glassReplacementApplies === 'SI', glassReplacementDetail: header.glassReplacementDetail || null,
         electricalWorkApplies: header.electricalWorkApplies === 'SI', electricalDetail: header.electricalDetail || null,
         mechanicalWorkApplies: header.mechanicalWorkApplies === 'SI', mechanicalWorkCode: header.mechanicalWorkCode || null,
-        quotedPartsDate: header.quotedPartsDate || null, quotedPartsSupplier: header.quotedPartsSupplier || null,
+        quotedPartsDate: header.quotedPartsDate || null, quotedPartsSupplier: header.quotedPartsSupplier || null, providerId: header.providerId,
       });
       for (const item of normalizedItems) {
         const p = { visualOrder: item.visualOrder, affectedPiece: item.affectedPiece, taskCode: item.taskCode, damageLevelCode: item.damageLevelCode, partDecisionCode: item.partDecisionCode, actionCode: item.actionCode, requiresReplacement: item.requiresReplacement, partValue: toDecimal(item.partValue), estimatedHours: toDecimal(item.estimatedHours), laborAmount: toDecimal(item.laborAmount), active: item.active };
@@ -264,7 +276,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
           <h4 className="mb-3 text-sm font-semibold">Repuestos cotizados</h4>
           <div className="grid gap-3 md:grid-cols-2">
             <div className="space-y-1"><Label className="text-xs">Fecha</Label><Input type="date" className="h-10 rounded-xl text-sm" value={header.quotedPartsDate} onChange={(e) => setHeader((c) => ({ ...c, quotedPartsDate: e.target.value }))} /></div>
-            <div className="space-y-1"><Label className="text-xs">Proveedor</Label><Input className="h-10 rounded-xl text-sm" value={header.quotedPartsSupplier} onChange={(e) => setHeader((c) => ({ ...c, quotedPartsSupplier: e.target.value }))} /></div>
+            <div className="space-y-1"><Label className="text-xs">Proveedor</Label><ProviderSelector value={header.quotedPartsSupplier} providerId={header.providerId} onChange={({ providerId, snapshot }) => setHeader((current) => ({ ...current, providerId, quotedPartsSupplier: snapshot || '' }))} /></div>
           </div>
         </div>
         <div className="rounded-2xl border border-border/60 bg-card p-5">

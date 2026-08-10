@@ -9,4 +9,6 @@ public interface ReferenciadorRepository extends JpaRepository<ReferenciadorEnti
     List<ReferenciadorEntity> findByActivoTrueOrderByNombreAsc();
     @Query("SELECT r FROM ReferenciadorEntity r WHERE r.activo = true AND (LOWER(r.nombre) LIKE LOWER(CONCAT('%', :q, '%')) OR LOWER(r.apellido) LIKE LOWER(CONCAT('%', :q, '%'))) ORDER BY r.nombre")
     List<ReferenciadorEntity> search(@Param("q") String q);
+    @Query("SELECT r FROM ReferenciadorEntity r WHERE :q = '' OR LOWER(r.nombre) LIKE LOWER(CONCAT('%', :q, '%')) OR LOWER(r.apellido) LIKE LOWER(CONCAT('%', :q, '%')) ORDER BY r.nombre")
+    List<ReferenciadorEntity> searchAll(@Param("q") String q);
 }

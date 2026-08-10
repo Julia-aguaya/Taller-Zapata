@@ -12,6 +12,7 @@ import com.tallerzapata.backend.infrastructure.persistence.casefile.CasePersonRe
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.*;
 import com.tallerzapata.backend.infrastructure.persistence.person.PersonRepository;
+import com.tallerzapata.backend.infrastructure.persistence.provider.ProviderRepository;
 import com.tallerzapata.backend.infrastructure.persistence.todoriskstate.TodoRiesgoStateFactsRepository;
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
 import com.tallerzapata.backend.infrastructure.security.CurrentUserService;
@@ -63,8 +64,9 @@ public class InsuranceService {
     private final CaseAuditService caseAuditService;
     private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
     private final TodoRiesgoStateFactsRepository todoRiesgoStateFactsRepository;
+    private final ProviderRepository providerRepository;
 
-    public InsuranceService(InsuranceCompanyRepository companyRepository, InsuranceCompanyContactRepository companyContactRepository, InsuranceRoleContactRepository roleContactRepository, PersonRepository personRepository, CaseRepository caseRepository, CasePersonRepository casePersonRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, CaseFranchiseRepository caseFranchiseRepository, InsuranceModalityRepository modalityRepository, InsuranceOpinionRepository opinionRepository, InsuranceQuotationStatusRepository quotationStatusRepository, InsurancePartsAuthorizationRepository partsAuthorizationRepository, FranchiseStatusRepository franchiseStatusRepository, FranchiseRecoveryTypeRepository franchiseRecoveryTypeRepository, FranchiseOpinionRepository franchiseOpinionRepository, CaseCleasRepository caseCleasRepository, CaseThirdPartyRepository caseThirdPartyRepository, CleasScopeRepository cleasScopeRepository, CleasOpinionRepository cleasOpinionRepository, PaymentStatusRepository paymentStatusRepository, ThirdPartyDocumentationStatusRepository thirdPartyDocumentationStatusRepository, PartsProvisionModeRepository partsProvisionModeRepository, CaseLegalRepository caseLegalRepository, LegalNewsRepository legalNewsRepository, LegalExpenseRepository legalExpenseRepository, LegalProcessorRepository legalProcessorRepository, LegalClaimantRepository legalClaimantRepository, LegalInstanceRepository legalInstanceRepository, LegalClosureReasonRepository legalClosureReasonRepository, LegalExpensePayerRepository legalExpensePayerRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, TodoRiesgoStateFactsRepository todoRiesgoStateFactsRepository) {
+    public InsuranceService(InsuranceCompanyRepository companyRepository, InsuranceCompanyContactRepository companyContactRepository, InsuranceRoleContactRepository roleContactRepository, PersonRepository personRepository, CaseRepository caseRepository, CasePersonRepository casePersonRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, CaseFranchiseRepository caseFranchiseRepository, InsuranceModalityRepository modalityRepository, InsuranceOpinionRepository opinionRepository, InsuranceQuotationStatusRepository quotationStatusRepository, InsurancePartsAuthorizationRepository partsAuthorizationRepository, FranchiseStatusRepository franchiseStatusRepository, FranchiseRecoveryTypeRepository franchiseRecoveryTypeRepository, FranchiseOpinionRepository franchiseOpinionRepository, CaseCleasRepository caseCleasRepository, CaseThirdPartyRepository caseThirdPartyRepository, CleasScopeRepository cleasScopeRepository, CleasOpinionRepository cleasOpinionRepository, PaymentStatusRepository paymentStatusRepository, ThirdPartyDocumentationStatusRepository thirdPartyDocumentationStatusRepository, PartsProvisionModeRepository partsProvisionModeRepository, CaseLegalRepository caseLegalRepository, LegalNewsRepository legalNewsRepository, LegalExpenseRepository legalExpenseRepository, LegalProcessorRepository legalProcessorRepository, LegalClaimantRepository legalClaimantRepository, LegalInstanceRepository legalInstanceRepository, LegalClosureReasonRepository legalClosureReasonRepository, LegalExpensePayerRepository legalExpensePayerRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, TodoRiesgoStateFactsRepository todoRiesgoStateFactsRepository, ProviderRepository providerRepository) {
         this.companyRepository = companyRepository;
         this.companyContactRepository = companyContactRepository;
         this.roleContactRepository = roleContactRepository;
@@ -101,13 +103,21 @@ public class InsuranceService {
         this.caseAuditService = caseAuditService;
         this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
         this.todoRiesgoStateFactsRepository = todoRiesgoStateFactsRepository;
+        this.providerRepository = providerRepository;
     }
 
     @Transactional(readOnly = true)
-    public List<InsuranceCompanyResponse> listCompanies() {
+    public List<InsuranceCompanyResponse> listCompanies(String q, Boolean active) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         accessControlService.requirePermission(currentUser, "seguro.ver");
-        return companyRepository.findByActiveTrueOrderByNameAsc().stream().map(this::toCompanyResponse).toList();
+        return companyRepository.search(q == null ? "" : q.trim(), active == null ? true : active).stream().map(this::toCompanyResponse).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public InsuranceCompanyResponse getCompany(Long companyId) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        accessControlService.requirePermission(currentUser, "seguro.ver");
+        return toCompanyResponse(requireCompany(companyId));
     }
 
     @Transactional
@@ -124,6 +134,29 @@ public class InsuranceService {
         entity.setActive(request.active() == null || request.active());
         entity = companyRepository.save(entity);
         caseAuditService.register(currentUser.id(), null, "companias_seguro", entity.getId(), "crear_compania_seguro", null, caseAuditService.toJson(Map.of("companyCode", entity.getCode())), caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
+        return toCompanyResponse(entity);
+    }
+
+    @Transactional
+    public InsuranceCompanyResponse updateCompany(Long companyId, InsuranceCompanyUpdateRequest request, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        accessControlService.requirePermission(currentUser, "seguro.crear");
+        InsuranceCompanyEntity entity = requireCompany(companyId);
+        String code = normalizeCode(request.code());
+        if (!entity.getCode().equalsIgnoreCase(code) && companyRepository.existsByCodeIgnoreCase(code)) throw new ConflictException("Ya existe la compania con codigo " + code);
+        entity.setCode(code); entity.setName(request.name().trim()); entity.setTaxId(blankToNull(request.taxId()));
+        entity.setRequiresRepairPhotos(Boolean.TRUE.equals(request.requiresRepairPhotos())); entity.setExpectedPaymentDays(request.expectedPaymentDays());
+        entity = companyRepository.save(entity);
+        caseAuditService.register(currentUser.id(), null, "companias_seguro", entity.getId(), "actualizar_compania_seguro", null, caseAuditService.toJson(Map.of("companyCode", entity.getCode())), caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
+        return toCompanyResponse(entity);
+    }
+
+    @Transactional
+    public InsuranceCompanyResponse deactivateCompany(Long companyId, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        accessControlService.requirePermission(currentUser, "seguro.crear");
+        InsuranceCompanyEntity entity = requireCompany(companyId); entity.setActive(false);
+        caseAuditService.register(currentUser.id(), null, "companias_seguro", entity.getId(), "desactivar_compania_seguro", null, caseAuditService.toJson(Map.of("companyCode", entity.getCode())), caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
         return toCompanyResponse(entity);
     }
 
@@ -151,6 +184,17 @@ public class InsuranceService {
         entity = companyContactRepository.save(entity);
         caseAuditService.register(currentUser.id(), null, "companias_contactos", entity.getId(), "crear_contacto_compania", null, caseAuditService.toJson(Map.of("companyId", companyId, "personId", request.personId())), caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
         return toCompanyContactResponse(entity);
+    }
+
+    @Transactional
+    public void deleteCompanyContact(Long companyId, Long contactId, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        accessControlService.requirePermission(currentUser, "seguro.crear");
+        requireCompany(companyId);
+        InsuranceCompanyContactEntity entity = companyContactRepository.findById(contactId).orElseThrow(() -> new ResourceNotFoundException("No existe el contacto " + contactId));
+        if (!entity.getCompanyId().equals(companyId)) throw new ConflictException("El contacto no pertenece a la compania indicada");
+        companyContactRepository.delete(entity);
+        caseAuditService.register(currentUser.id(), null, "companias_contactos", contactId, "eliminar_contacto_compania", caseAuditService.toJson(Map.of("companyId", companyId, "personId", entity.getPersonId())), null, caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
     }
 
     @Transactional(readOnly = true)
@@ -214,6 +258,7 @@ public class InsuranceService {
         entity.setIncludesParts(Boolean.TRUE.equals(request.includesParts()));
         entity.setPartsAuthorizationCode(normalizedOptionalCode(request.partsAuthorizationCode()));
         entity.setPartsSupplierText(blankToNull(request.partsSupplierText()));
+        if (request.providerId() != null) { var provider = providerRepository.findById(request.providerId()).orElseThrow(() -> new ResourceNotFoundException("No existe el proveedor " + request.providerId())); if (!Boolean.TRUE.equals(provider.getActive())) throw new ConflictException("El proveedor esta inactivo: " + request.providerId()); entity.setProviderId(provider.getId()); entity.setPartsSupplierText(provider.getName()); } else entity.setProviderId(null);
         entity.setAmountToBillCompany(scale(request.amountToBillCompany()));
         entity.setFinalAmountForWorkshop(scale(request.finalAmountForWorkshop()));
         entity.setNoRepair(Boolean.TRUE.equals(request.noRepair()));
@@ -449,7 +494,7 @@ public class InsuranceService {
     private CaseInsuranceResponse toCaseInsuranceResponse(CaseInsuranceEntity e) { return new CaseInsuranceResponse(e.getId(), e.getCaseId(), e.getInsuranceCompanyId(), e.getPolicyNumber(), e.getCertificateNumber(), e.getCoverageDetail(), e.getThirdPartyCompanyId(), e.getCleasNumber(), e.getClaimNumber(), e.getProcessorCasePersonId(), e.getInspectorCasePersonId()); }
     private InsuranceProcessingResponse toInsuranceProcessingResponse(InsuranceProcessingEntity e) {
         var facts = todoRiesgoStateFactsRepository.findById(e.getCaseId()).orElse(null);
-        return new InsuranceProcessingResponse(e.getId(), e.getCaseId(), e.getPresentedAt(), e.getInspectionForwardedAt(), e.getModalityCode(), e.getOpinionCode(), e.getQuotationStatusCode(), e.getQuotationDate(), e.getAgreedAmount(), facts == null ? null : facts.getAgreementDate(), facts == null ? null : facts.getPassedToPaymentsDate(), e.getMinimumCloseAmount(), e.getIncludesParts(), e.getPartsAuthorizationCode(), e.getPartsSupplierText(), e.getAmountToBillCompany(), e.getFinalAmountForWorkshop(), e.getNoRepair(), e.getAdminOverrideAppointment());
+        return new InsuranceProcessingResponse(e.getId(), e.getCaseId(), e.getPresentedAt(), e.getInspectionForwardedAt(), e.getModalityCode(), e.getOpinionCode(), e.getQuotationStatusCode(), e.getQuotationDate(), e.getAgreedAmount(), facts == null ? null : facts.getAgreementDate(), facts == null ? null : facts.getPassedToPaymentsDate(), e.getMinimumCloseAmount(), e.getIncludesParts(), e.getPartsAuthorizationCode(), e.getPartsSupplierText(), e.getProviderId(), e.getAmountToBillCompany(), e.getFinalAmountForWorkshop(), e.getNoRepair(), e.getAdminOverrideAppointment());
     }
     private CaseFranchiseResponse toCaseFranchiseResponse(CaseFranchiseEntity e) { return new CaseFranchiseResponse(e.getId(), e.getCaseId(), e.getFranchiseStatusCode(), e.getFranchiseAmount(), e.getRecoveryTypeCode(), e.getRelatedCaseId(), e.getFranchiseOpinionCode(), e.getExceedsFranchise(), e.getRecoveryAmount(), e.getNotes()); }
     private CaseCleasResponse toCaseCleasResponse(CaseCleasEntity e) { return new CaseCleasResponse(e.getId(), e.getCaseId(), e.getScopeCode(), e.getOpinionCode(), e.getFranchiseAmount(), e.getCustomerChargeAmount(), e.getCustomerPaymentStatusCode(), e.getCustomerPaymentDate(), e.getCompanyFranchisePaymentAmount(), e.getCompanyFranchisePaymentStatusCode(), e.getCompanyFranchisePaymentDate()); }

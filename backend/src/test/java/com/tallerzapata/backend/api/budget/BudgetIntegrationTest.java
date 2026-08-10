@@ -433,6 +433,57 @@ class BudgetIntegrationTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void shouldStoreProviderSnapshotsAndAllowFreeTextForBudgetAndParts() throws Exception {
+        jdbcTemplate.update("INSERT INTO proveedores (id, public_id, nombre, activo) VALUES (?, ?, ?, ?)", 700L, "00000000-0000-0000-0000-000000007000", "Proveedor Original", true);
+
+        mockMvc.perform(put("/api/v1/cases/100/budget")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"budgetDate\":\"2026-04-20\",\"reportStatusCode\":\"BORRADOR\",\"laborWithoutVat\":1000,\"vatRate\":21,\"partsTotal\":500,\"providerId\":700,\"quotedPartsSupplier\":\"Ignorado\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.providerId").value(700))
+                .andExpect(jsonPath("$.quotedPartsSupplier").value("Proveedor Original"));
+
+        mockMvc.perform(post("/api/v1/cases/100/parts")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\":\"Optica\",\"finalSupplier\":\"Ignorado\",\"providerId\":700,\"statusCode\":\"PENDIENTE\",\"budgetedPrice\":150,\"used\":false,\"returned\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.providerId").value(700))
+                .andExpect(jsonPath("$.finalSupplier").value("Proveedor Original"));
+
+        jdbcTemplate.update("UPDATE proveedores SET nombre = ? WHERE id = ?", "Proveedor Renombrado", 700L);
+        mockMvc.perform(get("/api/v1/cases/100/budget").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.quotedPartsSupplier").value("Proveedor Original"));
+
+        mockMvc.perform(post("/api/v1/cases/100/parts")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\":\"Espejo\",\"finalSupplier\":\"Proveedor Libre\",\"statusCode\":\"PENDIENTE\",\"budgetedPrice\":150,\"used\":false,\"returned\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.providerId").doesNotExist())
+                .andExpect(jsonPath("$.finalSupplier").value("Proveedor Libre"));
+    }
+
+    @Test
+    void shouldRejectInactiveProviderForBudgetAndParts() throws Exception {
+        jdbcTemplate.update("INSERT INTO proveedores (id, public_id, nombre, activo) VALUES (?, ?, ?, ?)", 701L, "00000000-0000-0000-0000-000000007001", "Proveedor Inactivo", false);
+
+        mockMvc.perform(put("/api/v1/cases/100/budget")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"budgetDate\":\"2026-04-20\",\"reportStatusCode\":\"BORRADOR\",\"laborWithoutVat\":1000,\"vatRate\":21,\"partsTotal\":500,\"providerId\":701}"))
+                .andExpect(status().isConflict());
+
+        mockMvc.perform(post("/api/v1/cases/100/parts")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\":\"Optica\",\"providerId\":701,\"statusCode\":\"PENDIENTE\",\"budgetedPrice\":150,\"used\":false,\"returned\":false}"))
+                .andExpect(status().isConflict());
+    }
+
     private void seedBaseData() {
         jdbcTemplate.update("INSERT INTO usuarios (id, public_id, username, email, password_hash, nombre, apellido, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 3L, "00000000-0000-0000-0000-000000000300", "operador", "operador@tallerzapata.local", "hash", "Olivia", "Operadora", true);
         jdbcTemplate.update("INSERT INTO usuario_roles (id, usuario_id, rol_id, organizacion_id, sucursal_id, activo) VALUES (?, ?, ?, ?, ?, ?)", 3L, 3L, 2L, 1L, 1L, true);

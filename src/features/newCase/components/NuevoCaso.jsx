@@ -4,7 +4,7 @@ import DataField from '../../../components/ui/DataField';
 import SelectField from '../../../components/ui/SelectField';
 import StatusBadge from '../../../components/ui/StatusBadge';
 import ToggleField from '../../../components/ui/ToggleField';
-import { readAuthenticatedReferralContacts } from '../../../lib/api/backend';
+import { readAuthenticatedReferrers } from '../../../lib/api/backend';
 import { BRANCHES, PAINT_TYPES, TRAMITE_TYPES, VEHICLE_TYPES, VEHICLE_USES } from '../constants/formOptions';
 
 export default function NuevoCaso({
@@ -29,7 +29,7 @@ export default function NuevoCaso({
   const isSearchingCustomer = customerLookupState.status === 'loading';
   const isSearchingVehicle = vehicleLookupState.status === 'loading';
   const [referenceSearch, setReferenceSearch] = useState('');
-  const [referralContacts, setReferralContacts] = useState([]);
+  const [referrers, setReferrers] = useState([]);
   const [referralStatus, setReferralStatus] = useState({ status: 'idle', message: '' });
 
   useEffect(() => {
@@ -40,15 +40,15 @@ export default function NuevoCaso({
 
     let ignore = false;
     setReferralStatus({ status: 'loading', message: '' });
-    readAuthenticatedReferralContacts(accessToken)
+    readAuthenticatedReferrers(accessToken, { active: true })
       .then((result) => {
         if (ignore) return;
-        setReferralContacts(Array.isArray(result.data) ? result.data : []);
+        setReferrers(Array.isArray(result.data) ? result.data : []);
         setReferralStatus({ status: 'success', message: '' });
       })
       .catch((error) => {
         if (ignore) return;
-        setReferralStatus({ status: 'error', message: error?.message || 'No pudimos cargar referenciados.' });
+        setReferralStatus({ status: 'error', message: error?.message || 'No pudimos cargar referenciadores.' });
       });
 
     return () => {
@@ -65,11 +65,17 @@ export default function NuevoCaso({
   const filteredReferralOptions = useMemo(() => {
     const search = referenceSearch.trim().toLowerCase();
     const items = search
-      ? referralContacts.filter((item) => [item?.name, item?.email, item?.phone].filter(Boolean).some((value) => String(value).toLowerCase().includes(search)))
-      : referralContacts;
+      ? referrers.filter((item) => [item?.nombre, item?.apellido, item?.displayName, item?.telefono].filter(Boolean).some((value) => String(value).toLowerCase().includes(search)))
+      : referrers;
 
-    return items.map((item) => ({ value: item.name, label: item.name }));
-  }, [referenceSearch, referralContacts]);
+    return items.map((item) => ({ value: String(item.id), label: item.displayName || [item.nombre, item.apellido].filter(Boolean).join(' ') }));
+  }, [referenceSearch, referrers]);
+
+  const selectReferrer = (id) => {
+    const referrer = referrers.find((item) => String(item.id) === id);
+    onChange('referenciadorId', id);
+    onChange('referencedName', referrer?.displayName || [referrer?.nombre, referrer?.apellido].filter(Boolean).join(' '));
+  };
 
   return (
     <div className="page-stack">
@@ -179,9 +185,9 @@ export default function NuevoCaso({
              <ToggleField highlighted={fieldWasAutofilled('referenced')} invalid={fieldHasError('referenciado si/no')} label="Referenciado" onChange={(value) => onChange('referenced', value)} required value={form.referenced} />
              {form.referenced === 'SI' ? (
               <div className="stack-tight nuevo-caso-reference-picker">
-                <DataField label="Buscar referenciado" onChange={setReferenceSearch} placeholder="Buscar por nombre" value={referenceSearch} />
-                <SelectField highlighted={fieldWasAutofilled('referencedName')} invalid={fieldHasError('nombre del referenciado')} label="Nombre del referenciado" onChange={(value) => onChange('referencedName', value)} options={filteredReferralOptions} placeholder="Seleccioná" required value={form.referencedName} />
-                {referralStatus.status === 'loading' ? <small className="muted">Cargando referenciados...</small> : null}
+                 <DataField label="Buscar referenciador" onChange={setReferenceSearch} placeholder="Buscar por nombre" value={referenceSearch} />
+                 <SelectField highlighted={fieldWasAutofilled('referenciadorId')} invalid={fieldHasError('referenciador')} label="Referenciador" onChange={selectReferrer} options={filteredReferralOptions} placeholder="Seleccioná" required value={form.referenciadorId || ''} />
+                 {referralStatus.status === 'loading' ? <small className="muted">Cargando referenciadores...</small> : null}
                 {referralStatus.status === 'error' ? <small className="muted">{referralStatus.message}</small> : null}
               </div>
              ) : null}

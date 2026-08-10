@@ -14,6 +14,7 @@ export function createEmptyForm() {
     vehicleUse: 'Particular',
     paint: 'Bicapa',
     referenced: '',
+    referenciadorId: '',
     referencedName: '',
   };
 }

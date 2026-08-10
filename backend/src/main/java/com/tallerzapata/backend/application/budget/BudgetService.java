@@ -19,6 +19,8 @@ import com.tallerzapata.backend.infrastructure.persistence.organization.Organiza
 import com.tallerzapata.backend.infrastructure.persistence.organization.OrganizationRepository;
 import com.tallerzapata.backend.infrastructure.persistence.person.PersonEntity;
 import com.tallerzapata.backend.infrastructure.persistence.person.PersonRepository;
+import com.tallerzapata.backend.infrastructure.persistence.provider.ProviderEntity;
+import com.tallerzapata.backend.infrastructure.persistence.provider.ProviderRepository;
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
 import com.tallerzapata.backend.infrastructure.security.CurrentUserService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -56,9 +58,10 @@ public class BudgetService {
     private final BranchRepository branchRepository;
     private final ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
     private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
+    private final ProviderRepository providerRepository;
 
     public BudgetService(BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CasePartRepository casePartRepository, CaseRepository caseRepository, BudgetReportStatusRepository budgetReportStatusRepository, BudgetTaskRepository budgetTaskRepository, DamageLevelRepository damageLevelRepository, PartDecisionRepository partDecisionRepository, BudgetActionRepository budgetActionRepository, PartStatusRepository partStatusRepository, PartPurchaserRepository partPurchaserRepository, PartPaymentStatusRepository partPaymentStatusRepository, InsurancePartsAuthorizationRepository insurancePartsAuthorizationRepository, PersonRepository personRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService,             BudgetPdfService budgetPdfService, ParticularCaseClosureService particularCaseClosureService,
-            OrganizationRepository organizationRepository, BranchRepository branchRepository, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator) {
+            OrganizationRepository organizationRepository, BranchRepository branchRepository, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, ProviderRepository providerRepository) {
         this.budgetRepository = budgetRepository;
         this.budgetItemRepository = budgetItemRepository;
         this.casePartRepository = casePartRepository;
@@ -82,6 +85,7 @@ public class BudgetService {
         this.branchRepository = branchRepository;
         this.particularEffectiveStateRecalculator = particularEffectiveStateRecalculator;
         this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
+        this.providerRepository = providerRepository;
     }
 
     @Transactional(readOnly = true)
@@ -183,9 +187,29 @@ public class BudgetService {
         entity.setMechanicalWorkApplies(request.mechanicalWorkApplies());
         entity.setMechanicalWorkCode(normalizedOptionalCode(request.mechanicalWorkCode()));
         entity.setQuotedPartsDate(request.quotedPartsDate());
-        entity.setQuotedPartsSupplier(blankToNull(request.quotedPartsSupplier()));
+        applyBudgetProvider(entity, request.providerId(), request.quotedPartsSupplier());
         entity.setCurrentVersion(isCreate ? 1 : entity.getCurrentVersion() + 1);
         entity = budgetRepository.save(entity);
+        if (request.items() != null) {
+            budgetItemRepository.deleteAll(budgetItemRepository.findByBudgetIdOrderByVisualOrderAsc(entity.getId()));
+            for (BudgetItemCreateRequest item : request.items()) {
+                validateBudgetItemCreateRequest(item);
+                BudgetItemEntity budgetItem = new BudgetItemEntity();
+                budgetItem.setBudgetId(entity.getId());
+                budgetItem.setVisualOrder(item.visualOrder());
+                budgetItem.setAffectedPiece(item.affectedPiece().trim());
+                budgetItem.setTaskCode(normalizedOptionalCode(item.taskCode()));
+                budgetItem.setDamageLevelCode(normalizedOptionalCode(item.damageLevelCode()));
+                budgetItem.setPartDecisionCode(normalizedOptionalCode(item.partDecisionCode()));
+                budgetItem.setActionCode(normalizedOptionalCode(item.actionCode()));
+                budgetItem.setRequiresReplacement(Boolean.TRUE.equals(item.requiresReplacement()));
+                budgetItem.setPartValue(scale(item.partValue()));
+                budgetItem.setEstimatedHours(scale(item.estimatedHours()));
+                budgetItem.setLaborAmount(scale(item.laborAmount()));
+                budgetItem.setActive(true);
+                budgetItemRepository.save(budgetItem);
+            }
+        }
         caseAuditService.register(currentUser.id(), caseId, "presupuestos", entity.getId(), "upsert_presupuesto", null, caseAuditService.toJson(Map.of("reportStatusCode", entity.getReportStatusCode(), "totalQuoted", entity.getTotalQuoted())), caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
         particularCaseClosureService.syncClosure(caseId);
         particularEffectiveStateRecalculator.recalculate(caseId);
@@ -291,7 +315,7 @@ public class BudgetService {
         entity.setBudgetItemId(request.budgetItemId());
         entity.setDescription(request.description().trim());
         entity.setPartCode(blankToNull(request.partCode()));
-        entity.setFinalSupplier(blankToNull(request.finalSupplier()));
+        applyCasePartProvider(entity, request.providerId(), request.finalSupplier());
         entity.setAuthorizedCode(normalizedOptionalCode(request.authorizationCode()));
         entity.setStatusCode(normalizeCode(request.statusCode()));
         entity.setPurchasedByCode(normalizedOptionalCode(request.purchasedByCode()));
@@ -320,7 +344,7 @@ public class BudgetService {
         entity.setBudgetItemId(request.budgetItemId());
         entity.setDescription(request.description().trim());
         entity.setPartCode(blankToNull(request.partCode()));
-        entity.setFinalSupplier(blankToNull(request.finalSupplier()));
+        applyCasePartProvider(entity, request.providerId(), request.finalSupplier());
         entity.setAuthorizedCode(normalizedOptionalCode(request.authorizationCode()));
         entity.setStatusCode(normalizeCode(request.statusCode()));
         entity.setPurchasedByCode(normalizedOptionalCode(request.purchasedByCode()));
@@ -420,7 +444,7 @@ public class BudgetService {
     private CaseEntity requireCase(Long caseId) { return caseRepository.findById(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId)); }
 
     private BudgetResponse toBudgetResponse(BudgetEntity e, List<BudgetItemResponse> items) {
-        return new BudgetResponse(e.getId(), e.getCaseId(), e.getOrganizationId(), e.getBranchId(), e.getBudgetDate(), e.getReportStatusCode(), e.getLaborWithoutVat(), e.getVatRate(), e.getLaborVat(), e.getLaborWithVat(), e.getPartsTotal(), e.getTotalQuoted(), e.getEstimatedDays(), e.getMinimumCloseAmount(), e.getObservations(), e.getCurrentVersion(), items, e.getAuthorizedByName(), e.getInterestedName(), e.getBenchStraighteningApplies(), e.getBenchStraighteningDetail(), e.getAlignmentApplies(), e.getAlignmentDetail(), e.getBalancingApplies(), e.getBalancingDetail(), e.getGlassReplacementApplies(), e.getGlassReplacementDetail(), e.getElectricalWorkApplies(), e.getElectricalDetail(), e.getMechanicalWorkApplies(), e.getMechanicalWorkCode(), e.getQuotedPartsDate(), e.getQuotedPartsSupplier());
+        return new BudgetResponse(e.getId(), e.getCaseId(), e.getOrganizationId(), e.getBranchId(), e.getBudgetDate(), e.getReportStatusCode(), e.getLaborWithoutVat(), e.getVatRate(), e.getLaborVat(), e.getLaborWithVat(), e.getPartsTotal(), e.getTotalQuoted(), e.getEstimatedDays(), e.getMinimumCloseAmount(), e.getObservations(), e.getCurrentVersion(), items, e.getAuthorizedByName(), e.getInterestedName(), e.getBenchStraighteningApplies(), e.getBenchStraighteningDetail(), e.getAlignmentApplies(), e.getAlignmentDetail(), e.getBalancingApplies(), e.getBalancingDetail(), e.getGlassReplacementApplies(), e.getGlassReplacementDetail(), e.getElectricalWorkApplies(), e.getElectricalDetail(), e.getMechanicalWorkApplies(), e.getMechanicalWorkCode(), e.getQuotedPartsDate(), e.getQuotedPartsSupplier(), e.getProviderId());
     }
 
     private String resolveInterestedName(CaseEntity caseEntity) {
@@ -437,7 +461,27 @@ public class BudgetService {
     }
 
     private CasePartResponse toCasePartResponse(CasePartEntity e) {
-        return new CasePartResponse(e.getId(), e.getCaseId(), e.getBudgetItemId(), e.getDescription(), e.getPartCode(), e.getFinalSupplier(), e.getAuthorizedCode(), e.getStatusCode(), e.getPurchasedByCode(), e.getPaymentStatusCode(), e.getBudgetedPrice(), e.getFinalPrice(), e.getReceivedDate(), e.getUsed(), e.getReturned());
+        return new CasePartResponse(e.getId(), e.getCaseId(), e.getBudgetItemId(), e.getDescription(), e.getPartCode(), e.getFinalSupplier(), e.getAuthorizedCode(), e.getStatusCode(), e.getPurchasedByCode(), e.getPaymentStatusCode(), e.getBudgetedPrice(), e.getFinalPrice(), e.getReceivedDate(), e.getUsed(), e.getReturned(), e.getProviderId());
+    }
+
+    private void applyBudgetProvider(BudgetEntity entity, Long providerId, String supplierText) {
+        ProviderEntity provider = resolveActiveProvider(providerId);
+        entity.setProviderId(provider == null ? null : provider.getId());
+        entity.setQuotedPartsSupplier(provider == null ? blankToNull(supplierText) : provider.getName());
+    }
+
+    private void applyCasePartProvider(CasePartEntity entity, Long providerId, String supplierText) {
+        ProviderEntity provider = resolveActiveProvider(providerId);
+        entity.setProviderId(provider == null ? null : provider.getId());
+        entity.setFinalSupplier(provider == null ? blankToNull(supplierText) : provider.getName());
+    }
+
+    private ProviderEntity resolveActiveProvider(Long providerId) {
+        if (providerId == null) return null;
+        ProviderEntity provider = providerRepository.findById(providerId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el proveedor " + providerId));
+        if (!Boolean.TRUE.equals(provider.getActive())) throw new ConflictException("El proveedor esta inactivo: " + providerId);
+        return provider;
     }
 
     private String normalizeCode(String value) { return value == null || value.isBlank() ? null : value.trim().toUpperCase(); }

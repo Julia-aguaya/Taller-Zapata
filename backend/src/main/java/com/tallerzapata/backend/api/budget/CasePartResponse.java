@@ -18,6 +18,7 @@ public record CasePartResponse(
         BigDecimal finalPrice,
         LocalDate receivedDate,
         Boolean used,
-        Boolean returned
+        Boolean returned,
+        Long providerId
 ) {
 }

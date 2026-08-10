@@ -924,7 +924,7 @@ function getFolderMissing(form) {
   if (!form.model) missing.push('modelo');
   if (!form.plate) missing.push('dominio');
   if (!form.referenced) missing.push('referenciado si/no');
-  if (form.referenced === 'SI' && !form.referencedName) missing.push('nombre del referenciado');
+  if (form.referenced === 'SI' && !form.referenciadorId) missing.push('referenciador');
 
   return missing;
 }
@@ -3701,8 +3701,8 @@ function App() {
     }
 
     if (field === 'referenced' && value !== 'SI') {
-      setNewCaseForm((current) => ({ ...current, referencedName: '' }));
-      setAutofilledFields((current) => current.filter((item) => item !== 'referencedName'));
+      setNewCaseForm((current) => ({ ...current, referenciadorId: '', referencedName: '' }));
+      setAutofilledFields((current) => current.filter((item) => item !== 'referenciadorId' && item !== 'referencedName'));
     }
   };
 
@@ -5166,6 +5166,7 @@ function App() {
           principalCustomerPersonId: person.id,
           referenced: newCaseForm.referenced === 'SI',
           referredByPersonId: null,
+          referenciadorId: newCaseForm.referenced === 'SI' ? Number(newCaseForm.referenciadorId) : null,
           referredByText: newCaseForm.referencedName.trim() || null,
           priorityCode: 'ALTA',
           generalObservations: null,
@@ -5535,7 +5536,6 @@ function App() {
           item={selectedCase}
           insuranceCatalogs={authenticatedInsuranceCatalogsState.catalogs}
           financeCatalogs={authenticatedFinanceCatalogsState.catalogs}
-          debugCodeIssues={selectedCaseCodeIssues}
           onChangeRepairTab={setActiveRepairTab}
           onChangeTab={handleTabChange}
           onSyncCase={syncSelectedCaseToBackend}

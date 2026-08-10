@@ -23,6 +23,22 @@ Header: `Authorization: Bearer <token>`
 | GET | /api/v1/users/{userId}/roles | Listar roles de usuario | Autenticado |
 | PUT | /api/v1/users/{userId}/roles | Actualizar roles de usuario | Autenticado |
 
+### Catalogos de Gestion
+| Metodo | Endpoint | Descripcion | Permiso |
+|--------|----------|-------------|---------|
+| GET | /api/v1/referenciadores?q=&active= | Buscar referenciadores canonicos | caso.ver |
+| GET | /api/v1/referenciadores/{id} | Obtener referenciador, incluso inactivo | caso.ver |
+| POST | /api/v1/referenciadores | Crear referenciador | caso.crear |
+| PUT | /api/v1/referenciadores/{id} | Actualizar referenciador | caso.crear |
+| POST | /api/v1/referenciadores/{id}/deactivate | Desactivar referenciador | caso.crear |
+| GET | /api/v1/providers?q=&active= | Buscar proveedores activos por defecto | proveedor.ver |
+| GET | /api/v1/providers/{id} | Obtener proveedor, incluso inactivo | proveedor.ver |
+| POST | /api/v1/providers | Crear proveedor | proveedor.gestionar |
+| PUT | /api/v1/providers/{id} | Actualizar proveedor | proveedor.gestionar |
+| POST | /api/v1/providers/{id}/deactivate | Desactivar proveedor | proveedor.gestionar |
+
+`providerId` es opcional en repuestos de caso (`finalSupplier`), cotizaciones de repuestos (`supplier`), presupuestos (`quotedPartsSupplier`) y tramitacion de seguro (`partsSupplierText`). Cuando se envia, debe pertenecer a un proveedor activo y el backend copia su nombre al campo textual historico. Sin `providerId`, se conserva el texto libre y la FK queda nula. Las lecturas devuelven ambos valores; el texto es el snapshot historico.
+
 ### Personas
 | Metodo | Endpoint | Descripcion | Permiso |
 |--------|----------|-------------|---------|
@@ -150,9 +166,13 @@ Header: `Authorization: Bearer <token>`
 |--------|----------|-------------|---------|
 | GET | /api/v1/insurance/catalogs | Listar catalogos | seguro.ver |
 | GET | /api/v1/insurance/companies | Listar companias | seguro.ver |
+| GET | /api/v1/insurance/companies/{companyId} | Obtener compania, incluso inactiva | seguro.ver |
 | POST | /api/v1/insurance/companies | Crear compania | seguro.crear |
+| PUT | /api/v1/insurance/companies/{companyId} | Actualizar compania | seguro.crear |
+| POST | /api/v1/insurance/companies/{companyId}/deactivate | Desactivar compania | seguro.crear |
 | GET | /api/v1/insurance/companies/{companyId}/contacts | Listar contactos | seguro.ver |
 | POST | /api/v1/insurance/companies/{companyId}/contacts | Crear contacto | seguro.crear |
+| DELETE | /api/v1/insurance/companies/{companyId}/contacts/{contactId} | Eliminar contacto | seguro.crear |
 | GET | /api/v1/cases/{caseId}/insurance | Obtener seguro | seguro.ver |
 | PUT | /api/v1/cases/{caseId}/insurance | Actualizar seguro | seguro.crear |
 | GET | /api/v1/cases/{caseId}/insurance-processing | Obtener procesamiento | seguro.ver |
@@ -259,10 +279,10 @@ Header: `Authorization: Bearer <token>`
 - `OperationalTaskPageResponse`: pagina de tareas
 
 ### Presupuesto y Repuestos
-- `BudgetResponse`: `{ id, caseId, organizationId, branchId, budgetDate, reportStatusCode, laborWithoutVat, vatRate, laborVat, laborWithVat, partsTotal, totalQuoted, estimatedDays, minimumCloseAmount, observations, currentVersion, items }`
+- `BudgetResponse`: `{ id, caseId, organizationId, branchId, budgetDate, reportStatusCode, laborWithoutVat, vatRate, laborVat, laborWithVat, partsTotal, totalQuoted, estimatedDays, minimumCloseAmount, observations, currentVersion, items, quotedPartsSupplier, providerId }`
 - `BudgetUpsertRequest` / `BudgetCloseRequest`
 - `BudgetItemResponse` / `BudgetItemCreateRequest` / `BudgetItemUpdateRequest`
-- `CasePartResponse` / `CasePartCreateRequest` / `CasePartUpdateRequest`
+- `CasePartResponse` / `CasePartCreateRequest` / `CasePartUpdateRequest`: `providerId` opcional y `finalSupplier` como snapshot historico
 
 ### Finanzas
 - `FinancialMovementResponse`: `{ id, publicId, caseId, receiptId, movementTypeCode, flowOriginCode, counterpartyTypeCode, counterpartyPersonId, counterpartyCompanyId, movementAt, grossAmount, netAmount, paymentMethodCode, paymentMethodDetail, cancellationTypeCode, advancePayment, bonification, reason, externalReference, registeredBy, createdAt, updatedAt, retentions, applications }`
@@ -282,9 +302,9 @@ Header: `Authorization: Bearer <token>`
 
 ### Seguros y Legal
 - `InsuranceCatalogsResponse`
-- `InsuranceCompanyResponse` / `InsuranceCompanyCreateRequest`
-- `InsuranceCompanyContactResponse` / `InsuranceCompanyContactCreateRequest`
-- `CaseInsuranceResponse` / `CaseInsuranceUpsertRequest`
+- `InsuranceCompanyResponse`: `{ id, code, name, taxId, requiresRepairPhotos, expectedPaymentDays, active }`; `InsuranceCompanyCreateRequest` y `InsuranceCompanyUpdateRequest` validan codigo y nombre no vacios, y el codigo es unico sin distinguir mayusculas.
+- `InsuranceCompanyContactResponse` / `InsuranceCompanyContactCreateRequest`: un contacto requiere una persona canonica existente y un rol de contacto activo; `DELETE` elimina solo la asociacion, no la persona.
+- `CaseInsuranceResponse` / `CaseInsuranceUpsertRequest`: `insuranceCompanyId` es obligatorio y debe identificar una compania existente; las companias inactivas se conservan para lectura historica y se excluyen de listados activos.
 - `InsuranceProcessingResponse` / `InsuranceProcessingUpsertRequest`
 - `CaseFranchiseResponse` / `CaseFranchiseUpsertRequest`
 - `CaseCleasResponse` / `CaseCleasUpsertRequest`

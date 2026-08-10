@@ -15,6 +15,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -303,9 +304,51 @@ class PartSupplierQuoteIntegrationTest {
     }
 
     @Test
+    void shouldStoreProviderQuoteSnapshotAndAllowFreeText() throws Exception {
+        jdbcTemplate.update("INSERT INTO proveedores (id, public_id, nombre, activo) VALUES (?, ?, ?, ?)", 703L, "00000000-0000-0000-0000-000000007003", "Proveedor Cotizacion", true);
+        Long partId = createPart();
+
+        mockMvc.perform(post("/api/v1/cases/100/parts/" + partId + "/quotes")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"providerId\":703,\"supplier\":\"Ignorado\",\"amount\":100,\"billingCode\":\"A\",\"paymentMethodCode\":\"CONTADO\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.providerId").value(703))
+                .andExpect(jsonPath("$.supplier").value("Proveedor Cotizacion"));
+
+        jdbcTemplate.update("UPDATE proveedores SET nombre = ?, activo = false WHERE id = ?", "Proveedor Renombrado", 703L);
+        mockMvc.perform(get("/api/v1/cases/100/parts/" + partId + "/quotes").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].supplier").value("Proveedor Cotizacion"));
+
+        mockMvc.perform(post("/api/v1/cases/100/parts/" + partId + "/quotes")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"supplier\":\"Proveedor Libre\",\"amount\":110,\"billingCode\":\"A\",\"paymentMethodCode\":\"CONTADO\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.providerId").doesNotExist())
+                .andExpect(jsonPath("$.supplier").value("Proveedor Libre"));
+
+        mockMvc.perform(post("/api/v1/cases/100/parts/" + partId + "/quotes")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"providerId\":703,\"amount\":120,\"billingCode\":\"A\",\"paymentMethodCode\":\"CONTADO\"}"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
     void shouldReturnUnauthorizedForCatalogsWithoutAuth() throws Exception {
         mockMvc.perform(get("/api/v1/budget/quote-catalogs"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    private Long createPart() throws Exception {
+        mockMvc.perform(post("/api/v1/cases/100/parts")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"description\":\"Paragolpes\",\"statusCode\":\"PENDIENTE\",\"budgetedPrice\":300,\"used\":false,\"returned\":false}"))
+                .andExpect(status().isOk());
+        return jdbcTemplate.queryForObject("SELECT id FROM repuestos_caso WHERE caso_id = 100 ORDER BY id ASC LIMIT 1", Long.class);
     }
 
     @Test
@@ -362,6 +405,34 @@ class PartSupplierQuoteIntegrationTest {
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].description").value("Puerta"))
                 .andExpect(jsonPath("$[0].budgetedPrice").value(50000));
+    }
+
+    @Test
+    void shouldManageProviderLifecycleThroughApi() throws Exception {
+        String response = mockMvc.perform(post("/api/v1/providers")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Proveedor API\",\"phone\":\"123\",\"email\":\"api@example.com\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Proveedor API"))
+                .andReturn().getResponse().getContentAsString();
+        Long providerId = objectMapper.readTree(response).get("id").asLong();
+
+        mockMvc.perform(put("/api/v1/providers/{providerId}", providerId)
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Proveedor Actualizado\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Proveedor Actualizado"));
+        mockMvc.perform(post("/api/v1/providers/{providerId}/deactivate", providerId)
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.active").value(false));
+        mockMvc.perform(get("/api/v1/providers?q=Proveedor%20Actualizado")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE entidad_tipo = 'proveedores' AND entidad_id = ?", Integer.class, providerId)).isEqualTo(3);
     }
 
     @Test
