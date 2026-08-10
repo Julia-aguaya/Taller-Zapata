@@ -131,7 +131,8 @@ class CaseReadinessIntegrationTest {
                 "PENDIENTE",
                 false,
                 "Turno confirmado",
-                1L
+                1L,
+                null
         );
 
         MvcResult appointmentResult = mockMvc.perform(post("/api/v1/cases/{caseId}/appointments", caseId)
@@ -221,7 +222,8 @@ class CaseReadinessIntegrationTest {
                 "PENDIENTE",
                 false,
                 "Turno confirmado",
-                1L
+                1L,
+                null
         );
 
         MvcResult appointmentResult = mockMvc.perform(post("/api/v1/cases/{caseId}/appointments", caseId)
@@ -599,7 +601,7 @@ class CaseReadinessIntegrationTest {
         seedInsuranceData(caseId);
         // Crear franquicia PENDIENTE
         jdbcTemplate.update("INSERT INTO caso_franquicia (caso_id, estado_franquicia_codigo, monto_franquicia, tipo_recupero_codigo) VALUES (?, ?, ?, ?)",
-                caseId, "SIN_DEFINIR", new BigDecimal("50000"), "TERCERO");
+                caseId, "PENDIENTE", new BigDecimal("50000"), "TERCERO");
 
         mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
                         .header("X-User-Id", "1"))

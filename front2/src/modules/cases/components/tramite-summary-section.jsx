@@ -1,41 +1,133 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Calendar, Edit2, Save, X } from 'lucide-react';
+import { useState } from 'react';
+import { toast } from 'sonner';
 import { requestJson } from '@/shared/api/http-client';
-
-const DATE_FMT = new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
-const ReadOnlyField = ({ label, value, highlight }) => (
-  <div className="min-w-0">
-    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-    <p className={`mt-0.5 text-sm font-medium truncate ${highlight ? 'text-red-600 dark:text-red-400' : ''}`}>{value ?? '—'}</p>
-  </div>
-);
+import { Button } from '@/shared/ui/button';
 
 export const TramiteSummarySection = ({ caseId }) => {
-  const incidentQuery = useQuery({
-    queryKey: ['cases', String(caseId), 'incident'],
-    queryFn: () => requestJson(`/cases/${caseId}/incident`),
-  });
-  const insuranceProcessingQuery = useQuery({
-    queryKey: ['cases', String(caseId), 'insurance-processing'],
-    queryFn: () => requestJson(`/cases/${caseId}/insurance-processing`),
-  });
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [editIncidentDate, setEditIncidentDate] = useState('');
+  const [editPrescriptionDate, setEditPrescriptionDate] = useState('');
+  const [editPresentedAt, setEditPresentedAt] = useState('');
+
+  const incidentQuery = useQuery({ queryKey: ['cases', String(caseId), 'incident'], queryFn: () => requestJson(`/cases/${caseId}/incident`) });
+  const processingQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance-processing'], queryFn: () => requestJson(`/cases/${caseId}/insurance-processing`) });
 
   const incident = incidentQuery.data;
-  const processing = insuranceProcessingQuery.data;
+  const processing = processingQuery.data;
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      // Save incident if date changed
+      if (editIncidentDate || editPrescriptionDate) {
+        await requestJson(`/cases/${caseId}/incident`, { method: 'PUT', body: JSON.stringify({
+          incidentDate: editIncidentDate || null,
+          incidentTime: incident?.incidentTime ?? null,
+          location: incident?.location ?? null,
+          dynamics: incident?.dynamics ?? null,
+          observations: incident?.observations ?? null,
+          prescriptionDate: editPrescriptionDate || null,
+        })});
+      }
+      // Save processing if date changed  
+      if (editPresentedAt) {
+        await requestJson(`/cases/${caseId}/insurance-processing`, { method: 'PUT', body: JSON.stringify({
+          presentedAt: editPresentedAt || null,
+          inspectionForwardedAt: processing?.inspectionForwardedAt ?? null,
+          modalityCode: processing?.modalityCode ?? null,
+          opinionCode: processing?.opinionCode ?? null,
+          quotationStatusCode: processing?.quotationStatusCode ?? null,
+          quotationDate: processing?.quotationDate ?? null,
+          agreedAmount: processing?.agreedAmount ?? null,
+          minimumCloseAmount: processing?.minimumCloseAmount ?? null,
+          includesParts: processing?.includesParts ?? false,
+          partsAuthorizationCode: processing?.partsAuthorizationCode ?? null,
+          partsSupplierText: processing?.partsSupplierText ?? null,
+          amountToBillCompany: processing?.amountToBillCompany ?? null,
+          finalAmountForWorkshop: processing?.finalAmountForWorkshop ?? null,
+          noRepair: processing?.noRepair ?? false,
+          adminOverrideAppointment: processing?.adminOverrideAppointment ?? false,
+          passedToPaymentsAt: processing?.passedToPaymentsAt ?? null,
+          estimatedPaymentDate: processing?.estimatedPaymentDate ?? null,
+        })});
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'incident'] });
+      queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] });
+      setEditing(false);
+      toast.success('Datos guardados.');
+    },
+    onError: (e) => toast.error(e.message || 'Error al guardar.'),
+  });
+
+  const startEditing = () => {
+    setEditIncidentDate(incident?.incidentDate ?? '');
+    setEditPrescriptionDate(incident?.prescriptionDate ?? '');
+    setEditPresentedAt(processing?.presentedAt ?? '');
+    setEditing(true);
+  };
 
   return (
     <div className="rounded-3xl border border-border/70 bg-card p-5">
-      <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
-        </svg>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <Calendar className="h-5 w-5" />
+          </div>
+          <h4 className="text-sm font-semibold">Datos generales del trámite</h4>
+        </div>
+        {!editing ? (
+          <Button size="sm" variant="outline" onClick={startEditing}><Edit2 className="mr-1.5 h-3.5 w-3.5" />Editar</Button>
+        ) : (
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => setEditing(false)}><X className="mr-1.5 h-3.5 w-3.5" />Cancelar</Button>
+            <Button size="sm" onClick={() => mutation.mutate()} disabled={mutation.isPending}><Save className="mr-1.5 h-3.5 w-3.5" />Guardar</Button>
+          </div>
+        )}
       </div>
-      <h4 className="mb-3 text-sm font-semibold">Datos generales del trámite</h4>
-      <div className="grid gap-x-6 gap-y-3 md:grid-cols-4">
-        <ReadOnlyField label="Fecha del siniestro" value={incident?.incidentDate ?? '—'} />
-        <ReadOnlyField label="Prescripción del trámite" value={incident?.prescriptionDate ?? '—'} highlight />
-        <ReadOnlyField label="Fecha presentado" value={processing?.presentedAt ?? '—'} />
-        <ReadOnlyField label="Días tramitando" value={incident?.daysInProcess != null ? String(incident.daysInProcess) : '—'} />
+
+      <div className="mt-4 grid gap-x-6 gap-y-3 md:grid-cols-4">
+        {/* Fecha del siniestro — editable */}
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Fecha del siniestro</p>
+          {editing ? (
+            <input type="date" value={editIncidentDate} onChange={(e) => setEditIncidentDate(e.target.value)}
+              className="mt-0.5 h-9 w-full rounded-lg border border-input bg-background px-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" />
+          ) : (
+            <p className="mt-1 text-sm font-medium">{incident?.incidentDate ?? '—'}</p>
+          )}
+        </div>
+
+        {/* Prescripción — editable */}
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Prescripción del trámite</p>
+          {editing ? (
+            <input type="date" value={editPrescriptionDate} onChange={(e) => setEditPrescriptionDate(e.target.value)}
+              className="mt-0.5 h-9 w-full rounded-lg border border-red-200 bg-background px-2 text-sm text-red-600 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-200" />
+          ) : (
+            <p className="mt-1 text-sm font-medium text-red-600 dark:text-red-400">{incident?.prescriptionDate ?? '—'}</p>
+          )}
+        </div>
+
+        {/* Fecha presentado — editable */}
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Fecha presentado</p>
+          {editing ? (
+            <input type="date" value={editPresentedAt} onChange={(e) => setEditPresentedAt(e.target.value)}
+              className="mt-0.5 h-9 w-full rounded-lg border border-input bg-background px-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" />
+          ) : (
+            <p className="mt-1 text-sm font-medium">{processing?.presentedAt ?? '—'}</p>
+          )}
+        </div>
+
+        {/* Días tramitando — read-only */}
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Días tramitando</p>
+          <p className="mt-1 text-sm font-medium">{incident?.daysInProcess != null ? incident.daysInProcess : '—'}</p>
+        </div>
       </div>
     </div>
   );

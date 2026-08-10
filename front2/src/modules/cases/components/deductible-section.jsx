@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ReceiptText, Save } from 'lucide-react';
+import { AlertTriangle, ReceiptText, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { requestJson } from '@/shared/api/http-client';
 import { Button } from '@/shared/ui/button';
@@ -13,8 +13,6 @@ const Field = ({ label, children, className = '' }) => (
     {children}
   </div>
 );
-
-const formatCurrency = (v) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(v || 0);
 
 const toAmount = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 
@@ -31,9 +29,15 @@ export const DeductibleSection = ({ caseId, caseDetail }) => {
 
   const mutation = useMutation({
     mutationFn: (payload) => requestJson(`/cases/${caseId}/franchise`, { method: 'PUT', body: JSON.stringify(payload) }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'franchise'] }); toast.success('Franquicia guardada.'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'franchise'] }); queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] }); toast.success('Franquicia guardada.'); },
     onError: (e) => toast.error(e.message),
   });
+
+  const [recupero, setRecupero] = useState(franchise?.recoveryTypeCode ?? '');
+  useEffect(() => { setRecupero(franchise?.recoveryTypeCode ?? ''); }, [franchise?.recoveryTypeCode]);
+  const showRelatedCase = recupero === 'CIA_TERCERO';
+  const showDictamen = recupero === 'PROPIA_CIA';
+  const showRecoveryAmount = franchise?.exceedsFranchise === false;
 
   const handleSave = () => {
     const form = document.getElementById('franchise-form');
@@ -42,10 +46,10 @@ export const DeductibleSection = ({ caseId, caseDetail }) => {
       franchiseStatusCode: fd.get('franchiseStatusCode') || null,
       franchiseAmount: toAmount(fd.get('franchiseAmount')) || null,
       recoveryTypeCode: fd.get('recoveryTypeCode') || null,
-      relatedCaseId: fd.get('relatedCaseId') ? Number(fd.get('relatedCaseId')) : null,
-      franchiseOpinionCode: fd.get('franchiseOpinionCode') || null,
+      relatedCaseId: showRelatedCase && fd.get('relatedCaseId') ? Number(fd.get('relatedCaseId')) : null,
+      franchiseOpinionCode: showDictamen ? (fd.get('franchiseOpinionCode') || null) : null,
       exceedsFranchise: fd.get('exceedsFranchise') === 'SI',
-      recoveryAmount: toAmount(fd.get('recoveryAmount')) || null,
+      recoveryAmount: fd.get('exceedsFranchise') === 'NO' ? toAmount(fd.get('recoveryAmount')) || null : null,
       notes: fd.get('notes') || null,
     });
   };
@@ -62,42 +66,62 @@ export const DeductibleSection = ({ caseId, caseDetail }) => {
         <Button size="sm" onClick={handleSave} disabled={mutation.isPending}><Save className="mr-1.5 h-3.5 w-3.5" />Guardar</Button>
       </div>
 
-      <form id="franchise-form" className="mt-4 space-y-3">
+      {/* Condicionante: sin recupero definido → warning */}
+      {!recupero ? (
+        <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          Definí el modo de Recupero para habilitar el resto de la tramitación.
+        </div>
+      ) : null}
+
+      <form id="franchise-form" key={franchise?.id ?? 'new'} className="mt-4 space-y-3">
         <div className="grid gap-x-6 gap-y-3 md:grid-cols-4">
           <Field label="Estado">
             <select name="franchiseStatusCode" defaultValue={franchise?.franchiseStatusCode ?? ''} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
               <option value="">—</option>
-              {franchiseStatuses.map((s) => (<option key={s.code} value={s.code}>{s.name || s.code}</option>))}
+              {franchiseStatuses.filter(s => s.active !== false).map((s) => (<option key={s.code} value={s.code}>{s.name || s.code}</option>))}
             </select>
           </Field>
           <Field label="Monto">
             <Input name="franchiseAmount" type="number" min="0" step="0.01" defaultValue={franchise?.franchiseAmount ?? ''} placeholder="500000" />
           </Field>
           <Field label="Recupero">
-            <select name="recoveryTypeCode" defaultValue={franchise?.recoveryTypeCode ?? ''} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
-              <option value="">—</option>
-              {recoveryTypes.map((r) => (<option key={r.code} value={r.code}>{r.name || r.code}</option>))}
+            <select name="recoveryTypeCode" defaultValue={franchise?.recoveryTypeCode ?? ''} onChange={(e) => setRecupero(e.target.value)}
+              className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
+              <option value="">Seleccionar...</option>
+              {recoveryTypes.filter(r => r.active !== false).map((r) => (<option key={r.code} value={r.code}>{r.name || r.code}</option>))}
             </select>
           </Field>
-          <Field label="Caso asociado">
-            <Input name="relatedCaseId" type="number" min="1" defaultValue={franchise?.relatedCaseId ?? ''} placeholder="ID del caso" />
-          </Field>
-          <Field label="Dictamen">
-            <select name="franchiseOpinionCode" defaultValue={franchise?.franchiseOpinionCode ?? ''} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
-              <option value="">—</option>
-              {opinionCodes.map((o) => (<option key={o.code} value={o.code}>{o.name || o.code}</option>))}
-            </select>
-          </Field>
+
+          {/* CIA_TERCERO → Caso asociado */}
+          {showRelatedCase ? (
+            <Field label="Caso asociado">
+              <Input name="relatedCaseId" type="number" min="1" defaultValue={franchise?.relatedCaseId ?? ''} placeholder="N° de carpeta RECUPERO_FRANQUICIA" />
+            </Field>
+          ) : null}
+
+          {/* PROPIA_CIA → Dictamen */}
+          {showDictamen ? (
+            <Field label="Dictamen">
+              <select name="franchiseOpinionCode" defaultValue={franchise?.franchiseOpinionCode ?? ''} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
+                <option value="">—</option>
+                {opinionCodes.map((o) => (<option key={o.code} value={o.code}>{o.name || o.code}</option>))}
+              </select>
+            </Field>
+          ) : null}
+
           <Field label="Cotización supera Franquicia">
             <select name="exceedsFranchise" defaultValue={franchise?.exceedsFranchise ? 'SI' : 'NO'} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
               <option value="SI">SI</option>
               <option value="NO">NO</option>
             </select>
           </Field>
+
+          {/* Solo si NO supera → Monto a recuperar */}
           <Field label="Monto a recuperar">
-            <Input name="recoveryAmount" type="number" min="0" step="0.01" defaultValue={franchise?.recoveryAmount ?? ''} placeholder="500000" />
+            <Input name="recoveryAmount" type="number" min="0" step="0.01" defaultValue={franchise?.recoveryAmount ?? ''} placeholder="500000"
+              disabled={franchise?.exceedsFranchise !== false && franchise?.exceedsFranchise != null} />
           </Field>
-          <Field label=""></Field>
         </div>
         <Field label="Anotaciones">
           <Textarea name="notes" defaultValue={franchise?.notes ?? ''} placeholder="Observaciones sobre la franquicia..." className="min-h-[60px] resize-y" />

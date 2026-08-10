@@ -53,7 +53,7 @@ export const GestionTramiteEditor = ({ caseId, caseDetail, budget, onSaved }) =>
       <DocumentsSection caseId={caseId} />
 
       {/* 6. Tramitación */}
-      <ProcedureSection caseId={caseId} />
+      <ProcedureSection caseId={caseId} budget={budget} />
 
       {/* 7. Agenda de tareas */}
       <TaskAgenda caseId={caseId} organizationId={caseDetail?.organizationId} branchId={caseDetail?.branchId} />

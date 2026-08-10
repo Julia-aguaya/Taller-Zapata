@@ -95,7 +95,7 @@ class InsuranceIntegrationTest {
         mockMvc.perform(post("/api/v1/insurance/companies")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"code\":\"DELTA\",\"name\":\"Seguros Delta Código\"}"))
+                        .content("{\"code\":\"DELTA\",\"name\":\"Seguros Delta Codigo\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("DELTA"));
 
@@ -142,9 +142,9 @@ class InsuranceIntegrationTest {
         mockMvc.perform(put("/api/v1/cases/100/franchise")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(new CaseFranchiseUpsertRequest("RECUPERAR", new BigDecimal("500.00"), "CLIENTE", null, "PROCEDE", true, new BigDecimal("500.00"), "Recuperar luego"))))
+                        .content(objectMapper.writeValueAsBytes(new CaseFranchiseUpsertRequest("PENDIENTE", new BigDecimal("500.00"), "ABONA_CLIENTE", null, "PROCEDE", true, new BigDecimal("500.00"), "Recuperar luego"))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.franchiseStatusCode").value("RECUPERAR"));
+                .andExpect(jsonPath("$.franchiseStatusCode").value("PENDIENTE"));
 
         mockMvc.perform(get("/api/v1/insurance/catalogs")
                         .header("X-User-Id", "3"))
@@ -305,11 +305,8 @@ class InsuranceIntegrationTest {
                 .andExpect(jsonPath("$.legalExpensePayerCodes.length()").isNumber());
     }
 
-    // ── Tramitacion flow tests ───────────────────────────────────
-
     @Test
     void shouldCreateAndUpdateInsuranceProcessing() throws Exception {
-        // Create insurance
         jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, cuit, requiere_fotos_reparado, dias_pago_esperados, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 1L, "00000000-0000-0000-0000-000000004001", "RIVA", "Rivadavia", "30711222334", true, 30, true);
         mockMvc.perform(put("/api/v1/cases/{caseId}/insurance", 100L)
                         .header("X-User-Id", "3")
@@ -317,21 +314,18 @@ class InsuranceIntegrationTest {
                         .content("{\"insuranceCompanyId\":1,\"policyNumber\":\"POL-123\",\"certificateNumber\":\"CERT-456\"}"))
                 .andExpect(status().isOk());
 
-        // Create processing (tramitacion)
         mockMvc.perform(put("/api/v1/cases/{caseId}/insurance-processing", 100L)
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"presentedAt\":\"2026-01-10\",\"inspectionForwardedAt\":\"2026-01-15\",\"modalityCode\":\"CONVENIO\",\"opinionCode\":null,\"quotationStatusCode\":null,\"quotationDate\":null,\"agreedAmount\":null,\"minimumCloseAmount\":50000,\"includesParts\":true,\"partsAuthorizationCode\":\"AUTORIZADO\",\"partsSupplierText\":\"CIA\",\"amountToBillCompany\":null,\"finalAmountForWorkshop\":null}"))
                 .andExpect(status().isOk());
 
-        // Agree quotation
         mockMvc.perform(put("/api/v1/cases/{caseId}/insurance-processing", 100L)
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"presentedAt\":\"2026-01-10\",\"inspectionForwardedAt\":\"2026-01-15\",\"modalityCode\":\"CONVENIO\",\"opinionCode\":\"APROBADO\",\"quotationStatusCode\":\"ACEPTADA\",\"quotationDate\":\"2026-01-20\",\"agreedAmount\":120000,\"minimumCloseAmount\":50000,\"includesParts\":true,\"partsAuthorizationCode\":\"AUTORIZADO\",\"partsSupplierText\":\"CIA\",\"amountToBillCompany\":120000,\"finalAmountForWorkshop\":120000}"))
                 .andExpect(status().isOk());
 
-        // Verify processing data
         mockMvc.perform(get("/api/v1/cases/{caseId}/insurance-processing", 100L)
                         .header("X-User-Id", "3"))
                 .andExpect(status().isOk())

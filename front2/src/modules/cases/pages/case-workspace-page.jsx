@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Clock, Hammer, Lock, ReceiptText, Save, ShieldCheck, User, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
-import { getCaseWorkspace, overrideVisibleState, searchReferenciadores } from '@/modules/cases/api/cases-api';
+import { getCaseWorkspace, overrideVisibleState, searchReferenciadores, createReferenciador } from '@/modules/cases/api/cases-api';
 import { Card } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
@@ -631,6 +631,25 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
     enabled: editing && form.referenced && referenciadorSearch.length >= 2 && !form.referenciadorId,
   });
 
+  // Load associated referenciador name in read-only mode OR when editing with referenciador selected
+  const selectedReferenciadorQuery = useQuery({
+    queryKey: ['referenciadores', 'selected', caseDetail.referenciadorId || form.referenciadorId],
+    queryFn: () => searchReferenciadores(''),
+    enabled: !!caseDetail.referenciadorId || (editing && !!form.referenciadorId),
+    select: (data) => data?.find(r => r.id === (form.referenciadorId || caseDetail.referenciadorId)),
+  });
+
+  const createReferenciadorMutation = useMutation({
+    mutationFn: (data) => createReferenciador(data),
+    onSuccess: (newRef) => {
+      setForm((current) => ({ ...current, referenciadorId: newRef.id }));
+      setReferenciadorSearch('');
+      queryClient.invalidateQueries({ queryKey: ['referenciadores'] });
+      toast.success('Referenciador creado.');
+    },
+    onError: (e) => toast.error(e.message),
+  });
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (caseDetail.principalCustomerPersonId) {
@@ -720,7 +739,7 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
       </div>
 
       <div className="mb-5 flex flex-wrap gap-2">
-        {[['ficha','Ficha'],['reparacion','Reparación'],['pagos','Pagos']].map(([k,l]) => (
+        {[['ficha','Ficha']].map(([k,l]) => (
           <button key={k} type="button" onClick={() => setFichaSubTab(k)}
             className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2.5 text-sm font-medium transition border ${fichaSubTab===k?'border-primary/40 bg-primary/10 text-primary':'border-transparent bg-background/70 text-foreground hover:border-border/60 hover:bg-accent/50'}`}>{l}</button>
         ))}
@@ -731,12 +750,15 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
         <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Datos generales de la carpeta</p>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <ReadOnlyField label="Tipo de tramite" value="Particular" />
+            <ReadOnlyField label="Tipo de tramite" value={caseDetail.caseTypeCode || '—'} />
             {editing ? (
               <SelectField label="Referenciado" value={form.referenced ? 'SI' : 'NO'} editing onChange={(value) => setForm((current) => ({ ...current, referenced: value === 'SI', referenciadorId: value === 'SI' ? current.referenciadorId : null }))} options={['NO', 'SI']} />
             ) : (
-              <ReadOnlyField label="Referenciado" value={caseDetail.referenced} />
+              <ReadOnlyField label="Referenciado" value={caseDetail.referenced ? 'SI' : 'NO'} />
             )}
+            {!editing && caseDetail.referenciadorId ? (
+              <ReadOnlyField label="Referenciador" value={selectedReferenciadorQuery.data?.displayName || `#${caseDetail.referenciadorId}`} />
+            ) : null}
           </div>
           {editing && form.referenced ? (
             <div className="mt-3">
@@ -744,7 +766,7 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
                 <Label>Referenciador</Label>
                 {form.referenciadorId ? (
                   <div className="flex h-12 items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 text-sm dark:border-emerald-800 dark:bg-emerald-950">
-                    <span className="font-medium text-emerald-800 dark:text-emerald-200">{referenciadoresQuery.data?.find((referenciador) => referenciador.id === form.referenciadorId)?.displayName || `#${form.referenciadorId}`}</span>
+                    <span className="font-medium text-emerald-800 dark:text-emerald-200">{selectedReferenciadorQuery.data?.displayName || `#${form.referenciadorId}`}</span>
                     <button type="button" className="ml-auto text-xs text-muted-foreground hover:text-destructive" onClick={() => { setForm((current) => ({ ...current, referenciadorId: null })); setReferenciadorSearch(''); }}>✕</button>
                   </div>
                 ) : (
@@ -760,7 +782,17 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
                         ))}
                       </div>
                     ) : referenciadorSearch.length >= 2 && !referenciadoresQuery.isFetching ? (
-                      <p className="mt-1 text-xs text-muted-foreground">Sin resultados.</p>
+                      <div className="absolute z-10 mt-1 w-full rounded-2xl border border-border bg-card p-3 shadow-haze">
+                        <p className="text-xs text-muted-foreground mb-2">Sin resultados para "{referenciadorSearch}"</p>
+                        <Button size="sm" variant="outline" className="w-full" onClick={() => {
+                          const parts = referenciadorSearch.trim().split(' ');
+                          const nombre = parts[0] || referenciadorSearch;
+                          const apellido = parts.slice(1).join(' ') || '';
+                          createReferenciadorMutation.mutate({ nombre, apellido, telefono: '' });
+                        }} disabled={createReferenciadorMutation.isPending}>
+                          + Crear "{referenciadorSearch}"
+                        </Button>
+                      </div>
                     ) : null}
                   </div>
                 )}
@@ -864,10 +896,6 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
           </div>
         </div>
       </div>
-      ) : fichaSubTab === 'reparacion' ? (
-        <FichaReparacionSubTab budget={budget} latestAppointment={latestAppointment} latestIntake={latestIntake} latestOutcome={latestOutcome} />
-      ) : fichaSubTab === 'pagos' ? (
-        <FichaPagosSubTab caseDetail={caseDetail} particularFinanceSummary={particularFinanceSummary} caseId={caseId} />
       ) : null}
     </Card>
   );

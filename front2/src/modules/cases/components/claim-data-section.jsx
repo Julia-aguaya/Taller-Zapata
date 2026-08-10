@@ -29,11 +29,11 @@ export const ClaimDataSection = ({ caseId }) => {
     const form = document.getElementById('claim-form');
     const fd = new FormData(form);
     mutation.mutate({
-      incidentDate: fd.get('incidentDate') || null,
+      incidentDate: incident?.incidentDate ?? null,
       incidentTime: fd.get('incidentTime') || null,
       location: fd.get('location') || null,
       dynamics: fd.get('dynamics') || null,
-      prescriptionDate: fd.get('prescriptionDate') || null,
+      prescriptionDate: null,
       observations: incident?.observations ?? null,
     });
   };
@@ -50,16 +50,13 @@ export const ClaimDataSection = ({ caseId }) => {
         <Button size="sm" onClick={handleSave} disabled={mutation.isPending}><Save className="mr-1.5 h-3.5 w-3.5" />Guardar</Button>
       </div>
 
-      <form id="claim-form" className="mt-4 space-y-3">
-        <div className="grid gap-x-6 gap-y-3 md:grid-cols-3">
+      <form id="claim-form" key={incident?.location ?? 'new'} className="mt-4 space-y-3">
+        <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
           <Field label="Lugar de ocurrencia">
             <Input name="location" defaultValue={incident?.location ?? ''} placeholder="Ej: Mitre 400, Rosario" />
           </Field>
-          <Field label="Fecha del siniestro">
-            <Input type="date" name="incidentDate" defaultValue={incident?.incidentDate ?? ''} />
-          </Field>
           <Field label="Hora">
-            <Input name="incidentTime" defaultValue={incident?.incidentTime ?? ''} placeholder="15:30" />
+            <Input type="time" name="incidentTime" defaultValue={incident?.incidentTime ?? ''} />
           </Field>
         </div>
         <Field label="Dinámica del siniestro">

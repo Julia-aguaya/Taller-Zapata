@@ -251,4 +251,13 @@ public class CaseAuditService {
         entity.setUserAgent(request == null ? null : request.getHeader("User-Agent"));
         auditEventRepository.save(entity);
     }
+
+    /** Helper: creates a Map from key-value pairs, allowing null values (unlike Map.of). */
+    public static Map<String, Object> auditMap(Object... keysAndValues) {
+        Map<String, Object> map = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < keysAndValues.length; i += 2) {
+            map.put(String.valueOf(keysAndValues[i]), keysAndValues[i + 1]);
+        }
+        return map;
+    }
 }

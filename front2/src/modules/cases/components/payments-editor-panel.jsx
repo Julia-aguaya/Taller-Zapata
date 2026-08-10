@@ -156,6 +156,25 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const amountToPay = toAmount(processing?.amountToBillCompany || processing?.agreedAmount || 0);
   const ciaPending = Math.max(0, amountToPay - ciaTotalPaid);
 
+  const paymentStatus = useMemo(() => {
+    const estimated = processing?.estimatedPaymentDate;
+    if (!estimated) return ciaPending <= 0 ? 'Pagado' : 'Pendiente';
+    const today = new Date().toISOString().slice(0, 10);
+    const hasPayment = ciaTotalPaid >= amountToPay && amountToPay > 0;
+    if (!hasPayment) return today > estimated ? 'Atrasado' : 'Pendiente';
+    const payments = ciaMovements.filter(m => m.movementAt);
+    const lastPaymentDate = payments.length > 0
+      ? payments.reduce((latest, m) => (m.movementAt > latest ? m.movementAt : latest), '').slice(0, 10)
+      : null;
+    return lastPaymentDate && lastPaymentDate > estimated ? 'Pagado con mora' : 'Pagado a término';
+  }, [processing?.estimatedPaymentDate, ciaPending, ciaTotalPaid, amountToPay, ciaMovements]);
+
+  const paymentStatusColor = paymentStatus === 'Pagado a término' || paymentStatus === 'Pagado'
+    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
+    : paymentStatus === 'Atrasado' || paymentStatus === 'Pagado con mora'
+    ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
+    : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400';
+
   return (
     <>
     <div className="mt-5 space-y-5">
@@ -184,8 +203,27 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
           <div className="mt-4 grid gap-3 md:grid-cols-4">
             <MiniCard label="A facturar Cía." value={formatCurrency(amountToPay)} highlight />
             <MiniCard label="Pagado Cía." value={formatCurrency(ciaTotalPaid)} />
-            <MiniCard label="Pendiente Cía." value={formatCurrency(ciaPending)} highlight={ciaPending > 0} variant={ciaPending <= 0 ? 'success' : 'warning'} />
-            <MiniCard label="Estado" value={ciaPending <= 0 ? 'Pagado' : 'Pendiente'} variant={ciaPending <= 0 ? 'success' : 'warning'} />
+            <MiniCard label="Pendiente Cía." value={formatCurrency(ciaPending)} highlight={ciaPending > 0} />
+            <div className="space-y-1">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Estado</span>
+              <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${paymentStatusColor}`}>{paymentStatus}</span>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <Field label="Fecha pasado a pagos">
+              <Input type="date" value={processing?.passedToPaymentsAt ?? ''}
+                onChange={async (e) => {
+                  await requestJson(`/cases/${caseId}/insurance-processing`, { method: 'PUT', body: JSON.stringify({ ...processing, passedToPaymentsAt: e.target.value || null }) });
+                  queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] });
+                }} />
+            </Field>
+            <Field label="Fecha estimada de pago">
+              <Input type="date" value={processing?.estimatedPaymentDate ?? ''}
+                onChange={async (e) => {
+                  await requestJson(`/cases/${caseId}/insurance-processing`, { method: 'PUT', body: JSON.stringify({ ...processing, estimatedPaymentDate: e.target.value || null }) });
+                  queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] });
+                }} />
+            </Field>
           </div>
           <div className="mt-4 rounded-2xl border border-border/60 bg-background/70 p-4">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Registrar pago de la Cía.</p>

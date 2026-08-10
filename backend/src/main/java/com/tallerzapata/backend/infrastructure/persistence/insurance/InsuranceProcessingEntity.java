@@ -31,6 +31,8 @@ public class InsuranceProcessingEntity {
     @Column(name = "monto_final_favor_taller") private BigDecimal finalAmountForWorkshop;
     @Column(name = "no_repara", nullable = false) private Boolean noRepair;
     @Column(name = "admin_override_turno", nullable = false) private Boolean adminOverrideAppointment;
+    @Column(name = "fecha_pasado_a_pagos") private LocalDate passedToPaymentsAt;
+    @Column(name = "fecha_estimada_pago") private LocalDate estimatedPaymentDate;
     public Long getId() { return id; }
     public Long getCaseId() { return caseId; }
     public void setCaseId(Long caseId) { this.caseId = caseId; }
@@ -66,4 +68,8 @@ public class InsuranceProcessingEntity {
     public void setNoRepair(Boolean noRepair) { this.noRepair = noRepair; }
     public Boolean getAdminOverrideAppointment() { return adminOverrideAppointment; }
     public void setAdminOverrideAppointment(Boolean adminOverrideAppointment) { this.adminOverrideAppointment = adminOverrideAppointment; }
+    public LocalDate getPassedToPaymentsAt() { return passedToPaymentsAt; }
+    public void setPassedToPaymentsAt(LocalDate passedToPaymentsAt) { this.passedToPaymentsAt = passedToPaymentsAt; }
+    public LocalDate getEstimatedPaymentDate() { return estimatedPaymentDate; }
+    public void setEstimatedPaymentDate(LocalDate estimatedPaymentDate) { this.estimatedPaymentDate = estimatedPaymentDate; }
 }

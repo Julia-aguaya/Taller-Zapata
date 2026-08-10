@@ -7,4 +7,6 @@ public interface CasePersonRepository extends JpaRepository<CasePersonEntity, Lo
     boolean existsByCaseIdAndPersonId(Long caseId, Long personId);
 
     boolean existsByCaseIdAndPrincipalTrue(Long caseId);
+
+    java.util.Optional<CasePersonEntity> findByCaseIdAndPersonId(Long caseId, Long personId);
 }

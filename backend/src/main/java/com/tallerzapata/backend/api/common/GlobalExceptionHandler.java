@@ -3,6 +3,8 @@ package com.tallerzapata.backend.api.common;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ForbiddenException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.tallerzapata.backend.application.common.UnauthorizedException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -19,6 +21,8 @@ import java.util.List;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiErrorResponse> handleValidation(
@@ -92,6 +96,7 @@ public class GlobalExceptionHandler {
             Exception exception,
             HttpServletRequest request
     ) {
+        log.error("500 INTERNAL ERROR on {} {}: {}", request.getMethod(), request.getRequestURI(), exception.getMessage(), exception);
         return build(HttpStatus.INTERNAL_SERVER_ERROR, exception.getMessage(), request, List.of());
     }
 

@@ -266,6 +266,7 @@ public class BudgetService {
         entity.setLaborAmount(scale(request.laborAmount()));
         entity.setActive(true);
         entity = budgetItemRepository.save(entity);
+        syncPartsFromBudget(caseId, httpRequest);
         caseAuditService.register(currentUser.id(), caseId, "presupuesto_items", entity.getId(), "crear_presupuesto_item", null, caseAuditService.toJson(Map.of("affectedPiece", entity.getAffectedPiece(), "taskCode", entity.getTaskCode())), caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
         return toBudgetItemResponse(entity);
     }
@@ -291,6 +292,7 @@ public class BudgetService {
         entity.setLaborAmount(scale(request.laborAmount()));
         entity.setActive(request.active() == null || request.active());
         entity = budgetItemRepository.save(entity);
+        syncPartsFromBudget(caseId, httpRequest);
         caseAuditService.register(currentUser.id(), caseId, "presupuesto_items", entity.getId(), "actualizar_presupuesto_item", null, caseAuditService.toJson(Map.of("affectedPiece", entity.getAffectedPiece(), "taskCode", entity.getTaskCode())), caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
         return toBudgetItemResponse(entity);
     }

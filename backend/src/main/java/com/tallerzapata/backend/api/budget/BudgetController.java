@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.api.budget;
 
 import com.tallerzapata.backend.application.budget.BudgetService;
+import com.tallerzapata.backend.application.budget.PartLabelPdfService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -20,9 +21,11 @@ import java.util.List;
 @Tag(name = "Presupuesto y Repuestos", description = "Gestion de presupuestos, items, repuestos y partes de un caso")
 public class BudgetController {
     private final BudgetService budgetService;
+    private final PartLabelPdfService partLabelPdfService;
 
-    public BudgetController(BudgetService budgetService) {
+    public BudgetController(BudgetService budgetService, PartLabelPdfService partLabelPdfService) {
         this.budgetService = budgetService;
+        this.partLabelPdfService = partLabelPdfService;
     }
 
     @Operation(summary = "Listar catalogos de presupuesto", description = "Devuelve los catalogos disponibles para presupuesto")
@@ -142,5 +145,17 @@ public class BudgetController {
         headers.setContentDisposition(ContentDisposition.inline().filename("presupuesto-" + caseId + ".pdf").build());
         headers.setContentLength(pdfBytes.length);
         return ResponseEntity.ok().headers(headers).body(pdfBytes);
+    }
+
+    @Operation(summary = "Descargar etiqueta de repuesto", description = "Genera y devuelve el PDF de la etiqueta del repuesto")
+    @ApiResponse(responseCode = "200", description = "PDF generado")
+    @PreAuthorize("hasAuthority('presupuesto.ver')")
+    @GetMapping("/cases/{caseId}/parts/{partId}/label")
+    public ResponseEntity<byte[]> downloadPartLabel(@PathVariable Long caseId, @PathVariable Long partId) {
+        byte[] pdfBytes = partLabelPdfService.generate(caseId, partId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=etiqueta-" + partId + ".pdf")
+                .contentType(MediaType.APPLICATION_PDF)
+                .body(pdfBytes);
     }
 }

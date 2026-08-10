@@ -11,6 +11,8 @@ public record CaseInsuranceResponse(
         String cleasNumber,
         String claimNumber,
         Long processorCasePersonId,
-        Long inspectorCasePersonId
+        Long inspectorCasePersonId,
+        Long processorPersonId,
+        Long inspectorPersonId
 ) {
 }

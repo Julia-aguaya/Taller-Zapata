@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ClipboardList, Save } from 'lucide-react';
+import { AlertTriangle, ClipboardList, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { requestJson } from '@/shared/api/http-client';
 import { Button } from '@/shared/ui/button';
@@ -17,14 +17,16 @@ const Field = ({ label, children, className = '' }) => (
 const formatCurrency = (v) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(v || 0);
 const toAmount = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 
-export const ProcedureSection = ({ caseId }) => {
+export const ProcedureSection = ({ caseId, budget }) => {
   const queryClient = useQueryClient();
   const [provider, setProvider] = useState({ providerId: null, snapshot: '' });
 
   const processingQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance-processing'], queryFn: () => requestJson(`/cases/${caseId}/insurance-processing`) });
+  const franchiseQuery = useQuery({ queryKey: ['cases', String(caseId), 'franchise'], queryFn: () => requestJson(`/cases/${caseId}/franchise`) });
   const catalogsQuery = useQuery({ queryKey: ['insurance', 'catalogs'], queryFn: () => requestJson('/insurance/catalogs') });
 
   const processing = processingQuery.data;
+  const franchise = franchiseQuery.data;
   const modalityCodes = catalogsQuery.data?.insuranceModalityCodes ?? [];
   const quotationStatuses = catalogsQuery.data?.insuranceQuotationStatusCodes ?? [];
   const partsAuthCodes = catalogsQuery.data?.insurancePartsAuthorizationCodes ?? [];
@@ -33,6 +35,29 @@ export const ProcedureSection = ({ caseId }) => {
   useEffect(() => {
     setProvider({ providerId: processing?.providerId ?? null, snapshot: processing?.partsSupplierText ?? '' });
   }, [processing?.providerId, processing?.partsSupplierText]);
+
+  // Cascading enablement
+  const hasPresentedAt = !!processing?.presentedAt;
+  const hasInspection = !!(processing?.presentedAt && processing?.inspectionForwardedAt);
+  const hasQuotation = !!(processing?.quotationStatusCode && processing?.quotationDate && processing?.agreedAmount);
+
+  // Auto desde presupuesto
+  const minCloseAmount = budget?.minimumCloseAmount ?? processing?.minimumCloseAmount ?? '';
+  const hasReplacementParts = budget?.items?.some(item => item.requiresReplacement || item.partDecisionCode === 'REEMPLAZAR') ?? processing?.includesParts;
+
+  // Warning: monto acordado < minimo cierre
+  const agreedAmount = toAmount(processing?.agreedAmount);
+  const minimumClose = toAmount(minCloseAmount);
+  const belowMinimum = agreedAmount > 0 && minimumClose > 0 && agreedAmount < minimumClose;
+
+  // Auto-calc: A facturar Cia
+  const computedAmountToBill = useMemo(() => {
+    if (!agreedAmount) return null;
+    const isPropiaCia = franchise?.recoveryTypeCode === 'PROPIA_CIA';
+    if (isPropiaCia) return agreedAmount;
+    const franchiseAmount = toAmount(franchise?.franchiseAmount);
+    return Math.max(0, agreedAmount - franchiseAmount);
+  }, [agreedAmount, franchise?.recoveryTypeCode, franchise?.franchiseAmount]);
 
   const mutation = useMutation({
     mutationFn: (payload) => requestJson(`/cases/${caseId}/insurance-processing`, { method: 'PUT', body: JSON.stringify(payload) }),
@@ -44,7 +69,7 @@ export const ProcedureSection = ({ caseId }) => {
         queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] }),
         queryClient.invalidateQueries({ queryKey: ['panel'] }),
       ]);
-      toast.success('Tramitación guardada.');
+      toast.success('Tramitacion guardada.');
     },
     onError: (e) => toast.error(e.message),
   });
@@ -60,12 +85,12 @@ export const ProcedureSection = ({ caseId }) => {
       quotationStatusCode: fd.get('quotationStatusCode') || null,
       quotationDate: fd.get('quotationDate') || null,
       agreedAmount: toAmount(fd.get('agreedAmount')) || null,
-      minimumCloseAmount: toAmount(fd.get('minimumCloseAmount')) || null,
-      includesParts: fd.get('includesParts') === 'SI',
+      minimumCloseAmount: toAmount(minCloseAmount) || null,
+      includesParts: hasReplacementParts,
       partsAuthorizationCode: fd.get('partsAuthorizationCode') || null,
       partsSupplierText: provider.snapshot || null,
       providerId: provider.providerId,
-      amountToBillCompany: toAmount(fd.get('amountToBillCompany')) || null,
+      amountToBillCompany: computedAmountToBill,
       finalAmountForWorkshop: toAmount(fd.get('finalAmountForWorkshop')) || null,
     });
   };
@@ -77,63 +102,89 @@ export const ProcedureSection = ({ caseId }) => {
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
             <ClipboardList className="h-5 w-5" />
           </div>
-          <h4 className="text-sm font-semibold">Tramitación</h4>
+          <h4 className="text-sm font-semibold">Tramitacion</h4>
         </div>
         <Button size="sm" onClick={handleSave} disabled={mutation.isPending}><Save className="mr-1.5 h-3.5 w-3.5" />Guardar</Button>
       </div>
 
-      <form id="procedure-form" className="mt-4 grid gap-x-6 gap-y-3 md:grid-cols-4">
+      {/* Condicionante: sin fecha presentado */}
+      {!hasPresentedAt ? (
+        <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          Completa la fecha de presentacion para habilitar el resto de la tramitacion.
+        </div>
+      ) : null}
+
+      {/* Warning: monto acordado < minimo cierre */}
+      {belowMinimum ? (
+        <div className="mt-3 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          Monto acordado ({formatCurrency(agreedAmount)}) inferior al minimo para cierre ({formatCurrency(minimumClose)}).
+        </div>
+      ) : null}
+
+      <form id="procedure-form" key={processing?.id ?? 'new'} className="mt-4 grid gap-x-6 gap-y-3 md:grid-cols-4">
         <Field label="Fecha presentado">
           <Input type="date" name="presentedAt" defaultValue={processing?.presentedAt ?? ''} />
         </Field>
-        <Field label="Derivado a inspección">
-          <Input type="date" name="inspectionForwardedAt" defaultValue={processing?.inspectionForwardedAt ?? ''} />
+        <Field label="Derivado a inspeccion">
+          <Input type="date" name="inspectionForwardedAt" defaultValue={processing?.inspectionForwardedAt ?? ''} disabled={!hasPresentedAt} />
         </Field>
         <Field label="Modalidad">
-          <select name="modalityCode" defaultValue={processing?.modalityCode ?? ''} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
-            <option value="">—</option>
-            {modalityCodes.map((m) => (<option key={m.code} value={m.code}>{m.name || m.code}</option>))}
+          <select name="modalityCode" defaultValue={processing?.modalityCode ?? ''} disabled={!hasPresentedAt}
+            className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-50">
+             <option value="">—</option>
+            <option value="PRESENCIAL">Presencial</option>
+            <option value="POR_FOTOS">Por fotos</option>
           </select>
         </Field>
         <Field label="Dictamen">
-          <select name="opinionCode" defaultValue={processing?.opinionCode ?? ''} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
+          <select name="opinionCode" defaultValue={processing?.opinionCode ?? ''} disabled={!hasPresentedAt}
+            className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-50">
             <option value="">—</option>
             {opinionCodes.map((o) => (<option key={o.code} value={o.code}>{o.name || o.code}</option>))}
           </select>
         </Field>
-        <Field label="Mínimo para cierre">
-          <Input name="minimumCloseAmount" type="number" min="0" step="0.01" defaultValue={processing?.minimumCloseAmount ?? ''} placeholder="1250000" />
+
+        <Field label="Minimo para cierre">
+          <Input name="minimumCloseAmount" type="number" min="0" step="0.01" value={minCloseAmount} readOnly className="bg-muted/50 cursor-not-allowed" />
         </Field>
         <Field label="Lleva repuestos">
-          <select name="includesParts" defaultValue={processing?.includesParts ? 'SI' : 'NO'} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
+          <select name="includesParts" value={hasReplacementParts ? 'SI' : 'NO'} readOnly disabled
+            className="h-10 w-full rounded-xl border border-input bg-muted/50 px-3 text-sm outline-none cursor-not-allowed opacity-70">
             <option value="SI">SI</option>
             <option value="NO">NO</option>
           </select>
         </Field>
-        <Field label="Cotización">
-          <select name="quotationStatusCode" defaultValue={processing?.quotationStatusCode ?? ''} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
+
+        <Field label="Cotizacion">
+          <select name="quotationStatusCode" defaultValue={processing?.quotationStatusCode ?? ''} disabled={!hasPresentedAt}
+            className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-50">
             <option value="">—</option>
             {quotationStatuses.map((q) => (<option key={q.code} value={q.code}>{q.name || q.code}</option>))}
           </select>
         </Field>
-        <Field label="Fecha cotización">
-          <Input type="date" name="quotationDate" defaultValue={processing?.quotationDate ?? ''} />
+        <Field label="Fecha cotizacion">
+          <Input type="date" name="quotationDate" defaultValue={processing?.quotationDate ?? ''} disabled={!hasPresentedAt} />
         </Field>
         <Field label="Monto acordado">
-          <Input name="agreedAmount" type="number" min="0" step="0.01" defaultValue={processing?.agreedAmount ?? ''} placeholder="1400000" />
+          <Input name="agreedAmount" type="number" min="0" step="0.01" defaultValue={processing?.agreedAmount ?? ''} placeholder="1400000" disabled={!hasPresentedAt} />
         </Field>
-        <Field label="A facturar Cía.">
-          <Input name="amountToBillCompany" type="number" min="0" step="0.01" defaultValue={processing?.amountToBillCompany ?? ''} placeholder="900000" />
+
+        <Field label="A facturar Cia.">
+          <Input name="amountToBillCompany" type="number" min="0" step="0.01" value={computedAmountToBill ?? ''} readOnly
+            className="bg-muted/50 cursor-not-allowed" />
         </Field>
         <Field label="Proveedor de repuestos"><ProviderSelector value={provider.snapshot} providerId={provider.providerId} onChange={setProvider} /></Field>
-        <Field label="Autorización repuestos">
-          <select name="partsAuthorizationCode" defaultValue={processing?.partsAuthorizationCode ?? ''} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
+        <Field label="Autorizacion repuestos">
+          <select name="partsAuthorizationCode" defaultValue={processing?.partsAuthorizationCode ?? ''} disabled={!hasPresentedAt}
+            className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-50">
             <option value="">—</option>
             {partsAuthCodes.map((a) => (<option key={a.code} value={a.code}>{a.name || a.code}</option>))}
           </select>
         </Field>
         <Field label="Final a favor Taller">
-          <Input name="finalAmountForWorkshop" type="number" min="0" step="0.01" defaultValue={processing?.finalAmountForWorkshop ?? ''} readOnly className="bg-muted/50" />
+          <Input name="finalAmountForWorkshop" type="number" min="0" step="0.01" defaultValue={processing?.finalAmountForWorkshop ?? ''} readOnly className="bg-muted/50 cursor-not-allowed" />
         </Field>
       </form>
     </div>

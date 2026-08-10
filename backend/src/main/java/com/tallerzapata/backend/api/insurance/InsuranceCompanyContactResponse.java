@@ -4,6 +4,7 @@ public record InsuranceCompanyContactResponse(
         Long id,
         Long companyId,
         Long personId,
-        String contactRoleCode
+        String contactRoleCode,
+        String personName
 ) {
 }

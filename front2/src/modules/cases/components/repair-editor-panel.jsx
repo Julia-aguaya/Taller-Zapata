@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarPlus2, CarFront, Clock, Flag, ImagePlus, Lock, PackagePlus, Plus, RefreshCw, Save, Trash2 } from 'lucide-react';
+import { CalendarPlus2, CarFront, CheckCheck, Clock, Flag, ImagePlus, Lock, PackagePlus, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { createRepairAppointment, createVehicleIntake, createVehicleOutcome, getOperationCatalogs, listRepairAppointments, listVehicleIntakes, listVehicleOutcomes, updateRepairAppointment } from '@/modules/cases/api/operations-api';
 import { createCasePart, deleteCasePart, getPartsCatalogs, listCaseParts, syncPartsFromBudget, updateCasePart } from '@/modules/cases/api/parts-api';
@@ -62,6 +62,15 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const appointmentsQuery = useQuery({ queryKey: ['cases', String(caseId), 'appointments'], queryFn: () => listRepairAppointments(caseId) });
   const intakesQuery = useQuery({ queryKey: ['cases', String(caseId), 'intakes'], queryFn: () => listVehicleIntakes(caseId) });
   const outcomesQuery = useQuery({ queryKey: ['cases', String(caseId), 'outcomes'], queryFn: () => listVehicleOutcomes(caseId) });
+
+  // Check if insurance company requires repair photos
+  const insuranceQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance'], queryFn: () => requestJson(`/cases/${caseId}/insurance`), enabled: caseDetail?.caseTypeCode !== 'PARTICULAR' });
+  const insuranceCompanyQuery = useQuery({
+    queryKey: ['insurance', 'company', insuranceQuery.data?.insuranceCompanyId],
+    queryFn: () => requestJson(`/insurance/companies/${insuranceQuery.data?.insuranceCompanyId}`),
+    enabled: !!insuranceQuery.data?.insuranceCompanyId,
+  });
+  const requiresRepairPhotos = insuranceCompanyQuery.data?.requiresRepairPhotos;
 
   const [appointment, setAppointment] = useState(() => createAppointmentState(latestAppointment));
 
@@ -406,6 +415,12 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
 
   return (
     <div className="mt-5 space-y-5">
+      {requiresRepairPhotos ? (
+        <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400">
+          <ImagePlus className="h-4 w-4 shrink-0" />
+          <span><strong>{insuranceCompanyQuery.data?.name || 'La compañía'}</strong> requiere fotos del vehículo reparado como condición para pasar a pagos. Asegurate de cargarlas en Documentación antes del egreso.</span>
+        </div>
+      ) : null}
       {/* Sub-tabs */}
       <div className="flex flex-wrap gap-2">
         {[
@@ -497,12 +512,14 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
               <thead>
                 <tr className="border-b border-border/60 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   <th className="px-3 py-3 text-left">Repuesto</th>
+                  <th className="px-3 py-3 text-left">Inventario</th>
                   <th className="px-3 py-3 text-left">Proveedor</th>
                   <th className="px-3 py-3 text-right">Importe</th>
                   <th className="px-3 py-3 text-left">Estado</th>
+                  <th className="px-3 py-3 text-left">Autorizado</th>
                   <th className="px-3 py-3 text-left">Compra</th>
-                   <th className="px-3 py-3 text-left">Pago</th>
-                   {isTodoRiesgo ? <th className="px-3 py-3 text-left">Autorización</th> : null}
+                  <th className="px-3 py-3 text-left">Pago</th>
+                  {isTodoRiesgo ? <th className="px-3 py-3 text-left">Autorización</th> : null}
                   <th className="px-3 py-3 w-10"></th>
                 </tr>
               </thead>
@@ -510,6 +527,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                 {displayParts.map((part) => (
                   <tr key={part._tempId || part.id} className="border-b border-border/40 hover:bg-muted/30 transition-colors">
                     <td className="px-3 py-3 font-medium max-w-[200px] truncate">{part.description || 'Sin descripción'}</td>
+                    <td className="px-3 py-3 text-xs text-muted-foreground font-mono">{part.inventoryNumber || '—'}</td>
                     <td className="px-3 py-3">
                       {editMode ? (
                         <ProviderSelector value={part.finalSupplier || ''} providerId={part.providerId} onChange={({ providerId, snapshot }) => {
@@ -536,6 +554,22 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                       ) : (
                         <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/50 px-2.5 py-0.5 text-xs font-medium">{statusCodeOptions.find(o => o.value === part.statusCode)?.label || part.statusCode || '—'}</span>
                       )}
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex gap-1">
+                        <button type="button"
+                          className={`rounded-lg px-2 py-1 text-xs font-medium transition ${part.authorizedCode === 'AUTORIZADO' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400' : 'bg-muted/50 text-muted-foreground hover:bg-emerald-100 hover:text-emerald-700'}`}
+                          onClick={() => updatePartMutation.mutate({ partId: part.id, payload: { ...part, authorizedCode: part.authorizedCode === 'AUTORIZADO' ? null : 'AUTORIZADO' } })}
+                          title="Autorizar repuesto">
+                          <CheckCheck className="h-3.5 w-3.5" />
+                        </button>
+                        <button type="button"
+                          className={`rounded-lg px-2 py-1 text-xs font-medium transition ${part.authorizedCode === 'RECHAZADO' ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400' : 'bg-muted/50 text-muted-foreground hover:bg-red-100 hover:text-red-700'}`}
+                          onClick={() => updatePartMutation.mutate({ partId: part.id, payload: { ...part, authorizedCode: part.authorizedCode === 'RECHAZADO' ? null : 'RECHAZADO' } })}
+                          title="Rechazar repuesto">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </td>
                     <td className="px-3 py-3">
                       {editMode ? (

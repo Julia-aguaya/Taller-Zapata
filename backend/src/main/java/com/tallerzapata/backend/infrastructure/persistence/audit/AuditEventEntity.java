@@ -7,8 +7,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 
@@ -35,15 +33,12 @@ public class AuditEventEntity {
     @Column(name = "accion_codigo", nullable = false)
     private String actionCode;
 
-    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "antes_json")
     private String beforeJson;
 
-    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "despues_json")
     private String afterJson;
 
-    @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "metadata_json")
     private String metadataJson;
 

@@ -85,6 +85,13 @@ export const NewCasePage = () => {
     enabled: referenciadorSearchDebounced.length >= 2 && !selectedReferenciadorId,
   });
 
+  const selectedReferenciadorQuery = useQuery({
+    queryKey: ['referenciadores', 'selected', selectedReferenciadorId],
+    queryFn: () => searchReferenciadores(''),
+    enabled: !!selectedReferenciadorId,
+    select: (data) => data?.find(r => r.id === selectedReferenciadorId),
+  });
+
   const linkedVehiclesQuery = useQuery({
     queryKey: ['persons', selectedPersonId, 'vehicles'],
     queryFn: () => getPersonVehicles(selectedPersonId),
@@ -392,8 +399,8 @@ export const NewCasePage = () => {
               <Field label="Referenciador">
                 {selectedReferenciadorId ? (
                   <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm dark:border-emerald-800 dark:bg-emerald-950">
-                     <span className="font-medium text-emerald-800 dark:text-emerald-200">{selectedReferenciador?.displayName || `#${selectedReferenciadorId}`}</span>
-                     <button type="button" className="ml-auto text-xs text-muted-foreground hover:text-destructive" onClick={() => { setSelectedReferenciadorId(null); setSelectedReferenciador(null); setReferenciadorSearch(''); }}>✕</button>
+                    <span className="font-medium text-emerald-800 dark:text-emerald-200">{selectedReferenciadorQuery.data?.displayName || `#${selectedReferenciadorId}`}</span>
+                    <button type="button" className="ml-auto text-xs text-muted-foreground hover:text-destructive" onClick={() => { setSelectedReferenciadorId(null); setSelectedReferenciador(null); setReferenciadorSearch(''); }}>✕</button>
                   </div>
                 ) : (
                   <div className="relative">

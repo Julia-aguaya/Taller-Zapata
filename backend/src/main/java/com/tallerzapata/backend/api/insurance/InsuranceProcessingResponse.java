@@ -23,6 +23,9 @@ public record InsuranceProcessingResponse(
         BigDecimal amountToBillCompany,
         BigDecimal finalAmountForWorkshop,
         Boolean noRepair,
-        Boolean adminOverrideAppointment
+        Boolean adminOverrideAppointment,
+        LocalDate passedToPaymentsAt,
+        LocalDate estimatedPaymentDate,
+        String paymentStatusCode
 ) {
 }

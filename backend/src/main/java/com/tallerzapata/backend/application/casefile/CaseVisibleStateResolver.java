@@ -273,7 +273,10 @@ public class CaseVisibleStateResolver {
         }
 
         if (insuranceProcessing != null) {
-            if (hasPositiveAmount(insuranceProcessing.getAgreedAmount()) || "ACEPTADA".equals(normalizeCode(insuranceProcessing.getQuotationStatusCode()))) {
+            boolean quotationAgreed = "ACORDADA".equals(normalizeCode(insuranceProcessing.getQuotationStatusCode()))
+                    && hasPositiveAmount(insuranceProcessing.getAgreedAmount())
+                    && insuranceProcessing.getQuotationDate() != null;
+            if (quotationAgreed) {
                 return "ACORDADO";
             }
             if (insuranceProcessing.getPresentedAt() != null) {

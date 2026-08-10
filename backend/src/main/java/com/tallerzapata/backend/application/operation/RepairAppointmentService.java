@@ -10,9 +10,15 @@ import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEff
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
+import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartEntity;
+import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeEntity;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeRepository;
 import com.tallerzapata.backend.application.common.BusinessDayCalculator;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingEntity;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.HolidayEntity;
 import com.tallerzapata.backend.infrastructure.persistence.operation.HolidayRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.RepairAppointmentEntity;
@@ -24,11 +30,13 @@ import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
 import com.tallerzapata.backend.infrastructure.security.CurrentUserService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -48,6 +56,9 @@ public class RepairAppointmentService {
     private final BusinessDayCalculator businessDayCalculator;
     private final ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
     private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
+    private final InsuranceProcessingRepository insuranceProcessingRepository;
+    private final CaseTypeRepository caseTypeRepository;
+    private final CasePartRepository casePartRepository;
 
     public RepairAppointmentService(
             RepairAppointmentRepository repairAppointmentRepository,
@@ -59,7 +70,12 @@ public class RepairAppointmentService {
             CaseAuditService caseAuditService,
             CaseWorkflowService caseWorkflowService,
             HolidayRepository holidayRepository,
-            BusinessDayCalculator businessDayCalculator, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator
+            BusinessDayCalculator businessDayCalculator,
+            ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator,
+            TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator,
+            InsuranceProcessingRepository insuranceProcessingRepository,
+            CaseTypeRepository caseTypeRepository,
+            CasePartRepository casePartRepository
     ) {
         this.repairAppointmentRepository = repairAppointmentRepository;
         this.repairAppointmentStatusRepository = repairAppointmentStatusRepository;
@@ -73,6 +89,9 @@ public class RepairAppointmentService {
         this.businessDayCalculator = businessDayCalculator;
         this.particularEffectiveStateRecalculator = particularEffectiveStateRecalculator;
         this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
+        this.insuranceProcessingRepository = insuranceProcessingRepository;
+        this.caseTypeRepository = caseTypeRepository;
+        this.casePartRepository = casePartRepository;
     }
 
     @Transactional(readOnly = true)
@@ -94,6 +113,35 @@ public class RepairAppointmentService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
         caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "turno.crear");
+
+        // Para tramites con seguro: validar que la cotizacion este acordada
+        CaseTypeEntity caseType = caseTypeRepository.findById(caseEntity.getCaseTypeId()).orElse(null);
+        if (caseType != null && Boolean.TRUE.equals(caseType.getRequiresProcessing())) {
+            InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
+            boolean hasAgreement = processing != null
+                    && processing.getAgreedAmount() != null
+                    && processing.getQuotationDate() != null
+                    && "ACORDADA".equals(normalizeCode(processing.getQuotationStatusCode()));
+            if (!hasAgreement) {
+                boolean hasOverride = SecurityContextHolder.getContext().getAuthentication()
+                        .getAuthorities().stream()
+                        .anyMatch(a -> a.getAuthority().equals("turno.crear.sin_acuerdo"));
+                if (!hasOverride) {
+                    throw new ConflictException("Monto pendiente de acordarse con la Cia. Solicite autorizacion al administrador.");
+                }
+            }
+        }
+
+        // Validar repuestos pendientes: si hay repuestos no recibidos, advertir
+        List<CasePartEntity> parts = casePartRepository.findByCaseIdOrderByIdAsc(caseId);
+        if (!parts.isEmpty()) {
+            boolean allReceived = parts.stream().allMatch(p ->
+                    "RECIBIDO".equals(normalizeCode(p.getStatusCode())) || "INSTALADO".equals(normalizeCode(p.getStatusCode()))
+            );
+            if (!allReceived && !Boolean.TRUE.equals(request.overridePendingParts())) {
+                throw new ConflictException("Hay repuestos pendientes de recepcion. Confirme para continuar.");
+            }
+        }
 
         String statusCode = normalizeStatusCode(request.statusCode());
         requireActiveUser(request.userId());
@@ -313,6 +361,8 @@ public class RepairAppointmentService {
         }
         return normalizedCode;
     }
+
+    private String normalizeCode(String value) { return value == null || value.isBlank() ? null : value.trim().toUpperCase(Locale.ROOT); }
 
     private void requireActiveUser(Long userId) {
         UserEntity user = userRepository.findById(userId)

@@ -291,25 +291,42 @@ public class CaseReadinessService {
         CaseInsuranceEntity insurance = caseInsuranceRepository.findByCaseId(caseId).orElse(null);
         InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
         CaseFranchiseEntity franchise = caseFranchiseRepository.findByCaseId(caseId).orElse(null);
+        List<CasePartEntity> parts = casePartRepository.findByCaseIdOrderByIdAsc(caseId);
 
         if (insurance == null || insurance.getInsuranceCompanyId() == null) {
             blocking.add("Falta seleccionar compania de seguro");
         }
-        if (processing == null || processing.getQuotationDate() == null) {
-            blocking.add("Falta ingresar fecha de cotizacion del siniestro");
-        }
         if (franchise == null || franchise.getRecoveryTypeCode() == null) {
             blocking.add("Falta definir modo de recupero de franquicia");
         }
-        if (processing == null || processing.getAgreedAmount() == null || processing.getQuotationDate() == null) {
-            blocking.add("Falta acordar cotizacion con la Cia.");
+        if (processing == null || processing.getPresentedAt() == null) {
+            blocking.add("Falta registrar fecha de presentacion del tramite");
+        }
+        boolean quotationAgreed = processing != null
+                && "ACORDADA".equals(normalizeCode(processing.getQuotationStatusCode()))
+                && processing.getAgreedAmount() != null
+                && processing.getQuotationDate() != null;
+        if (!quotationAgreed) {
+            blocking.add("Falta acordar cotizacion con la Cia. (estado ACORDADA + fecha + monto)");
         }
 
-        boolean hasPendingTasks = operationalTaskRepository.findAll().stream()
-                .anyMatch(t -> t.getCaseId().equals(caseId) && !Boolean.TRUE.equals(t.getResolved()));
+        // Repuestos: todos recibidos o no hay repuestos
+        if (!parts.isEmpty()) {
+            boolean allReceived = parts.stream().allMatch(p ->
+                    "RECIBIDO".equals(normalizeCode(p.getStatusCode())) || "INSTALADO".equals(normalizeCode(p.getStatusCode()))
+            );
+            if (!allReceived) {
+                blocking.add("Hay repuestos pendientes de recepcion");
+            }
+        }
 
+        // Tareas pendientes solo del modulo TRAMITE
+        boolean hasPendingTasks = operationalTaskRepository.findAll().stream()
+                .anyMatch(t -> t.getCaseId().equals(caseId)
+                        && !Boolean.TRUE.equals(t.getResolved())
+                        && "TRAMITE".equals(normalizeCode(t.getOriginModuleCode())));
         if (hasPendingTasks) {
-            blocking.add("Hay tareas pendientes en la agenda");
+            blocking.add("Hay tareas pendientes en la agenda de tramite");
         }
 
         return toTab("GESTION_TRAMITE", true, blocking, List.of());
@@ -345,6 +362,12 @@ public class CaseReadinessService {
 
     private CaseReadinessTabResponse buildTodoRiesgoReparacionReadiness(Long caseId, boolean budgetCompleted, boolean tramiteCompleted) {
         List<String> blocking = new ArrayList<>();
+        InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
+
+        // NO_DEBE_REPARARSE → completada automáticamente
+        if (processing != null && Boolean.TRUE.equals(processing.getNoRepair())) {
+            return new CaseReadinessTabResponse("GESTION_REPARACION", true, true, "BLUE", List.of(), List.of());
+        }
 
         if (!budgetCompleted || !tramiteCompleted) {
             if (!budgetCompleted) blocking.add("Debe cerrar el presupuesto antes de gestionar la reparacion");
@@ -380,9 +403,21 @@ public class CaseReadinessService {
 
         CaseFranchiseEntity franchise = caseFranchiseRepository.findByCaseId(caseId).orElse(null);
         if (franchise != null && franchise.getFranchiseStatusCode() != null) {
-            String franchiseStatus = franchise.getFranchiseStatusCode().toUpperCase();
-            if ("SIN_DEFINIR".equals(franchiseStatus)) {
+            String franchiseStatus = normalizeCode(franchise.getFranchiseStatusCode());
+            if ("PENDIENTE".equals(franchiseStatus)) {
                 blocking.add("La franquicia sigue pendiente de resolucion");
+            }
+        }
+
+        // Verificar que la Cía. haya pagado
+        BigDecimal amountToBill = processing.getAmountToBillCompany();
+        if (amountToBill != null && amountToBill.compareTo(BigDecimal.ZERO) > 0) {
+            BigDecimal ciaPaid = financialMovementRepository.findByCaseId(caseId, Sort.by(Sort.Direction.DESC, "id")).stream()
+                    .filter(m -> "ASEGURADORA".equals(normalizeCode(m.getFlowOriginCode())))
+                    .map(m -> m.getNetAmount() == null ? BigDecimal.ZERO : m.getNetAmount())
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (ciaPaid.compareTo(amountToBill) < 0) {
+                blocking.add("La Cia. aun no completo el pago");
             }
         }
 

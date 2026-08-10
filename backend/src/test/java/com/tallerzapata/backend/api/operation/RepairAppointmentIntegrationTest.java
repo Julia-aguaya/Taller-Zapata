@@ -56,7 +56,8 @@ class RepairAppointmentIntegrationTest {
                 null,
                 false,
                 "Recepcion inicial",
-                3L
+                3L,
+                null
         );
 
         String response = mockMvc.perform(post("/api/v1/cases/100/appointments")
@@ -119,7 +120,8 @@ class RepairAppointmentIntegrationTest {
                 null,
                 false,
                 "Recepcion cerca de feriado",
-                3L
+                3L,
+                null
         );
 
         mockMvc.perform(post("/api/v1/cases/100/appointments")

@@ -13,8 +13,12 @@ import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseIncident
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CasePersonEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CasePersonRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeEntity;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseVehicleEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseVehicleRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingEntity;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingRepository;
 import com.tallerzapata.backend.infrastructure.persistence.person.PersonRepository;
 import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleRepository;
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
@@ -23,8 +27,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
+import java.util.Locale;
 import java.util.Map;
 
 @Service
@@ -39,6 +46,8 @@ public class CaseManagementService {
     private final CaseAccessControlService accessControlService;
     private final CurrentUserService currentUserService;
     private final CaseAuditService caseAuditService;
+    private final CaseTypeRepository caseTypeRepository;
+    private final InsuranceProcessingRepository insuranceProcessingRepository;
 
     public CaseManagementService(
             CaseRepository caseRepository,
@@ -49,7 +58,9 @@ public class CaseManagementService {
             VehicleRepository vehicleRepository,
             CaseAccessControlService accessControlService,
             CurrentUserService currentUserService,
-            CaseAuditService caseAuditService
+            CaseAuditService caseAuditService,
+            CaseTypeRepository caseTypeRepository,
+            InsuranceProcessingRepository insuranceProcessingRepository
     ) {
         this.caseRepository = caseRepository;
         this.casePersonRepository = casePersonRepository;
@@ -60,6 +71,8 @@ public class CaseManagementService {
         this.accessControlService = accessControlService;
         this.currentUserService = currentUserService;
         this.caseAuditService = caseAuditService;
+        this.caseTypeRepository = caseTypeRepository;
+        this.insuranceProcessingRepository = insuranceProcessingRepository;
     }
 
     @Transactional
@@ -154,7 +167,13 @@ public class CaseManagementService {
         entity.setLugar(blankToNull(request.location()));
         entity.setDinamica(blankToNull(request.dynamics()));
         entity.setObservaciones(blankToNull(request.observations()));
-        entity.setPrescriptionDate(request.prescriptionDate());
+
+        // Auto-calcular prescripción: 1 año desde fecha del siniestro para trámites con seguro
+        LocalDate prescriptionDate = request.prescriptionDate();
+        if (prescriptionDate == null && entity.getIncidentDate() != null && requiresProcessing(caseEntity)) {
+            prescriptionDate = entity.getIncidentDate().plusYears(1);
+        }
+        entity.setPrescriptionDate(prescriptionDate);
         entity = caseIncidentRepository.save(entity);
 
         caseAuditService.register(
@@ -164,7 +183,7 @@ public class CaseManagementService {
                 entity.getId(),
                 "actualizar_siniestro_caso",
                 null,
-                caseAuditService.toJson(Map.of("incidentDate", entity.getIncidentDate(), "location", entity.getLugar())),
+                caseAuditService.toJson(CaseAuditService.auditMap("incidentDate", entity.getIncidentDate(), "location", entity.getLugar())),
                 caseAuditService.toJson(Map.of("domain", "casefile", "isNew", isNew)),
                 httpRequest
         );
@@ -176,9 +195,29 @@ public class CaseManagementService {
         CaseEntity caseEntity = requireCase(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "caso.ver");
 
-        return caseIncidentRepository.findByCaseId(caseId)
-                .map(this::toIncidentResponse)
-                .orElse(new CaseIncidentResponse(null, null, null, null, null, null, null));
+        CaseIncidentEntity entity = caseIncidentRepository.findByCaseId(caseId).orElse(null);
+        if (entity == null) {
+            return new CaseIncidentResponse(null, null, null, null, null, null, null);
+        }
+
+        // Calcular días tramitando desde fecha de presentación (para trámites con seguro)
+        Integer daysInProcess = entity.getDaysInProcess();
+        if (requiresProcessing(caseEntity)) {
+            InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
+            if (processing != null && processing.getPresentedAt() != null) {
+                daysInProcess = (int) ChronoUnit.DAYS.between(processing.getPresentedAt(), LocalDate.now());
+            }
+        }
+
+        return new CaseIncidentResponse(
+                entity.getIncidentDate(),
+                entity.getIncidentTime() == null ? null : entity.getIncidentTime().format(DateTimeFormatter.ofPattern("HH:mm")),
+                entity.getLugar(),
+                entity.getDinamica(),
+                entity.getObservaciones(),
+                entity.getPrescriptionDate(),
+                daysInProcess
+        );
     }
 
     private CaseEntity requireCase(Long caseId) {
@@ -211,5 +250,10 @@ public class CaseManagementService {
                 entity.getPrescriptionDate(),
                 entity.getDaysInProcess()
         );
+    }
+
+    private boolean requiresProcessing(CaseEntity caseEntity) {
+        CaseTypeEntity caseType = caseTypeRepository.findById(caseEntity.getCaseTypeId()).orElse(null);
+        return caseType != null && Boolean.TRUE.equals(caseType.getRequiresProcessing());
     }
 }
