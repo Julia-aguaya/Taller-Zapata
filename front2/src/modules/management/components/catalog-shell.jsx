@@ -18,7 +18,7 @@ const useDebouncedValue = (value, delay = 300) => {
   return debounced;
 };
 
-export const CatalogShell = ({ title, description, singular, queryPrefix, api, fields, initialForm, listLabel, invalidate = [], renderDetail }) => {
+export const CatalogShell = ({ title, description, singular, queryPrefix, api, fields, createFields = fields, createPayload = (form) => form, initialForm, listLabel, invalidate = [], renderDetail }) => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search);
@@ -41,7 +41,7 @@ export const CatalogShell = ({ title, description, singular, queryPrefix, api, f
     ]);
   };
   const saveMutation = useMutation({
-    mutationFn: () => creating ? api.create(form) : api.update(selectedId, form),
+    mutationFn: () => creating ? api.create(createPayload(form)) : api.update(selectedId, form),
     onSuccess: async (entity) => {
       await invalidateCatalog();
       setSelectedId(entity.id);
@@ -123,7 +123,7 @@ export const CatalogShell = ({ title, description, singular, queryPrefix, api, f
         </Card>
       </div>
       <Dialog open={confirmDeactivate} onClose={() => setConfirmDeactivate(false)} title={`¿Desactivar ${name}?`} description="Los registros existentes se conservan y ya no estará disponible para nuevas selecciones."><div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setConfirmDeactivate(false)}>Cancelar</Button><Button variant="destructive" disabled={deactivateMutation.isPending} onClick={() => deactivateMutation.mutate()}>Desactivar</Button></div></Dialog>
-      <Dialog open={creating} onClose={discard} title={`Nuevo ${singular.toLowerCase()}`} description="Completá los datos para incorporarlo al catálogo."><CatalogForm fields={fields} form={form} setForm={setForm} /><div className="mt-5 flex justify-end gap-2"><Button variant="outline" onClick={discard}>Cancelar</Button><Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}><Save className="mr-2 h-4 w-4" />Guardar</Button></div></Dialog>
+      <Dialog open={creating} onClose={discard} title={`Nuevo ${singular.toLowerCase()}`} description="Completá los datos para incorporarlo al catálogo."><CatalogForm fields={createFields} form={form} setForm={setForm} /><div className="mt-5 flex justify-end gap-2"><Button variant="outline" onClick={discard}>Cancelar</Button><Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}><Save className="mr-2 h-4 w-4" />Guardar</Button></div></Dialog>
     </div>
   );
 };

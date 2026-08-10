@@ -176,6 +176,13 @@ class PersonIntegrationTest {
                 .andExpect(jsonPath("$[0].id").value(10));
 
         mockMvc.perform(get("/api/v1/persons")
+                        .param("q", "perez")
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(10));
+
+        mockMvc.perform(get("/api/v1/persons")
                         .param("q", "4011")
                         .header("X-User-Id", "1"))
                 .andExpect(status().isOk())

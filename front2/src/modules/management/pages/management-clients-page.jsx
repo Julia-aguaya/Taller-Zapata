@@ -49,7 +49,7 @@ export const ManagementClientsPage = () => {
 
   const personsQuery = useQuery({
     queryKey: ['management', 'clients', 'search', normalizedSearch],
-    queryFn: () => searchPersons({ q: normalizedSearch, document: normalizedSearch }),
+    queryFn: () => searchPersons({ q: normalizedSearch }),
     enabled: true,
   });
 

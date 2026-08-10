@@ -1,7 +1,30 @@
-import { describe, expect, it } from 'vitest';
-import { providerPayload } from './provider-selector';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mockSearchProviders = vi.fn();
+
+vi.mock('@/modules/cases/api/providers-api', () => ({
+  searchProviders: (...args) => mockSearchProviders(...args),
+}));
+
+const { ProviderSelector, providerPayload } = await import('./provider-selector');
+
+const renderSelector = (props = {}) => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <ProviderSelector value="" providerId={null} onChange={vi.fn()} {...props} />
+    </QueryClientProvider>,
+  );
+};
 
 describe('providerPayload', () => {
+  beforeEach(() => {
+    mockSearchProviders.mockReset();
+  });
+
   it('uses the canonical provider id and its name as the immutable transaction snapshot', () => {
     expect(providerPayload({ id: 18, name: 'Repuestos Norte' }, 'Texto anterior')).toEqual({
       providerId: 18,
@@ -14,5 +37,17 @@ describe('providerPayload', () => {
       providerId: null,
       snapshot: 'Casa de repuestos local',
     });
+  });
+
+  it('searches providers by q and renders the name-only provider model', async () => {
+    const user = userEvent.setup();
+    mockSearchProviders.mockResolvedValue([{ id: 18, name: 'Repuestos Norte', phone: '3415550000' }]);
+
+    renderSelector();
+    await user.type(screen.getByPlaceholderText('Buscar proveedor...'), 'Nor');
+
+    expect(await screen.findByRole('button', { name: /Repuestos Norte/i })).toBeInTheDocument();
+    await waitFor(() => expect(mockSearchProviders).toHaveBeenCalledWith('Nor'));
+    expect(screen.queryByText(/displayName|razonSocial/i)).not.toBeInTheDocument();
   });
 });

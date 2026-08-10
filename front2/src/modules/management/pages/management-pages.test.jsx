@@ -128,9 +128,11 @@ describe('management pages', () => {
     await user.type(screen.getByPlaceholderText('Buscar por nombre, apellido o documento'), 'Juan');
 
     expect(await screen.findByText('Perez, Juan')).toBeInTheDocument();
+    await waitFor(() => expect(mockSearchPersons).toHaveBeenLastCalledWith({ q: 'Juan' }));
+    expect(mockSearchPersons.mock.calls.every(([params]) => Object.keys(params).length === 1 && 'q' in params)).toBe(true);
     expect(screen.queryByText('PER-001')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Perez, Juan/i }));
+    await user.click(await screen.findByRole('button', { name: /Perez, Juan/i }));
 
     expect(await screen.findByText(/este cambio modifica el registro global del cliente/i)).toBeInTheDocument();
     expect(screen.getByText('Ford Focus')).toBeInTheDocument();
@@ -181,9 +183,11 @@ describe('management pages', () => {
 
     await user.type(screen.getByPlaceholderText('Buscar por patente, marca o modelo'), 'AB123CD');
     expect(await screen.findByText('Toyota Corolla')).toBeInTheDocument();
+    await waitFor(() => expect(mockSearchVehicles).toHaveBeenLastCalledWith({ q: 'AB123CD' }));
+    expect(mockSearchVehicles.mock.calls.every(([params]) => Object.keys(params).length === 1 && 'q' in params)).toBe(true);
     expect(screen.queryByText('VEH-001')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Toyota Corolla/i }));
+    await user.click(await screen.findByRole('button', { name: /Toyota Corolla/i }));
 
     expect(await screen.findByText('Personas vinculadas')).toBeInTheDocument();
     expect(screen.getByText('TITULAR')).toBeInTheDocument();
@@ -239,6 +243,22 @@ describe('management pages', () => {
     expect(screen.getByRole('button', { name: /nuevo/i })).toBeInTheDocument();
     renderWithQuery(<ManagementProvidersPage />);
     expect(await screen.findByText('Proveedores')).toBeInTheDocument();
+  });
+
+  it('crea aseguradoras únicamente con nombre y conserva los campos de edición', async () => {
+    const user = userEvent.setup();
+    mockCatalogList.mockResolvedValue([]);
+    mockCatalogCreate.mockResolvedValue({ id: 4, code: 'AUTO-4', name: 'Seguros Delta', active: true });
+
+    renderWithQuery(<ManagementInsurancePage />);
+
+    await user.click(await screen.findByRole('button', { name: /nuevo/i }));
+    expect(screen.getByLabelText('Nombre *')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Código *')).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText('Nombre *'), 'Seguros Delta');
+    await user.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    await waitFor(() => expect(mockCatalogCreate).toHaveBeenCalledWith({ name: 'Seguros Delta' }));
   });
 
   it('advierte al salir con cambios sin guardar y conserva un layout responsive', async () => {

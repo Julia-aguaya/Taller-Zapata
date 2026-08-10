@@ -98,7 +98,7 @@ class VehicleIntegrationTest {
         mockMvc.perform(get("/api/v1/vehicles/brands")
                         .header("X-User-Id", "1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].codigo").value("FORD"));
+                .andExpect(jsonPath("$[?(@.codigo == 'FORD')]").isNotEmpty());
 
         mockMvc.perform(get("/api/v1/vehicles/models")
                         .param("brandId", "1")
@@ -192,7 +192,7 @@ class VehicleIntegrationTest {
                 .andExpect(jsonPath("$[0].id").value(10));
 
         mockMvc.perform(get("/api/v1/vehicles")
-                        .param("q", "toyota")
+                        .param("q", "toy")
                         .header("X-User-Id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))

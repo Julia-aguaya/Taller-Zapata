@@ -81,6 +81,43 @@ class InsuranceIntegrationTest {
     }
 
     @Test
+    void shouldCreateCompanyWithNameOnlyAndKeepExplicitCodeCompatible() throws Exception {
+        mockMvc.perform(post("/api/v1/insurance/companies")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Seguros Delta\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Seguros Delta"))
+                .andExpect(jsonPath("$.code").value(org.hamcrest.Matchers.startsWith("AUTO-")));
+
+        mockMvc.perform(post("/api/v1/insurance/companies")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"code\":\"DELTA\",\"name\":\"Seguros Delta Código\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("DELTA"));
+
+        mockMvc.perform(get("/api/v1/insurance/companies")
+                        .param("q", "Delta")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2));
+    }
+
+    @Test
+    void shouldSearchProvidersByNameWithoutSurnameFields() throws Exception {
+        jdbcTemplate.update("INSERT INTO proveedores (id, public_id, nombre, activo) VALUES (?, ?, ?, ?)", 701L, "00000000-0000-0000-0000-000000007001", "Autopartes Delta", true);
+
+        mockMvc.perform(get("/api/v1/providers")
+                        .param("q", "partes del")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].name").value("Autopartes Delta"))
+                .andExpect(jsonPath("$[0].surname").doesNotExist());
+    }
+
+    @Test
     void shouldUpsertCaseInsuranceProcessingAndFranchise() throws Exception {
         jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, cuit, requiere_fotos_reparado, dias_pago_esperados, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 1L, "00000000-0000-0000-0000-000000004001", "RIVA", "Rivadavia", "30711222334", true, 30, true);
 

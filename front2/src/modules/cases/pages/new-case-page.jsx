@@ -75,7 +75,7 @@ export const NewCasePage = () => {
 
   const vehicleSearchQuery = useQuery({
     queryKey: ['vehicles', 'search', vehicleDebounced],
-    queryFn: () => searchVehicles({ q: vehicleDebounced, plate: vehicleDebounced }),
+    queryFn: () => searchVehicles({ q: vehicleDebounced }),
     enabled: vehicleDebounced.length >= 2 && !selectedVehicleId,
   });
 

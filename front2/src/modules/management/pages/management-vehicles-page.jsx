@@ -47,7 +47,7 @@ export const ManagementVehiclesPage = () => {
 
   const vehiclesQuery = useQuery({
     queryKey: ['management', 'vehicles', 'search', normalizedSearch],
-    queryFn: () => searchVehicles({ q: normalizedSearch, plate: normalizedSearch }),
+    queryFn: () => searchVehicles({ q: normalizedSearch }),
     enabled: true,
   });
 

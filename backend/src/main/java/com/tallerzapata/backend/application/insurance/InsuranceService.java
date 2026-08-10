@@ -124,9 +124,10 @@ public class InsuranceService {
     public InsuranceCompanyResponse createCompany(InsuranceCompanyCreateRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         accessControlService.requirePermission(currentUser, "seguro.crear");
-        if (companyRepository.existsByCodeIgnoreCase(request.code().trim())) throw new ConflictException("Ya existe la compania con codigo " + request.code());
+        String code = blankToNull(request.code());
+        if (code != null && companyRepository.existsByCodeIgnoreCase(code)) throw new ConflictException("Ya existe la compania con codigo " + request.code());
         InsuranceCompanyEntity entity = new InsuranceCompanyEntity();
-        entity.setCode(request.code().trim().toUpperCase());
+        entity.setCode(code == null ? "AUTO-" + java.util.UUID.randomUUID() : code.toUpperCase());
         entity.setName(request.name().trim());
         entity.setTaxId(blankToNull(request.taxId()));
         entity.setRequiresRepairPhotos(Boolean.TRUE.equals(request.requiresRepairPhotos()));
