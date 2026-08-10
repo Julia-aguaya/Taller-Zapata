@@ -9,7 +9,16 @@ import { Input } from '@/shared/ui/input';
 
 const initialForm = (item = {}) => ({ code: item.code || '', name: item.name || '', taxId: item.taxId || '', requiresRepairPhotos: Boolean(item.requiresRepairPhotos), expectedPaymentDays: item.expectedPaymentDays ?? '' });
 
-export const ManagementInsurancePage = () => <CatalogShell title="Compañías de seguros" description="Consultá, creá y actualizá las aseguradoras disponibles para las carpetas." singular="Compañía" queryPrefix={['insurance', 'companies']} api={insuranceCompaniesApi} initialForm={initialForm} listLabel={(item) => item.name || item.code || 'Sin nombre'} fields={[{ name: 'code', label: 'Código', required: true }, { name: 'name', label: 'Nombre', required: true }, { name: 'taxId', label: 'CUIT' }, { name: 'expectedPaymentDays', label: 'Días de pago esperados', type: 'number' }, { name: 'requiresRepairPhotos', label: 'Requiere fotos de reparación', type: 'checkbox' }]} createFields={[{ name: 'name', label: 'Nombre', required: true }]} createPayload={({ name }) => ({ name })} invalidate={[['cases'], ['insurance']]} renderDetail={(company) => <CompanyContacts companyId={company.id} />} />;
+const createErrorMessage = (error) => {
+  const details = error.httpStatus === 400 ? error.payload?.details : null;
+  if (!Array.isArray(details) || details.length === 0) return null;
+
+  const nameDetail = details.find((detail) => /^name\s*:/i.test(detail));
+  if (!nameDetail) return null;
+  return /must not be blank|must not be null|obligatorio/i.test(nameDetail) ? 'El nombre es obligatorio' : `Nombre: ${nameDetail.replace(/^name\s*:\s*/i, '')}`;
+};
+
+export const ManagementInsurancePage = () => <CatalogShell title="Compañías de seguros" description="Consultá, creá y actualizá las aseguradoras disponibles para las carpetas." singular="Compañía" queryPrefix={['insurance', 'companies']} api={insuranceCompaniesApi} initialForm={initialForm} listLabel={(item) => item.name || item.code || 'Sin nombre'} fields={[{ name: 'code', label: 'Código', required: true }, { name: 'name', label: 'Nombre', required: true }, { name: 'taxId', label: 'CUIT' }, { name: 'expectedPaymentDays', label: 'Días de pago esperados', type: 'number' }, { name: 'requiresRepairPhotos', label: 'Requiere fotos de reparación', type: 'checkbox' }]} createFields={[{ name: 'name', label: 'Nombre', required: true }]} createPayload={({ name }) => ({ name })} createErrorMessage={createErrorMessage} invalidate={[['cases'], ['insurance']]} renderDetail={(company) => <CompanyContacts companyId={company.id} />} />;
 
 const CompanyContacts = ({ companyId }) => {
   const queryClient = useQueryClient();

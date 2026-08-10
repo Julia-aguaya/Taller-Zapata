@@ -14,11 +14,12 @@ const mockCatalogCreate = vi.fn();
 const mockCatalogUpdate = vi.fn();
 const mockCatalogDeactivate = vi.fn();
 const mockRequestJson = vi.fn();
+const mockToastError = vi.fn();
 
 vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
-    error: vi.fn(),
+    error: (...args) => mockToastError(...args),
   },
 }));
 
@@ -80,6 +81,7 @@ beforeEach(() => {
   mockCatalogUpdate.mockReset();
   mockCatalogDeactivate.mockReset();
   mockRequestJson.mockReset();
+  mockToastError.mockReset();
 });
 
 afterEach(() => {
@@ -259,6 +261,22 @@ describe('management pages', () => {
     await user.click(screen.getByRole('button', { name: 'Guardar' }));
 
     await waitFor(() => expect(mockCatalogCreate).toHaveBeenCalledWith({ name: 'Seguros Delta' }));
+  });
+
+  it('muestra el detalle de validación del nombre al crear una aseguradora', async () => {
+    const user = userEvent.setup();
+    mockCatalogList.mockResolvedValue([]);
+    mockCatalogCreate.mockRejectedValue(Object.assign(new Error('Validation error'), {
+      httpStatus: 400,
+      payload: { details: ['name: must not be blank'] },
+    }));
+
+    renderWithQuery(<ManagementInsurancePage />);
+
+    await user.click(await screen.findByRole('button', { name: /nuevo/i }));
+    await user.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    await waitFor(() => expect(mockToastError).toHaveBeenCalledWith('El nombre es obligatorio'));
   });
 
   it('advierte al salir con cambios sin guardar y conserva un layout responsive', async () => {

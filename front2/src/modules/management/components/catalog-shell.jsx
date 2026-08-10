@@ -18,7 +18,7 @@ const useDebouncedValue = (value, delay = 300) => {
   return debounced;
 };
 
-export const CatalogShell = ({ title, description, singular, queryPrefix, api, fields, createFields = fields, createPayload = (form) => form, initialForm, listLabel, invalidate = [], renderDetail }) => {
+export const CatalogShell = ({ title, description, singular, queryPrefix, api, fields, createFields = fields, createPayload = (form) => form, createErrorMessage, initialForm, listLabel, invalidate = [], renderDetail }) => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebouncedValue(search);
@@ -49,7 +49,7 @@ export const CatalogShell = ({ title, description, singular, queryPrefix, api, f
       setEditing(false);
       toast.success(`${singular} ${creating ? 'creado' : 'actualizado'}.`);
     },
-    onError: (error) => toast.error(error.message || `No pude guardar el ${singular.toLowerCase()}.`),
+    onError: (error) => toast.error(creating ? createErrorMessage?.(error) || error.message || `No pude guardar el ${singular.toLowerCase()}.` : error.message || `No pude guardar el ${singular.toLowerCase()}.`),
   });
   const deactivateMutation = useMutation({
     mutationFn: () => api.deactivate(selectedId),

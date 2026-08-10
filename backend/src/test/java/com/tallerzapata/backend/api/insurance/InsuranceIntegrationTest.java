@@ -82,13 +82,15 @@ class InsuranceIntegrationTest {
 
     @Test
     void shouldCreateCompanyWithNameOnlyAndKeepExplicitCodeCompatible() throws Exception {
-        mockMvc.perform(post("/api/v1/insurance/companies")
+        String generatedCodeResponse = mockMvc.perform(post("/api/v1/insurance/companies")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Seguros Delta\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Seguros Delta"))
-                .andExpect(jsonPath("$.code").value(org.hamcrest.Matchers.startsWith("AUTO-")));
+                .andExpect(jsonPath("$.code").value(org.hamcrest.Matchers.startsWith("AUTO-")))
+                .andReturn().getResponse().getContentAsString();
+        assertThat(objectMapper.readTree(generatedCodeResponse).get("code").asText()).hasSizeLessThanOrEqualTo(50);
 
         mockMvc.perform(post("/api/v1/insurance/companies")
                         .header("X-User-Id", "3")
