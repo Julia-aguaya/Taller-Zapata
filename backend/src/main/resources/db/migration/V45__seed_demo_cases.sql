@@ -4,6 +4,8 @@
 -- - 9002TC: todo riesgo en tramite
 -- - 9003CLZ: CLEAS en gestion
 
+START TRANSACTION;
+
 INSERT INTO marcas_vehiculo (id, codigo, nombre, activo) VALUES
     (9101, 'CHEVROLET', 'Chevrolet', 1),
     (9102, 'PEUGEOT', 'Peugeot', 1),
