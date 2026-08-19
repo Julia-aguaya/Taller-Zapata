@@ -48,6 +48,34 @@ describe('GestionTramiteEditor', () => {
     expect(screen.queryByText('Franquicia')).toBeNull();
   });
 
+  it('renders the isolated local CLEAS definition and its pending warning', () => {
+    mount({ caseTypeCode: 'CLEAS' });
+
+    expect(screen.getByText('Definición del CLEAS')).toBeTruthy();
+    expect(screen.getByText('No se puede avanzar hasta recibir el dictamen.')).toBeTruthy();
+  });
+
+  it('shows the franchise distribution preview for a rejected CLEAS', () => {
+    mount({ caseTypeCode: 'CLEAS' });
+
+    fireEvent.change(screen.getByLabelText('CLEAS sobre'), { target: { value: 'franchise' } });
+    fireEvent.change(screen.getAllByLabelText('Dictamen')[0], { target: { value: 'unfavorable' } });
+    fireEvent.change(screen.getByLabelText('Monto de cotización acordada'), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText('Monto de franquicia'), { target: { value: '80' } });
+    fireEvent.change(screen.getByLabelText('Monto que la Cía. exige al cliente'), { target: { value: '20' } });
+
+    expect(screen.getByText('Distribución de la franquicia')).toBeTruthy();
+    expect(screen.getByLabelText('A facturar Cía.')).toHaveValue('40');
+    expect(screen.getByLabelText('A cargo del cliente')).toHaveValue('60');
+  });
+
+  it('renders CLEAS in preview mode without changing the other case editor branches', () => {
+    render(<GestionTramiteEditor caseId={42} caseDetail={{ caseTypeCode: 'TODO_RIESGO' }} previewCleas budget={null} onSaved={vi.fn()} />);
+
+    expect(screen.getByText('Los campos CLEAS de esta vista son locales y no se guardan.')).toBeTruthy();
+    expect(screen.getByText('Definición del CLEAS')).toBeTruthy();
+  });
+
   it('shows Generar PDF button', () => {
     mount();
     expect(screen.getByText('Generar PDF')).toBeTruthy();

@@ -12,6 +12,7 @@ const mockUseQuery = vi.fn();
 
 vi.mock('react-router-dom', () => ({
   useParams: () => ({ caseId: '1' }),
+  useSearchParams: () => [new URLSearchParams()],
 }));
 
 vi.mock('@/modules/cases/api/cases-api', () => ({

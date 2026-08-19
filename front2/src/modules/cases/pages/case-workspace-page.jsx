@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Clock, Hammer, Lock, ReceiptText, Save, ShieldCheck, User, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
@@ -131,6 +131,9 @@ export const getNextStepDescriptor = ({ tabs = [], budget, widgets, particularFi
 
 export const CaseWorkspacePage = () => {
   const { caseId } = useParams();
+  const [searchParams] = useSearchParams();
+  // Temporary visual-only switch. Remove this line and the previewCleas prop once CLEAS arrives from the backend.
+  const previewCleas = searchParams.get('previewCleas') === '1';
   const queryClient = useQueryClient();
   const [selectedTab, setSelectedTab] = useState('DETALLES');
   const [selectedReadinessTab, setSelectedReadinessTab] = useState(null);
@@ -329,7 +332,7 @@ export const CaseWorkspacePage = () => {
           ) : currentTab?.tabCode === 'PRESUPUESTO' ? (
             <BudgetEditorPanel caseId={caseId} budget={budget} caseDetail={caseDetail} workshopInfo={workshopInfo} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'GESTION_TRAMITE' ? (
-            <GestionTramiteEditor caseId={caseId} caseDetail={caseDetail} budget={budget} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
+            <GestionTramiteEditor caseId={caseId} caseDetail={caseDetail} budget={budget} previewCleas={previewCleas} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'GESTION_REPARACION' ? (
             <RepairEditorPanel caseId={caseId} caseDetail={caseDetail} latestAppointment={latestAppointment} latestIntake={latestIntake} latestOutcome={latestOutcome} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'PAGOS' ? (

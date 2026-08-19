@@ -7,11 +7,16 @@ import { DeductibleSection } from '@/modules/cases/components/deductible-section
 import { DocumentsSection } from '@/modules/cases/components/documents-section';
 import { ProcedureSection } from '@/modules/cases/components/procedure-section';
 import { TaskAgenda } from '@/modules/cases/components/task-agenda';
+import { CleasGestionTramiteEditor } from '@/modules/cases/components/cleas/cleas-gestion-tramite-editor';
 import { readStoredAuth } from '@/shared/auth/session-storage';
 
-export const GestionTramiteEditor = ({ caseId, caseDetail, budget, onSaved }) => {
+export const GestionTramiteEditor = ({ caseId, caseDetail, budget, onSaved, previewCleas = false }) => {
   const caseTypeCode = caseDetail?.caseTypeCode;
   const showFranchise = caseTypeCode !== 'GRANIZO';
+
+  if (caseTypeCode === 'CLEAS' || previewCleas) {
+    return <CleasGestionTramiteEditor caseId={caseId} caseDetail={caseDetail} previewMode={previewCleas} />;
+  }
 
   const generatePdf = async () => {
     try {
