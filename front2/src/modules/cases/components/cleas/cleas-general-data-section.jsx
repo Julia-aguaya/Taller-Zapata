@@ -17,11 +17,12 @@ export const CleasGeneralDataSection = ({ caseDetail }) => (
       <h4 className="text-sm font-semibold">Datos generales del trámite</h4>
     </div>
 
-    {/* Cambiá md:grid-cols-3, gap o el orden de estos bloques para ajustar la vista CLEAS. */}
-    <div className="mt-4 grid gap-x-6 gap-y-3 md:grid-cols-3">
-      <SummaryValue label="Carpeta" value={caseDetail?.folderCode} />
-      <SummaryValue label="Cliente" value={caseDetail?.principalCustomerName} />
-      <SummaryValue label="Dominio" value={caseDetail?.principalVehiclePlate} />
+    {/* Ajuste visual CLEAS: cambiá grid-cols, gap, order o tamaños de estos bloques sin modificar lógica. */}
+    <div className="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-4">
+      <SummaryValue label="Fecha del siniestro" value={caseDetail?.incidentDate} />
+      <SummaryValue label="Prescripción del trámite" value={caseDetail?.prescriptionDate} />
+      <SummaryValue label="Fecha presentado" value={caseDetail?.presentedAt} />
+      <SummaryValue label="Días tramitando" value={caseDetail?.daysInProcess} />
     </div>
   </Card>
 );

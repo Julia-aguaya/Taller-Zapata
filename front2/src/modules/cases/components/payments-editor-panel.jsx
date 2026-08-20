@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { cloneElement, useId, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ban, Building2, CheckCircle, FileDown, Receipt, Save } from 'lucide-react';
 import { toast } from 'sonner';
@@ -11,6 +11,7 @@ import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
 import { Dialog } from '@/shared/ui/dialog';
+import { Card } from '@/shared/ui/card';
 
 const toAmount = (value) => {
   const parsed = Number(value);
@@ -40,7 +41,7 @@ const PAYMENT_METHODS = [
   { value: 'OTRO', label: 'Otro' },
 ];
 
-export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFinanceSummary, onSaved }) => {
+export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFinanceSummary, nroCleas, cleasAgreedAmount, cleasPaymentsUi, onCleasPaymentsUiChange, onSaved }) => {
   const queryClient = useQueryClient();
   const { session } = useSession();
 
@@ -63,6 +64,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   });
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [cancelMovement, setCancelMovement] = useState(null);
+  const paymentDocumentInputRef = useRef(null);
 
   const financeCatalogsQuery = useQuery({ queryKey: ['finance', 'catalogs'], queryFn: getFinanceCatalogs });
   const movementsQuery = useQuery({ queryKey: ['cases', String(caseId), 'financial-movements'], queryFn: () => listFinancialMovements(caseId) });
@@ -71,6 +73,9 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const processing = insuranceProcessingQuery.data;
 
   const isInsurance = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
+  const isCleas = caseDetail?.caseTypeCode === 'CLEAS';
+  const cleasNumberDisplay = nroCleas?.trim() ? nroCleas : 'Sin número de CLEAS cargado';
+  const cleasAmountToBill = cleasAgreedAmount || '';
 
   // Derivar MO y repuestos del presupuesto
   const budgetItems = budget?.items ?? [];
@@ -183,9 +188,10 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
         <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Receipt className="h-5 w-5" /></div>
         <h4 className="text-lg font-semibold">Pagos</h4>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <MiniCard label="Cliente" value={caseDetail.principalCustomerName || '—'} />
-          <MiniCard label="Vehículo" value={caseDetail.principalVehiclePlate || '—'} />
-          <MiniCard label="Cotizado (según cpte.)" value={formatCurrency(cotizadoConIva)} highlight />
+           <MiniCard label="Cliente" value={caseDetail.principalCustomerName || '—'} />
+           <MiniCard label="Vehículo" value={caseDetail.principalVehiclePlate || '—'} />
+           {isCleas ? <MiniCard label="N.º de CLEAS" value={cleasNumberDisplay} /> : null}
+           <MiniCard label="Cotizado (según cpte.)" value={formatCurrency(cotizadoConIva)} highlight />
           <MiniCard label="Pendiente" value={formatCurrency(pendiente)} highlight={pendiente > 0} variant={pendiente <= 0 ? 'success' : 'warning'} />
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -237,6 +243,17 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
         </div>
       ) : null}
 
+      {isCleas ? (
+        <CleasBillingCard
+          amountToBill={cleasAmountToBill}
+          billing={cleasPaymentsUi.billing}
+          cleasNumberDisplay={cleasNumberDisplay}
+          onChange={(name) => (event) => onCleasPaymentsUiChange((current) => ({ ...current, billing: { ...current.billing, [name]: event.target.value } }))}
+          onAddInvoice={() => onCleasPaymentsUiChange((current) => ({ ...current, invoiceAcknowledged: true }))}
+          invoiceAcknowledged={cleasPaymentsUi.invoiceAcknowledged}
+        />
+      ) : null}
+
       {/* Comprobante + Formulario */}
       <div className="rounded-3xl border border-border/70 bg-card p-5">
         <div className="flex items-center justify-between">
@@ -246,9 +263,9 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
       </div>
 
       {/* Modal: Registrar pago */}
-      <Dialog open={showPaymentModal} onClose={() => setShowPaymentModal(false)} title="Registrar pago" description={`Cliente: ${caseDetail?.principalCustomerName || ''} — ${caseDetail?.principalVehiclePlate || ''}`}>
+       <Dialog open={showPaymentModal} onClose={() => setShowPaymentModal(false)} title="Registrar pago" description={<>{`Cliente: ${caseDetail?.principalCustomerName || ''} — ${caseDetail?.principalVehiclePlate || ''}`}{isCleas ? <><br /><span>N.º de CLEAS: {cleasNumberDisplay}</span></> : null}</>} scrollable={isCleas}>
 
-        {/* Tipo de comprobante */}
+         {/* Tipo de comprobante */}
         <div className="mb-5 rounded-2xl border border-border/60 bg-background/70 p-4">
           <Label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tipo de comprobante</Label>
           <div className="flex flex-wrap gap-2">
@@ -308,6 +325,37 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
           <Field label="Referencia externa"><Input value={form.externalReference} onChange={(e) => setForm((c) => ({ ...c, externalReference: e.target.value }))} placeholder="N° de operación, cheque, etc." /></Field>
           <Field label="Motivo / notas"><Textarea rows={3} value={form.reason} onChange={(e) => setForm((c) => ({ ...c, reason: e.target.value }))} placeholder="Detalle del pago" /></Field>
         </div>
+
+        {isCleas ? (
+          <div className="mt-5 rounded-2xl border border-primary/15 bg-primary/5 p-4">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-primary">Datos CLEAS del pago</p>
+            {/* Grupo visual CLEAS: datos principales del pago, responsive sin afectar el formulario persistente. */}
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <Field label="Fecha de pago"><Input type="date" value={cleasPaymentsUi.paymentDraft.paidAt} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, paidAt: event.target.value } }))} /></Field>
+              <Field label="Estado del pago"><Select value={cleasPaymentsUi.paymentDraft.status} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, status: event.target.value } }))} options={[{ value: 'PENDIENTE', label: 'Pendiente' }, { value: 'EN_TERMINO', label: 'En término' }, { value: 'ATRASADO', label: 'Atrasado' }]} /></Field>
+              <Field label="Monto depositado"><Input type="number" min="0" step="0.01" value={cleasPaymentsUi.paymentDraft.depositedAmount} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, depositedAmount: event.target.value } }))} /></Field>
+              <Field label="Retenciones"><Select value={cleasPaymentsUi.paymentDraft.hasRetentions} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, hasRetentions: event.target.value } }))} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
+              <div className="flex items-end">
+                <input ref={paymentDocumentInputRef} type="file" className="hidden" onChange={(event) => { const file = event.target.files?.[0] ?? null; onCleasPaymentsUiChange((current) => ({ ...current, paymentDocument: { file, name: file?.name || '' } })); }} />
+                <Button type="button" variant="outline" className="w-full" onClick={() => paymentDocumentInputRef.current?.click()}>Documentación de pago</Button>
+              </div>
+              {cleasPaymentsUi.paymentDocument.name ? <p className="self-end text-xs text-muted-foreground">{cleasPaymentsUi.paymentDocument.name}</p> : null}
+            </div>
+            {cleasPaymentsUi.paymentDraft.hasRetentions === 'SI' ? (
+              <>
+                {/* Grupo visual CLEAS: retenciones, visible solo cuando se informan. */}
+                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  <Field label="IVA"><Input type="number" min="0" step="0.01" value={cleasPaymentsUi.paymentDraft.vatRetention} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, vatRetention: event.target.value } }))} /></Field>
+                  <Field label="Ganancias"><Input type="number" min="0" step="0.01" value={cleasPaymentsUi.paymentDraft.earningsRetention} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, earningsRetention: event.target.value } }))} /></Field>
+                  <Field label="Contribución patrimonial"><Input type="number" min="0" step="0.01" value={cleasPaymentsUi.paymentDraft.patrimonialContribution} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, patrimonialContribution: event.target.value } }))} /></Field>
+                  <Field label="IIBB"><Input type="number" min="0" step="0.01" value={cleasPaymentsUi.paymentDraft.iibbRetention} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, iibbRetention: event.target.value } }))} /></Field>
+                  <Field label="DReI"><Input type="number" min="0" step="0.01" value={cleasPaymentsUi.paymentDraft.dreiRetention} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, dreiRetention: event.target.value } }))} /></Field>
+                  <Field label="Otra"><Input type="number" min="0" step="0.01" value={cleasPaymentsUi.paymentDraft.otherRetention} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, otherRetention: event.target.value } }))} /></Field>
+                </div>
+              </>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="mt-5 flex gap-3">
           <Button variant="outline" className="flex-1" onClick={() => setShowPaymentModal(false)}>Cancelar</Button>
@@ -464,12 +512,49 @@ const MiniCard = ({ label, value, highlight, variant }) => (
   </div>
 );
 
-const Field = ({ label, children }) => (
-  <div className="space-y-1.5">
-    <Label className="text-xs">{label}</Label>
-    {children}
-  </div>
+const CleasBillingCard = ({ amountToBill, billing, cleasNumberDisplay, onChange, onAddInvoice, invoiceAcknowledged }) => (
+  <Card className="rounded-3xl border-border/70 p-5">
+    <h4 className="text-lg font-semibold">Facturación</h4>
+    {/* Grupo visual CLEAS: identificación de la factura. */}
+    <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <Field label="Cía. aseguradora"><Input value={billing.insuranceCompany} onChange={onChange('insuranceCompany')} /></Field>
+      <Field label="N.º de siniestro"><Input value={billing.claimNumber} onChange={onChange('claimNumber')} /></Field>
+      <Field label="N.º de CLEAS"><Input value={cleasNumberDisplay} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
+      <Field label="A facturar Cía."><Input value={amountToBill} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
+      <Field label="Fecha de acuerdo"><Input type="date" value={billing.agreementDate} onChange={onChange('agreementDate')} /></Field>
+      <Field label="N.º de factura"><Input value={billing.invoiceNumber} onChange={onChange('invoiceNumber')} /></Field>
+      <Field label="Razón social"><Input value={billing.businessName} onChange={onChange('businessName')} /></Field>
+    </div>
+    {/* Grupo visual CLEAS: importes relacionados, sin cálculos ni persistencia. */}
+    <div className="mt-4 rounded-2xl border border-border/60 bg-background/50 p-4">
+      <div className="grid gap-4 md:grid-cols-3">
+        <Field label="Importe total"><Input type="number" min="0" step="0.01" value={billing.totalAmount} onChange={onChange('totalAmount')} /></Field>
+        <Field label="Neto gravado"><Input type="number" min="0" step="0.01" value={billing.taxableNet} onChange={onChange('taxableNet')} /></Field>
+        <Field label="IVA"><Input type="number" min="0" step="0.01" value={billing.vat} onChange={onChange('vat')} /></Field>
+      </div>
+    </div>
+    <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <Field label="Cliente firma conforme"><Select value={billing.customerSigned} onChange={onChange('customerSigned')} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
+      <Field label="Pasado a pagos"><Select value={billing.passedToPayments} onChange={onChange('passedToPayments')} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
+      <Field label="Fecha estimada de pago"><Input type="date" value={billing.estimatedPaymentDate} onChange={onChange('estimatedPaymentDate')} /></Field>
+    </div>
+    <div className="mt-5 flex flex-wrap items-center gap-3">
+      <Button type="button" onClick={onAddInvoice}>+ Agregar factura</Button>
+      {invoiceAcknowledged ? <span className="text-sm text-muted-foreground">Factura agregada visualmente.</span> : null}
+    </div>
+  </Card>
 );
+
+const Field = ({ label, children }) => {
+  const id = useId();
+
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id} className="text-xs">{label}</Label>
+      {cloneElement(children, { id })}
+    </div>
+  );
+};
 
 const Select = ({ options, ...props }) => (
   <select className="flex h-10 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" {...props}>

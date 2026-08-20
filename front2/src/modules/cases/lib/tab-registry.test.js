@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TAB_REGISTRY, getOperationalTabs, getTabIcon, getTabLabel } from './tab-registry';
+import { CLEAS_TAB_CODES, TAB_REGISTRY, getCleasTabs, getOperationalTabs, getTabIcon, getTabLabel } from './tab-registry';
 
 describe('TAB_REGISTRY', () => {
   it('has all 5 operational tabs', () => {
@@ -38,6 +38,18 @@ describe('getOperationalTabs', () => {
 
   it('handles undefined input', () => {
     expect(getOperationalTabs()).toEqual([]);
+  });
+});
+
+describe('getCleasTabs', () => {
+  it('returns the canonical CLEAS tabs in order while preserving supplied readiness entries', () => {
+    const suppliedTab = { tabCode: 'PAGOS', allowed: false, completed: true, blockingReasons: ['Saldo pendiente'], warningReasons: ['Revisar comprobante'] };
+
+    const tabs = getCleasTabs([suppliedTab, { tabCode: 'UNKNOWN', allowed: true }]);
+
+    expect(tabs.map((tab) => tab.tabCode)).toEqual(CLEAS_TAB_CODES);
+    expect(tabs[4]).toBe(suppliedTab);
+    expect(tabs[0]).toEqual({ tabCode: 'FICHA_TECNICA', allowed: true, completed: false, blockingReasons: [], warningReasons: [] });
   });
 });
 

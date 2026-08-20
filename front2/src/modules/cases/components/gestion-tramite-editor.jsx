@@ -10,12 +10,12 @@ import { TaskAgenda } from '@/modules/cases/components/task-agenda';
 import { CleasGestionTramiteEditor } from '@/modules/cases/components/cleas/cleas-gestion-tramite-editor';
 import { readStoredAuth } from '@/shared/auth/session-storage';
 
-export const GestionTramiteEditor = ({ caseId, caseDetail, budget, onSaved, previewCleas = false }) => {
+export const GestionTramiteEditor = ({ caseId, caseDetail, budget, nroCleas, setNroCleas, cleasAgreedAmount, setCleasAgreedAmount, onSaved }) => {
   const caseTypeCode = caseDetail?.caseTypeCode;
   const showFranchise = caseTypeCode !== 'GRANIZO';
 
-  if (caseTypeCode === 'CLEAS' || previewCleas) {
-    return <CleasGestionTramiteEditor caseId={caseId} caseDetail={caseDetail} previewMode={previewCleas} />;
+  if (caseTypeCode === 'CLEAS') {
+    return <CleasGestionTramiteEditor caseId={caseId} caseDetail={caseDetail} nroCleas={nroCleas} setNroCleas={setNroCleas} cleasAgreedAmount={cleasAgreedAmount} setCleasAgreedAmount={setCleasAgreedAmount} />;
   }
 
   const generatePdf = async () => {

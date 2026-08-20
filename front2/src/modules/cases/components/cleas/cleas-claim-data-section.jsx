@@ -19,7 +19,7 @@ export const CleasClaimDataSection = ({ values, onChange }) => (
       <h4 className="text-sm font-semibold">Datos del siniestro</h4>
     </div>
 
-    {/* Esta grilla y el orden de Field son independientes de los otros tipos de trámite. */}
+    {/* Ajuste visual CLEAS: cambiá grid-cols, gap, order o tamaños de esta grilla sin tocar otros tipos de trámite. */}
     <div className="mt-4 grid gap-x-6 gap-y-3 md:grid-cols-2">
       <Field label="Lugar de ocurrencia"><Input value={values.location} onChange={onChange('location')} /></Field>
       <Field label="Hora"><Input type="time" value={values.time} onChange={onChange('time')} /></Field>

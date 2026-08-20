@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { GestionTramiteEditor } from './gestion-tramite-editor';
@@ -17,12 +18,20 @@ vi.mock('@/shared/auth/session-storage', () => ({ readStoredAuth: () => ({ userI
 
 global.fetch = vi.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob()) });
 
-const mount = (overrides = {}) => render(<GestionTramiteEditor
-  caseId={42}
-  caseDetail={{ caseTypeCode: 'TODO_RIESGO', ...overrides }}
-  budget={{ items: [{ laborAmount: 100000, partValue: 50000 }] }}
-  onSaved={vi.fn()}
-/>);
+const MountedGestionTramiteEditor = ({ overrides }) => {
+  const [cleasAgreedAmount, setCleasAgreedAmount] = useState('');
+
+  return <GestionTramiteEditor
+    caseId={42}
+    caseDetail={{ caseTypeCode: 'TODO_RIESGO', ...overrides }}
+    budget={{ items: [{ laborAmount: 100000, partValue: 50000 }] }}
+    cleasAgreedAmount={cleasAgreedAmount}
+    setCleasAgreedAmount={setCleasAgreedAmount}
+    onSaved={vi.fn()}
+  />;
+};
+
+const mount = (overrides = {}) => render(<MountedGestionTramiteEditor overrides={overrides} />);
 
 describe('GestionTramiteEditor', () => {
   it('renders all 6 sections for TODO_RIESGO', () => {
@@ -32,7 +41,7 @@ describe('GestionTramiteEditor', () => {
     expect(screen.getByText('Datos del siniestro')).toBeTruthy();
     expect(screen.getByText('Franquicia')).toBeTruthy();
     expect(screen.getByText('Documentación')).toBeTruthy();
-    expect(screen.getByText('Tramitación')).toBeTruthy();
+    expect(screen.getByText('Tramitacion')).toBeTruthy();
   });
 
   it('renders agenda de tareas', () => {
@@ -48,11 +57,12 @@ describe('GestionTramiteEditor', () => {
     expect(screen.queryByText('Franquicia')).toBeNull();
   });
 
-  it('renders the isolated local CLEAS definition and its pending warning', () => {
+  it('renders the isolated local CLEAS definition with real-case defaults', () => {
     mount({ caseTypeCode: 'CLEAS' });
 
     expect(screen.getByText('Definición del CLEAS')).toBeTruthy();
-    expect(screen.getByText('No se puede avanzar hasta recibir el dictamen.')).toBeTruthy();
+    expect(screen.getByText('CLEAS sobre: Daño total')).toBeTruthy();
+    expect(screen.getByText('Dictamen: A favor')).toBeTruthy();
   });
 
   it('shows the franchise distribution preview for a rejected CLEAS', () => {
@@ -69,11 +79,25 @@ describe('GestionTramiteEditor', () => {
     expect(screen.getByLabelText('A cargo del cliente')).toHaveValue('60');
   });
 
-  it('renders CLEAS in preview mode without changing the other case editor branches', () => {
-    render(<GestionTramiteEditor caseId={42} caseDetail={{ caseTypeCode: 'TODO_RIESGO' }} previewCleas budget={null} onSaved={vi.fn()} />);
+  it('keeps the favorable-total billing amount calculated and read-only for CLEAS', () => {
+    mount({ caseTypeCode: 'CLEAS' });
 
-    expect(screen.getByText('Los campos CLEAS de esta vista son locales y no se guardan.')).toBeTruthy();
-    expect(screen.getByText('Definición del CLEAS')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Monto de cotización acordada'), { target: { value: '125' } });
+
+    expect(screen.getByLabelText('A facturar Cía.')).toHaveValue('125');
+    expect(screen.getByLabelText('A facturar Cía.')).toHaveAttribute('readonly');
+    expect(screen.queryByText('Distribución de la franquicia')).toBeNull();
+    expect(screen.queryByLabelText('Monto de franquicia')).toBeNull();
+    expect(screen.queryByLabelText('A cargo del cliente')).toBeNull();
+  });
+
+  it('passes the CLEAS insurance input change to the lifted handler', () => {
+    const setNroCleas = vi.fn();
+    render(<GestionTramiteEditor caseId={42} caseDetail={{ caseTypeCode: 'CLEAS' }} budget={null} nroCleas="CLEAS-1" setNroCleas={setNroCleas} onSaved={vi.fn()} />);
+
+    expect(screen.getByLabelText('N.º de CLEAS')).toHaveValue('CLEAS-1');
+    fireEvent.change(screen.getByLabelText('N.º de CLEAS'), { target: { value: 'CLEAS-2' } });
+    expect(setNroCleas).toHaveBeenCalledWith('CLEAS-2');
   });
 
   it('shows Generar PDF button', () => {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Clock, Hammer, Lock, ReceiptText, Save, ShieldCheck, User, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
@@ -17,7 +17,7 @@ import { RepairEditorPanel } from '@/modules/cases/components/repair-editor-pane
 import { PaymentsEditorPanel } from '@/modules/cases/components/payments-editor-panel';
 import { GestionTramiteEditor } from '@/modules/cases/components/gestion-tramite-editor';
 import { requestJson } from '@/shared/api/http-client';
-import { getOperationalTabs, getTabIcon, getTabLabel } from '@/modules/cases/lib/tab-registry';
+import { getCleasTabs, getOperationalTabs, getTabIcon, getTabLabel } from '@/modules/cases/lib/tab-registry';
 
 const currency = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 });
 const formatCurrency = (value) => (value == null ? '-' : currency.format(value));
@@ -51,6 +51,13 @@ const TODO_RIESGO_OVERRIDE_OPTIONS = {
   tramite: [],
   reparacion: [],
 };
+
+const createCleasPaymentsUi = () => ({
+  billing: { insuranceCompany: '', claimNumber: '', agreementDate: '', invoiceNumber: '', businessName: '', totalAmount: '', taxableNet: '', vat: '', customerSigned: 'NO', passedToPayments: 'NO', estimatedPaymentDate: '' },
+  invoiceAcknowledged: false,
+  paymentDraft: { paidAt: '', status: 'PENDIENTE', depositedAmount: '', hasRetentions: 'NO', vatRetention: '', earningsRetention: '', patrimonialContribution: '', iibbRetention: '', dreiRetention: '', otherRetention: '' },
+  paymentDocument: { file: null, name: '' },
+});
 
 export const formatDisplayValue = (value) => {
   if (value == null || value === '') return 'Sin informar';
@@ -131,14 +138,20 @@ export const getNextStepDescriptor = ({ tabs = [], budget, widgets, particularFi
 
 export const CaseWorkspacePage = () => {
   const { caseId } = useParams();
-  const [searchParams] = useSearchParams();
-  // Temporary visual-only switch. Remove this line and the previewCleas prop once CLEAS arrives from the backend.
-  const previewCleas = searchParams.get('previewCleas') === '1';
   const queryClient = useQueryClient();
   const [selectedTab, setSelectedTab] = useState('DETALLES');
   const [selectedReadinessTab, setSelectedReadinessTab] = useState(null);
   const [overrideModal, setOverrideModal] = useState(null); // { domain, currentCode }
   const [overrideReason, setOverrideReason] = useState('');
+  const [nroCleas, setNroCleas] = useState('');
+  const [cleasAgreedAmount, setCleasAgreedAmount] = useState('');
+  const [cleasPaymentsUi, setCleasPaymentsUi] = useState(createCleasPaymentsUi);
+
+  useEffect(() => {
+    setNroCleas('');
+    setCleasAgreedAmount('');
+    setCleasPaymentsUi(createCleasPaymentsUi());
+  }, [caseId]);
 
   const refreshCaseProjection = async () => {
     await queryClient.invalidateQueries({ queryKey: ['cases'] });
@@ -157,8 +170,11 @@ export const CaseWorkspacePage = () => {
     enabled: Boolean(caseId),
   });
 
-  const tabs = workspaceQuery.data?.readiness?.tabs ?? [];
-  const currentTab = useMemo(() => tabs.find((t) => t.tabCode === selectedTab) || tabs[0] || null, [selectedTab, tabs]);
+  const effectiveTabs = useMemo(() => {
+    const readinessTabs = workspaceQuery.data?.readiness?.tabs ?? [];
+    return workspaceQuery.data?.caseDetail?.caseTypeCode === 'CLEAS' ? getCleasTabs(readinessTabs) : readinessTabs;
+  }, [workspaceQuery.data]);
+  const currentTab = useMemo(() => effectiveTabs.find((tab) => tab.tabCode === selectedTab) || effectiveTabs[0] || null, [effectiveTabs, selectedTab]);
 
   const tasksQuery = useQuery({
     queryKey: ['cases', caseId, 'tasks'],
@@ -169,15 +185,15 @@ export const CaseWorkspacePage = () => {
   if (workspaceQuery.isLoading) return <FullScreenLoader label="Abriendo carpeta..." compact />;
   if (workspaceQuery.isError) return <EmptyState title="No pude abrir la carpeta" description={workspaceQuery.error.message} />;
 
-  const { caseDetail, readiness, budget, particularFinanceSummary, latestAppointment, latestIntake, latestOutcome, widgets, workshopInfo } = workspaceQuery.data;
+  const { caseDetail, budget, particularFinanceSummary, latestAppointment, latestIntake, latestOutcome, widgets, workshopInfo } = workspaceQuery.data;
   const overrideOptions = caseDetail.caseTypeCode === 'PARTICULAR'
     ? PARTICULAR_OVERRIDE_OPTIONS
     : caseDetail.caseTypeCode === 'TODO_RIESGO' ? TODO_RIESGO_OVERRIDE_OPTIONS : DEFAULT_OVERRIDE_OPTIONS;
-  const stageTabs = getOperationalTabs(readiness.tabs);
-  const completedStages = countCompletedStages(readiness.tabs);
+  const stageTabs = getOperationalTabs(effectiveTabs);
+  const completedStages = countCompletedStages(effectiveTabs);
   const taskSnapshot = getTaskSnapshot(tasksQuery.data?.items ?? []);
   const navigationHint = getHelpfulBlockingMessage(stageTabs.find((tab) => !tab.allowed && tab.blockingReasons?.length)?.blockingReasons?.[0]);
-  const nextStep = getNextStepDescriptor({ tabs: readiness.tabs, budget, widgets, particularFinanceSummary });
+  const nextStep = getNextStepDescriptor({ tabs: effectiveTabs, budget, widgets, particularFinanceSummary });
 
   return (
     <div className="space-y-5">
@@ -245,7 +261,7 @@ export const CaseWorkspacePage = () => {
         <div className="overflow-x-auto pb-1" data-testid="workspace-tabs-scroll">
           <div className="flex min-w-max gap-2" role="tablist" aria-label="Secciones de la carpeta">
             <DetallesTabButton selectedTab={selectedTab} setSelectedTab={setSelectedTab} />
-            {readiness.tabs.map((tab) => {
+            {effectiveTabs.map((tab) => {
               const Icon = getTabIcon(tab.tabCode);
               const active = selectedTab === tab.tabCode;
               const isBlocked = !tab.allowed;
@@ -332,11 +348,11 @@ export const CaseWorkspacePage = () => {
           ) : currentTab?.tabCode === 'PRESUPUESTO' ? (
             <BudgetEditorPanel caseId={caseId} budget={budget} caseDetail={caseDetail} workshopInfo={workshopInfo} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'GESTION_TRAMITE' ? (
-            <GestionTramiteEditor caseId={caseId} caseDetail={caseDetail} budget={budget} previewCleas={previewCleas} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
+            <GestionTramiteEditor caseId={caseId} caseDetail={caseDetail} budget={budget} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, setNroCleas, cleasAgreedAmount, setCleasAgreedAmount } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'GESTION_REPARACION' ? (
             <RepairEditorPanel caseId={caseId} caseDetail={caseDetail} latestAppointment={latestAppointment} latestIntake={latestIntake} latestOutcome={latestOutcome} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'PAGOS' ? (
-            <PaymentsEditorPanel caseId={caseId} caseDetail={caseDetail} budget={budget} particularFinanceSummary={particularFinanceSummary} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
+            <PaymentsEditorPanel caseId={caseId} caseDetail={caseDetail} budget={budget} particularFinanceSummary={particularFinanceSummary} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, cleasAgreedAmount, cleasPaymentsUi, onCleasPaymentsUiChange: setCleasPaymentsUi } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : null}
         </div>
       </Card>

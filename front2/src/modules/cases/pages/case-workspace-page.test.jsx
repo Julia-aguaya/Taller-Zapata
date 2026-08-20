@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CaseWorkspacePage, countCompletedStages, formatDisplayValue, getFichaSummary, getNextStepDescriptor } from './case-workspace-page';
@@ -10,9 +10,10 @@ const mockOverrideVisibleState = vi.fn();
 const mockInvalidateQueries = vi.fn();
 const mockUseQuery = vi.fn();
 
+let currentCaseId = '1';
+
 vi.mock('react-router-dom', () => ({
-  useParams: () => ({ caseId: '1' }),
-  useSearchParams: () => [new URLSearchParams()],
+  useParams: () => ({ caseId: currentCaseId }),
 }));
 
 vi.mock('@/modules/cases/api/cases-api', () => ({
@@ -50,7 +51,15 @@ vi.mock('@/modules/cases/components/repair-editor-panel', () => ({
 }));
 
 vi.mock('@/modules/cases/components/payments-editor-panel', () => ({
-  PaymentsEditorPanel: () => <div>Payments panel</div>,
+  PaymentsEditorPanel: ({ nroCleas, cleasAgreedAmount, cleasPaymentsUi, onCleasPaymentsUiChange }) => cleasPaymentsUi ? (
+    <div>
+      <div>Payments panel {nroCleas} {cleasAgreedAmount}</div>
+      <label>Factura CLEAS<input value={cleasPaymentsUi.billing.insuranceCompany} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, billing: { ...current.billing, insuranceCompany: event.target.value } }))} /></label>
+      <label>Monto depositado CLEAS<input value={cleasPaymentsUi.paymentDraft.depositedAmount} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, depositedAmount: event.target.value } }))} /></label>
+      <button type="button" onClick={() => onCleasPaymentsUiChange((current) => ({ ...current, invoiceAcknowledged: true, paymentDraft: { ...current.paymentDraft, hasRetentions: 'SI' }, paymentDocument: { file: new File(['pago'], 'pago.pdf'), name: 'pago.pdf' } }))}>Completar UI CLEAS</button>
+      <output data-testid="cleas-payments-ui">{JSON.stringify({ invoiceAcknowledged: cleasPaymentsUi.invoiceAcknowledged, hasRetentions: cleasPaymentsUi.paymentDraft.hasRetentions, paymentDocumentName: cleasPaymentsUi.paymentDocument.name })}</output>
+    </div>
+  ) : <div>Payments panel</div>,
 }));
 
 vi.mock('@/shared/ui/dialog', () => ({
@@ -168,11 +177,12 @@ const renderPage = async (workspace = baseWorkspace) => {
   });
   mockRequestJson.mockResolvedValue({ ok: true });
 
-  render(
+  const result = render(
     <CaseWorkspacePage />
   );
 
   await screen.findByText('ZP-2026-0001');
+  return result;
 };
 
 describe('case workspace helpers', () => {
@@ -236,6 +246,7 @@ describe('CaseWorkspacePage UI', () => {
     mockInvalidateQueries.mockReset();
     mockSearchReferenciadores.mockReset();
     mockOverrideVisibleState.mockReset();
+    currentCaseId = '1';
     referenciadorSearchResults = [];
   });
 
@@ -247,6 +258,91 @@ describe('CaseWorkspacePage UI', () => {
     expect(screen.getByRole('tab', { name: /pagos/i })).toHaveAttribute('aria-disabled', 'false');
     expect(screen.getByRole('tab', { name: /gesti[oó]n reparaci[oó]n/i })).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByText('0 de 4 etapas completas')).toBeInTheDocument();
+  });
+
+  it('muestra las cinco etapas canónicas para CLEAS aunque readiness no las incluya', async () => {
+    await renderPage({
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'CLEAS' },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'CLEAS', tabs: [{ tabCode: 'FICHA_TECNICA', allowed: true, completed: true, blockingReasons: [], warningReasons: [] }] },
+    });
+
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(expect.arrayContaining([
+      expect.stringContaining('Resumen'),
+      expect.stringContaining('Ficha Técnica'),
+      expect.stringContaining('Gestión del Trámite'),
+      expect.stringContaining('Presupuesto'),
+      expect.stringContaining('Gestión Reparación'),
+      expect.stringContaining('Pagos'),
+    ]));
+    expect(screen.getByText('1 de 5 etapas completas')).toBeInTheDocument();
+  });
+
+  it('conserva el número CLEAS al recorrer Gestión del Trámite y Pagos', async () => {
+    const user = userEvent.setup();
+    const workspace = {
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'CLEAS' },
+      readiness: {
+        ...baseWorkspace.readiness,
+        caseTypeCode: 'CLEAS',
+        tabs: [
+          { tabCode: 'GESTION_TRAMITE', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+          { tabCode: 'PAGOS', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+        ],
+      },
+    };
+    await renderPage(workspace);
+
+    await user.click(screen.getByRole('tab', { name: /gestión del trámite/i }));
+    await user.type(screen.getByLabelText('N.º de CLEAS'), 'CLEAS-99');
+    await user.type(screen.getByLabelText('Monto de cotización acordada'), '125000');
+    await user.click(screen.getByRole('tab', { name: /pagos/i }));
+
+    expect(screen.getByText('Payments panel CLEAS-99 125000')).toBeInTheDocument();
+  });
+
+  it('conserva los borradores CLEAS al desmontar y remontar la pestaña de pagos', async () => {
+    const user = userEvent.setup();
+    const workspace = {
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'CLEAS' },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'CLEAS', tabs: [
+        { tabCode: 'GESTION_TRAMITE', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+        { tabCode: 'PAGOS', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+      ] },
+    };
+    await renderPage(workspace);
+
+    await user.click(screen.getByRole('tab', { name: /pagos/i }));
+    await user.type(screen.getByLabelText('Factura CLEAS'), 'Aseguradora Uno');
+    await user.type(screen.getByLabelText('Monto depositado CLEAS'), '90000');
+    await user.click(screen.getByRole('tab', { name: /gestión del trámite/i }));
+    await user.click(screen.getByRole('tab', { name: /pagos/i }));
+
+    expect(screen.getByLabelText('Factura CLEAS')).toHaveValue('Aseguradora Uno');
+    expect(screen.getByLabelText('Monto depositado CLEAS')).toHaveValue('90000');
+  });
+
+  it('resetea los borradores CLEAS al cambiar de carpeta', async () => {
+    const user = userEvent.setup();
+    const workspace = {
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'CLEAS' },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'CLEAS', tabs: [{ tabCode: 'PAGOS', allowed: true, completed: false, blockingReasons: [], warningReasons: [] }] },
+    };
+    const rendered = await renderPage(workspace);
+    await user.click(screen.getByRole('tab', { name: /pagos/i }));
+    await user.type(screen.getByLabelText('Factura CLEAS'), 'Aseguradora Uno');
+    await user.type(screen.getByLabelText('Monto depositado CLEAS'), '90000');
+    await user.click(screen.getByRole('button', { name: 'Completar UI CLEAS' }));
+
+    currentCaseId = '2';
+    rendered.rerender(<CaseWorkspacePage />);
+
+    await waitFor(() => expect(screen.getByLabelText('Factura CLEAS')).toHaveValue(''));
+    expect(screen.getByLabelText('Monto depositado CLEAS')).toHaveValue('');
+    expect(screen.getByTestId('cleas-payments-ui')).toHaveTextContent('{"invoiceAcknowledged":false,"hasRetentions":"NO","paymentDocumentName":""}');
   });
 
   it('muestra saldo pendiente de presupuesto y no saldo $0 como pago completo', async () => {

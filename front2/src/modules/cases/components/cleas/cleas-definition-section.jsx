@@ -36,7 +36,7 @@ export const CleasDefinitionSection = ({ cleasOver, opinion, onCleasOverChange, 
       </div>
     </div>
 
-    {/* Cambiá md:grid-cols-2, gap o el orden para reorganizar esta definición sin tocar Todo Riesgo. */}
+    {/* Ajuste visual CLEAS: cambiá grid-cols, gap, order o tamaños sin tocar la interacción de los Selects. */}
     <div className="mt-4 grid gap-x-6 gap-y-3 md:grid-cols-2">
       <Field label="CLEAS sobre">
         <Select value={cleasOver} onChange={(event) => onCleasOverChange(event.target.value)}>

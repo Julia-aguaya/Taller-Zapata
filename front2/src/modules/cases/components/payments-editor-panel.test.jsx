@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { PaymentsEditorPanel } from './payments-editor-panel';
@@ -49,9 +50,24 @@ const baseProps = {
   onSaved: vi.fn(),
 };
 
-const mount = () => {
+const createCleasPaymentsUi = () => ({
+  billing: { insuranceCompany: '', claimNumber: '', agreementDate: '', invoiceNumber: '', businessName: '', totalAmount: '', taxableNet: '', vat: '', customerSigned: 'NO', passedToPayments: 'NO', estimatedPaymentDate: '' },
+  invoiceAcknowledged: false,
+  paymentDraft: { paidAt: '', status: 'PENDIENTE', depositedAmount: '', hasRetentions: 'NO', vatRetention: '', earningsRetention: '', patrimonialContribution: '', iibbRetention: '', dreiRetention: '', otherRetention: '' },
+  paymentDocument: { file: null, name: '' },
+});
+
+const CleasPaymentsHarness = (props) => {
+  const [cleasPaymentsUi, setCleasPaymentsUi] = useState(createCleasPaymentsUi);
+  return <PaymentsEditorPanel {...props} cleasPaymentsUi={cleasPaymentsUi} onCleasPaymentsUiChange={setCleasPaymentsUi} />;
+};
+
+const mount = (overrides = {}) => {
   useQueryData = {};
-  return render(<PaymentsEditorPanel {...baseProps} />);
+  mockCreateFinancialMovement.mockClear();
+  mockCreateReceipt.mockClear();
+  const props = { ...baseProps, ...overrides };
+  return render(props.caseDetail.caseTypeCode === 'CLEAS' ? <CleasPaymentsHarness {...props} /> : <PaymentsEditorPanel {...props} />);
 };
 
 const openPaymentForm = () => {
@@ -63,6 +79,63 @@ describe('PaymentsEditorPanel', () => {
     mount();
     expect(screen.getByText('Juan')).toBeTruthy();
     expect(screen.getByText('ABC123')).toBeTruthy();
+  });
+
+  it('shows the CLEAS number in the summary and payment modal', () => {
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }, nroCleas: 'CLEAS-123' });
+
+    expect(screen.getAllByText('N.º de CLEAS').length).toBeGreaterThan(0);
+    expect(screen.getByText('CLEAS-123')).toBeTruthy();
+    openPaymentForm();
+    expect(screen.getByText('N.º de CLEAS: CLEAS-123')).toBeTruthy();
+  });
+
+  it('shows the CLEAS fallback when the number is blank', () => {
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }, nroCleas: '   ' });
+
+    expect(screen.getByText('Sin número de CLEAS cargado')).toBeTruthy();
+    openPaymentForm();
+    expect(screen.getByText('N.º de CLEAS: Sin número de CLEAS cargado')).toBeTruthy();
+  });
+
+  it('does not show CLEAS context for non-CLEAS cases', () => {
+    mount({ nroCleas: 'CLEAS-123' });
+
+    expect(screen.queryByText('N.º de CLEAS')).toBeNull();
+    openPaymentForm();
+    expect(screen.queryByText(/N.º de CLEAS:/)).toBeNull();
+    expect(screen.queryByText('Facturación')).toBeNull();
+    expect(screen.queryByText('Datos CLEAS del pago')).toBeNull();
+  });
+
+  it('renders the visual-only CLEAS billing card with shared calculated amount and fallback', () => {
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }, nroCleas: '', cleasAgreedAmount: '125000' });
+
+    expect(screen.getByText('Facturación')).toBeTruthy();
+    expect(screen.getByLabelText('N.º de CLEAS')).toHaveValue('Sin número de CLEAS cargado');
+    expect(screen.getByLabelText('N.º de CLEAS')).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('A facturar Cía.')).toHaveValue('125000');
+    expect(screen.getByLabelText('A facturar Cía.')).toHaveAttribute('readonly');
+    ['Cía. aseguradora', 'N.º de siniestro', 'Fecha de acuerdo', 'N.º de factura', 'Razón social', 'Importe total', 'Neto gravado', 'IVA', 'Cliente firma conforme', 'Pasado a pagos', 'Fecha estimada de pago'].forEach((label) => expect(screen.getByLabelText(label)).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: /agregar factura/i }));
+    expect(screen.getByText('Factura agregada visualmente.')).toBeTruthy();
+  });
+
+  it('shows CLEAS payment draft fields and only reveals retentions when selected', () => {
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' } });
+    openPaymentForm();
+
+    expect(screen.getByLabelText('Fecha de pago')).toBeTruthy();
+    expect(screen.getByLabelText('Estado del pago')).toBeTruthy();
+    expect(screen.getByLabelText('Monto depositado')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Documentación de pago' })).toBeTruthy();
+    expect(document.querySelector('input[type="file"]')).toBeTruthy();
+    expect(screen.queryByLabelText('Ganancias')).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('Retenciones'), { target: { value: 'SI' } });
+    expect(screen.getAllByLabelText('IVA').length).toBeGreaterThan(1);
+    ['Ganancias', 'Contribución patrimonial', 'IIBB', 'DReI', 'Otra'].forEach((label) => expect(screen.getByLabelText(label)).toBeTruthy());
   });
 
   it('calculates total con IVA for comprobante A (default)', () => {
@@ -93,12 +166,19 @@ describe('PaymentsEditorPanel', () => {
   });
 
   it('calls createFinancialMovement on save', async () => {
-    mount();
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' } });
     openPaymentForm();
-    const montoInput = document.querySelector('input[type="number"]');
-    if (montoInput) fireEvent.change(montoInput, { target: { value: '100000' } });
+    fireEvent.change(screen.getByLabelText('Monto'), { target: { value: '100000' } });
+    fireEvent.change(screen.getByLabelText('Monto depositado'), { target: { value: '90000' } });
+    fireEvent.change(screen.getByLabelText('Retenciones'), { target: { value: 'SI' } });
+    fireEvent.change(screen.getByLabelText('Ganancias'), { target: { value: '1000' } });
     fireEvent.click(screen.getByRole('button', { name: /^registrar pago$/i }));
     await waitFor(() => expect(mockCreateFinancialMovement).toHaveBeenCalled());
+    const payload = mockCreateFinancialMovement.mock.calls[0][1];
+    expect(payload.grossAmount).toBe(100000);
+    expect(payload).not.toHaveProperty('depositedAmount');
+    expect(payload).not.toHaveProperty('hasRetentions');
+    expect(payload.retentions).toEqual([]);
   });
 
   it('shows factura fields when Factura = SI', () => {
