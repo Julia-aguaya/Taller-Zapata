@@ -19,7 +19,7 @@ const labels = {
   shared: 'Culpa compartida',
 };
 
-export const CleasDefinitionSection = ({ cleasOver, opinion, onCleasOverChange, onOpinionChange }) => (
+export const CleasDefinitionSection = ({ cleasOver, opinion, onCleasOverChange, onOpinionChange, readOnly = false }) => (
   <Card className="rounded-3xl border-border/70 p-5">
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-center gap-3">
@@ -39,13 +39,13 @@ export const CleasDefinitionSection = ({ cleasOver, opinion, onCleasOverChange, 
     {/* Ajuste visual CLEAS: cambiá grid-cols, gap, order o tamaños sin tocar la interacción de los Selects. */}
     <div className="mt-4 grid gap-x-6 gap-y-3 md:grid-cols-2">
       <Field label="CLEAS sobre">
-        <Select value={cleasOver} onChange={(event) => onCleasOverChange(event.target.value)}>
+        <Select value={cleasOver} onChange={(event) => onCleasOverChange(event.target.value)} disabled={readOnly}>
           <option value="damage">Daño total</option>
           <option value="franchise">Franquicia</option>
         </Select>
       </Field>
       <Field label="Dictamen">
-        <Select value={opinion} onChange={(event) => onOpinionChange(event.target.value)}>
+        <Select value={opinion} onChange={(event) => onOpinionChange(event.target.value)} disabled={readOnly}>
           <option value="pending">Pendiente</option>
           <option value="favorable">A favor</option>
           <option value="unfavorable">En contra</option>

@@ -14,7 +14,7 @@ const Field = ({ label, children, className = '' }) => (
 const toAmount = (value) => Number(value) || 0;
 const calculatedInputClass = 'cursor-not-allowed bg-muted/60 text-muted-foreground';
 
-export const CleasProcedureSection = ({ cleasOver, opinion, values, onChange, cleasAgreedAmount, setCleasAgreedAmount }) => {
+export const CleasProcedureSection = ({ cleasOver, opinion, values, onChange, cleasAgreedAmount, setCleasAgreedAmount, onRequestClosure }) => {
   const agreedAmount = toAmount(cleasAgreedAmount);
   const franchiseAmount = toAmount(values.franchiseAmount);
   const companyRequiredAmount = toAmount(values.companyRequiredAmount);
@@ -38,8 +38,8 @@ export const CleasProcedureSection = ({ cleasOver, opinion, values, onChange, cl
       {opinion === 'shared' ? <div role="alert" className="mt-4 flex gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/60 dark:text-amber-300"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />La regla de negocio para culpa compartida todavía debe definirse.</div> : null}
       {cleasOver === 'damage' && opinion === 'unfavorable' ? (
         <div role="alert" className="mt-4 flex flex-col gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950/60 dark:text-red-300 sm:flex-row sm:items-center sm:justify-between">
-          <span>El dictamen fue en contra. El trámite CLEAS no puede continuar y el caso debe cerrarse.</span>
-          <Button type="button" variant="destructive" disabled>Cerrar caso</Button>
+          <div><p className="font-semibold">Dictamen en contra</p><p className="mt-1">El trámite CLEAS no puede continuar. El caso debe cerrarse; el cliente deberá reparar el vehículo por su cuenta o iniciar acciones judiciales.</p></div>
+          <Button type="button" variant="destructive" onClick={onRequestClosure}>Cerrar caso</Button>
         </div>
       ) : null}
 

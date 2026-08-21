@@ -41,7 +41,7 @@ const PAYMENT_METHODS = [
   { value: 'OTRO', label: 'Otro' },
 ];
 
-export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFinanceSummary, nroCleas, cleasAgreedAmount, cleasPaymentsUi, onCleasPaymentsUiChange, onSaved }) => {
+export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFinanceSummary, nroCleas, cleasAgreedAmount, cleasPaymentsUi, onCleasPaymentsUiChange, cleasOver, cleasOpinion, cleasClosedAt, onSaved }) => {
   const queryClient = useQueryClient();
   const { session } = useSession();
 
@@ -74,6 +74,8 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
 
   const isInsurance = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
   const isCleas = caseDetail?.caseTypeCode === 'CLEAS';
+  const isCleasAdverseTotal = isCleas && cleasOver === 'damage' && cleasOpinion === 'unfavorable';
+  const isClosedCleas = isCleasAdverseTotal && Boolean(cleasClosedAt);
   const cleasNumberDisplay = nroCleas?.trim() ? nroCleas : 'Sin número de CLEAS cargado';
   const cleasAmountToBill = cleasAgreedAmount || '';
 
@@ -243,7 +245,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
         </div>
       ) : null}
 
-      {isCleas ? (
+       {isCleas && !isClosedCleas ? (
         <CleasBillingCard
           amountToBill={cleasAmountToBill}
           billing={cleasPaymentsUi.billing}
@@ -255,15 +257,17 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
       ) : null}
 
       {/* Comprobante + Formulario */}
-      <div className="rounded-3xl border border-border/70 bg-card p-5">
-        <div className="flex items-center justify-between">
-          <h5 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Nuevo pago</h5>
-          <Button size="sm" onClick={() => setShowPaymentModal(true)}>+ Registrar pago</Button>
-        </div>
-      </div>
+       {!isClosedCleas ? (
+         <div className="rounded-3xl border border-border/70 bg-card p-5">
+           <div className="flex items-center justify-between">
+             <h5 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Nuevo pago</h5>
+             <Button size="sm" onClick={() => setShowPaymentModal(true)}>+ Registrar pago</Button>
+           </div>
+         </div>
+       ) : null}
 
       {/* Modal: Registrar pago */}
-       <Dialog open={showPaymentModal} onClose={() => setShowPaymentModal(false)} title="Registrar pago" description={<>{`Cliente: ${caseDetail?.principalCustomerName || ''} — ${caseDetail?.principalVehiclePlate || ''}`}{isCleas ? <><br /><span>N.º de CLEAS: {cleasNumberDisplay}</span></> : null}</>} scrollable={isCleas}>
+       <Dialog open={!isClosedCleas && showPaymentModal} onClose={() => setShowPaymentModal(false)} title="Registrar pago" description={<>{`Cliente: ${caseDetail?.principalCustomerName || ''} — ${caseDetail?.principalVehiclePlate || ''}`}{isCleas ? <><br /><span>N.º de CLEAS: {cleasNumberDisplay}</span></> : null}</>} scrollable={isCleas}>
 
          {/* Tipo de comprobante */}
         <div className="mb-5 rounded-2xl border border-border/60 bg-background/70 p-4">
@@ -367,7 +371,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
       <div className="rounded-3xl border border-border/70 bg-card p-5">
         <div className="flex items-center justify-between mb-4">
           <h5 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Historial de movimientos</h5>
-          <Button size="sm" onClick={() => setShowPaymentModal(true)}>+ Registrar pago</Button>
+           {!isClosedCleas ? <Button size="sm" onClick={() => setShowPaymentModal(true)}>+ Registrar pago</Button> : null}
         </div>
         {(movementsQuery.data ?? []).length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border/70 py-6 text-center text-sm text-muted-foreground">Sin movimientos registrados.</p>

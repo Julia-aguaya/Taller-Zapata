@@ -345,6 +345,66 @@ describe('CaseWorkspacePage UI', () => {
     expect(screen.getByTestId('cleas-payments-ui')).toHaveTextContent('{"invoiceAcknowledged":false,"hasRetentions":"NO","paymentDocumentName":""}');
   });
 
+  it('confirma el cierre visual CLEAS, bloquea etapas posteriores y mantiene gestión de solo lectura', async () => {
+    const user = userEvent.setup();
+    const workspace = {
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'CLEAS' },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'CLEAS', tabs: [
+        { tabCode: 'FICHA_TECNICA', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+        { tabCode: 'GESTION_TRAMITE', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+      ] },
+    };
+    await renderPage(workspace);
+
+    await user.click(screen.getByRole('tab', { name: /gestión del trámite/i }));
+    await user.selectOptions(screen.getAllByLabelText('Dictamen')[0], 'unfavorable');
+    expect(screen.getByRole('alert')).toHaveTextContent('Dictamen en contra');
+    await user.click(screen.getByRole('button', { name: 'Cerrar caso' }));
+    expect(screen.getByRole('heading', { name: '¿Cerrar caso CLEAS?' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Confirmar cierre' }));
+
+    expect(screen.getAllByText('Caso cerrado').length).toBeGreaterThan(0);
+    expect(screen.getByRole('alert')).toHaveTextContent('Cerrado por dictamen CLEAS en contra');
+    expect(screen.getByLabelText('CLEAS sobre')).toBeDisabled();
+    expect(screen.getByLabelText('Dictamen')).toBeDisabled();
+    expect(screen.queryByLabelText('N.º de CLEAS')).toBeNull();
+    const tramiteButton = screen.getByRole('button', { name: /trámite: ingresado/i });
+    const repairButton = screen.getByRole('button', { name: /reparación: dar turno/i });
+    expect(tramiteButton).toBeDisabled();
+    expect(repairButton).toBeDisabled();
+    await user.click(tramiteButton);
+    await user.click(repairButton);
+    expect(screen.queryByText('Cambiar estado de Trámite')).toBeNull();
+    expect(mockOverrideVisibleState).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('tab', { name: /pagos/i }));
+    expect(screen.getByText('Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra.')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /pagos/i })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('does not close a CLEAS case when the closure confirmation is cancelled and resets closure on case change', async () => {
+    const user = userEvent.setup();
+    const workspace = {
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'CLEAS' },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'CLEAS', tabs: [{ tabCode: 'GESTION_TRAMITE', allowed: true, completed: false, blockingReasons: [], warningReasons: [] }] },
+    };
+    const rendered = await renderPage(workspace);
+    await user.click(screen.getByRole('tab', { name: /gestión del trámite/i }));
+    await user.selectOptions(screen.getAllByLabelText('Dictamen')[0], 'unfavorable');
+    await user.click(screen.getByRole('button', { name: 'Cerrar caso' }));
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(screen.queryByText('Caso cerrado')).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: 'Cerrar caso' }));
+    await user.click(screen.getByRole('button', { name: 'Confirmar cierre' }));
+    expect(screen.getByText('Cerrado por dictamen CLEAS en contra', { exact: false })).toBeInTheDocument();
+    currentCaseId = '2';
+    rendered.rerender(<CaseWorkspacePage />);
+    await waitFor(() => expect(screen.queryByText('Caso cerrado')).toBeNull());
+  });
+
   it('muestra saldo pendiente de presupuesto y no saldo $0 como pago completo', async () => {
     await renderPage();
 

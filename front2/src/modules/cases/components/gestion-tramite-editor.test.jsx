@@ -20,6 +20,8 @@ global.fetch = vi.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve
 
 const MountedGestionTramiteEditor = ({ overrides }) => {
   const [cleasAgreedAmount, setCleasAgreedAmount] = useState('');
+  const [cleasOver, setCleasOver] = useState('damage');
+  const [cleasOpinion, setCleasOpinion] = useState('favorable');
 
   return <GestionTramiteEditor
     caseId={42}
@@ -27,6 +29,10 @@ const MountedGestionTramiteEditor = ({ overrides }) => {
     budget={{ items: [{ laborAmount: 100000, partValue: 50000 }] }}
     cleasAgreedAmount={cleasAgreedAmount}
     setCleasAgreedAmount={setCleasAgreedAmount}
+    cleasOver={cleasOver}
+    cleasOpinion={cleasOpinion}
+    onCleasOverChange={setCleasOver}
+    onCleasOpinionChange={setCleasOpinion}
     onSaved={vi.fn()}
   />;
 };
@@ -89,6 +95,18 @@ describe('GestionTramiteEditor', () => {
     expect(screen.queryByText('Distribución de la franquicia')).toBeNull();
     expect(screen.queryByLabelText('Monto de franquicia')).toBeNull();
     expect(screen.queryByLabelText('A cargo del cliente')).toBeNull();
+  });
+
+  it('shows the adverse-total closure alert and request action without franchise amounts', () => {
+    mount({ caseTypeCode: 'CLEAS' });
+
+    fireEvent.change(screen.getAllByLabelText('Dictamen')[0], { target: { value: 'unfavorable' } });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Dictamen en contra');
+    expect(screen.getByRole('alert')).toHaveTextContent('El trámite CLEAS no puede continuar. El caso debe cerrarse; el cliente deberá reparar el vehículo por su cuenta o iniciar acciones judiciales.');
+    expect(screen.getByRole('button', { name: 'Cerrar caso' })).toBeEnabled();
+    expect(screen.queryByLabelText('A facturar Cía.')).toBeNull();
+    expect(screen.queryByText('Distribución de la franquicia')).toBeNull();
   });
 
   it('passes the CLEAS insurance input change to the lifted handler', () => {

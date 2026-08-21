@@ -122,6 +122,21 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.getByText('Factura agregada visualmente.')).toBeTruthy();
   });
 
+  it('hides CLEAS billing and payment registration only after exact adverse-total closure', () => {
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }, cleasOver: 'damage', cleasOpinion: 'unfavorable', cleasClosedAt: '2026-08-20T10:00:00.000Z' });
+
+    expect(screen.queryByText('Facturación')).toBeNull();
+    expect(screen.queryByRole('button', { name: /registrar pago/i })).toBeNull();
+    expect(screen.queryByLabelText('Monto depositado')).toBeNull();
+  });
+
+  it('keeps billing and payment registration available for non-exact CLEAS with a closure timestamp', () => {
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }, cleasOver: 'liability', cleasOpinion: 'unfavorable', cleasClosedAt: '2026-08-20T10:00:00.000Z' });
+
+    expect(screen.getByText('Facturación')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: /registrar pago/i }).length).toBeGreaterThan(0);
+  });
+
   it('shows CLEAS payment draft fields and only reveals retentions when selected', () => {
     mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' } });
     openPaymentForm();
