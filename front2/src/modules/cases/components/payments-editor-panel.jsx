@@ -12,6 +12,7 @@ import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
 import { Dialog } from '@/shared/ui/dialog';
 import { Card } from '@/shared/ui/card';
+import { getAccessoryWorkTotals } from '@/modules/cases/lib/accessory-work-total';
 
 const toAmount = (value) => {
   const parsed = Number(value);
@@ -41,7 +42,7 @@ const PAYMENT_METHODS = [
   { value: 'OTRO', label: 'Otro' },
 ];
 
-export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFinanceSummary, nroCleas, cleasAgreedAmount, cleasPaymentsUi, onCleasPaymentsUiChange, cleasOver, cleasOpinion, cleasClosedAt, onSaved }) => {
+export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFinanceSummary, accessoryUi, onAccessoryUiChange, onRegisterAccessoryPayment, nroCleas, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange, cleasOver, cleasOpinion, cleasClosedAt, onSaved }) => {
   const queryClient = useQueryClient();
   const { session } = useSession();
 
@@ -63,8 +64,12 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
     reason: '',
   });
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showFranchiseClientPaymentModal, setShowFranchiseClientPaymentModal] = useState(false);
+  const [showAccessoryPaymentModal, setShowAccessoryPaymentModal] = useState(false);
   const [cancelMovement, setCancelMovement] = useState(null);
   const paymentDocumentInputRef = useRef(null);
+  const franchiseClientPaymentDocumentInputRef = useRef(null);
+  const accessoryPaymentDocumentInputRef = useRef(null);
 
   const financeCatalogsQuery = useQuery({ queryKey: ['finance', 'catalogs'], queryFn: getFinanceCatalogs });
   const movementsQuery = useQuery({ queryKey: ['cases', String(caseId), 'financial-movements'], queryFn: () => listFinancialMovements(caseId) });
@@ -76,8 +81,24 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const isCleas = caseDetail?.caseTypeCode === 'CLEAS';
   const isCleasAdverseTotal = isCleas && cleasOver === 'damage' && cleasOpinion === 'unfavorable';
   const isClosedCleas = isCleasAdverseTotal && Boolean(cleasClosedAt);
+  const isUnfavorableFranchise = isCleas && cleasOver === 'franchise' && cleasOpinion === 'unfavorable';
   const cleasNumberDisplay = nroCleas?.trim() ? nroCleas : 'Sin número de CLEAS cargado';
-  const cleasAmountToBill = cleasAgreedAmount || '';
+  const franchiseAmount = toAmount(cleasFranchiseDistribution?.franchiseAmount);
+  const companyRequiredAmount = toAmount(cleasFranchiseDistribution?.companyRequiredAmount);
+  const cleasAmountToBill = isUnfavorableFranchise
+    ? toAmount(cleasAgreedAmount) - (franchiseAmount - companyRequiredAmount)
+    : cleasAgreedAmount || '';
+  const franchiseClientAmount = toAmount(cleasAgreedAmount) - toAmount(cleasAmountToBill);
+  const franchiseClientPayment = cleasPaymentsUi?.franchiseClientPayment ?? { status: 'PENDIENTE', paidAt: '', amount: '', paymentMethod: 'TRANSFERENCIA', externalReference: '', notes: '', document: { file: null, name: '' }, registered: false };
+  const showAccessoryPayments = Boolean(caseDetail?.caseTypeCode) && caseDetail.caseTypeCode !== 'PARTICULAR';
+  const accessoryWorks = accessoryUi?.enabled === 'SI' ? accessoryUi.works ?? [] : [];
+  const accessoryPayments = accessoryUi?.enabled === 'SI' ? accessoryUi.payments ?? [] : [];
+  const accessoryTotals = getAccessoryWorkTotals(accessoryUi);
+  const accessoryTotal = accessoryTotals.quoted;
+  const accessoryPaid = accessoryPayments.reduce((sum, payment) => sum + (payment.kind === 'Bonificacion' ? 0 : toAmount(payment.amount)), 0);
+  const accessoryBalance = Math.max(0, accessoryTotal - accessoryPaid);
+  const accessoryPaymentDraft = accessoryUi?.paymentDraft ?? { id: '', kind: 'Parcial', amount: '', date: '', mode: 'Efectivo', modeDetail: '', reason: '', document: { file: null, name: '' } };
+  const updateAccessoryUi = (updater) => onAccessoryUiChange?.((current) => typeof updater === 'function' ? updater(current) : updater);
 
   // Derivar MO y repuestos del presupuesto
   const budgetItems = budget?.items ?? [];
@@ -266,6 +287,42 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
          </div>
        ) : null}
 
+       {isUnfavorableFranchise ? (
+         <Card className="rounded-3xl border-border/70 p-5">
+           <h4 className="text-lg font-semibold">Pago de franquicia a cargo del cliente</h4>
+           <p className="mt-1 text-sm text-muted-foreground">Pago del cliente al taller. No corresponde al pago de la compañía.</p>
+           {/* Tarjeta independiente: mantiene el pago del cliente separado de Facturación y del flujo genérico. */}
+           <div className="mt-4 grid gap-4 md:grid-cols-3">
+             <Field label="A cargo del cliente"><Input value={franchiseClientAmount} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
+             <Field label="Estado"><Select value={franchiseClientPayment.status} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, franchiseClientPayment: { ...current.franchiseClientPayment, status: event.target.value } }))} options={[{ value: 'PENDIENTE', label: 'Pendiente' }, { value: 'CANCELADO', label: 'Cancelado' }]} /></Field>
+             <Field label="Fecha de pago"><Input type="date" value={franchiseClientPayment.paidAt} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, franchiseClientPayment: { ...current.franchiseClientPayment, paidAt: event.target.value } }))} /></Field>
+           </div>
+           <div className="mt-4 flex flex-wrap items-center gap-3">
+             <Button type="button" onClick={() => { onCleasPaymentsUiChange((current) => ({ ...current, franchiseClientPayment: { ...current.franchiseClientPayment, amount: current.franchiseClientPayment.amount || String(franchiseClientAmount) } })); setShowFranchiseClientPaymentModal(true); }}>+ Registrar pago del cliente</Button>
+             {franchiseClientPayment.registered ? <span className="text-sm text-emerald-700 dark:text-emerald-400">Pago del cliente registrado visualmente.</span> : null}
+           </div>
+         </Card>
+       ) : null}
+
+       {showAccessoryPayments ? (
+         <Card className="rounded-3xl border-border/70 p-5">
+           <div className="flex flex-wrap items-center justify-between gap-3">
+             <div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Pagos cliente</p><h4 className="mt-1 text-lg font-semibold">Tareas extras / tramo particular</h4></div>
+             <Button type="button" onClick={() => setShowAccessoryPaymentModal(true)}>+ Agregar pago</Button>
+           </div>
+           {/* Resumen derivado: los extras y sus cobros no alteran los totales financieros principales. */}
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+              <MiniCard label="Total MO extras" value={formatCurrency(accessoryTotals.labor)} />
+              <MiniCard label="Total repuestos extras" value={formatCurrency(accessoryTotals.parts)} />
+              <MiniCard label="Cotizado extras" value={formatCurrency(accessoryTotal)} highlight />
+             <MiniCard label="Total cobrado cliente" value={formatCurrency(accessoryPaid)} />
+             <MiniCard label="Saldo cliente" value={formatCurrency(accessoryBalance)} highlight={accessoryBalance > 0} variant={accessoryBalance > 0 ? 'warning' : 'success'} />
+           </div>
+           {accessoryUi?.enabled !== 'SI' || accessoryWorks.length === 0 ? <p className="mt-4 rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm text-muted-foreground">No hay tareas extras activas. El cierre de Pagos depende solo del pago principal.</p> : null}
+            {accessoryPayments.length > 0 ? <div className="mt-4 space-y-2">{accessoryPayments.map((payment) => <div key={payment.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background/50 px-4 py-3 text-sm"><span>{payment.kind} · {formatCurrency(payment.amount)} · {payment.date || 'Sin fecha'} · {payment.mode || 'Sin modo'}{payment.document?.name ? ` · ${payment.document.name}` : ''}</span><Button type="button" variant="ghost" size="sm" onClick={() => updateAccessoryUi((current) => ({ ...current, payments: current.payments.filter((entry) => entry.id !== payment.id) }))}>Eliminar</Button></div>)}</div> : null}
+         </Card>
+       ) : null}
+
       {/* Modal: Registrar pago */}
        <Dialog open={!isClosedCleas && showPaymentModal} onClose={() => setShowPaymentModal(false)} title="Registrar pago" description={<>{`Cliente: ${caseDetail?.principalCustomerName || ''} — ${caseDetail?.principalVehiclePlate || ''}`}{isCleas ? <><br /><span>N.º de CLEAS: {cleasNumberDisplay}</span></> : null}</>} scrollable={isCleas}>
 
@@ -364,6 +421,44 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
         <div className="mt-5 flex gap-3">
           <Button variant="outline" className="flex-1" onClick={() => setShowPaymentModal(false)}>Cancelar</Button>
           <Button className="flex-1" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !caseDetail.principalCustomerPersonId}><Save className="mr-1.5 h-4 w-4" />Registrar pago</Button>
+        </div>
+      </Dialog>
+
+      <Dialog open={isUnfavorableFranchise && showFranchiseClientPaymentModal} onClose={() => setShowFranchiseClientPaymentModal(false)} title="Pago de franquicia — Cliente" description="Registro visual local del pago del cliente al taller.">
+        {/* Modal local: no usa el formulario genérico ni genera movimientos o payloads. */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field label="Monto"><Input type="number" value={franchiseClientPayment.amount} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, franchiseClientPayment: { ...current.franchiseClientPayment, amount: event.target.value } }))} /></Field>
+          <Field label="Fecha y hora"><Input type="datetime-local" value={franchiseClientPayment.paidAt} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, franchiseClientPayment: { ...current.franchiseClientPayment, paidAt: event.target.value } }))} /></Field>
+          <Field label="Medio de pago"><Select value={franchiseClientPayment.paymentMethod} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, franchiseClientPayment: { ...current.franchiseClientPayment, paymentMethod: event.target.value } }))} options={PAYMENT_METHODS} /></Field>
+          <Field label="Referencia externa"><Input value={franchiseClientPayment.externalReference} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, franchiseClientPayment: { ...current.franchiseClientPayment, externalReference: event.target.value } }))} /></Field>
+          <Field label="Notas"><Textarea rows={3} value={franchiseClientPayment.notes} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, franchiseClientPayment: { ...current.franchiseClientPayment, notes: event.target.value } }))} /></Field>
+          <div className="flex items-end">
+            <input ref={franchiseClientPaymentDocumentInputRef} type="file" className="hidden" onChange={(event) => { const file = event.target.files?.[0] ?? null; onCleasPaymentsUiChange((current) => ({ ...current, franchiseClientPayment: { ...current.franchiseClientPayment, document: { file, name: file?.name || '' } } })); }} />
+            <Button type="button" variant="outline" className="w-full" onClick={() => franchiseClientPaymentDocumentInputRef.current?.click()}>Documentación</Button>
+          </div>
+        </div>
+        {franchiseClientPayment.document?.name ? <p className="mt-2 text-xs text-muted-foreground">{franchiseClientPayment.document.name}</p> : null}
+        <div className="mt-5 flex gap-3">
+          <Button variant="outline" className="flex-1" onClick={() => setShowFranchiseClientPaymentModal(false)}>Cancelar</Button>
+          <Button className="flex-1" onClick={() => { onCleasPaymentsUiChange((current) => ({ ...current, franchiseClientPayment: { ...current.franchiseClientPayment, registered: true } })); setShowFranchiseClientPaymentModal(false); }}>Confirmar pago</Button>
+        </div>
+      </Dialog>
+
+      <Dialog open={showAccessoryPayments && showAccessoryPaymentModal} onClose={() => setShowAccessoryPaymentModal(false)} title="Registrar pago de extras" description="Registro visual local del tramo particular; no genera movimientos ni comprobantes.">
+        {/* Modal local de extras: sus campos se mantienen fuera del formulario financiero genérico. */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <Field label="Cancela saldo"><Select value={accessoryPaymentDraft.kind} onChange={(event) => updateAccessoryUi((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, kind: event.target.value } }))} options={[{ value: 'Parcial', label: 'Parcial' }, { value: 'Total', label: 'Total' }, { value: 'Bonificacion', label: 'Bonificación' }]} /></Field>
+          <Field label="Monto"><Input type="number" min="0" step="0.01" value={accessoryPaymentDraft.amount} onChange={(event) => updateAccessoryUi((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, amount: event.target.value } }))} /></Field>
+          <Field label="Fecha"><Input type="date" value={accessoryPaymentDraft.date} onChange={(event) => updateAccessoryUi((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, date: event.target.value } }))} /></Field>
+          {accessoryPaymentDraft.kind !== 'Bonificacion' ? <Field label="Modo"><Select value={accessoryPaymentDraft.mode} onChange={(event) => updateAccessoryUi((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, mode: event.target.value, modeDetail: event.target.value === 'Otro' ? current.paymentDraft.modeDetail : '' } }))} options={[{ value: 'Efectivo', label: 'Efectivo' }, { value: 'Transferencia', label: 'Transferencia' }, { value: 'Cheque', label: 'Cheque' }, { value: 'Tarjeta', label: 'Tarjeta' }, { value: 'Otro', label: 'Otro' }]} /></Field> : null}
+          {accessoryPaymentDraft.kind !== 'Bonificacion' && accessoryPaymentDraft.mode === 'Otro' ? <Field label="Detalle modo otro"><Input value={accessoryPaymentDraft.modeDetail} onChange={(event) => updateAccessoryUi((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, modeDetail: event.target.value } }))} /></Field> : null}
+          {accessoryPaymentDraft.kind === 'Bonificacion' ? <Field label="Motivo bonificación"><Input value={accessoryPaymentDraft.reason} onChange={(event) => updateAccessoryUi((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, reason: event.target.value } }))} /></Field> : null}
+          <div className="flex items-end"><input ref={accessoryPaymentDocumentInputRef} type="file" className="hidden" onChange={(event) => { const file = event.target.files?.[0] ?? null; updateAccessoryUi((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, document: { file, name: file?.name || '' } } })); }} /><Button type="button" variant="outline" className="w-full" onClick={() => accessoryPaymentDocumentInputRef.current?.click()}>Documentación</Button></div>
+        </div>
+        {accessoryPaymentDraft.document?.name ? <p className="mt-2 text-xs text-muted-foreground">{accessoryPaymentDraft.document.name}</p> : null}
+        <div className="mt-5 flex gap-3">
+          <Button variant="outline" className="flex-1" onClick={() => setShowAccessoryPaymentModal(false)}>Cancelar</Button>
+          <Button className="flex-1" onClick={() => { onRegisterAccessoryPayment?.(); setShowAccessoryPaymentModal(false); }}>Registrar pago</Button>
         </div>
       </Dialog>
 

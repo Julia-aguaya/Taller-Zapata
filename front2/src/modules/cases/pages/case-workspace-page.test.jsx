@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CaseWorkspacePage, countCompletedStages, formatDisplayValue, getFichaSummary, getNextStepDescriptor } from './case-workspace-page';
@@ -43,7 +43,13 @@ vi.mock('@/shared/api/http-client', () => ({
 }));
 
 vi.mock('@/modules/cases/components/budget-editor-panel', () => ({
-  BudgetEditorPanel: () => <div>Budget panel</div>,
+  BudgetEditorPanel: ({ accessoryUi, onAccessoryUiChange }) => (
+    <div>
+      <div>Budget panel</div>
+      <output data-testid="accessory-ui-budget">{JSON.stringify(accessoryUi)}</output>
+      <button type="button" onClick={() => onAccessoryUiChange((current) => ({ ...current, enabled: 'SI', works: [...current.works, { id: 'local-accessory', detail: 'Moldura', amount: '180000' }] }))}>Agregar trabajo accesorio</button>
+    </div>
+  ),
 }));
 
 vi.mock('@/modules/cases/components/repair-editor-panel', () => ({
@@ -51,15 +57,16 @@ vi.mock('@/modules/cases/components/repair-editor-panel', () => ({
 }));
 
 vi.mock('@/modules/cases/components/payments-editor-panel', () => ({
-  PaymentsEditorPanel: ({ nroCleas, cleasAgreedAmount, cleasPaymentsUi, onCleasPaymentsUiChange }) => cleasPaymentsUi ? (
+  PaymentsEditorPanel: ({ nroCleas, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange, accessoryUi, onAccessoryUiChange }) => cleasPaymentsUi ? (
     <div>
-      <div>Payments panel {nroCleas} {cleasAgreedAmount}</div>
+       <div>Payments panel {nroCleas} {cleasAgreedAmount}</div>
+       <output data-testid="cleas-franchise-distribution">{JSON.stringify(cleasFranchiseDistribution)}</output>
       <label>Factura CLEAS<input value={cleasPaymentsUi.billing.insuranceCompany} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, billing: { ...current.billing, insuranceCompany: event.target.value } }))} /></label>
       <label>Monto depositado CLEAS<input value={cleasPaymentsUi.paymentDraft.depositedAmount} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, depositedAmount: event.target.value } }))} /></label>
       <button type="button" onClick={() => onCleasPaymentsUiChange((current) => ({ ...current, invoiceAcknowledged: true, paymentDraft: { ...current.paymentDraft, hasRetentions: 'SI' }, paymentDocument: { file: new File(['pago'], 'pago.pdf'), name: 'pago.pdf' } }))}>Completar UI CLEAS</button>
       <output data-testid="cleas-payments-ui">{JSON.stringify({ invoiceAcknowledged: cleasPaymentsUi.invoiceAcknowledged, hasRetentions: cleasPaymentsUi.paymentDraft.hasRetentions, paymentDocumentName: cleasPaymentsUi.paymentDocument.name })}</output>
     </div>
-  ) : <div>Payments panel</div>,
+  ) : <div><div>Payments panel</div><output data-testid="accessory-ui-payments">{JSON.stringify(accessoryUi)}</output><button type="button" onClick={() => onAccessoryUiChange((current) => ({ ...current, notes: 'Cobro pendiente' }))}>Actualizar accesorios</button></div>,
 }));
 
 vi.mock('@/shared/ui/dialog', () => ({
@@ -302,6 +309,81 @@ describe('CaseWorkspacePage UI', () => {
     expect(screen.getByText('Payments panel CLEAS-99 125000')).toBeInTheDocument();
   });
 
+  it('conserva los extras entre Presupuesto y Pagos y los reinicia al cambiar de carpeta', async () => {
+    const user = userEvent.setup();
+    const workspace = {
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'TODO_RIESGO' },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'TODO_RIESGO', tabs: [
+        { tabCode: 'PRESUPUESTO', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+        { tabCode: 'PAGOS', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+      ] },
+    };
+    const rendered = await renderPage(workspace);
+
+    await user.click(screen.getByRole('tab', { name: /presupuesto/i }));
+    await user.click(screen.getByRole('button', { name: 'Agregar trabajo accesorio' }));
+    await user.click(screen.getByRole('tab', { name: /pagos/i }));
+    expect(screen.getByTestId('accessory-ui-payments')).toHaveTextContent('"detail":"Moldura"');
+    await user.click(screen.getByRole('button', { name: 'Actualizar accesorios' }));
+    await user.click(screen.getByRole('tab', { name: /presupuesto/i }));
+    expect(screen.getByTestId('accessory-ui-budget')).toHaveTextContent('"notes":"Cobro pendiente"');
+
+    currentCaseId = '2';
+    rendered.rerender(<CaseWorkspacePage />);
+    await waitFor(() => expect(screen.getByTestId('accessory-ui-budget')).toHaveTextContent('"works":[]'));
+  });
+
+  it('conserva la distribución de franquicia entre Tramitación y Pagos y la reinicia al cambiar de carpeta', async () => {
+    const user = userEvent.setup();
+    const workspace = {
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'CLEAS' },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'CLEAS', tabs: [
+        { tabCode: 'GESTION_TRAMITE', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+        { tabCode: 'PAGOS', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+      ] },
+    };
+    const rendered = await renderPage(workspace);
+
+    await user.click(screen.getByRole('tab', { name: /gestión del trámite/i }));
+    await user.selectOptions(screen.getByLabelText('CLEAS sobre'), 'franchise');
+    await user.selectOptions(screen.getAllByLabelText('Dictamen')[0], 'unfavorable');
+    await user.type(screen.getByLabelText('Monto de franquicia'), '1000000');
+    await user.selectOptions(screen.getByLabelText('¿La Cía. exige pago de franquicia?'), 'PARCIAL');
+    await user.type(screen.getByLabelText('Monto que la Cía. exige al cliente'), '500000');
+    await user.click(screen.getByRole('tab', { name: /pagos/i }));
+
+    expect(screen.getByTestId('cleas-franchise-distribution')).toHaveTextContent('"franchiseAmount":"1000000"');
+    expect(screen.getByTestId('cleas-franchise-distribution')).toHaveTextContent('"companyRequiredAmount":"500000"');
+    currentCaseId = '2';
+    rendered.rerender(<CaseWorkspacePage />);
+    await waitFor(() => expect(screen.getByTestId('cleas-franchise-distribution')).toHaveTextContent('"franchiseAmount":""'));
+  });
+
+  it('mantiene sincronizado el total exigido al editar la franquicia antes de ir a Pagos', async () => {
+    const workspace = {
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'CLEAS' },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'CLEAS', tabs: [
+        { tabCode: 'GESTION_TRAMITE', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+        { tabCode: 'PAGOS', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+      ] },
+    };
+    await renderPage(workspace);
+
+    fireEvent.click(screen.getByRole('tab', { name: /gestión del trámite/i }));
+    fireEvent.change(screen.getByLabelText('CLEAS sobre'), { target: { value: 'franchise' } });
+    fireEvent.change(screen.getAllByLabelText('Dictamen')[0], { target: { value: 'unfavorable' } });
+    fireEvent.change(screen.getByLabelText('Monto de franquicia'), { target: { value: '1000000' } });
+    fireEvent.change(screen.getByLabelText('¿La Cía. exige pago de franquicia?'), { target: { value: 'TOTAL' } });
+    fireEvent.change(screen.getByLabelText('Monto de franquicia'), { target: { value: '1200000' } });
+    fireEvent.click(screen.getByRole('tab', { name: /pagos/i }));
+
+    expect(screen.getByTestId('cleas-franchise-distribution')).toHaveTextContent('"franchiseAmount":"1200000"');
+    expect(screen.getByTestId('cleas-franchise-distribution')).toHaveTextContent('"companyRequiredAmount":"1200000"');
+  }, 15_000);
+
   it('conserva los borradores CLEAS al desmontar y remontar la pestaña de pagos', async () => {
     const user = userEvent.setup();
     const workspace = {
@@ -381,6 +463,26 @@ describe('CaseWorkspacePage UI', () => {
     await user.click(screen.getByRole('tab', { name: /pagos/i }));
     expect(screen.getByText('Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra.')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /pagos/i })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('does not offer closure or block tabs for the exact unfavorable franchise branch', async () => {
+    const user = userEvent.setup();
+    await renderPage({
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'CLEAS' },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'CLEAS', tabs: [
+        { tabCode: 'GESTION_TRAMITE', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+        { tabCode: 'PAGOS', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+      ] },
+    });
+
+    await user.click(screen.getByRole('tab', { name: /gestión del trámite/i }));
+    await user.selectOptions(screen.getByLabelText('CLEAS sobre'), 'franchise');
+    await user.selectOptions(screen.getAllByLabelText('Dictamen')[0], 'unfavorable');
+    expect(screen.queryByRole('button', { name: 'Cerrar caso' })).toBeNull();
+    await user.click(screen.getByRole('tab', { name: /pagos/i }));
+    expect(screen.getByRole('tab', { name: /pagos/i })).toHaveAttribute('aria-disabled', 'false');
+    expect(screen.queryByText('Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra.')).toBeNull();
   });
 
   it('does not close a CLEAS case when the closure confirmation is cancelled and resets closure on case change', async () => {

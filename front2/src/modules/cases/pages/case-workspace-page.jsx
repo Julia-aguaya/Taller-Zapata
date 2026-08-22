@@ -57,7 +57,22 @@ const createCleasPaymentsUi = () => ({
   invoiceAcknowledged: false,
   paymentDraft: { paidAt: '', status: 'PENDIENTE', depositedAmount: '', hasRetentions: 'NO', vatRetention: '', earningsRetention: '', patrimonialContribution: '', iibbRetention: '', dreiRetention: '', otherRetention: '' },
   paymentDocument: { file: null, name: '' },
+  franchiseClientPayment: { status: 'PENDIENTE', paidAt: '', amount: '', paymentMethod: 'TRANSFERENCIA', externalReference: '', notes: '', document: { file: null, name: '' }, registered: false },
 });
+
+const createCleasFranchiseDistribution = () => ({
+  franchiseAmount: '',
+  companyRequirement: 'NO',
+  companyRequiredAmount: '',
+  companyPaymentStatus: 'PENDIENTE',
+  companyPaymentDate: '',
+});
+
+let accessorySequence = 0;
+const createAccessoryId = () => `accessory-${Date.now()}-${++accessorySequence}`;
+const createAccessoryWork = () => ({ id: createAccessoryId(), detail: '', amount: '', includesReplacement: 'NO', replacementPiece: '', replacementAmount: '' });
+const createAccessoryPayment = () => ({ id: createAccessoryId(), kind: 'Parcial', amount: '', date: '', mode: 'Efectivo', modeDetail: '', reason: '', document: { file: null, name: '' } });
+const createAccessoryUi = () => ({ enabled: 'NO', works: [], notes: '', payments: [], paymentDraft: createAccessoryPayment() });
 
 export const formatDisplayValue = (value) => {
   if (value == null || value === '') return 'Sin informar';
@@ -146,6 +161,8 @@ export const CaseWorkspacePage = () => {
   const [nroCleas, setNroCleas] = useState('');
   const [cleasAgreedAmount, setCleasAgreedAmount] = useState('');
   const [cleasPaymentsUi, setCleasPaymentsUi] = useState(createCleasPaymentsUi);
+  const [cleasFranchiseDistribution, setCleasFranchiseDistribution] = useState(createCleasFranchiseDistribution);
+  const [accessoryUi, setAccessoryUi] = useState(createAccessoryUi);
   const [cleasOver, setCleasOver] = useState('damage');
   const [cleasOpinion, setCleasOpinion] = useState('favorable');
   const [cleasClosedAt, setCleasClosedAt] = useState(null);
@@ -155,6 +172,8 @@ export const CaseWorkspacePage = () => {
     setNroCleas('');
     setCleasAgreedAmount('');
     setCleasPaymentsUi(createCleasPaymentsUi());
+    setCleasFranchiseDistribution(createCleasFranchiseDistribution());
+    setAccessoryUi(createAccessoryUi());
     setCleasOver('damage');
     setCleasOpinion('favorable');
     setCleasClosedAt(null);
@@ -194,6 +213,24 @@ export const CaseWorkspacePage = () => {
   if (workspaceQuery.isError) return <EmptyState title="No pude abrir la carpeta" description={workspaceQuery.error.message} />;
 
   const { caseDetail, budget, particularFinanceSummary, latestAppointment, latestIntake, latestOutcome, widgets, workshopInfo } = workspaceQuery.data;
+  const handleCleasFranchiseDistributionChange = (updater) => {
+    setCleasFranchiseDistribution((current) => {
+      const next = typeof updater === 'function' ? updater(current) : updater;
+      return next.companyRequirement === 'TOTAL'
+        ? { ...next, companyRequiredAmount: next.franchiseAmount }
+        : next;
+    });
+  };
+  const addAccessoryWork = () => {
+    setAccessoryUi((current) => ({ ...current, enabled: 'SI', works: [...current.works, createAccessoryWork()] }));
+  };
+  const registerAccessoryPayment = () => {
+    setAccessoryUi((current) => ({
+      ...current,
+      payments: [...current.payments, current.paymentDraft],
+      paymentDraft: createAccessoryPayment(),
+    }));
+  };
   const isCleasAdverseTotal = caseDetail.caseTypeCode === 'CLEAS' && cleasOver === 'damage' && cleasOpinion === 'unfavorable';
   const isCleasClosed = isCleasAdverseTotal && Boolean(cleasClosedAt);
   const canOverrideVisibleState = caseDetail.caseTypeCode !== 'TODO_RIESGO' && !isCleasClosed;
@@ -374,13 +411,13 @@ export const CaseWorkspacePage = () => {
               onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })}
             />
           ) : currentTab?.tabCode === 'PRESUPUESTO' ? (
-            <BudgetEditorPanel caseId={caseId} budget={budget} caseDetail={caseDetail} workshopInfo={workshopInfo} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
+            <BudgetEditorPanel caseId={caseId} budget={budget} caseDetail={caseDetail} workshopInfo={workshopInfo} accessoryUi={accessoryUi} onAccessoryUiChange={setAccessoryUi} onAddAccessoryWork={addAccessoryWork} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'GESTION_TRAMITE' ? (
-            <GestionTramiteEditor caseId={caseId} caseDetail={caseDetail} budget={budget} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, setNroCleas, cleasAgreedAmount, setCleasAgreedAmount, cleasOver, cleasOpinion, onCleasOverChange: handleCleasOverChange, onCleasOpinionChange: handleCleasOpinionChange, cleasClosedAt, onRequestCleasClosure: () => setShowCleasClosureDialog(true) } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
+            <GestionTramiteEditor caseId={caseId} caseDetail={caseDetail} budget={budget} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, setNroCleas, cleasAgreedAmount, setCleasAgreedAmount, cleasFranchiseDistribution, onCleasFranchiseDistributionChange: handleCleasFranchiseDistributionChange, cleasOver, cleasOpinion, onCleasOverChange: handleCleasOverChange, onCleasOpinionChange: handleCleasOpinionChange, cleasClosedAt, onRequestCleasClosure: () => setShowCleasClosureDialog(true) } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'GESTION_REPARACION' ? (
             <RepairEditorPanel caseId={caseId} caseDetail={caseDetail} latestAppointment={latestAppointment} latestIntake={latestIntake} latestOutcome={latestOutcome} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'PAGOS' ? (
-            <PaymentsEditorPanel caseId={caseId} caseDetail={caseDetail} budget={budget} particularFinanceSummary={particularFinanceSummary} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, cleasAgreedAmount, cleasPaymentsUi, onCleasPaymentsUiChange: setCleasPaymentsUi, cleasOver, cleasOpinion, cleasClosedAt } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
+            <PaymentsEditorPanel caseId={caseId} caseDetail={caseDetail} budget={budget} particularFinanceSummary={particularFinanceSummary} accessoryUi={accessoryUi} onAccessoryUiChange={setAccessoryUi} onRegisterAccessoryPayment={registerAccessoryPayment} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange: setCleasPaymentsUi, cleasOver, cleasOpinion, cleasClosedAt } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : null}
         </div>
       </Card>

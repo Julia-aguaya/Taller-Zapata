@@ -9,12 +9,12 @@ const initialInsurance = { clientCompany: '', claimNumber: '', thirdPartyCompany
 const initialClaim = { location: '', time: '', thirdPartyPlate: '', dynamics: '', observations: '' };
 const initialProcedure = {
   presentedAt: '', inspectionForwardedAt: '', modality: '', minimumCloseAmount: '', includesParts: '', quotation: '', quotationDate: '',
-  agreedAmount: '', franchiseAmount: '', companyRequiredAmount: '', partsProvider: '', partsAuthorization: '',
+  agreedAmount: '', partsProvider: '', partsAuthorization: '',
 };
 
 const changeValue = (setValues) => (name) => (event) => setValues((values) => ({ ...values, [name]: event.target.value }));
 
-export const CleasGestionTramiteEditor = ({ caseId, caseDetail, nroCleas, setNroCleas, cleasAgreedAmount, setCleasAgreedAmount, cleasOver = 'damage', opinion = 'favorable', onCleasOverChange, onOpinionChange, cleasClosedAt, onRequestClosure }) => {
+export const CleasGestionTramiteEditor = ({ caseId, caseDetail, nroCleas, setNroCleas, cleasAgreedAmount, setCleasAgreedAmount, cleasFranchiseDistribution, onCleasFranchiseDistributionChange, cleasOver = 'damage', opinion = 'favorable', onCleasOverChange, onOpinionChange, cleasClosedAt, onRequestClosure }) => {
   const [insurance, setInsurance] = useState(initialInsurance);
   const [claim, setClaim] = useState(initialClaim);
   const [procedure, setProcedure] = useState(initialProcedure);
@@ -32,7 +32,7 @@ export const CleasGestionTramiteEditor = ({ caseId, caseDetail, nroCleas, setNro
         <>
           <CleasInsuranceDataSection values={insurance} onChange={changeValue(setInsurance)} nroCleas={nroCleas} setNroCleas={setNroCleas} />
           <CleasClaimDataSection values={claim} onChange={changeValue(setClaim)} />
-          <CleasProcedureSection cleasOver={cleasOver} opinion={opinion} values={procedure} onChange={changeValue(setProcedure)} cleasAgreedAmount={cleasAgreedAmount} setCleasAgreedAmount={setCleasAgreedAmount} onRequestClosure={onRequestClosure} />
+          <CleasProcedureSection caseDetail={caseDetail} cleasOver={cleasOver} opinion={opinion} values={procedure} onChange={changeValue(setProcedure)} cleasAgreedAmount={cleasAgreedAmount} setCleasAgreedAmount={setCleasAgreedAmount} cleasFranchiseDistribution={cleasFranchiseDistribution} onCleasFranchiseDistributionChange={onCleasFranchiseDistributionChange} onRequestClosure={onRequestClosure} />
         </>
       )}
     </div>

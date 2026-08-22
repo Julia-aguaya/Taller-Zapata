@@ -14,16 +14,33 @@ const Field = ({ label, children, className = '' }) => (
 const toAmount = (value) => Number(value) || 0;
 const calculatedInputClass = 'cursor-not-allowed bg-muted/60 text-muted-foreground';
 
-export const CleasProcedureSection = ({ cleasOver, opinion, values, onChange, cleasAgreedAmount, setCleasAgreedAmount, onRequestClosure }) => {
+export const CleasProcedureSection = ({ caseDetail, cleasOver, opinion, values, onChange, cleasAgreedAmount, setCleasAgreedAmount, cleasFranchiseDistribution = {}, onCleasFranchiseDistributionChange, onRequestClosure }) => {
   const agreedAmount = toAmount(cleasAgreedAmount);
-  const franchiseAmount = toAmount(values.franchiseAmount);
-  const companyRequiredAmount = toAmount(values.companyRequiredAmount);
-  const amountToBill = cleasOver === 'franchise' && opinion === 'unfavorable'
+  const isUnfavorableFranchise = caseDetail?.caseTypeCode === 'CLEAS' && cleasOver === 'franchise' && opinion === 'unfavorable';
+  const franchiseAmount = toAmount(cleasFranchiseDistribution.franchiseAmount);
+  const companyRequiredAmount = toAmount(cleasFranchiseDistribution.companyRequiredAmount);
+  const amountToBill = isUnfavorableFranchise
     ? agreedAmount - (franchiseAmount - companyRequiredAmount)
     : agreedAmount;
   const customerAmount = agreedAmount - amountToBill;
   const showFavorableAmounts = opinion === 'favorable';
-  const showFranchiseDistribution = cleasOver === 'franchise' && opinion === 'unfavorable';
+  const showFranchiseDistribution = isUnfavorableFranchise;
+  const changeDistribution = (name) => (event) => {
+    const value = event.target.value;
+    onCleasFranchiseDistributionChange?.((current) => ({
+      ...current,
+      [name]: value,
+      ...(name === 'franchiseAmount' && current.companyRequirement === 'TOTAL' ? { companyRequiredAmount: value } : {}),
+    }));
+  };
+  const changeCompanyRequirement = (event) => {
+    const companyRequirement = event.target.value;
+    onCleasFranchiseDistributionChange?.((current) => ({
+      ...current,
+      companyRequirement,
+      companyRequiredAmount: companyRequirement === 'NO' ? '0' : companyRequirement === 'TOTAL' ? current.franchiseAmount : current.companyRequiredAmount,
+    }));
+  };
 
   return (
     <Card className="rounded-3xl border-border/70 p-5">
@@ -82,7 +99,7 @@ export const CleasProcedureSection = ({ cleasOver, opinion, values, onChange, cl
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">Importes del dictamen</p>
           {/* Separado para que puedas mover estos importes sin alargar la tarjeta principal. */}
           <div className="mt-3 grid gap-3 md:grid-cols-2">
-            {cleasOver === 'franchise' ? <Field label="Monto de franquicia"><Input type="number" min="0" value={values.franchiseAmount} onChange={onChange('franchiseAmount')} /></Field> : null}
+            {cleasOver === 'franchise' ? <Field label="Monto de franquicia"><Input type="number" min="0" value={cleasFranchiseDistribution.franchiseAmount ?? ''} onChange={changeDistribution('franchiseAmount')} /></Field> : null}
             <Field label="Monto de cotización acordada"><Input type="number" min="0" value={cleasAgreedAmount} onChange={(event) => setCleasAgreedAmount(event.target.value)} /></Field>
             <Field label="A facturar Cía."><Input value={amountToBill} readOnly className={calculatedInputClass} /></Field>
           </div>
@@ -92,15 +109,18 @@ export const CleasProcedureSection = ({ cleasOver, opinion, values, onChange, cl
           {showFranchiseDistribution ? (
         <div className="mt-5 rounded-2xl border border-border/70 bg-muted/30 p-4">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Distribución de la franquicia</p>
-          {/* Mantené esta subsección separada: acá podés cambiar columnas y campos calculados sin tocar la grilla común. */}
+          {/* Distribución separada: el grid y el orden pueden ajustarse sin modificar los importes derivados. */}
           <div className="mt-3 grid gap-3 md:grid-cols-2">
             <Field label="Monto de cotización acordada"><Input type="number" min="0" value={cleasAgreedAmount} onChange={(event) => setCleasAgreedAmount(event.target.value)} /></Field>
-            <Field label="Monto de franquicia"><Input type="number" min="0" value={values.franchiseAmount} onChange={onChange('franchiseAmount')} /></Field>
-            <Field label="Monto que la Cía. exige al cliente"><Input type="number" min="0" value={values.companyRequiredAmount} onChange={onChange('companyRequiredAmount')} /></Field>
+            <Field label="Monto de franquicia"><Input type="number" value={cleasFranchiseDistribution.franchiseAmount ?? ''} onChange={changeDistribution('franchiseAmount')} /></Field>
+            <Field label="¿La Cía. exige pago de franquicia?"><Select value={cleasFranchiseDistribution.companyRequirement ?? 'NO'} onChange={changeCompanyRequirement}><option value="NO">No</option><option value="TOTAL">Sí, total</option><option value="PARCIAL">Sí, parcial</option></Select></Field>
+            <Field label="Monto que la Cía. exige al cliente"><Input type="number" value={cleasFranchiseDistribution.companyRequiredAmount ?? ''} onChange={changeDistribution('companyRequiredAmount')} disabled={(cleasFranchiseDistribution.companyRequirement ?? 'NO') === 'NO'} readOnly={['NO', 'TOTAL'].includes(cleasFranchiseDistribution.companyRequirement ?? 'NO')} className={['NO', 'TOTAL'].includes(cleasFranchiseDistribution.companyRequirement ?? 'NO') ? calculatedInputClass : ''} /></Field>
+            <Field label="Estado de pago a la Cía."><Select value={cleasFranchiseDistribution.companyPaymentStatus ?? 'PENDIENTE'} onChange={changeDistribution('companyPaymentStatus')}><option value="PENDIENTE">PENDIENTE</option><option value="CANCELADO">Cancelado</option></Select></Field>
+            <Field label="Fecha de pago a la Cía."><Input type="date" value={cleasFranchiseDistribution.companyPaymentDate ?? ''} onChange={changeDistribution('companyPaymentDate')} /></Field>
             <Field label="A facturar Cía."><Input value={amountToBill} readOnly className={calculatedInputClass} /></Field>
             <Field label="A cargo del cliente"><Input value={customerAmount} readOnly className={calculatedInputClass} /></Field>
           </div>
-          {amountToBill < 0 ? <div role="alert" className="mt-3 flex gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/60 dark:text-red-300"><AlertTriangle className="h-4 w-4 shrink-0" />A facturar Cía. da negativo y requiere revisión.</div> : null}
+          {amountToBill < 0 ? <div role="alert" className="mt-3 flex gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950/60 dark:text-red-300"><AlertTriangle className="h-4 w-4 shrink-0" />El importe a facturar a la compañía es negativo. Este caso requiere revisión manual antes de continuar.</div> : null}
         </div>
           ) : null}
         </>
