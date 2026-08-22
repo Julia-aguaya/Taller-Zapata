@@ -53,19 +53,22 @@ describe('BudgetEditorPanel accessory work', () => {
     expect(screen.getByLabelText('Trabajos extras')).toHaveTextContent('No');
     expect(screen.getByLabelText('Trabajos extras')).toHaveTextContent('Sí');
     expect(screen.getByLabelText('IVA')).toHaveValue('21');
-    expect(screen.getByLabelText('IVA')).toHaveTextContent('21% sobre MO');
+    expect(screen.getByLabelText('IVA')).toHaveTextContent('21%');
     expect(screen.getByText(/no hay trabajos extras incluidos/i)).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Trabajos extras'), { target: { value: 'SI' } });
     fireEvent.click(screen.getByRole('button', { name: /agregar trabajo extra/i }));
-    expect(screen.getByLabelText('Detalle')).toBeInTheDocument();
+    expect(screen.getByLabelText('Pieza afectada')).toBeInTheDocument();
     fireEvent.change(controlFor('Total MO'), { target: { value: '120000' } });
     fireEvent.change(controlFor('Incluye repuesto'), { target: { value: 'SI' } });
     fireEvent.change(controlFor('Monto repuesto'), { target: { value: '30000' } });
 
-    expect(screen.getByLabelText('Cotizado')).toHaveValue('$ 175.200,00');
+    expect(screen.getByLabelText('Cotizado')).toHaveValue('$ 150.000,00');
+    fireEvent.change(screen.getByLabelText('IVA'), { target: { value: '10.5' } });
+    expect(screen.getByLabelText('IVA')).toHaveValue('10.5');
+    expect(screen.getByLabelText('Cotizado')).toHaveValue('$ 150.000,00');
     const replacementSelect = controlFor('Incluye repuesto');
     fireEvent.change(replacementSelect, { target: { value: 'NO' } });
-    expect(screen.getByLabelText('Cotizado')).toHaveValue('$ 145.200,00');
+    expect(screen.getByLabelText('Cotizado')).toHaveValue('$ 120.000,00');
     fireEvent.click(screen.getByRole('button', { name: /guardar cambios/i }));
     await waitFor(() => expect(mockUpsertCaseBudget).toHaveBeenCalled());
     expect(JSON.stringify(mockUpsertCaseBudget.mock.calls[0][1])).not.toContain('accessory');

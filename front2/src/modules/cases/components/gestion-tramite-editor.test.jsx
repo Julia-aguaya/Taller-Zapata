@@ -15,6 +15,12 @@ vi.mock('@tanstack/react-query', () => ({
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/shared/auth/session-storage', () => ({ readStoredAuth: () => ({ userId: '1' }) }));
+vi.mock('@/modules/cases/components/documents-section', () => ({
+  DocumentsSection: ({ caseId }) => <div data-testid="documents-section" data-case-id={caseId}><h4>Documentación</h4><button type="button">Agregar items</button></div>,
+}));
+vi.mock('@/modules/cases/components/task-agenda', () => ({
+  TaskAgenda: ({ caseId, organizationId, branchId }) => <div data-testid="task-agenda" data-case-id={caseId} data-organization-id={organizationId} data-branch-id={branchId}><h4>Agenda de tareas</h4><button type="button">Agregar item</button></div>,
+}));
 
 global.fetch = vi.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob()) });
 
@@ -72,6 +78,24 @@ describe('GestionTramiteEditor', () => {
     expect(screen.getByText('Definición del CLEAS')).toBeTruthy();
     expect(screen.getByText('CLEAS sobre: Daño total')).toBeTruthy();
     expect(screen.getByText('Dictamen: A favor')).toBeTruthy();
+  });
+
+  it('renders CLEAS sections in the required order and passes document and agenda context', () => {
+    mount({ caseTypeCode: 'CLEAS', organizationId: 7, branchId: 9 });
+
+    expect(Array.from(screen.getByTestId('cleas-gestion-tramite-editor').querySelectorAll('h4')).map((heading) => heading.textContent)).toEqual([
+      'Datos generales del trámite',
+      'Definición del CLEAS',
+      'Datos del seguro',
+      'Datos del siniestro',
+      'Documentación',
+      'Tramitación',
+      'Agenda de tareas',
+    ]);
+    expect(screen.getByTestId('documents-section')).toHaveAttribute('data-case-id', '42');
+    expect(screen.getByTestId('task-agenda')).toHaveAttribute('data-case-id', '42');
+    expect(screen.getByTestId('task-agenda')).toHaveAttribute('data-organization-id', '7');
+    expect(screen.getByTestId('task-agenda')).toHaveAttribute('data-branch-id', '9');
   });
 
   it('calculates the unfavorable franchise distribution and preserves signed negative results', () => {

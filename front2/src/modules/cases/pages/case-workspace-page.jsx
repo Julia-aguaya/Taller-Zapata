@@ -53,7 +53,7 @@ const TODO_RIESGO_OVERRIDE_OPTIONS = {
 };
 
 const createCleasPaymentsUi = () => ({
-  billing: { insuranceCompany: '', claimNumber: '', agreementDate: '', invoiceNumber: '', businessName: '', totalAmount: '', taxableNet: '', vat: '', customerSigned: 'NO', passedToPayments: 'NO', estimatedPaymentDate: '' },
+  billing: { agreementDate: '', invoiceNumber: '', businessName: '', totalAmount: '', taxableNet: '', vat: '', customerSigned: 'NO', passedToPayments: 'NO', estimatedPaymentDate: '' },
   invoiceAcknowledged: false,
   paymentDraft: { paidAt: '', status: 'PENDIENTE', depositedAmount: '', hasRetentions: 'NO', vatRetention: '', earningsRetention: '', patrimonialContribution: '', iibbRetention: '', dreiRetention: '', otherRetention: '' },
   paymentDocument: { file: null, name: '' },
@@ -70,9 +70,9 @@ const createCleasFranchiseDistribution = () => ({
 
 let accessorySequence = 0;
 const createAccessoryId = () => `accessory-${Date.now()}-${++accessorySequence}`;
-const createAccessoryWork = () => ({ id: createAccessoryId(), detail: '', amount: '', includesReplacement: 'NO', replacementPiece: '', replacementAmount: '' });
+const createAccessoryWork = () => ({ id: createAccessoryId(), affectedPiece: '', task: '', damageLevel: '', amount: '', includesReplacement: 'NO', replacementPiece: '', replacementAmount: '' });
 const createAccessoryPayment = () => ({ id: createAccessoryId(), kind: 'Parcial', amount: '', date: '', mode: 'Efectivo', modeDetail: '', reason: '', document: { file: null, name: '' } });
-const createAccessoryUi = () => ({ enabled: 'NO', works: [], notes: '', payments: [], paymentDraft: createAccessoryPayment() });
+const createAccessoryUi = () => ({ enabled: 'NO', vat: '21', customerConfirmed: 'NO', notes: '', works: [], payments: [], paymentDraft: createAccessoryPayment() });
 
 export const formatDisplayValue = (value) => {
   if (value == null || value === '') return 'Sin informar';
@@ -161,6 +161,7 @@ export const CaseWorkspacePage = () => {
   const [nroCleas, setNroCleas] = useState('');
   const [cleasAgreedAmount, setCleasAgreedAmount] = useState('');
   const [cleasPaymentsUi, setCleasPaymentsUi] = useState(createCleasPaymentsUi);
+  const [cleasInsurance, setCleasInsurance] = useState({ clientCompany: '', claimNumber: '' });
   const [cleasFranchiseDistribution, setCleasFranchiseDistribution] = useState(createCleasFranchiseDistribution);
   const [accessoryUi, setAccessoryUi] = useState(createAccessoryUi);
   const [cleasOver, setCleasOver] = useState('damage');
@@ -172,6 +173,7 @@ export const CaseWorkspacePage = () => {
     setNroCleas('');
     setCleasAgreedAmount('');
     setCleasPaymentsUi(createCleasPaymentsUi());
+    setCleasInsurance({ clientCompany: '', claimNumber: '' });
     setCleasFranchiseDistribution(createCleasFranchiseDistribution());
     setAccessoryUi(createAccessoryUi());
     setCleasOver('damage');
@@ -232,9 +234,10 @@ export const CaseWorkspacePage = () => {
     }));
   };
   const isCleasAdverseTotal = caseDetail.caseTypeCode === 'CLEAS' && cleasOver === 'damage' && cleasOpinion === 'unfavorable';
+  const isCleasWorkflowGuard = caseDetail.caseTypeCode === 'CLEAS' && cleasOver === 'damage' && ['pending', 'unfavorable'].includes(cleasOpinion);
   const isCleasClosed = isCleasAdverseTotal && Boolean(cleasClosedAt);
   const canOverrideVisibleState = caseDetail.caseTypeCode !== 'TODO_RIESGO' && !isCleasClosed;
-  const isCleasClosureBlockedTab = (tabCode) => isCleasClosed && ['PRESUPUESTO', 'GESTION_REPARACION', 'PAGOS'].includes(tabCode);
+  const isCleasClosureBlockedTab = (tabCode) => isCleasWorkflowGuard && ['PRESUPUESTO', 'GESTION_REPARACION', 'PAGOS'].includes(tabCode);
   const handleCleasOverChange = (value) => {
     setCleasOver(value);
     if (value !== 'damage' || cleasOpinion !== 'unfavorable') setCleasClosedAt(null);
@@ -379,7 +382,7 @@ export const CaseWorkspacePage = () => {
 
         <div className="mt-5">
           {isCleasClosureBlockedTab(selectedTab) ? (
-            <EmptyState description="Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra." />
+            <EmptyState description={cleasOpinion === 'pending' ? 'No se puede avanzar hasta recibir el dictamen.' : 'Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra.'} />
           ) : selectedTab === 'DETALLES' ? (
             <CaseDetailsPanel
               caseDetail={caseDetail}
@@ -413,11 +416,11 @@ export const CaseWorkspacePage = () => {
           ) : currentTab?.tabCode === 'PRESUPUESTO' ? (
             <BudgetEditorPanel caseId={caseId} budget={budget} caseDetail={caseDetail} workshopInfo={workshopInfo} accessoryUi={accessoryUi} onAccessoryUiChange={setAccessoryUi} onAddAccessoryWork={addAccessoryWork} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'GESTION_TRAMITE' ? (
-            <GestionTramiteEditor caseId={caseId} caseDetail={caseDetail} budget={budget} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, setNroCleas, cleasAgreedAmount, setCleasAgreedAmount, cleasFranchiseDistribution, onCleasFranchiseDistributionChange: handleCleasFranchiseDistributionChange, cleasOver, cleasOpinion, onCleasOverChange: handleCleasOverChange, onCleasOpinionChange: handleCleasOpinionChange, cleasClosedAt, onRequestCleasClosure: () => setShowCleasClosureDialog(true) } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
+            <GestionTramiteEditor caseId={caseId} caseDetail={caseDetail} budget={budget} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, setNroCleas, cleasInsurance, onCleasInsuranceChange: setCleasInsurance, cleasAgreedAmount, setCleasAgreedAmount, cleasFranchiseDistribution, onCleasFranchiseDistributionChange: handleCleasFranchiseDistributionChange, cleasOver, cleasOpinion, onCleasOverChange: handleCleasOverChange, onCleasOpinionChange: handleCleasOpinionChange, cleasClosedAt, onRequestCleasClosure: () => setShowCleasClosureDialog(true) } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'GESTION_REPARACION' ? (
             <RepairEditorPanel caseId={caseId} caseDetail={caseDetail} latestAppointment={latestAppointment} latestIntake={latestIntake} latestOutcome={latestOutcome} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'PAGOS' ? (
-            <PaymentsEditorPanel caseId={caseId} caseDetail={caseDetail} budget={budget} particularFinanceSummary={particularFinanceSummary} accessoryUi={accessoryUi} onAccessoryUiChange={setAccessoryUi} onRegisterAccessoryPayment={registerAccessoryPayment} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange: setCleasPaymentsUi, cleasOver, cleasOpinion, cleasClosedAt } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
+            <PaymentsEditorPanel caseId={caseId} caseDetail={caseDetail} budget={budget} particularFinanceSummary={particularFinanceSummary} accessoryUi={accessoryUi} onAccessoryUiChange={setAccessoryUi} onRegisterAccessoryPayment={registerAccessoryPayment} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, cleasInsurance, onCleasInsuranceChange: setCleasInsurance, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange: setCleasPaymentsUi, cleasOver, cleasOpinion, cleasClosedAt, cleasWorkflowGuard: isCleasWorkflowGuard } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : null}
         </div>
       </Card>

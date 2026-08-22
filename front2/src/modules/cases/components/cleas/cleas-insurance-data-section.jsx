@@ -24,8 +24,15 @@ export const CleasInsuranceDataSection = ({ values, onChange, nroCleas, setNroCl
       <Field label="N.º de siniestro"><Input value={values.claimNumber} onChange={onChange('claimNumber')} /></Field>
       <Field label="Cía. aseguradora del tercero"><Input value={values.thirdPartyCompany} onChange={onChange('thirdPartyCompany')} /></Field>
       <Field label="N.º de CLEAS"><Input value={nroCleas} onChange={(event) => setNroCleas(event.target.value)} /></Field>
-      <Field label="Tramitador/a"><Input value={values.processor} onChange={onChange('processor')} /></Field>
-      <Field label="Inspector/a"><Input value={values.inspector} onChange={onChange('inspector')} /></Field>
+      {/* Contactos locales: la grilla conserva datos de cada rol sin persistirlos. */}
+      <div className="rounded-2xl border border-border/60 bg-background/50 p-4 md:col-span-2">
+        <p className="mb-3 text-xs font-semibold">Tramitador/a</p>
+        <div className="grid gap-3 md:grid-cols-3"><Field label="Nombre"><Input value={values.processorName} onChange={onChange('processorName')} /></Field><Field label="Correo"><Input type="email" value={values.processorEmail} onChange={onChange('processorEmail')} /></Field><Field label="Teléfono"><Input type="tel" value={values.processorPhone} onChange={onChange('processorPhone')} /></Field></div>
+      </div>
+      <div className="rounded-2xl border border-border/60 bg-background/50 p-4 md:col-span-2">
+        <p className="mb-3 text-xs font-semibold">Inspector/a</p>
+        <div className="grid gap-3 md:grid-cols-3"><Field label="Nombre"><Input value={values.inspectorName} onChange={onChange('inspectorName')} /></Field><Field label="Correo"><Input type="email" value={values.inspectorEmail} onChange={onChange('inspectorEmail')} /></Field><Field label="Teléfono"><Input type="tel" value={values.inspectorPhone} onChange={onChange('inspectorPhone')} /></Field></div>
+      </div>
     </div>
   </Card>
 );

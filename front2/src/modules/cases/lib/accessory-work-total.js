@@ -4,7 +4,7 @@ const toAmount = (value) => {
 };
 
 export const getAccessoryWorkTotals = (accessoryUi) => {
-  if (accessoryUi?.enabled !== 'SI') return { labor: 0, parts: 0, vat: 0, quoted: 0 };
+  if (accessoryUi?.enabled !== 'SI') return { labor: 0, parts: 0, quoted: 0 };
 
   const { labor, parts } = (accessoryUi.works ?? []).reduce(
     (totals, work) => ({
@@ -13,8 +13,7 @@ export const getAccessoryWorkTotals = (accessoryUi) => {
     }),
     { labor: 0, parts: 0 },
   );
-  const vat = labor * 0.21;
-  return { labor, parts, vat, quoted: labor + vat + parts };
+  return { labor, parts, quoted: labor + parts };
 };
 
 export const getAccessoryWorkTotal = (accessoryUi) => getAccessoryWorkTotals(accessoryUi).quoted;

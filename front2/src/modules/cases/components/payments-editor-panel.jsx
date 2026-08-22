@@ -42,7 +42,7 @@ const PAYMENT_METHODS = [
   { value: 'OTRO', label: 'Otro' },
 ];
 
-export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFinanceSummary, accessoryUi, onAccessoryUiChange, onRegisterAccessoryPayment, nroCleas, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange, cleasOver, cleasOpinion, cleasClosedAt, onSaved }) => {
+export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFinanceSummary, accessoryUi, onAccessoryUiChange, onRegisterAccessoryPayment, nroCleas, cleasInsurance, onCleasInsuranceChange, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange, cleasOver, cleasOpinion, cleasClosedAt, cleasWorkflowGuard, onSaved }) => {
   const queryClient = useQueryClient();
   const { session } = useSession();
 
@@ -81,6 +81,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const isCleas = caseDetail?.caseTypeCode === 'CLEAS';
   const isCleasAdverseTotal = isCleas && cleasOver === 'damage' && cleasOpinion === 'unfavorable';
   const isClosedCleas = isCleasAdverseTotal && Boolean(cleasClosedAt);
+  const blockCleasPayments = Boolean(cleasWorkflowGuard) || isClosedCleas;
   const isUnfavorableFranchise = isCleas && cleasOver === 'franchise' && cleasOpinion === 'unfavorable';
   const cleasNumberDisplay = nroCleas?.trim() ? nroCleas : 'Sin número de CLEAS cargado';
   const franchiseAmount = toAmount(cleasFranchiseDistribution?.franchiseAmount);
@@ -266,19 +267,21 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
         </div>
       ) : null}
 
-       {isCleas && !isClosedCleas ? (
+        {isCleas && !blockCleasPayments ? (
         <CleasBillingCard
-          amountToBill={cleasAmountToBill}
-          billing={cleasPaymentsUi.billing}
+            amountToBill={cleasAmountToBill}
+            billing={cleasPaymentsUi.billing}
+            insurance={cleasInsurance}
           cleasNumberDisplay={cleasNumberDisplay}
-          onChange={(name) => (event) => onCleasPaymentsUiChange((current) => ({ ...current, billing: { ...current.billing, [name]: event.target.value } }))}
+            onChange={(name) => (event) => onCleasPaymentsUiChange((current) => ({ ...current, billing: { ...current.billing, [name]: event.target.value } }))}
+            onInsuranceChange={(name) => (event) => onCleasInsuranceChange?.((current) => ({ ...current, [name]: event.target.value }))}
           onAddInvoice={() => onCleasPaymentsUiChange((current) => ({ ...current, invoiceAcknowledged: true }))}
           invoiceAcknowledged={cleasPaymentsUi.invoiceAcknowledged}
         />
       ) : null}
 
       {/* Comprobante + Formulario */}
-       {!isClosedCleas ? (
+        {!blockCleasPayments ? (
          <div className="rounded-3xl border border-border/70 bg-card p-5">
            <div className="flex items-center justify-between">
              <h5 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Nuevo pago</h5>
@@ -304,27 +307,27 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
          </Card>
        ) : null}
 
-       {showAccessoryPayments ? (
+        {showAccessoryPayments && !blockCleasPayments ? (
          <Card className="rounded-3xl border-border/70 p-5">
            <div className="flex flex-wrap items-center justify-between gap-3">
-             <div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Pagos cliente</p><h4 className="mt-1 text-lg font-semibold">Tareas extras / tramo particular</h4></div>
-             <Button type="button" onClick={() => setShowAccessoryPaymentModal(true)}>+ Agregar pago</Button>
+              <div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Pagos cliente</p><h4 className="mt-1 text-lg font-semibold">Pagos adicionales del cliente</h4></div>
+              <Button type="button" disabled={accessoryWorks.length === 0} onClick={() => setShowAccessoryPaymentModal(true)}>+ Agregar pago</Button>
            </div>
            {/* Resumen derivado: los extras y sus cobros no alteran los totales financieros principales. */}
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
               <MiniCard label="Total MO extras" value={formatCurrency(accessoryTotals.labor)} />
               <MiniCard label="Total repuestos extras" value={formatCurrency(accessoryTotals.parts)} />
               <MiniCard label="Cotizado extras" value={formatCurrency(accessoryTotal)} highlight />
-             <MiniCard label="Total cobrado cliente" value={formatCurrency(accessoryPaid)} />
-             <MiniCard label="Saldo cliente" value={formatCurrency(accessoryBalance)} highlight={accessoryBalance > 0} variant={accessoryBalance > 0 ? 'warning' : 'success'} />
+              <MiniCard label="Total abonado por el cliente" value={formatCurrency(accessoryPaid)} />
+              <MiniCard label="Saldo pendiente" value={formatCurrency(accessoryBalance)} highlight={accessoryBalance > 0} variant={accessoryBalance > 0 ? 'warning' : 'success'} />
            </div>
-           {accessoryUi?.enabled !== 'SI' || accessoryWorks.length === 0 ? <p className="mt-4 rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm text-muted-foreground">No hay tareas extras activas. El cierre de Pagos depende solo del pago principal.</p> : null}
+            {accessoryUi?.enabled !== 'SI' || accessoryWorks.length === 0 ? <p className="mt-4 rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm text-muted-foreground">Primero cargá un trabajo extra desde Presupuesto.</p> : null}
             {accessoryPayments.length > 0 ? <div className="mt-4 space-y-2">{accessoryPayments.map((payment) => <div key={payment.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background/50 px-4 py-3 text-sm"><span>{payment.kind} · {formatCurrency(payment.amount)} · {payment.date || 'Sin fecha'} · {payment.mode || 'Sin modo'}{payment.document?.name ? ` · ${payment.document.name}` : ''}</span><Button type="button" variant="ghost" size="sm" onClick={() => updateAccessoryUi((current) => ({ ...current, payments: current.payments.filter((entry) => entry.id !== payment.id) }))}>Eliminar</Button></div>)}</div> : null}
          </Card>
        ) : null}
 
       {/* Modal: Registrar pago */}
-       <Dialog open={!isClosedCleas && showPaymentModal} onClose={() => setShowPaymentModal(false)} title="Registrar pago" description={<>{`Cliente: ${caseDetail?.principalCustomerName || ''} — ${caseDetail?.principalVehiclePlate || ''}`}{isCleas ? <><br /><span>N.º de CLEAS: {cleasNumberDisplay}</span></> : null}</>} scrollable={isCleas}>
+       <Dialog open={!blockCleasPayments && showPaymentModal} onClose={() => setShowPaymentModal(false)} title="Registrar pago" description={<>{`Cliente: ${caseDetail?.principalCustomerName || ''} — ${caseDetail?.principalVehiclePlate || ''}`}{isCleas ? <><br /><span>N.º de CLEAS: {cleasNumberDisplay}</span></> : null}</>} scrollable={isCleas}>
 
          {/* Tipo de comprobante */}
         <div className="mb-5 rounded-2xl border border-border/60 bg-background/70 p-4">
@@ -444,7 +447,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
         </div>
       </Dialog>
 
-      <Dialog open={showAccessoryPayments && showAccessoryPaymentModal} onClose={() => setShowAccessoryPaymentModal(false)} title="Registrar pago de extras" description="Registro visual local del tramo particular; no genera movimientos ni comprobantes.">
+      <Dialog open={showAccessoryPayments && accessoryWorks.length > 0 && showAccessoryPaymentModal} onClose={() => setShowAccessoryPaymentModal(false)} title="Pago adicional del cliente" description="Registro visual local de un pago adicional del cliente; no genera movimientos ni comprobantes.">
         {/* Modal local de extras: sus campos se mantienen fuera del formulario financiero genérico. */}
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="Cancela saldo"><Select value={accessoryPaymentDraft.kind} onChange={(event) => updateAccessoryUi((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, kind: event.target.value } }))} options={[{ value: 'Parcial', label: 'Parcial' }, { value: 'Total', label: 'Total' }, { value: 'Bonificacion', label: 'Bonificación' }]} /></Field>
@@ -466,7 +469,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
       <div className="rounded-3xl border border-border/70 bg-card p-5">
         <div className="flex items-center justify-between mb-4">
           <h5 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Historial de movimientos</h5>
-           {!isClosedCleas ? <Button size="sm" onClick={() => setShowPaymentModal(true)}>+ Registrar pago</Button> : null}
+            {!blockCleasPayments ? <Button size="sm" onClick={() => setShowPaymentModal(true)}>+ Registrar pago</Button> : null}
         </div>
         {(movementsQuery.data ?? []).length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border/70 py-6 text-center text-sm text-muted-foreground">Sin movimientos registrados.</p>
@@ -496,6 +499,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
                     <td className="px-3 py-3">{m.cancellationTypeCode ? <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/50 px-2.5 py-0.5 text-xs font-medium">{m.cancellationTypeCode}</span> : '—'}</td>
                     <td className="px-3 py-3 text-xs text-muted-foreground max-w-[150px] truncate">{m.reason || '—'}</td>
                     <td className="px-3 py-3">
+                     {!blockCleasPayments ? (
                       <div className="flex items-center gap-1">
                         <button type="button" className="rounded-lg px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-primary/10 hover:text-primary" title="Descargar comprobante" onClick={async () => {
                           const stored = readStoredAuth();
@@ -511,6 +515,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
                         <button type="button" className="rounded-lg px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950" title="Anular pago"
                           onClick={() => setCancelMovement(m)}><Ban className="mr-1 h-3.5 w-3.5" />Anular</button>
                       </div>
+                     ) : null}
                     </td>
                   </tr>
                 ))}
@@ -545,9 +550,11 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
                     <td className="px-3 py-3 text-muted-foreground">{r.issuedDate}</td>
                     <td className="px-3 py-3 text-right font-medium">{formatCurrency(r.total)}</td>
                     <td className="px-3 py-3">
+                     {!blockCleasPayments ? (
                       <a href={getReceiptPdfUrl(r.id)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-primary transition hover:bg-primary/10" title="Descargar PDF">
                         <FileDown className="h-4 w-4" />PDF
                       </a>
+                     ) : null}
                     </td>
                   </tr>
                 ))}
@@ -557,7 +564,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
         </div>
       ) : null}
 
-      <div className="mt-5 flex justify-end">
+      {!blockCleasPayments ? <div className="mt-5 flex justify-end">
         <Button variant="outline" size="sm" onClick={async () => {
           const url = getClientPaymentPdfUrl(caseId, caseDetail?.principalCustomerName || 'Cliente', caseDetail?.principalVehiclePlate || '', comprobanteTipo, cotizadoConIva, form.reason, form.razonSocial, form.facturaNumero);
           const stored = readStoredAuth();
@@ -571,7 +578,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
           a.download = `comprobante-pago-${caseId}.pdf`;
           a.click();
         }}><FileDown className="mr-1.5 h-4 w-4" />Generar PDF</Button>
-      </div>
+      </div> : null}
     </div>
 
     {/* Confirmación anular pago */}
@@ -611,13 +618,13 @@ const MiniCard = ({ label, value, highlight, variant }) => (
   </div>
 );
 
-const CleasBillingCard = ({ amountToBill, billing, cleasNumberDisplay, onChange, onAddInvoice, invoiceAcknowledged }) => (
+const CleasBillingCard = ({ amountToBill, billing, insurance = {}, cleasNumberDisplay, onChange, onInsuranceChange = () => {}, onAddInvoice, invoiceAcknowledged }) => (
   <Card className="rounded-3xl border-border/70 p-5">
     <h4 className="text-lg font-semibold">Facturación</h4>
     {/* Grupo visual CLEAS: identificación de la factura. */}
     <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-      <Field label="Cía. aseguradora"><Input value={billing.insuranceCompany} onChange={onChange('insuranceCompany')} /></Field>
-      <Field label="N.º de siniestro"><Input value={billing.claimNumber} onChange={onChange('claimNumber')} /></Field>
+      <Field label="Cía. aseguradora"><Input value={insurance.clientCompany || ''} onChange={onInsuranceChange('clientCompany')} /></Field>
+      <Field label="N.º de siniestro"><Input value={insurance.claimNumber || ''} onChange={onInsuranceChange('claimNumber')} /></Field>
       <Field label="N.º de CLEAS"><Input value={cleasNumberDisplay} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
       <Field label="A facturar Cía."><Input value={amountToBill} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
       <Field label="Fecha de acuerdo"><Input type="date" value={billing.agreementDate} onChange={onChange('agreementDate')} /></Field>

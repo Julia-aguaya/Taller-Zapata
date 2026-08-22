@@ -1,4 +1,5 @@
 import { AlertTriangle, ClipboardList } from 'lucide-react';
+import { useRef, useState } from 'react';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 import { Input } from '@/shared/ui/input';
@@ -15,6 +16,8 @@ const toAmount = (value) => Number(value) || 0;
 const calculatedInputClass = 'cursor-not-allowed bg-muted/60 text-muted-foreground';
 
 export const CleasProcedureSection = ({ caseDetail, cleasOver, opinion, values, onChange, cleasAgreedAmount, setCleasAgreedAmount, cleasFranchiseDistribution = {}, onCleasFranchiseDistributionChange, onRequestClosure }) => {
+  const ordersInputRef = useRef(null);
+  const [ordersDocument, setOrdersDocument] = useState({ file: null, name: '' });
   const agreedAmount = toAmount(cleasAgreedAmount);
   const isUnfavorableFranchise = caseDetail?.caseTypeCode === 'CLEAS' && cleasOver === 'franchise' && opinion === 'unfavorable';
   const franchiseAmount = toAmount(cleasFranchiseDistribution.franchiseAmount);
@@ -66,7 +69,8 @@ export const CleasProcedureSection = ({ caseDetail, cleasOver, opinion, values, 
           <div className="mt-4 grid gap-x-6 gap-y-3 md:grid-cols-4">
             <Field label="Fecha presentado" className="md:col-span-2"><Input type="date" value={values.presentedAt} onChange={onChange('presentedAt')} /></Field>
             <Field label="Dictamen" className="md:col-span-2"><Input value="A favor" readOnly className={calculatedInputClass} /></Field>
-            <Field label="Derivado a inspección" className="md:col-span-2"><Input type="date" value={values.inspectionForwardedAt} onChange={onChange('inspectionForwardedAt')} /></Field>
+            <Field label="Derivado a inspección"><Input type="date" value={values.inspectionForwardedAt} onChange={onChange('inspectionForwardedAt')} /></Field>
+            <Field label="Fecha de inspección"><Input type="date" value={values.inspectionDate || ''} onChange={onChange('inspectionDate')} /></Field>
             <Field label="Modalidad" className="md:col-span-2"><Select value={values.modality} onChange={onChange('modality')}><option value="">Seleccionar...</option><option value="PRESENCIAL">Presencial</option><option value="FOTOS">Por fotos</option></Select></Field>
             <Field label="Mínimo para cierre" className="md:col-span-2"><Input type="number" min="0" value={values.minimumCloseAmount} onChange={onChange('minimumCloseAmount')} /></Field>
             <Field label="Lleva repuestos" className="md:col-span-2"><Select value={values.includesParts} onChange={onChange('includesParts')}><option value="">Seleccionar...</option><option value="SI">Sí</option><option value="NO">No</option></Select></Field>
@@ -84,6 +88,7 @@ export const CleasProcedureSection = ({ caseDetail, cleasOver, opinion, values, 
           <div className="mt-4 grid gap-x-6 gap-y-3 md:grid-cols-3">
             <Field label="Fecha presentado"><Input type="date" value={values.presentedAt} onChange={onChange('presentedAt')} /></Field>
             <Field label="Derivado a inspección"><Input type="date" value={values.inspectionForwardedAt} onChange={onChange('inspectionForwardedAt')} /></Field>
+            <Field label="Fecha de inspección"><Input type="date" value={values.inspectionDate || ''} onChange={onChange('inspectionDate')} /></Field>
             <Field label="Modalidad"><Select value={values.modality} onChange={onChange('modality')}><option value="">Seleccionar...</option><option value="PRESENCIAL">Presencial</option><option value="FOTOS">Por fotos</option></Select></Field>
             <Field label="Dictamen"><Input value={opinion === 'pending' ? 'Pendiente' : opinion === 'favorable' ? 'A favor' : opinion === 'unfavorable' ? 'En contra' : 'Culpa compartida'} readOnly className={calculatedInputClass} /></Field>
             <Field label="Mínimo para cierre"><Input type="number" min="0" value={values.minimumCloseAmount} onChange={onChange('minimumCloseAmount')} /></Field>
@@ -125,6 +130,12 @@ export const CleasProcedureSection = ({ caseDetail, cleasOver, opinion, values, 
           ) : null}
         </>
       )}
+      <div className="mt-4 rounded-2xl border border-border/60 bg-background/50 p-4">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Órdenes</p>
+        <input ref={ordersInputRef} type="file" className="hidden" onChange={(event) => { const file = event.target.files?.[0] ?? null; setOrdersDocument({ file, name: file?.name || '' }); }} />
+        <Button type="button" variant="outline" onClick={() => ordersInputRef.current?.click()}>Adjuntar orden</Button>
+        {ordersDocument.name ? <p className="mt-2 text-xs text-muted-foreground">{ordersDocument.name}</p> : null}
+      </div>
     </Card>
   );
 };

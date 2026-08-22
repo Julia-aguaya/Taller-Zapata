@@ -71,6 +71,7 @@ const AccessoryPaymentsHarness = (props) => {
     notes: '',
     payments: [],
     paymentDraft: { id: 'local-payment', kind: 'Parcial', amount: '', date: '', mode: 'Efectivo', modeDetail: '', reason: '', document: { file: null, name: '' } },
+    ...(props.accessoryUi === true ? {} : props.accessoryUi),
   });
   const registerAccessoryPayment = () => setAccessoryUi((current) => ({
     ...current,
@@ -132,26 +133,38 @@ describe('PaymentsEditorPanel', () => {
 
   it('hides accessory payments for PARTICULAR', () => {
     mount({ accessoryUi: true, caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'PARTICULAR' } });
-    expect(screen.queryByText('Tareas extras / tramo particular')).toBeNull();
+    expect(screen.queryByText('Pagos adicionales del cliente')).toBeNull();
   });
 
   it('hides accessory payments when the case type is absent', () => {
     mount({ accessoryUi: true, caseDetail: baseProps.caseDetail });
-    expect(screen.queryByText('Tareas extras / tramo particular')).toBeNull();
+    expect(screen.queryByText('Pagos adicionales del cliente')).toBeNull();
+  });
+
+  it('keeps the additional-payment modal unavailable when extras are NO', () => {
+    mount({
+      caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'TODO_RIESGO' },
+      accessoryUi: { enabled: 'NO', works: [] },
+    });
+
+    const addPayment = screen.getByRole('button', { name: '+ Agregar pago' });
+    expect(addPayment).toBeDisabled();
+    fireEvent.click(addPayment);
+    expect(screen.queryByRole('heading', { name: 'Pago adicional del cliente' })).toBeNull();
   });
 
   it.each(['TODO_RIESGO', 'GRANIZO', 'CLEAS', 'CODIGO_DESCONOCIDO'])('shows accessory payments for the non-PARTICULAR case type %s', (caseTypeCode) => {
     mount({ accessoryUi: true, caseDetail: { ...baseProps.caseDetail, caseTypeCode } });
-    expect(screen.getByText('Tareas extras / tramo particular')).toBeTruthy();
+    expect(screen.getByText('Pagos adicionales del cliente')).toBeTruthy();
   });
 
   it('registers an accessory payment only in local UI state', () => {
     mount({ accessoryUi: true, caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'GRANIZO' } });
 
     expect(screen.getByText('Cotizado extras')).toBeTruthy();
-    expect(screen.getByText('Cotizado extras').parentElement).toHaveTextContent('237.800');
+    expect(screen.getByText('Cotizado extras').parentElement).toHaveTextContent('200.000');
     fireEvent.click(screen.getByRole('button', { name: '+ Agregar pago' }));
-    const accessoryDialog = screen.getByRole('heading', { name: 'Registrar pago de extras' }).closest('.max-w-xl');
+    const accessoryDialog = screen.getByRole('heading', { name: 'Pago adicional del cliente' }).closest('.max-w-xl');
     expect(accessoryDialog).toBeTruthy();
     fireEvent.change(within(accessoryDialog).getByLabelText('Monto'), { target: { value: '80000' } });
     fireEvent.change(within(accessoryDialog).getByLabelText('Fecha'), { target: { value: '2026-08-21' } });
@@ -162,15 +175,15 @@ describe('PaymentsEditorPanel', () => {
     expect(mockCreateReceipt).not.toHaveBeenCalled();
   });
 
-  it('derives accessory quoted total and balance using the technical-budget VAT convention', () => {
+  it('derives accessory quoted total and balance without VAT', () => {
     mount({ accessoryUi: true, caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'GRANIZO' }, particularFinanceSummary: { ...baseProps.particularFinanceSummary, customerPaid: 50000 } });
 
     expect(screen.getByText('Total MO extras').parentElement).toHaveTextContent('180.000');
     expect(screen.getByText('Total repuestos extras').parentElement).toHaveTextContent('20.000');
     expect(screen.getByText('Cotizado extras')).toBeTruthy();
-    expect(screen.getByText('Cotizado extras').parentElement).toHaveTextContent('237.800');
-    expect(screen.getByText('Saldo cliente').parentElement).toHaveTextContent(/237\.800/);
-    expect(screen.getByText('Total cobrado cliente').parentElement).toHaveTextContent(/\$ 0/);
+    expect(screen.getByText('Cotizado extras').parentElement).toHaveTextContent('200.000');
+    expect(screen.getByText('Saldo pendiente').parentElement).toHaveTextContent(/200\.000/);
+    expect(screen.getByText('Total abonado por el cliente').parentElement).toHaveTextContent(/\$ 0/);
   });
 
   it('keeps accessory payment documentation local and out of financial history', () => {
