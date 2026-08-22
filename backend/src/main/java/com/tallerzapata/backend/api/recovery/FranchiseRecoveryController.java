@@ -18,6 +18,12 @@ public class FranchiseRecoveryController {
         this.franchiseRecoveryService = franchiseRecoveryService;
     }
 
+    @Operation(summary = "Listar catalogos de recupero", description = "Devuelve los catalogos disponibles para recuperos de franquicia")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PreAuthorize("hasAuthority('recupero.ver')")
+    @GetMapping("/recovery/catalogs")
+    public FranchiseRecoveryCatalogsResponse listCatalogs() { return franchiseRecoveryService.listCatalogs(); }
+
     @Operation(summary = "Obtener recupero de franquicia", description = "Devuelve el recupero de franquicia de un caso")
     @ApiResponse(responseCode = "200", description = "OK")
     @PreAuthorize("hasAuthority('recupero.ver')")

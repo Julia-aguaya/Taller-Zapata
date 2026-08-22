@@ -49,15 +49,15 @@ class TodoRiesgoEffectiveStateIntegrationTest {
         assertProjection(caseId, "SIN_PRESENTAR", "DAR_TURNO");
 
         upsertInsuranceProcessing(caseId, "2026-08-09", null, null, null, null);
-        assertProjection(caseId, "EN_TRAMITE", "DAR_TURNO");
+        assertProjection(caseId, "PRESENTADO_PD", "DAR_TURNO");
         upsertInsuranceProcessing(caseId, "2026-08-09", "ACEPTADA", "2026-08-10", null, null);
-        assertProjection(caseId, "EN_TRAMITE", "DAR_TURNO");
+        assertProjection(caseId, "PRESENTADO_PD", "DAR_TURNO");
 
         Long completeDocumentationState = jdbcTemplate.queryForObject("SELECT id FROM workflow_estados WHERE LOWER(dominio) = 'documentacion' AND codigo = 'COMPLETA'", Long.class);
         jdbcTemplate.update("UPDATE casos SET estado_documentacion_actual_id = ? WHERE id = ?", completeDocumentationState, caseId);
         entityManager.clear();
         recalculator.recalculate(caseId);
-        assertProjection(caseId, "PRESENTADO_PD", "DAR_TURNO");
+        assertProjection(caseId, "EN_TRAMITE", "DAR_TURNO");
 
         upsertInsuranceProcessing(caseId, "2026-08-09", "ACEPTADA", "2026-08-10", "2026-08-10", null);
         assertProjection(caseId, "ACORDADO", "DAR_TURNO");

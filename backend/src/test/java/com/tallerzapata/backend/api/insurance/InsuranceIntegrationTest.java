@@ -142,7 +142,7 @@ class InsuranceIntegrationTest {
         mockMvc.perform(put("/api/v1/cases/100/franchise")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(new CaseFranchiseUpsertRequest("PENDIENTE", new BigDecimal("500.00"), "ABONA_CLIENTE", null, "PROCEDE", true, new BigDecimal("500.00"), "Recuperar luego"))))
+                        .content(objectMapper.writeValueAsBytes(new CaseFranchiseUpsertRequest("PENDIENTE", new BigDecimal("500.00"), "ABONA_CLIENTE", null, "A_FAVOR", true, new BigDecimal("500.00"), "Recuperar luego"))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.franchiseStatusCode").value("PENDIENTE"));
 
@@ -339,19 +339,19 @@ class InsuranceIntegrationTest {
         mockMvc.perform(put("/api/v1/cases/{caseId}/franchise", 100L)
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"franchiseStatusCode\":\"RECUPERAR\",\"franchiseAmount\":50000,\"recoveryTypeCode\":\"CLIENTE\",\"franchiseOpinionCode\":\"PROCEDE\",\"exceedsFranchise\":true,\"recoveryAmount\":0}"))
+                        .content("{\"franchiseStatusCode\":\"PENDIENTE\",\"franchiseAmount\":50000,\"recoveryTypeCode\":\"ABONA_CLIENTE\",\"franchiseOpinionCode\":\"A_FAVOR\",\"exceedsFranchise\":true,\"recoveryAmount\":0}"))
                 .andExpect(status().isOk());
 
         mockMvc.perform(put("/api/v1/cases/{caseId}/franchise", 100L)
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"franchiseStatusCode\":\"RECUPERAR\",\"franchiseAmount\":50000,\"recoveryTypeCode\":\"CLIENTE\",\"franchiseOpinionCode\":\"PROCEDE\",\"exceedsFranchise\":true,\"recoveryAmount\":50000}"))
+                        .content("{\"franchiseStatusCode\":\"PENDIENTE\",\"franchiseAmount\":50000,\"recoveryTypeCode\":\"ABONA_CLIENTE\",\"franchiseOpinionCode\":\"A_FAVOR\",\"exceedsFranchise\":true,\"recoveryAmount\":50000}"))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/cases/{caseId}/franchise", 100L)
                         .header("X-User-Id", "3"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.franchiseStatusCode").value("RECUPERAR"))
+                .andExpect(jsonPath("$.franchiseStatusCode").value("PENDIENTE"))
                 .andExpect(jsonPath("$.recoveryAmount").value(50000));
     }
 

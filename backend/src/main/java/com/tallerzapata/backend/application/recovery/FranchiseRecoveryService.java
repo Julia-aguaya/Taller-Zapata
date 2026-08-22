@@ -1,12 +1,17 @@
 package com.tallerzapata.backend.application.recovery;
 
+import com.tallerzapata.backend.api.casefile.CodeCatalogResponse;
+import com.tallerzapata.backend.api.recovery.FranchiseRecoveryCatalogsResponse;
 import com.tallerzapata.backend.api.recovery.FranchiseRecoveryResponse;
 import com.tallerzapata.backend.api.recovery.FranchiseRecoveryUpsertRequest;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
+import com.tallerzapata.backend.application.casefile.CaseService;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRelationEntity;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRelationRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
 import com.tallerzapata.backend.infrastructure.persistence.recovery.*;
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
@@ -17,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -26,19 +32,34 @@ public class FranchiseRecoveryService {
     private final FranchiseRecoveryOpinionRepository opinionRepository;
     private final FranchiseRecoveryPaymentStatusRepository paymentStatusRepository;
     private final CaseRepository caseRepository;
+    private final CaseRelationRepository caseRelationRepository;
+    private final CaseService caseService;
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService accessControlService;
     private final CaseAuditService caseAuditService;
 
-    public FranchiseRecoveryService(FranchiseRecoveryRepository franchiseRecoveryRepository, FranchiseRecoveryManagerRepository managerRepository, FranchiseRecoveryOpinionRepository opinionRepository, FranchiseRecoveryPaymentStatusRepository paymentStatusRepository, CaseRepository caseRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService) {
+    public FranchiseRecoveryService(FranchiseRecoveryRepository franchiseRecoveryRepository, FranchiseRecoveryManagerRepository managerRepository, FranchiseRecoveryOpinionRepository opinionRepository, FranchiseRecoveryPaymentStatusRepository paymentStatusRepository, CaseRepository caseRepository, CaseRelationRepository caseRelationRepository, CaseService caseService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService) {
         this.franchiseRecoveryRepository = franchiseRecoveryRepository;
         this.managerRepository = managerRepository;
         this.opinionRepository = opinionRepository;
         this.paymentStatusRepository = paymentStatusRepository;
         this.caseRepository = caseRepository;
+        this.caseRelationRepository = caseRelationRepository;
+        this.caseService = caseService;
         this.currentUserService = currentUserService;
         this.accessControlService = accessControlService;
         this.caseAuditService = caseAuditService;
+    }
+
+    @Transactional(readOnly = true)
+    public FranchiseRecoveryCatalogsResponse listCatalogs() {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        accessControlService.requirePermission(currentUser, "recupero.ver");
+        return new FranchiseRecoveryCatalogsResponse(
+                managerRepository.findAll().stream().filter(i -> Boolean.TRUE.equals(i.getActive())).map(i -> new CodeCatalogResponse(i.getCode(), i.getName())).toList(),
+                opinionRepository.findAll().stream().filter(i -> Boolean.TRUE.equals(i.getActive())).map(i -> new CodeCatalogResponse(i.getCode(), i.getName())).toList(),
+                paymentStatusRepository.findAll().stream().filter(i -> Boolean.TRUE.equals(i.getActive())).map(i -> new CodeCatalogResponse(i.getCode(), i.getName())).toList()
+        );
     }
 
     @Transactional(readOnly = true)
@@ -74,6 +95,33 @@ public class FranchiseRecoveryService {
         entity = franchiseRecoveryRepository.save(entity);
         caseAuditService.register(currentUser.id(), caseId, "recuperos_franquicia", entity.getId(), "upsert_recupero_franquicia", null, caseAuditService.toJson(Map.of("managerCode", entity.getManagerCode(), "opinionCode", entity.getOpinionCode())), caseAuditService.toJson(Map.of("domain", "recovery")), httpRequest);
         return toResponse(entity);
+    }
+
+    @Transactional
+    public Long createRecoveryFromBaseCase(Long baseCaseId, HttpServletRequest httpRequest) {
+        CaseEntity base = caseRepository.findById(baseCaseId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el caso base " + baseCaseId));
+        CaseEntity child = caseService.createRecoveryChildCase(baseCaseId, httpRequest);
+
+        FranchiseRecoveryEntity recovery = new FranchiseRecoveryEntity();
+        recovery.setCaseId(child.getId());
+        recovery.setManagerCode("TALLER");
+        recovery.setBaseCaseId(baseCaseId);
+        recovery.setBaseFolderCode(base.getFolderCode());
+        recovery.setReusesBaseData(true);
+        recovery.setEnablesRepair(false);
+        recovery.setRecoversClient(false);
+        recovery.setApprovedLowerAgreement(false);
+        franchiseRecoveryRepository.save(recovery);
+
+        CaseRelationEntity relation = new CaseRelationEntity();
+        relation.setSourceCaseId(baseCaseId);
+        relation.setTargetCaseId(child.getId());
+        relation.setRelationTypeCode("RECUPERO_DE");
+        relation.setDescription("Recupero de franquicia de la carpeta " + base.getFolderCode());
+        caseRelationRepository.save(relation);
+
+        return child.getId();
     }
 
     private void validateRequest(Long caseId, FranchiseRecoveryUpsertRequest request) {

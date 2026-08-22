@@ -11,8 +11,8 @@ class TodoRiesgoEffectiveStatePolicyTest {
     @Test
     void appliesProcedureFactsInTheirSpecifiedPriority() {
         assertState("SIN_PRESENTAR", "DAR_TURNO", facts(null, false, null, null, null, false, null, false, List.of()));
-        assertState("EN_TRAMITE", "DAR_TURNO", facts(LocalDate.now(), false, null, null, null, false, null, false, List.of()));
-        assertState("PRESENTADO_PD", "DAR_TURNO", facts(LocalDate.now(), true, null, null, null, false, null, false, List.of()));
+        assertState("PRESENTADO_PD", "DAR_TURNO", facts(LocalDate.now(), false, null, null, null, false, null, false, List.of()));
+        assertState("EN_TRAMITE", "DAR_TURNO", facts(LocalDate.now(), true, null, null, null, false, null, false, List.of()));
         assertState("ACORDADO", "DAR_TURNO", facts(LocalDate.now(), true, LocalDate.now(), null, null, false, null, false, List.of()));
         assertState("PASADO_A_PAGOS", "DAR_TURNO", facts(null, false, LocalDate.now(), LocalDate.now(), null, false, null, false, List.of()));
         assertState("PAGADO", "DAR_TURNO", facts(null, false, LocalDate.now(), LocalDate.now(), LocalDate.now(), false, null, false, List.of()));

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, ReceiptText, Save } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { AlertTriangle, FolderOpen, ReceiptText, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { requestJson } from '@/shared/api/http-client';
 import { Button } from '@/shared/ui/button';
@@ -18,6 +19,7 @@ const toAmount = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0
 
 export const DeductibleSection = ({ caseId, caseDetail }) => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const franchiseQuery = useQuery({ queryKey: ['cases', String(caseId), 'franchise'], queryFn: () => requestJson(`/cases/${caseId}/franchise`) });
   const catalogsQuery = useQuery({ queryKey: ['insurance', 'catalogs'], queryFn: () => requestJson('/insurance/catalogs') });
@@ -25,7 +27,7 @@ export const DeductibleSection = ({ caseId, caseDetail }) => {
   const franchise = franchiseQuery.data;
   const franchiseStatuses = catalogsQuery.data?.franchiseStatusCodes ?? [];
   const recoveryTypes = catalogsQuery.data?.franchiseRecoveryTypeCodes ?? [];
-  const opinionCodes = catalogsQuery.data?.insuranceOpinionCodes ?? [];
+  const opinionCodes = catalogsQuery.data?.franchiseOpinionCodes ?? [];
 
   const mutation = useMutation({
     mutationFn: (payload) => requestJson(`/cases/${caseId}/franchise`, { method: 'PUT', body: JSON.stringify(payload) }),
@@ -34,10 +36,11 @@ export const DeductibleSection = ({ caseId, caseDetail }) => {
   });
 
   const [recupero, setRecupero] = useState(franchise?.recoveryTypeCode ?? '');
+  const [exceedsFranchise, setExceedsFranchise] = useState(franchise?.exceedsFranchise ? 'SI' : 'NO');
   useEffect(() => { setRecupero(franchise?.recoveryTypeCode ?? ''); }, [franchise?.recoveryTypeCode]);
+  useEffect(() => { setExceedsFranchise(franchise?.exceedsFranchise ? 'SI' : 'NO'); }, [franchise?.exceedsFranchise]);
   const showRelatedCase = recupero === 'CIA_TERCERO';
   const showDictamen = recupero === 'PROPIA_CIA';
-  const showRecoveryAmount = franchise?.exceedsFranchise === false;
 
   const handleSave = () => {
     const form = document.getElementById('franchise-form');
@@ -46,7 +49,6 @@ export const DeductibleSection = ({ caseId, caseDetail }) => {
       franchiseStatusCode: fd.get('franchiseStatusCode') || null,
       franchiseAmount: toAmount(fd.get('franchiseAmount')) || null,
       recoveryTypeCode: fd.get('recoveryTypeCode') || null,
-      relatedCaseId: showRelatedCase && fd.get('relatedCaseId') ? Number(fd.get('relatedCaseId')) : null,
       franchiseOpinionCode: showDictamen ? (fd.get('franchiseOpinionCode') || null) : null,
       exceedsFranchise: fd.get('exceedsFranchise') === 'SI',
       recoveryAmount: fd.get('exceedsFranchise') === 'NO' ? toAmount(fd.get('recoveryAmount')) || null : null,
@@ -93,10 +95,17 @@ export const DeductibleSection = ({ caseId, caseDetail }) => {
             </select>
           </Field>
 
-          {/* CIA_TERCERO → Caso asociado */}
+          {/* CIA_TERCERO → carpeta de recupero creada automáticamente */}
           {showRelatedCase ? (
-            <Field label="Caso asociado">
-              <Input name="relatedCaseId" type="number" min="1" defaultValue={franchise?.relatedCaseId ?? ''} placeholder="N° de carpeta RECUPERO_FRANQUICIA" />
+            <Field label="Carpeta de recupero">
+              {franchise?.relatedCaseId ? (
+                <Button type="button" variant="outline" size="sm" className="h-10 w-full justify-start" onClick={() => navigate(`/cases/${franchise.relatedCaseId}`)}>
+                  <FolderOpen className="mr-1.5 h-3.5 w-3.5" />
+                  Abrir carpeta de recupero
+                </Button>
+              ) : (
+                <p className="text-xs leading-5 text-muted-foreground">Se creará automáticamente al guardar la franquicia.</p>
+              )}
             </Field>
           ) : null}
 
@@ -111,7 +120,7 @@ export const DeductibleSection = ({ caseId, caseDetail }) => {
           ) : null}
 
           <Field label="Cotización supera Franquicia">
-            <select name="exceedsFranchise" defaultValue={franchise?.exceedsFranchise ? 'SI' : 'NO'} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
+            <select name="exceedsFranchise" value={exceedsFranchise} onChange={(e) => setExceedsFranchise(e.target.value)} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
               <option value="SI">SI</option>
               <option value="NO">NO</option>
             </select>
@@ -120,7 +129,7 @@ export const DeductibleSection = ({ caseId, caseDetail }) => {
           {/* Solo si NO supera → Monto a recuperar */}
           <Field label="Monto a recuperar">
             <Input name="recoveryAmount" type="number" min="0" step="0.01" defaultValue={franchise?.recoveryAmount ?? ''} placeholder="500000"
-              disabled={franchise?.exceedsFranchise !== false && franchise?.exceedsFranchise != null} />
+              disabled={exceedsFranchise !== 'NO'} />
           </Field>
         </div>
         <Field label="Anotaciones">

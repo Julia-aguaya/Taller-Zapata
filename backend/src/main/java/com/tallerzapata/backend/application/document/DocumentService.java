@@ -41,12 +41,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -54,6 +56,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 @Service
 public class DocumentService {
@@ -461,6 +465,48 @@ public class DocumentService {
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline().filename(document.getFileName()).build().toString())
                 .contentLength(document.getSizeBytes())
                 .body(resource);
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] downloadCaseDocumentsZip(Long caseId) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "documento.ver");
+
+        List<DocumentRelationEntity> relations = documentRelationRepository.findByCaseIdOrderByVisualOrderAscIdAsc(caseId);
+        Set<String> usedNames = new HashSet<>();
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(baos)) {
+            for (DocumentRelationEntity relation : relations) {
+                DocumentEntity document = documentRepository.findByIdAndActiveTrue(relation.getDocumentId()).orElse(null);
+                if (document == null) continue;
+                String entryName = uniqueZipName(document.getFileName(), usedNames);
+                usedNames.add(entryName);
+                zip.putNextEntry(new ZipEntry(entryName));
+                try (InputStream in = documentStorageService.open(document.getStorageKey()).getInputStream()) {
+                    in.transferTo(zip);
+                }
+                zip.closeEntry();
+            }
+        } catch (IOException exception) {
+            throw new IllegalStateException("No se pudo comprimir los documentos del caso", exception);
+        }
+        return baos.toByteArray();
+    }
+
+    private String uniqueZipName(String fileName, Set<String> usedNames) {
+        String base = fileName == null || fileName.isBlank() ? "documento" : fileName.trim();
+        if (!usedNames.contains(base)) return base;
+        int dot = base.lastIndexOf('.');
+        String stem = dot > 0 ? base.substring(0, dot) : base;
+        String extension = dot > 0 ? base.substring(dot) : "";
+        int counter = 2;
+        String candidate;
+        do {
+            candidate = stem + " (" + counter + ")" + extension;
+            counter++;
+        } while (usedNames.contains(candidate));
+        return candidate;
     }
 
     private DocumentCategoryEntity requireActiveCategory(Long categoryId) {

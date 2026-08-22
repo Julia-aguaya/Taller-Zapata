@@ -7,6 +7,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -143,5 +145,18 @@ public class DocumentController {
     @GetMapping("/api/v1/cases/{caseId}/documents/{documentId}/download")
     public ResponseEntity<Resource> downloadCaseDocument(@PathVariable Long caseId, @PathVariable Long documentId) {
         return documentService.downloadCaseDocument(caseId, documentId);
+    }
+
+    @Operation(summary = "Descargar documentos en ZIP", description = "Comprime y descarga todos los documentos de un caso")
+    @ApiResponse(responseCode = "200", description = "ZIP generado")
+    @PreAuthorize("hasAuthority('documento.ver')")
+    @GetMapping("/api/v1/cases/{caseId}/documents/zip")
+    public ResponseEntity<byte[]> downloadCaseDocumentsZip(@PathVariable Long caseId) {
+        byte[] zipBytes = documentService.downloadCaseDocumentsZip(caseId);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=documentos-caso-" + caseId + ".zip")
+                .contentType(MediaType.parseMediaType("application/zip"))
+                .contentLength(zipBytes.length)
+                .body(zipBytes);
     }
 }

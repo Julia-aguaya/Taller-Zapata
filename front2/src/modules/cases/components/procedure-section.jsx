@@ -27,10 +27,9 @@ export const ProcedureSection = ({ caseId, budget }) => {
 
   const processing = processingQuery.data;
   const franchise = franchiseQuery.data;
-  const modalityCodes = catalogsQuery.data?.insuranceModalityCodes ?? [];
-  const quotationStatuses = catalogsQuery.data?.insuranceQuotationStatusCodes ?? [];
-  const partsAuthCodes = catalogsQuery.data?.insurancePartsAuthorizationCodes ?? [];
-  const opinionCodes = catalogsQuery.data?.insuranceOpinionCodes ?? [];
+  const modalityCodes = catalogsQuery.data?.modalityCodes ?? [];
+  const quotationStatuses = catalogsQuery.data?.quotationStatusCodes ?? [];
+  const opinionCodes = catalogsQuery.data?.opinionCodes ?? [];
 
   useEffect(() => {
     setProvider({ providerId: processing?.providerId ?? null, snapshot: processing?.partsSupplierText ?? '' });
@@ -87,7 +86,6 @@ export const ProcedureSection = ({ caseId, budget }) => {
       agreedAmount: toAmount(fd.get('agreedAmount')) || null,
       minimumCloseAmount: toAmount(minCloseAmount) || null,
       includesParts: hasReplacementParts,
-      partsAuthorizationCode: fd.get('partsAuthorizationCode') || null,
       partsSupplierText: provider.snapshot || null,
       providerId: provider.providerId,
       amountToBillCompany: computedAmountToBill,
@@ -117,15 +115,15 @@ export const ProcedureSection = ({ caseId, budget }) => {
 
       {/* Warning: monto acordado < minimo cierre */}
       {belowMinimum ? (
-        <div className="mt-3 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
+        <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-          Monto acordado ({formatCurrency(agreedAmount)}) inferior al minimo para cierre ({formatCurrency(minimumClose)}).
+          Advertencia: el monto acordado ({formatCurrency(agreedAmount)}) es inferior al minimo para cierre ({formatCurrency(minimumClose)}).
         </div>
       ) : null}
 
       <form id="procedure-form" key={processing?.id ?? 'new'} className="mt-4 grid gap-x-6 gap-y-3 md:grid-cols-4">
         <Field label="Fecha presentado">
-          <Input type="date" name="presentedAt" defaultValue={processing?.presentedAt ?? ''} />
+          <Input type="date" name="presentedAt" defaultValue={processing?.presentedAt ?? ''} disabled={!franchise?.recoveryTypeCode} />
         </Field>
         <Field label="Derivado a inspeccion">
           <Input type="date" name="inspectionForwardedAt" defaultValue={processing?.inspectionForwardedAt ?? ''} disabled={!hasPresentedAt} />
@@ -177,11 +175,7 @@ export const ProcedureSection = ({ caseId, budget }) => {
         </Field>
         <Field label="Proveedor de repuestos"><ProviderSelector value={provider.snapshot} providerId={provider.providerId} onChange={setProvider} /></Field>
         <Field label="Autorizacion repuestos">
-          <select name="partsAuthorizationCode" defaultValue={processing?.partsAuthorizationCode ?? ''} disabled={!hasPresentedAt}
-            className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:opacity-50">
-            <option value="">—</option>
-            {partsAuthCodes.map((a) => (<option key={a.code} value={a.code}>{a.name || a.code}</option>))}
-          </select>
+          <Input name="partsAuthorizationCode" value={processing?.partsAuthorizationCode ?? ''} readOnly placeholder="Auto segun repuestos" className="bg-muted/50 cursor-not-allowed" />
         </Field>
         <Field label="Final a favor Taller">
           <Input name="finalAmountForWorkshop" type="number" min="0" step="0.01" defaultValue={processing?.finalAmountForWorkshop ?? ''} readOnly className="bg-muted/50 cursor-not-allowed" />

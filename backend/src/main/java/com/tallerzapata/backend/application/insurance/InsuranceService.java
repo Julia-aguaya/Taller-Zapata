@@ -5,6 +5,7 @@ import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
+import com.tallerzapata.backend.application.recovery.FranchiseRecoveryService;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CasePersonEntity;
@@ -14,6 +15,8 @@ import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetEntity;
 import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetItemEntity;
 import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetItemRepository;
 import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetRepository;
+import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartEntity;
+import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartRepository;
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementEntity;
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.*;
@@ -75,8 +78,10 @@ public class InsuranceService {
     private final ProviderRepository providerRepository;
     private final BudgetRepository budgetRepository;
     private final BudgetItemRepository budgetItemRepository;
+    private final CasePartRepository casePartRepository;
+    private final FranchiseRecoveryService franchiseRecoveryService;
 
-    public InsuranceService(InsuranceCompanyRepository companyRepository, InsuranceCompanyContactRepository companyContactRepository, InsuranceRoleContactRepository roleContactRepository, PersonRepository personRepository, CaseRepository caseRepository, CasePersonRepository casePersonRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, CaseFranchiseRepository caseFranchiseRepository, InsuranceModalityRepository modalityRepository, InsuranceOpinionRepository opinionRepository, InsuranceQuotationStatusRepository quotationStatusRepository, InsurancePartsAuthorizationRepository partsAuthorizationRepository, FranchiseStatusRepository franchiseStatusRepository, FranchiseRecoveryTypeRepository franchiseRecoveryTypeRepository, FranchiseOpinionRepository franchiseOpinionRepository, CaseCleasRepository caseCleasRepository, CaseThirdPartyRepository caseThirdPartyRepository, CleasScopeRepository cleasScopeRepository, CleasOpinionRepository cleasOpinionRepository, PaymentStatusRepository paymentStatusRepository, ThirdPartyDocumentationStatusRepository thirdPartyDocumentationStatusRepository, PartsProvisionModeRepository partsProvisionModeRepository, CaseLegalRepository caseLegalRepository, LegalNewsRepository legalNewsRepository, LegalExpenseRepository legalExpenseRepository, LegalProcessorRepository legalProcessorRepository, LegalClaimantRepository legalClaimantRepository, LegalInstanceRepository legalInstanceRepository, LegalClosureReasonRepository legalClosureReasonRepository, LegalExpensePayerRepository legalExpensePayerRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, TodoRiesgoStateFactsRepository todoRiesgoStateFactsRepository, ProviderRepository providerRepository, BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository) {
+    public InsuranceService(InsuranceCompanyRepository companyRepository, InsuranceCompanyContactRepository companyContactRepository, InsuranceRoleContactRepository roleContactRepository, PersonRepository personRepository, CaseRepository caseRepository, CasePersonRepository casePersonRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, CaseFranchiseRepository caseFranchiseRepository, InsuranceModalityRepository modalityRepository, InsuranceOpinionRepository opinionRepository, InsuranceQuotationStatusRepository quotationStatusRepository, InsurancePartsAuthorizationRepository partsAuthorizationRepository, FranchiseStatusRepository franchiseStatusRepository, FranchiseRecoveryTypeRepository franchiseRecoveryTypeRepository, FranchiseOpinionRepository franchiseOpinionRepository, CaseCleasRepository caseCleasRepository, CaseThirdPartyRepository caseThirdPartyRepository, CleasScopeRepository cleasScopeRepository, CleasOpinionRepository cleasOpinionRepository, PaymentStatusRepository paymentStatusRepository, ThirdPartyDocumentationStatusRepository thirdPartyDocumentationStatusRepository, PartsProvisionModeRepository partsProvisionModeRepository, CaseLegalRepository caseLegalRepository, LegalNewsRepository legalNewsRepository, LegalExpenseRepository legalExpenseRepository, LegalProcessorRepository legalProcessorRepository, LegalClaimantRepository legalClaimantRepository, LegalInstanceRepository legalInstanceRepository, LegalClosureReasonRepository legalClosureReasonRepository, LegalExpensePayerRepository legalExpensePayerRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, TodoRiesgoStateFactsRepository todoRiesgoStateFactsRepository, ProviderRepository providerRepository, BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CasePartRepository casePartRepository, FranchiseRecoveryService franchiseRecoveryService) {
         this.companyRepository = companyRepository;
         this.companyContactRepository = companyContactRepository;
         this.roleContactRepository = roleContactRepository;
@@ -116,6 +121,8 @@ public class InsuranceService {
         this.providerRepository = providerRepository;
         this.budgetRepository = budgetRepository;
         this.budgetItemRepository = budgetItemRepository;
+        this.casePartRepository = casePartRepository;
+        this.franchiseRecoveryService = franchiseRecoveryService;
     }
 
     @Transactional(readOnly = true)
@@ -279,7 +286,7 @@ public class InsuranceService {
             );
         }
         entity.setIncludesParts(hasReplacementParts || Boolean.TRUE.equals(request.includesParts()));
-        entity.setPartsAuthorizationCode(normalizedOptionalCode(request.partsAuthorizationCode()));
+        entity.setPartsAuthorizationCode(computePartsAuthorizationCode(caseId));
         entity.setPartsSupplierText(blankToNull(request.partsSupplierText()));
         if (request.providerId() != null) { var provider = providerRepository.findById(request.providerId()).orElseThrow(() -> new ResourceNotFoundException("No existe el proveedor " + request.providerId())); if (!Boolean.TRUE.equals(provider.getActive())) throw new ConflictException("El proveedor esta inactivo: " + request.providerId()); entity.setProviderId(provider.getId()); entity.setPartsSupplierText(provider.getName()); } else entity.setProviderId(null);
 
@@ -330,11 +337,17 @@ public class InsuranceService {
         entity.setFranchiseStatusCode(normalizedOptionalCode(request.franchiseStatusCode()));
         entity.setFranchiseAmount(scale(request.franchiseAmount()));
         entity.setRecoveryTypeCode(normalizedOptionalCode(request.recoveryTypeCode()));
-        entity.setRelatedCaseId(request.relatedCaseId());
         entity.setFranchiseOpinionCode(normalizedOptionalCode(request.franchiseOpinionCode()));
         entity.setExceedsFranchise(Boolean.TRUE.equals(request.exceedsFranchise()));
         entity.setRecoveryAmount(scale(request.recoveryAmount()));
         entity.setNotes(blankToNull(request.notes()));
+
+        Long relatedCaseId = entity.getRelatedCaseId();
+        if (relatedCaseId == null && "CIA_TERCERO".equals(normalizeCode(request.recoveryTypeCode()))) {
+            relatedCaseId = franchiseRecoveryService.createRecoveryFromBaseCase(caseId, httpRequest);
+        }
+        entity.setRelatedCaseId(relatedCaseId);
+
         entity = caseFranchiseRepository.save(entity);
         caseAuditService.register(currentUser.id(), caseId, "caso_franquicia", entity.getId(), "upsert_franquicia", null, caseAuditService.toJson(CaseAuditService.auditMap("franchiseStatusCode", entity.getFranchiseStatusCode(), "recoveryAmount", entity.getRecoveryAmount())), caseAuditService.toJson(CaseAuditService.auditMap("domain", "seguros")), httpRequest);
         return toCaseFranchiseResponse(entity);
@@ -579,4 +592,14 @@ public class InsuranceService {
     private String normalizedOptionalCode(String value) { return value == null || value.isBlank() ? null : normalizeCode(value); }
     private String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
     private BigDecimal scale(BigDecimal value) { return value == null ? null : value.setScale(2, RoundingMode.HALF_UP); }
+
+    private String computePartsAuthorizationCode(Long caseId) {
+        List<CasePartEntity> parts = casePartRepository.findByCaseIdOrderByIdAsc(caseId);
+        if (parts.isEmpty()) return null;
+        long authorizedCount = parts.stream()
+                .filter(part -> "AUTORIZADO".equals(normalizeCode(part.getAuthorizedCode())))
+                .count();
+        if (authorizedCount == 0) return null;
+        return authorizedCount == parts.size() ? "TOTAL" : "PARCIAL";
+    }
 }

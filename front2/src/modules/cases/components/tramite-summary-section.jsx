@@ -63,9 +63,17 @@ export const TramiteSummarySection = ({ caseId }) => {
     onError: (e) => toast.error(e.message || 'Error al guardar.'),
   });
 
+  const addYears = (dateStr, years) => {
+    if (!dateStr) return '';
+    const d = new Date(dateStr + 'T12:00:00');
+    d.setFullYear(d.getFullYear() + years);
+    return d.toISOString().slice(0, 10);
+  };
+
   const startEditing = () => {
-    setEditIncidentDate(incident?.incidentDate ?? '');
-    setEditPrescriptionDate(incident?.prescriptionDate ?? '');
+    const incidentDate = incident?.incidentDate ?? '';
+    setEditIncidentDate(incidentDate);
+    setEditPrescriptionDate(incident?.prescriptionDate ?? addYears(incidentDate, 1));
     setEditPresentedAt(processing?.presentedAt ?? '');
     setEditing(true);
   };
@@ -94,7 +102,7 @@ export const TramiteSummarySection = ({ caseId }) => {
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Fecha del siniestro</p>
           {editing ? (
-            <input type="date" value={editIncidentDate} onChange={(e) => setEditIncidentDate(e.target.value)}
+            <input type="date" value={editIncidentDate} onChange={(e) => { setEditIncidentDate(e.target.value); setEditPrescriptionDate(addYears(e.target.value, 1)); }}
               className="mt-0.5 h-9 w-full rounded-lg border border-input bg-background px-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" />
           ) : (
             <p className="mt-1 text-sm font-medium">{incident?.incidentDate ?? '—'}</p>
@@ -105,8 +113,8 @@ export const TramiteSummarySection = ({ caseId }) => {
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Prescripción del trámite</p>
           {editing ? (
-            <input type="date" value={editPrescriptionDate} onChange={(e) => setEditPrescriptionDate(e.target.value)}
-              className="mt-0.5 h-9 w-full rounded-lg border border-red-200 bg-background px-2 text-sm text-red-600 outline-none transition focus:border-red-400 focus:ring-2 focus:ring-red-200" />
+            <input type="date" value={editPrescriptionDate} readOnly
+              className="mt-0.5 h-9 w-full rounded-lg border border-red-200 bg-muted/50 px-2 text-sm text-red-600 outline-none cursor-not-allowed" />
           ) : (
             <p className="mt-1 text-sm font-medium text-red-600 dark:text-red-400">{incident?.prescriptionDate ?? '—'}</p>
           )}

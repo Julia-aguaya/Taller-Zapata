@@ -16,6 +16,8 @@ import { BudgetEditorPanel } from '@/modules/cases/components/budget-editor-pane
 import { RepairEditorPanel } from '@/modules/cases/components/repair-editor-panel';
 import { PaymentsEditorPanel } from '@/modules/cases/components/payments-editor-panel';
 import { GestionTramiteEditor } from '@/modules/cases/components/gestion-tramite-editor';
+import { FranchiseRecoveryEditor } from '@/modules/cases/components/franchise-recovery-editor';
+import { FranchiseRecoveryPaymentsEditor } from '@/modules/cases/components/franchise-recovery-payments-editor';
 import { requestJson } from '@/shared/api/http-client';
 import { getOperationalTabs, getTabIcon, getTabLabel } from '@/modules/cases/lib/tab-registry';
 
@@ -329,11 +331,15 @@ export const CaseWorkspacePage = () => {
           ) : currentTab?.tabCode === 'PRESUPUESTO' ? (
             <BudgetEditorPanel caseId={caseId} budget={budget} caseDetail={caseDetail} workshopInfo={workshopInfo} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'GESTION_TRAMITE' ? (
-            <GestionTramiteEditor caseId={caseId} caseDetail={caseDetail} budget={budget} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
+            caseDetail.caseTypeCode === 'RECUPERO_FRANQUICIA'
+              ? <FranchiseRecoveryEditor caseId={caseId} caseDetail={caseDetail} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
+              : <GestionTramiteEditor caseId={caseId} caseDetail={caseDetail} budget={budget} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'GESTION_REPARACION' ? (
             <RepairEditorPanel caseId={caseId} caseDetail={caseDetail} latestAppointment={latestAppointment} latestIntake={latestIntake} latestOutcome={latestOutcome} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'PAGOS' ? (
-            <PaymentsEditorPanel caseId={caseId} caseDetail={caseDetail} budget={budget} particularFinanceSummary={particularFinanceSummary} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
+            caseDetail.caseTypeCode === 'RECUPERO_FRANQUICIA'
+              ? <FranchiseRecoveryPaymentsEditor caseId={caseId} caseDetail={caseDetail} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
+              : <PaymentsEditorPanel caseId={caseId} caseDetail={caseDetail} budget={budget} particularFinanceSummary={particularFinanceSummary} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : null}
         </div>
       </Card>

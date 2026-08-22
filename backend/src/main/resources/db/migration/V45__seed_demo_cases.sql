@@ -4,8 +4,6 @@
 -- - 9002TC: todo riesgo en tramite
 -- - 9003CLZ: CLEAS en gestion
 
-START TRANSACTION;
-
 INSERT INTO marcas_vehiculo (id, codigo, nombre, activo) VALUES
     (9101, 'CHEVROLET', 'Chevrolet', 1),
     (9102, 'PEUGEOT', 'Peugeot', 1),
@@ -250,8 +248,6 @@ INSERT INTO caso_cleas (
 INSERT INTO notificaciones (id, usuario_id, caso_id, tipo_codigo, titulo, mensaje, leida, leida_at, accion_url, entidad_tipo, entidad_id, created_at) VALUES
     (9971, 1, 9402, 'TURNO_ASIGNADO', 'Turno cargado para 9002TC', 'El caso 9002TC ya tiene turno programado para el 10/04 a las 09:15.', 0, NULL, '/cases/9402/appointments', 'TURNO_REPARACION', 9806, '2026-04-08 09:05:00'),
     (9972, 1, 9401, 'PAGO_REGISTRADO', 'Pago registrado en 9001PZ', 'Se registro el cobro final del caso 9001PZ y ya figura como pagado.', 1, '2026-04-05 16:30:00', '/cases/9401/finance-summary', 'MOVIMIENTO_FINANCIERO', 9871, '2026-04-05 16:15:00');
-
-COMMIT;
 
 -- Credenciales utiles para la demo:
 -- - admin@tallerzapata.local / password

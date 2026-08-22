@@ -58,19 +58,42 @@ export const DocumentsSection = ({ caseId }) => {
     onError: (e) => toast.error(e.message),
   });
 
-  const handleView = (doc) => window.open(`/api/v1/documents/${doc.id}/file`, '_blank');
-  const handleDownload = (doc) => {
+  const fetchDocumentBlob = async (doc) => {
+    const auth = readStoredAuth();
+    const token = auth?.accessToken;
+    if (!token) { toast.error('No hay sesión activa.'); return null; }
+    const res = await fetch(`/api/v1/cases/${caseId}/documents/${doc.documentId}/download`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) { toast.error('No se pudo obtener el documento.'); return null; }
+    return await res.blob();
+  };
+
+  const handleView = async (doc) => {
+    const blob = await fetchDocumentBlob(doc);
+    if (!blob) return;
+    window.open(URL.createObjectURL(blob), '_blank');
+  };
+
+  const handleDownload = async (doc) => {
+    const blob = await fetchDocumentBlob(doc);
+    if (!blob) return;
     const a = document.createElement('a');
-    a.href = `/api/v1/documents/${doc.id}/file?download=true`;
+    a.href = URL.createObjectURL(blob);
     a.download = doc.fileName || 'documento';
     a.click();
   };
 
-  const downloadAll = () => {
-    documents.forEach((doc) => {
-      setTimeout(() => handleDownload(doc), 200);
-    });
-    toast.success('Descargando documentos...');
+  const downloadAll = async () => {
+    const auth = readStoredAuth();
+    const token = auth?.accessToken;
+    if (!token) { toast.error('No hay sesión activa.'); return; }
+    const res = await fetch(`/api/v1/cases/${caseId}/documents/zip`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) { toast.error('No se pudo descargar el comprimido.'); return; }
+    const blob = await res.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `documentos-caso-${caseId}.zip`;
+    a.click();
+    toast.success('Descargando comprimido...');
   };
 
   const allComplete = documents.length > 0 && documents.every(d => d.active !== false);
@@ -131,7 +154,7 @@ export const DocumentsSection = ({ caseId }) => {
             </thead>
             <tbody>
               {documents.map((doc) => (
-                <tr key={doc.id} className="border-b border-border/20 hover:bg-muted/30">
+                <tr key={doc.relationId ?? doc.documentId} className="border-b border-border/20 hover:bg-muted/30">
                   <td className="px-2 py-2.5">{categories.find(c => c.id === doc.categoryId)?.name ?? 'General'}</td>
                   <td className="px-2 py-2.5 font-medium">{doc.fileName ?? doc.storageKey ?? '—'}</td>
                   <td className="px-2 py-2.5 text-muted-foreground">{doc.createdAt ? new Date(doc.createdAt).toLocaleDateString('es-AR') : '—'}</td>
@@ -140,7 +163,7 @@ export const DocumentsSection = ({ caseId }) => {
                     <div className="flex gap-1">
                       <Button variant="ghost" size="icon" className="h-7 w-7" title="Ver" onClick={() => handleView(doc)}><Eye className="h-3.5 w-3.5" /></Button>
                       <Button variant="ghost" size="icon" className="h-7 w-7" title="Descargar" onClick={() => handleDownload(doc)}><Download className="h-3.5 w-3.5" /></Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title="Eliminar" onClick={() => deleteMutation.mutate(doc.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title="Eliminar" onClick={() => deleteMutation.mutate(doc.documentId)}><Trash2 className="h-3.5 w-3.5" /></Button>
                     </div>
                   </td>
                 </tr>

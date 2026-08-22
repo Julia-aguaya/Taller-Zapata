@@ -423,6 +423,97 @@ public class CaseService {
     }
 
     @Transactional
+    public CaseEntity createRecoveryChildCase(Long baseCaseId, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity base = getCase(baseCaseId);
+
+        CaseTypeEntity recoveryType = caseTypeRepository.findByCode("RECUPERO_FRANQUICIA")
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el tipo de tramite RECUPERO_FRANQUICIA"));
+        BranchEntity branch = branchRepository.findById(base.getBranchId())
+                .orElseThrow(() -> new ResourceNotFoundException("No existe la sucursal " + base.getBranchId()));
+
+        WorkflowStateEntity initialCaseState = workflowStateRepository.findByDomainAndCode("tramite", "INGRESADO")
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el estado inicial de tramite"));
+        WorkflowStateEntity initialRepairState = workflowStateRepository.findByDomainAndCode("reparacion", "SIN_TURNO")
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el estado inicial de reparacion"));
+        WorkflowStateEntity initialPaymentState = workflowStateRepository.findByDomainAndCode("pago", "PENDIENTE")
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el estado inicial de pago"));
+        WorkflowStateEntity initialDocumentationState = workflowStateRepository.findByDomainAndCode("documentacion", "PENDIENTE_DOCS")
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el estado inicial de documentacion"));
+        WorkflowStateEntity initialLegalState = workflowStateRepository.findByDomainAndCode("legal", "SIN_GESTION")
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el estado inicial de legal"));
+
+        Long nextOrderNumber = caseRepository.findMaxOrderNumberByOrganizationId(base.getOrganizationId()) + 1;
+        String folderCode = CaseFolderCodeGenerator.generate(nextOrderNumber, recoveryType.getFolderPrefix(), branch.getCode());
+
+        CaseEntity child = new CaseEntity();
+        child.setOrderNumber(nextOrderNumber);
+        child.setFolderCode(folderCode);
+        child.setCaseTypeId(recoveryType.getId());
+        child.setOrganizationId(base.getOrganizationId());
+        child.setBranchId(base.getBranchId());
+        child.setPrincipalVehicleId(base.getPrincipalVehicleId());
+        child.setPrincipalCustomerPersonId(base.getPrincipalCustomerPersonId());
+        child.setCreatedByUserId(currentUser.id());
+        child.setCurrentCaseStateId(initialCaseState.getId());
+        child.setCurrentRepairStateId(initialRepairState.getId());
+        child.setCurrentPaymentStateId(initialPaymentState.getId());
+        child.setCurrentDocumentationStateId(initialDocumentationState.getId());
+        child.setCurrentLegalStateId(initialLegalState.getId());
+        child = caseRepository.save(child);
+        final Long childId = child.getId();
+
+        CasePersonEntity casePerson = new CasePersonEntity();
+        casePerson.setCaseId(childId);
+        casePerson.setPersonId(base.getPrincipalCustomerPersonId());
+        casePerson.setCaseRoleCode("CLIENTE");
+        casePerson.setVehicleId(base.getPrincipalVehicleId());
+        casePerson.setPrincipal(true);
+        casePersonRepository.save(casePerson);
+
+        CaseVehicleEntity caseVehicle = new CaseVehicleEntity();
+        caseVehicle.setCaseId(childId);
+        caseVehicle.setVehicleId(base.getPrincipalVehicleId());
+        caseVehicle.setVehicleRoleCode("PRINCIPAL");
+        caseVehicle.setPrincipal(true);
+        caseVehicle.setVisualOrder(1);
+        caseVehicleRepository.save(caseVehicle);
+
+        caseIncidentRepository.findByCaseId(baseCaseId).ifPresent(incident -> {
+            CaseIncidentEntity copy = new CaseIncidentEntity();
+            copy.setCaseId(childId);
+            copy.setIncidentDate(incident.getIncidentDate());
+            copy.setIncidentTime(incident.getIncidentTime());
+            copy.setLugar(incident.getLugar());
+            copy.setDinamica(incident.getDinamica());
+            copy.setObservaciones(incident.getObservaciones());
+            copy.setPrescriptionDate(incident.getPrescriptionDate());
+            copy.setDaysInProcess(incident.getDaysInProcess());
+            caseIncidentRepository.save(copy);
+        });
+
+        caseStateHistoryRepository.save(history(child.getId(), "tramite", initialCaseState.getId(), currentUser.id(), false, "Creacion de carpeta de recupero desde " + base.getFolderCode()));
+        caseStateHistoryRepository.save(history(child.getId(), "reparacion", initialRepairState.getId(), currentUser.id(), true, "Estado inicial de reparacion"));
+        caseStateHistoryRepository.save(history(child.getId(), "pago", initialPaymentState.getId(), currentUser.id(), true, "Estado inicial de pago"));
+        caseStateHistoryRepository.save(history(child.getId(), "documentacion", initialDocumentationState.getId(), currentUser.id(), true, "Estado inicial de documentacion"));
+        caseStateHistoryRepository.save(history(child.getId(), "legal", initialLegalState.getId(), currentUser.id(), true, "Estado inicial legal"));
+
+        caseAuditService.register(
+                currentUser.id(),
+                child.getId(),
+                "casos",
+                child.getId(),
+                "crear_recupero_desde_base",
+                null,
+                caseAuditService.toJson(Map.of("folderCode", folderCode, "baseCaseId", baseCaseId)),
+                caseAuditService.toJson(Map.of("caseTypeCode", recoveryType.getCode())),
+                httpRequest
+        );
+
+        return child;
+    }
+
+    @Transactional
     public CaseResponse update(Long caseId, CaseUpdateRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity entity = getCase(caseId);

@@ -12,7 +12,7 @@ public final class TodoRiesgoEffectiveStatePolicy {
         if (facts.passedToPaymentsDate() != null) return "PASADO_A_PAGOS";
         if (facts.agreementDate() != null) return "ACORDADO";
         if (facts.presentedAt() == null) return "SIN_PRESENTAR";
-        return facts.documentationComplete() ? "PRESENTADO_PD" : "EN_TRAMITE";
+        return facts.documentationComplete() ? "EN_TRAMITE" : "PRESENTADO_PD";
     }
 
     private String repairCode(TodoRiesgoEffectiveStateFacts facts) {

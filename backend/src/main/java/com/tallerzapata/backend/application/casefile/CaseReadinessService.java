@@ -11,6 +11,8 @@ import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetReposito
 import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartEntity;
 import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseIncidentEntity;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseIncidentRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeRepository;
@@ -31,11 +33,12 @@ import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleOutc
 import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleOutcomeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.person.PersonEntity;
 import com.tallerzapata.backend.infrastructure.persistence.person.PersonRepository;
+import com.tallerzapata.backend.infrastructure.persistence.recovery.FranchiseRecoveryEntity;
+import com.tallerzapata.backend.infrastructure.persistence.recovery.FranchiseRecoveryRepository;
 import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleEntity;
 import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleRepository;
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
 import com.tallerzapata.backend.infrastructure.security.CurrentUserService;
-import org.springframework.data.domain.Sort;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,6 +52,7 @@ public class CaseReadinessService {
 
     private final CaseRepository caseRepository;
     private final CaseTypeRepository caseTypeRepository;
+    private final CaseIncidentRepository caseIncidentRepository;
     private final PersonRepository personRepository;
     private final VehicleRepository vehicleRepository;
     private final BudgetRepository budgetRepository;
@@ -61,6 +65,7 @@ public class CaseReadinessService {
     private final CaseInsuranceRepository caseInsuranceRepository;
     private final InsuranceProcessingRepository insuranceProcessingRepository;
     private final CaseFranchiseRepository caseFranchiseRepository;
+    private final FranchiseRecoveryRepository franchiseRecoveryRepository;
     private final OperationalTaskRepository operationalTaskRepository;
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService caseAccessControlService;
@@ -68,6 +73,7 @@ public class CaseReadinessService {
     public CaseReadinessService(
             CaseRepository caseRepository,
             CaseTypeRepository caseTypeRepository,
+            CaseIncidentRepository caseIncidentRepository,
             PersonRepository personRepository,
             VehicleRepository vehicleRepository,
             BudgetRepository budgetRepository,
@@ -80,12 +86,14 @@ public class CaseReadinessService {
             CaseInsuranceRepository caseInsuranceRepository,
             InsuranceProcessingRepository insuranceProcessingRepository,
             CaseFranchiseRepository caseFranchiseRepository,
+            FranchiseRecoveryRepository franchiseRecoveryRepository,
             OperationalTaskRepository operationalTaskRepository,
             CurrentUserService currentUserService,
             CaseAccessControlService caseAccessControlService
     ) {
         this.caseRepository = caseRepository;
         this.caseTypeRepository = caseTypeRepository;
+        this.caseIncidentRepository = caseIncidentRepository;
         this.personRepository = personRepository;
         this.vehicleRepository = vehicleRepository;
         this.budgetRepository = budgetRepository;
@@ -98,6 +106,7 @@ public class CaseReadinessService {
         this.caseInsuranceRepository = caseInsuranceRepository;
         this.insuranceProcessingRepository = insuranceProcessingRepository;
         this.caseFranchiseRepository = caseFranchiseRepository;
+        this.franchiseRecoveryRepository = franchiseRecoveryRepository;
         this.operationalTaskRepository = operationalTaskRepository;
         this.currentUserService = currentUserService;
         this.caseAccessControlService = caseAccessControlService;
@@ -143,6 +152,17 @@ public class CaseReadinessService {
             tabs.add(budgetTab);
             tabs.add(buildTodoRiesgoReparacionReadiness(caseId, budgetTab.completed(), tramiteTab.completed()));
             tabs.add(buildGranizoPagosReadiness(caseId));
+        } else if ("RECUPERO_FRANQUICIA".equals(caseType.getCode())) {
+            FranchiseRecoveryEntity recovery = franchiseRecoveryRepository.findByCaseId(caseId).orElse(null);
+            CaseReadinessTabResponse tramiteTab = buildFranchiseRecoveryGestionTramiteReadiness(recovery);
+            tabs.add(tramiteTab);
+            boolean enablesRepair = recovery != null && Boolean.TRUE.equals(recovery.getEnablesRepair());
+            if (enablesRepair) {
+                CaseReadinessTabResponse budgetTab = buildTodoRiesgoPresupuestoReadiness(caseId, principalVehicle, tramiteTab.completed());
+                tabs.add(budgetTab);
+                tabs.add(buildTodoRiesgoReparacionReadiness(caseId, budgetTab.completed(), tramiteTab.completed()));
+            }
+            tabs.add(buildFranchiseRecoveryPagosReadiness(tramiteTab.completed()));
         }
 
         return new CaseReadinessResponse(caseId, caseType.getCode(), tabs);
@@ -291,8 +311,12 @@ public class CaseReadinessService {
         CaseInsuranceEntity insurance = caseInsuranceRepository.findByCaseId(caseId).orElse(null);
         InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
         CaseFranchiseEntity franchise = caseFranchiseRepository.findByCaseId(caseId).orElse(null);
+        CaseIncidentEntity incident = caseIncidentRepository.findByCaseId(caseId).orElse(null);
         List<CasePartEntity> parts = casePartRepository.findByCaseIdOrderByIdAsc(caseId);
 
+        if (incident == null || incident.getIncidentDate() == null) {
+            blocking.add("Falta la fecha del siniestro");
+        }
         if (insurance == null || insurance.getInsuranceCompanyId() == null) {
             blocking.add("Falta seleccionar compania de seguro");
         }
@@ -454,6 +478,41 @@ public class CaseReadinessService {
             return toTab("PAGOS", false, blocking, List.of());
         }
 
+        return toTab("PAGOS", true, blocking, List.of());
+    }
+
+    // ── RECUPERO_FRANQUICIA ─────────────────────────────────────
+
+    private CaseReadinessTabResponse buildFranchiseRecoveryGestionTramiteReadiness(FranchiseRecoveryEntity recovery) {
+        List<String> blocking = new ArrayList<>();
+        if (recovery == null || recovery.getManagerCode() == null) {
+            blocking.add("Falta indicar quien gestiona el recupero (Taller o Abogado)");
+        }
+        if (recovery == null || recovery.getOpinionCode() == null) {
+            blocking.add("Falta cargar el dictamen del recupero");
+        }
+        if (recovery == null || recovery.getRecoveryAmount() == null) {
+            blocking.add("Falta cargar el monto a recuperar");
+        }
+        boolean culpaCompartida = recovery != null && "CULPA_COMPARTIDA".equals(normalizeCode(recovery.getOpinionCode()));
+        if (recovery != null && recovery.getAgreedAmount() != null && recovery.getRecoveryAmount() != null
+                && recovery.getRecoveryAmount().compareTo(recovery.getAgreedAmount()) < 0
+                && !culpaCompartida
+                && !Boolean.TRUE.equals(recovery.getApprovedLowerAgreement())) {
+            blocking.add("El monto a recuperar es inferior al acordado y falta autorizacion del administrador");
+        }
+        if (culpaCompartida && !Boolean.TRUE.equals(recovery.getRecoversClient())) {
+            blocking.add("Con dictamen de culpa compartida debe indicarse la recuperacion a favor del cliente");
+        }
+        return toTab("GESTION_TRAMITE", true, blocking, List.of());
+    }
+
+    private CaseReadinessTabResponse buildFranchiseRecoveryPagosReadiness(boolean tramiteCompleted) {
+        List<String> blocking = new ArrayList<>();
+        if (!tramiteCompleted) {
+            blocking.add("Debe completar Gestion del Tramite antes de registrar pagos");
+            return toTab("PAGOS", false, blocking, List.of());
+        }
         return toTab("PAGOS", true, blocking, List.of());
     }
 

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarPlus2, CarFront, CheckCheck, Clock, Flag, ImagePlus, Lock, PackagePlus, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
+import { CalendarPlus2, CarFront, CheckCheck, Clock, Flag, ImagePlus, Lock, PackagePlus, Plus, Printer, RefreshCw, Save, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { createRepairAppointment, createVehicleIntake, createVehicleOutcome, getOperationCatalogs, listRepairAppointments, listVehicleIntakes, listVehicleOutcomes, updateRepairAppointment } from '@/modules/cases/api/operations-api';
 import { createCasePart, deleteCasePart, getPartsCatalogs, listCaseParts, syncPartsFromBudget, updateCasePart } from '@/modules/cases/api/parts-api';
 import { requestJson } from '@/shared/api/http-client';
+import { readStoredAuth } from '@/shared/auth/session-storage';
 import { useSession } from '@/modules/auth/providers/session-provider';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
@@ -606,11 +607,30 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                       </td>
                     ) : null}
                     <td className="px-3 py-3">
-                      <button type="button" className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950"
-                        onClick={() => editMode ? removeFromDraft(part._tempId || part.id) : setDeletePartConfirm(part)}
-                        title={editMode ? 'Quitar de la lista' : 'Eliminar repuesto'}>
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        {part.id ? (
+                          <button type="button" className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-primary/10 hover:text-primary" title="Imprimir etiqueta"
+                            onClick={async () => {
+                              const stored = readStoredAuth();
+                              const token = stored?.accessToken;
+                              if (!token) { toast.error('No hay sesión activa.'); return; }
+                              const res = await fetch(`/api/v1/cases/${caseId}/parts/${part.id}/label`, { headers: { Authorization: `Bearer ${token}` } });
+                              if (!res.ok) { toast.error('No se pudo generar la etiqueta.'); return; }
+                              const blob = await res.blob();
+                              const a = document.createElement('a');
+                              a.href = URL.createObjectURL(blob);
+                              a.download = `etiqueta-${part.id}.pdf`;
+                              a.click();
+                            }}>
+                            <Printer className="h-4 w-4" />
+                          </button>
+                        ) : null}
+                        <button type="button" className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950"
+                          onClick={() => editMode ? removeFromDraft(part._tempId || part.id) : setDeletePartConfirm(part)}
+                          title={editMode ? 'Quitar de la lista' : 'Eliminar repuesto'}>
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
