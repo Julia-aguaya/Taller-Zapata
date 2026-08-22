@@ -7,11 +7,16 @@ import { DeductibleSection } from '@/modules/cases/components/deductible-section
 import { DocumentsSection } from '@/modules/cases/components/documents-section';
 import { ProcedureSection } from '@/modules/cases/components/procedure-section';
 import { TaskAgenda } from '@/modules/cases/components/task-agenda';
+import { CleasGestionTramiteEditor } from '@/modules/cases/components/cleas/cleas-gestion-tramite-editor';
 import { readStoredAuth } from '@/shared/auth/session-storage';
 
-export const GestionTramiteEditor = ({ caseId, caseDetail, budget, onSaved }) => {
+export const GestionTramiteEditor = ({ caseId, caseDetail, budget, nroCleas, setNroCleas, cleasInsurance, onCleasInsuranceChange, cleasAgreedAmount, setCleasAgreedAmount, cleasFranchiseDistribution, onCleasFranchiseDistributionChange, cleasOver, cleasOpinion, onCleasOverChange, onCleasOpinionChange, cleasClosedAt, onRequestCleasClosure, onSaved }) => {
   const caseTypeCode = caseDetail?.caseTypeCode;
   const showFranchise = caseTypeCode !== 'GRANIZO';
+
+  if (caseTypeCode === 'CLEAS') {
+    return <CleasGestionTramiteEditor caseId={caseId} caseDetail={caseDetail} nroCleas={nroCleas} setNroCleas={setNroCleas} insurance={cleasInsurance} onInsuranceChange={onCleasInsuranceChange} cleasAgreedAmount={cleasAgreedAmount} setCleasAgreedAmount={setCleasAgreedAmount} cleasFranchiseDistribution={cleasFranchiseDistribution} onCleasFranchiseDistributionChange={onCleasFranchiseDistributionChange} cleasOver={cleasOver} opinion={cleasOpinion} onCleasOverChange={onCleasOverChange} onOpinionChange={onCleasOpinionChange} cleasClosedAt={cleasClosedAt} onRequestClosure={onRequestCleasClosure} />;
+  }
 
   const generatePdf = async () => {
     try {

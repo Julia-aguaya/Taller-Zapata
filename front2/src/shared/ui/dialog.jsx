@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 
-export const Dialog = ({ open, onClose, title, description, children }) => {
+export const Dialog = ({ open, onClose, title, description, children, scrollable = false }) => {
   useEffect(() => {
     if (!open) {
       return undefined;
@@ -25,7 +25,7 @@ export const Dialog = ({ open, onClose, title, description, children }) => {
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-xl rounded-[28px] border border-border bg-card p-6 shadow-haze">
+      <div className={`w-full max-w-xl rounded-[28px] border border-border bg-card p-6 shadow-haze ${scrollable ? 'flex max-h-[calc(100dvh-2rem)] flex-col' : ''}`}>
         <div className="flex items-start justify-between gap-4">
           <div>
             <h3 className="text-xl font-semibold tracking-tight">{title}</h3>
@@ -35,7 +35,7 @@ export const Dialog = ({ open, onClose, title, description, children }) => {
             <X className="h-4 w-4" />
           </Button>
         </div>
-        <div className="mt-5">{children}</div>
+        <div className={`mt-5 ${scrollable ? 'min-h-0 flex-1 overflow-y-auto pr-1' : ''}`}>{children}</div>
       </div>
     </div>,
     document.body,

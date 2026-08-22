@@ -1,4 +1,5 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { useState } from 'react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { PaymentsEditorPanel } from './payments-editor-panel';
 
@@ -49,9 +50,46 @@ const baseProps = {
   onSaved: vi.fn(),
 };
 
-const mount = () => {
+const createCleasPaymentsUi = () => ({
+  billing: { insuranceCompany: '', claimNumber: '', agreementDate: '', invoiceNumber: '', businessName: '', totalAmount: '', taxableNet: '', vat: '', customerSigned: 'NO', passedToPayments: 'NO', estimatedPaymentDate: '' },
+  invoiceAcknowledged: false,
+  paymentDraft: { paidAt: '', status: 'PENDIENTE', depositedAmount: '', hasRetentions: 'NO', vatRetention: '', earningsRetention: '', patrimonialContribution: '', iibbRetention: '', dreiRetention: '', otherRetention: '' },
+  paymentDocument: { file: null, name: '' },
+  franchiseClientPayment: { status: 'PENDIENTE', paidAt: '', amount: '', paymentMethod: 'TRANSFERENCIA', externalReference: '', notes: '', document: { file: null, name: '' }, registered: false },
+});
+
+const CleasPaymentsHarness = (props) => {
+  const [cleasPaymentsUi, setCleasPaymentsUi] = useState(createCleasPaymentsUi);
+  const [cleasFranchiseDistribution] = useState(props.cleasFranchiseDistribution ?? { franchiseAmount: '', companyRequirement: 'NO', companyRequiredAmount: '', companyPaymentStatus: 'PENDIENTE', companyPaymentDate: '' });
+  return <PaymentsEditorPanel {...props} cleasFranchiseDistribution={cleasFranchiseDistribution} cleasPaymentsUi={cleasPaymentsUi} onCleasPaymentsUiChange={setCleasPaymentsUi} />;
+};
+
+const AccessoryPaymentsHarness = (props) => {
+  const [accessoryUi, setAccessoryUi] = useState({
+    enabled: 'SI',
+    works: [{ id: 'local-accessory', detail: 'Moldura lateral', amount: '180000', includesReplacement: 'SI', replacementPiece: 'Moldura', replacementAmount: '20000' }],
+    notes: '',
+    payments: [],
+    paymentDraft: { id: 'local-payment', kind: 'Parcial', amount: '', date: '', mode: 'Efectivo', modeDetail: '', reason: '', document: { file: null, name: '' } },
+    ...(props.accessoryUi === true ? {} : props.accessoryUi),
+  });
+  const registerAccessoryPayment = () => setAccessoryUi((current) => ({
+    ...current,
+    payments: [...current.payments, current.paymentDraft],
+    paymentDraft: { id: 'next-local-payment', kind: 'Parcial', amount: '', date: '', mode: 'Efectivo', modeDetail: '', reason: '', document: { file: null, name: '' } },
+  }));
+  const [cleasPaymentsUi, setCleasPaymentsUi] = useState(createCleasPaymentsUi);
+  const [cleasFranchiseDistribution] = useState({ franchiseAmount: '', companyRequirement: 'NO', companyRequiredAmount: '', companyPaymentStatus: 'PENDIENTE', companyPaymentDate: '' });
+  return <PaymentsEditorPanel {...props} accessoryUi={accessoryUi} onAccessoryUiChange={setAccessoryUi} onRegisterAccessoryPayment={registerAccessoryPayment} cleasPaymentsUi={cleasPaymentsUi} onCleasPaymentsUiChange={setCleasPaymentsUi} cleasFranchiseDistribution={cleasFranchiseDistribution} />;
+};
+
+const mount = (overrides = {}) => {
   useQueryData = {};
-  return render(<PaymentsEditorPanel {...baseProps} />);
+  mockCreateFinancialMovement.mockClear();
+  mockCreateReceipt.mockClear();
+  const props = { ...baseProps, ...overrides };
+  if (props.accessoryUi) return render(<AccessoryPaymentsHarness {...props} />);
+  return render(props.caseDetail.caseTypeCode === 'CLEAS' ? <CleasPaymentsHarness {...props} /> : <PaymentsEditorPanel {...props} />);
 };
 
 const openPaymentForm = () => {
@@ -63,6 +101,184 @@ describe('PaymentsEditorPanel', () => {
     mount();
     expect(screen.getByText('Juan')).toBeTruthy();
     expect(screen.getByText('ABC123')).toBeTruthy();
+  });
+
+  it('shows the CLEAS number in the summary and payment modal', () => {
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }, nroCleas: 'CLEAS-123' });
+
+    expect(screen.getAllByText('N.º de CLEAS').length).toBeGreaterThan(0);
+    expect(screen.getByText('CLEAS-123')).toBeTruthy();
+    openPaymentForm();
+    expect(screen.getByText('N.º de CLEAS: CLEAS-123')).toBeTruthy();
+  });
+
+  it('shows the CLEAS fallback when the number is blank', () => {
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }, nroCleas: '   ' });
+
+    expect(screen.getByText('Sin número de CLEAS cargado')).toBeTruthy();
+    openPaymentForm();
+    expect(screen.getByText('N.º de CLEAS: Sin número de CLEAS cargado')).toBeTruthy();
+  });
+
+  it('does not show CLEAS context for non-CLEAS cases', () => {
+    mount({ nroCleas: 'CLEAS-123' });
+
+    expect(screen.queryByText('N.º de CLEAS')).toBeNull();
+    openPaymentForm();
+    expect(screen.queryByText(/N.º de CLEAS:/)).toBeNull();
+    expect(screen.queryByText('Facturación')).toBeNull();
+    expect(screen.queryByText('Datos CLEAS del pago')).toBeNull();
+    expect(screen.queryByLabelText('A facturar Cía.')).toBeNull();
+  });
+
+  it('hides accessory payments for PARTICULAR', () => {
+    mount({ accessoryUi: true, caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'PARTICULAR' } });
+    expect(screen.queryByText('Pagos adicionales del cliente')).toBeNull();
+  });
+
+  it('hides accessory payments when the case type is absent', () => {
+    mount({ accessoryUi: true, caseDetail: baseProps.caseDetail });
+    expect(screen.queryByText('Pagos adicionales del cliente')).toBeNull();
+  });
+
+  it('keeps the additional-payment modal unavailable when extras are NO', () => {
+    mount({
+      caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'TODO_RIESGO' },
+      accessoryUi: { enabled: 'NO', works: [] },
+    });
+
+    const addPayment = screen.getByRole('button', { name: '+ Agregar pago' });
+    expect(addPayment).toBeDisabled();
+    fireEvent.click(addPayment);
+    expect(screen.queryByRole('heading', { name: 'Pago adicional del cliente' })).toBeNull();
+  });
+
+  it.each(['TODO_RIESGO', 'GRANIZO', 'CLEAS', 'CODIGO_DESCONOCIDO'])('shows accessory payments for the non-PARTICULAR case type %s', (caseTypeCode) => {
+    mount({ accessoryUi: true, caseDetail: { ...baseProps.caseDetail, caseTypeCode } });
+    expect(screen.getByText('Pagos adicionales del cliente')).toBeTruthy();
+  });
+
+  it('registers an accessory payment only in local UI state', () => {
+    mount({ accessoryUi: true, caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'GRANIZO' } });
+
+    expect(screen.getByText('Cotizado extras')).toBeTruthy();
+    expect(screen.getByText('Cotizado extras').parentElement).toHaveTextContent('200.000');
+    fireEvent.click(screen.getByRole('button', { name: '+ Agregar pago' }));
+    const accessoryDialog = screen.getByRole('heading', { name: 'Pago adicional del cliente' }).closest('.max-w-xl');
+    expect(accessoryDialog).toBeTruthy();
+    fireEvent.change(within(accessoryDialog).getByLabelText('Monto'), { target: { value: '80000' } });
+    fireEvent.change(within(accessoryDialog).getByLabelText('Fecha'), { target: { value: '2026-08-21' } });
+    fireEvent.click(within(accessoryDialog).getByRole('button', { name: /^Registrar pago$/ }));
+
+    expect(screen.getByText(/Parcial.*80\.000.*2026-08-21.*Efectivo/)).toBeTruthy();
+    expect(mockCreateFinancialMovement).not.toHaveBeenCalled();
+    expect(mockCreateReceipt).not.toHaveBeenCalled();
+  });
+
+  it('derives accessory quoted total and balance without VAT', () => {
+    mount({ accessoryUi: true, caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'GRANIZO' }, particularFinanceSummary: { ...baseProps.particularFinanceSummary, customerPaid: 50000 } });
+
+    expect(screen.getByText('Total MO extras').parentElement).toHaveTextContent('180.000');
+    expect(screen.getByText('Total repuestos extras').parentElement).toHaveTextContent('20.000');
+    expect(screen.getByText('Cotizado extras')).toBeTruthy();
+    expect(screen.getByText('Cotizado extras').parentElement).toHaveTextContent('200.000');
+    expect(screen.getByText('Saldo pendiente').parentElement).toHaveTextContent(/200\.000/);
+    expect(screen.getByText('Total abonado por el cliente').parentElement).toHaveTextContent(/\$ 0/);
+  });
+
+  it('keeps accessory payment documentation local and out of financial history', () => {
+    mount({ accessoryUi: true, caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CODIGO_DESCONOCIDO' } });
+    fireEvent.click(screen.getByRole('button', { name: '+ Agregar pago' }));
+    fireEvent.change(screen.getByLabelText('Monto'), { target: { value: '180000' } });
+    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [new File(['local'], 'respaldo.pdf', { type: 'application/pdf' })] } });
+    expect(screen.getByText('respaldo.pdf')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Registrar pago$/ }));
+
+    expect(screen.getByText(/respaldo\.pdf/)).toBeTruthy();
+    expect(screen.getByText('Sin movimientos registrados.')).toBeTruthy();
+    expect(mockCreateFinancialMovement).not.toHaveBeenCalled();
+    expect(mockCreateReceipt).not.toHaveBeenCalled();
+  });
+
+  it('renders the visual-only CLEAS billing card with shared calculated amount and fallback', () => {
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }, nroCleas: '', cleasAgreedAmount: '125000' });
+
+    expect(screen.getByText('Facturación')).toBeTruthy();
+    expect(screen.getByLabelText('N.º de CLEAS')).toHaveValue('Sin número de CLEAS cargado');
+    expect(screen.getByLabelText('N.º de CLEAS')).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('A facturar Cía.')).toHaveValue('125000');
+    expect(screen.getByLabelText('A facturar Cía.')).toHaveAttribute('readonly');
+    ['Cía. aseguradora', 'N.º de siniestro', 'Fecha de acuerdo', 'N.º de factura', 'Razón social', 'Importe total', 'Neto gravado', 'IVA', 'Cliente firma conforme', 'Pasado a pagos', 'Fecha estimada de pago'].forEach((label) => expect(screen.getByLabelText(label)).toBeTruthy());
+
+    fireEvent.click(screen.getByRole('button', { name: /agregar factura/i }));
+    expect(screen.getByText('Factura agregada visualmente.')).toBeTruthy();
+  });
+
+  it('hides CLEAS billing and payment registration only after exact adverse-total closure', () => {
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }, cleasOver: 'damage', cleasOpinion: 'unfavorable', cleasClosedAt: '2026-08-20T10:00:00.000Z' });
+
+    expect(screen.queryByText('Facturación')).toBeNull();
+    expect(screen.queryByRole('button', { name: /registrar pago/i })).toBeNull();
+    expect(screen.queryByLabelText('Monto depositado')).toBeNull();
+  });
+
+  it('keeps billing and payment registration available for non-exact CLEAS with a closure timestamp', () => {
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }, cleasOver: 'liability', cleasOpinion: 'unfavorable', cleasClosedAt: '2026-08-20T10:00:00.000Z' });
+
+    expect(screen.getByText('Facturación')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: /registrar pago/i }).length).toBeGreaterThan(0);
+  });
+
+  it('keeps CLEAS billing and payment registration enabled for a favorable franchise', () => {
+    mount({
+      caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' },
+      cleasOver: 'franchise',
+      cleasOpinion: 'favorable',
+      cleasAgreedAmount: '125000',
+    });
+
+    expect(screen.getByText('Facturación')).toBeTruthy();
+    expect(screen.getByLabelText('A facturar Cía.')).toHaveValue('125000');
+    expect(screen.getByLabelText('A facturar Cía.')).toHaveAttribute('readonly');
+    expect(screen.getAllByRole('button', { name: /registrar pago/i }).length).toBeGreaterThan(0);
+    openPaymentForm();
+    expect(screen.getByRole('button', { name: /^registrar pago$/i })).toBeEnabled();
+  });
+
+  it('uses the unfavorable franchise derived company amount and provides a separate local client payment modal', () => {
+    mount({
+      caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' },
+      cleasOver: 'franchise',
+      cleasOpinion: 'unfavorable',
+      cleasAgreedAmount: '2000000',
+      cleasFranchiseDistribution: { franchiseAmount: '1000000', companyRequirement: 'PARCIAL', companyRequiredAmount: '500000', companyPaymentStatus: 'PENDIENTE', companyPaymentDate: '' },
+    });
+
+    expect(screen.getByLabelText('A facturar Cía.')).toHaveValue('1500000');
+    expect(screen.getByText('Pago de franquicia a cargo del cliente')).toBeTruthy();
+    expect(screen.getByLabelText('A cargo del cliente')).toHaveValue('500000');
+    fireEvent.click(screen.getByRole('button', { name: '+ Registrar pago del cliente' }));
+    expect(screen.getByRole('heading', { name: 'Pago de franquicia — Cliente' })).toBeTruthy();
+    expect(screen.getByLabelText('Monto')).toHaveValue(500000);
+    fireEvent.click(screen.getByRole('button', { name: 'Confirmar pago' }));
+    expect(screen.getByText('Pago del cliente registrado visualmente.')).toBeTruthy();
+    expect(mockCreateFinancialMovement).not.toHaveBeenCalled();
+  });
+
+  it('shows CLEAS payment draft fields and only reveals retentions when selected', () => {
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' } });
+    openPaymentForm();
+
+    expect(screen.getByLabelText('Fecha de pago')).toBeTruthy();
+    expect(screen.getByLabelText('Estado del pago')).toBeTruthy();
+    expect(screen.getByLabelText('Monto depositado')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Documentación de pago' })).toBeTruthy();
+    expect(document.querySelector('input[type="file"]')).toBeTruthy();
+    expect(screen.queryByLabelText('Ganancias')).toBeNull();
+
+    fireEvent.change(screen.getByLabelText('Retenciones'), { target: { value: 'SI' } });
+    expect(screen.getAllByLabelText('IVA').length).toBeGreaterThan(1);
+    ['Ganancias', 'Contribución patrimonial', 'IIBB', 'DReI', 'Otra'].forEach((label) => expect(screen.getByLabelText(label)).toBeTruthy());
   });
 
   it('calculates total con IVA for comprobante A (default)', () => {
@@ -93,12 +309,21 @@ describe('PaymentsEditorPanel', () => {
   });
 
   it('calls createFinancialMovement on save', async () => {
-    mount();
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' } });
     openPaymentForm();
-    const montoInput = document.querySelector('input[type="number"]');
-    if (montoInput) fireEvent.change(montoInput, { target: { value: '100000' } });
+    fireEvent.change(screen.getByLabelText('Monto'), { target: { value: '100000' } });
+    fireEvent.change(screen.getByLabelText('Monto depositado'), { target: { value: '90000' } });
+    fireEvent.change(screen.getByLabelText('Retenciones'), { target: { value: 'SI' } });
+    fireEvent.change(screen.getByLabelText('Ganancias'), { target: { value: '1000' } });
     fireEvent.click(screen.getByRole('button', { name: /^registrar pago$/i }));
     await waitFor(() => expect(mockCreateFinancialMovement).toHaveBeenCalled());
+    const payload = mockCreateFinancialMovement.mock.calls[0][1];
+    expect(payload.grossAmount).toBe(100000);
+    expect(payload).not.toHaveProperty('depositedAmount');
+    expect(payload).not.toHaveProperty('hasRetentions');
+    expect(payload).not.toHaveProperty('franchiseAmount');
+    expect(payload).not.toHaveProperty('companyRequiredAmount');
+    expect(payload.retentions).toEqual([]);
   });
 
   it('shows factura fields when Factura = SI', () => {

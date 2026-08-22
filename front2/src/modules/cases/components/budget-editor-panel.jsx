@@ -11,6 +11,7 @@ import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
 import { ProviderSelector, providerPayload } from '@/modules/cases/components/provider-selector';
+import { getAccessoryWorkTotals } from '@/modules/cases/lib/accessory-work-total';
 
 const currency = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 });
 const fmt = (v) => (v == null ? '-' : currency.format(v));
@@ -34,7 +35,7 @@ const toItemState = (item) => ({
 
 const toDecimal = (v) => { const p = Number(v); return Number.isFinite(p) ? p : 0; };
 
-export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, onSaved }) => {
+export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, accessoryUi, onAccessoryUiChange, onAddAccessoryWork, onSaved }) => {
   const queryClient = useQueryClient();
   const { session } = useSession();
   const catalogsQuery = useQuery({ queryKey: ['budget', 'catalogs'], queryFn: getBudgetCatalogs });
@@ -87,6 +88,10 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
   const partsSum = normalizedItems.reduce((s, i) => s + toDecimal(i.partValue), 0);
   const laborWithoutVat = toDecimal(header.laborWithoutVat);
   const laborWithVat = laborWithoutVat * 1.21;
+  const showAccessoryBlock = Boolean(caseDetail?.caseTypeCode) && caseDetail.caseTypeCode !== 'PARTICULAR';
+  const accessoryWorks = accessoryUi?.enabled === 'SI' ? accessoryUi.works ?? [] : [];
+  const accessoryTotals = getAccessoryWorkTotals(accessoryUi);
+  const updateAccessoryUi = (updater) => onAccessoryUiChange?.((current) => typeof updater === 'function' ? updater(current) : updater);
 
   const invalidateWorkspace = async () => {
     await Promise.all([
@@ -245,7 +250,43 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
           <Button variant="ghost" size="sm" disabled={lastLineIncomplete} onClick={() => setItems((c) => [...c, createEmptyItem(c.length + 1, defaults)])}><Plus className="mr-1.5 h-4 w-4" />+ Agregar tarea</Button>
           {lastLineIncomplete ? <span className="ml-3 text-xs text-amber-600">Completá la línea actual antes de agregar otra.</span> : null}
         </div>
-      </div>
+       </div>
+
+      {showAccessoryBlock ? (
+        <div className="rounded-2xl border border-border/60 bg-card p-5">
+          <h4 className="text-sm font-semibold">Trabajos extras</h4>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="grid flex-1 gap-3 md:grid-cols-3">
+              <div className="space-y-1"><Label className="text-xs" htmlFor="accessory-work-enabled">Trabajos extras</Label><select id="accessory-work-enabled" className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm" value={accessoryUi?.enabled ?? 'NO'} onChange={(event) => updateAccessoryUi((current) => ({ ...current, enabled: event.target.value }))}><option value="NO">No</option><option value="SI">Sí</option></select></div>
+              <div className="space-y-1"><Label className="text-xs" htmlFor="accessory-work-quoted">Cotizado</Label><Input id="accessory-work-quoted" value={fmt(accessoryTotals.quoted)} readOnly className="cursor-not-allowed bg-muted/60 font-semibold" /></div>
+              <div className="space-y-1"><Label className="text-xs" htmlFor="accessory-work-vat">IVA</Label><select id="accessory-work-vat" className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm" value={accessoryUi?.vat ?? '21'} onChange={(event) => updateAccessoryUi((current) => ({ ...current, vat: event.target.value }))}><option value="0">0%</option><option value="10.5">10,5%</option><option value="21">21%</option></select></div>
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={onAddAccessoryWork}><Plus className="mr-1.5 h-4 w-4" />Agregar trabajo extra</Button>
+          </div>
+          {/* Grilla local: estos extras no forman parte de las líneas ni del payload/PDF del presupuesto. */}
+          {accessoryUi?.enabled === 'SI' ? (
+            <div className="mt-4 space-y-3">
+              {accessoryWorks.map((work) => (
+                <div key={work.id} className="rounded-2xl border border-border/50 bg-background/50 p-4">
+                  {/* Grilla de cada extra: mantiene sus importes aislados del presupuesto principal. */}
+                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_180px_auto]">
+                     <div className="space-y-1"><Label className="text-xs" htmlFor={`accessory-piece-${work.id}`}>Pieza afectada</Label><Input id={`accessory-piece-${work.id}`} value={work.affectedPiece ?? ''} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, affectedPiece: event.target.value } : entry) }))} /></div>
+                     <div className="space-y-1"><Label className="text-xs" htmlFor={`accessory-task-${work.id}`}>Tarea a ejecutar</Label><Input id={`accessory-task-${work.id}`} value={work.task ?? ''} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, task: event.target.value } : entry) }))} /></div>
+                      <div className="space-y-1"><Label className="text-xs" htmlFor={`accessory-labor-${work.id}`}>Total MO</Label><Input id={`accessory-labor-${work.id}`} type="number" min="0" step="0.01" value={work.amount} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, amount: event.target.value } : entry) }))} /></div>
+                    <div className="flex items-end"><Button type="button" variant="ghost" size="sm" onClick={() => updateAccessoryUi((current) => ({ ...current, works: current.works.filter((entry) => entry.id !== work.id), enabled: current.works.length === 1 ? 'NO' : current.enabled }))}>Quitar</Button></div>
+                   </div>
+                    <div className="mt-3 grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_180px]">
+                      <div className="space-y-1"><Label className="text-xs" htmlFor={`accessory-damage-${work.id}`}>Nivel de daño</Label><Input id={`accessory-damage-${work.id}`} value={work.damageLevel ?? ''} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, damageLevel: event.target.value } : entry) }))} /></div>
+                     <div className="space-y-1"><Label className="text-xs">Incluye repuesto</Label><select className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm" value={work.includesReplacement} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, includesReplacement: event.target.value, replacementPiece: event.target.value === 'SI' ? entry.replacementPiece : '', replacementAmount: event.target.value === 'SI' ? entry.replacementAmount : '' } : entry) }))}><option value="NO">No</option><option value="SI">Sí</option></select></div>
+                     {work.includesReplacement === 'SI' ? <><div className="space-y-1"><Label className="text-xs">Repuesto</Label><Input value={work.replacementPiece} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, replacementPiece: event.target.value } : entry) }))} /></div><div className="space-y-1"><Label className="text-xs">Monto repuesto</Label><Input type="number" min="0" step="0.01" value={work.replacementAmount} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, replacementAmount: event.target.value } : entry) }))} /></div></> : null}
+                   </div>
+                 </div>
+              ))}
+            </div>
+          ) : <p className="mt-4 rounded-xl border border-border/50 bg-background/70 px-4 py-3 text-sm text-muted-foreground">No hay trabajos extras incluidos. Este bloque queda separado del presupuesto técnico y del reclamo a la compañía.</p>}
+           <div className="mt-4 grid gap-3 md:grid-cols-2"><div className="space-y-1"><Label className="text-xs">Cliente confirma</Label><select className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm" value={accessoryUi?.customerConfirmed ?? 'NO'} onChange={(event) => updateAccessoryUi((current) => ({ ...current, customerConfirmed: event.target.value }))}><option value="NO">No</option><option value="SI">Sí</option></select></div><div className="space-y-1"><Label className="text-xs">Anotaciones</Label><Textarea rows={3} value={accessoryUi?.notes ?? ''} onChange={(event) => updateAccessoryUi((current) => ({ ...current, notes: event.target.value }))} /></div></div>
+        </div>
+      ) : null}
 
       {/* Trabajos adicionales */}
       <div className="rounded-2xl border border-border/60 bg-card p-5">

@@ -19,7 +19,7 @@ import { GestionTramiteEditor } from '@/modules/cases/components/gestion-tramite
 import { FranchiseRecoveryEditor } from '@/modules/cases/components/franchise-recovery-editor';
 import { FranchiseRecoveryPaymentsEditor } from '@/modules/cases/components/franchise-recovery-payments-editor';
 import { requestJson } from '@/shared/api/http-client';
-import { getOperationalTabs, getTabIcon, getTabLabel } from '@/modules/cases/lib/tab-registry';
+import { getCleasTabs, getOperationalTabs, getTabIcon, getTabLabel } from '@/modules/cases/lib/tab-registry';
 
 const currency = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 });
 const formatCurrency = (value) => (value == null ? '-' : currency.format(value));
@@ -53,6 +53,28 @@ const TODO_RIESGO_OVERRIDE_OPTIONS = {
   tramite: [],
   reparacion: [],
 };
+
+const createCleasPaymentsUi = () => ({
+  billing: { agreementDate: '', invoiceNumber: '', businessName: '', totalAmount: '', taxableNet: '', vat: '', customerSigned: 'NO', passedToPayments: 'NO', estimatedPaymentDate: '' },
+  invoiceAcknowledged: false,
+  paymentDraft: { paidAt: '', status: 'PENDIENTE', depositedAmount: '', hasRetentions: 'NO', vatRetention: '', earningsRetention: '', patrimonialContribution: '', iibbRetention: '', dreiRetention: '', otherRetention: '' },
+  paymentDocument: { file: null, name: '' },
+  franchiseClientPayment: { status: 'PENDIENTE', paidAt: '', amount: '', paymentMethod: 'TRANSFERENCIA', externalReference: '', notes: '', document: { file: null, name: '' }, registered: false },
+});
+
+const createCleasFranchiseDistribution = () => ({
+  franchiseAmount: '',
+  companyRequirement: 'NO',
+  companyRequiredAmount: '',
+  companyPaymentStatus: 'PENDIENTE',
+  companyPaymentDate: '',
+});
+
+let accessorySequence = 0;
+const createAccessoryId = () => `accessory-${Date.now()}-${++accessorySequence}`;
+const createAccessoryWork = () => ({ id: createAccessoryId(), affectedPiece: '', task: '', damageLevel: '', amount: '', includesReplacement: 'NO', replacementPiece: '', replacementAmount: '' });
+const createAccessoryPayment = () => ({ id: createAccessoryId(), kind: 'Parcial', amount: '', date: '', mode: 'Efectivo', modeDetail: '', reason: '', document: { file: null, name: '' } });
+const createAccessoryUi = () => ({ enabled: 'NO', vat: '21', customerConfirmed: 'NO', notes: '', works: [], payments: [], paymentDraft: createAccessoryPayment() });
 
 export const formatDisplayValue = (value) => {
   if (value == null || value === '') return 'Sin informar';
@@ -138,6 +160,29 @@ export const CaseWorkspacePage = () => {
   const [selectedReadinessTab, setSelectedReadinessTab] = useState(null);
   const [overrideModal, setOverrideModal] = useState(null); // { domain, currentCode }
   const [overrideReason, setOverrideReason] = useState('');
+  const [nroCleas, setNroCleas] = useState('');
+  const [cleasAgreedAmount, setCleasAgreedAmount] = useState('');
+  const [cleasPaymentsUi, setCleasPaymentsUi] = useState(createCleasPaymentsUi);
+  const [cleasInsurance, setCleasInsurance] = useState({ clientCompany: '', claimNumber: '' });
+  const [cleasFranchiseDistribution, setCleasFranchiseDistribution] = useState(createCleasFranchiseDistribution);
+  const [accessoryUi, setAccessoryUi] = useState(createAccessoryUi);
+  const [cleasOver, setCleasOver] = useState('damage');
+  const [cleasOpinion, setCleasOpinion] = useState('favorable');
+  const [cleasClosedAt, setCleasClosedAt] = useState(null);
+  const [showCleasClosureDialog, setShowCleasClosureDialog] = useState(false);
+
+  useEffect(() => {
+    setNroCleas('');
+    setCleasAgreedAmount('');
+    setCleasPaymentsUi(createCleasPaymentsUi());
+    setCleasInsurance({ clientCompany: '', claimNumber: '' });
+    setCleasFranchiseDistribution(createCleasFranchiseDistribution());
+    setAccessoryUi(createAccessoryUi());
+    setCleasOver('damage');
+    setCleasOpinion('favorable');
+    setCleasClosedAt(null);
+    setShowCleasClosureDialog(false);
+  }, [caseId]);
 
   const refreshCaseProjection = async () => {
     await queryClient.invalidateQueries({ queryKey: ['cases'] });
@@ -156,8 +201,11 @@ export const CaseWorkspacePage = () => {
     enabled: Boolean(caseId),
   });
 
-  const tabs = workspaceQuery.data?.readiness?.tabs ?? [];
-  const currentTab = useMemo(() => tabs.find((t) => t.tabCode === selectedTab) || tabs[0] || null, [selectedTab, tabs]);
+  const effectiveTabs = useMemo(() => {
+    const readinessTabs = workspaceQuery.data?.readiness?.tabs ?? [];
+    return workspaceQuery.data?.caseDetail?.caseTypeCode === 'CLEAS' ? getCleasTabs(readinessTabs) : readinessTabs;
+  }, [workspaceQuery.data]);
+  const currentTab = useMemo(() => effectiveTabs.find((tab) => tab.tabCode === selectedTab) || effectiveTabs[0] || null, [effectiveTabs, selectedTab]);
 
   const tasksQuery = useQuery({
     queryKey: ['cases', caseId, 'tasks'],
@@ -168,15 +216,46 @@ export const CaseWorkspacePage = () => {
   if (workspaceQuery.isLoading) return <FullScreenLoader label="Abriendo carpeta..." compact />;
   if (workspaceQuery.isError) return <EmptyState title="No pude abrir la carpeta" description={workspaceQuery.error.message} />;
 
-  const { caseDetail, readiness, budget, particularFinanceSummary, latestAppointment, latestIntake, latestOutcome, widgets, workshopInfo } = workspaceQuery.data;
+  const { caseDetail, budget, particularFinanceSummary, latestAppointment, latestIntake, latestOutcome, widgets, workshopInfo } = workspaceQuery.data;
+  const handleCleasFranchiseDistributionChange = (updater) => {
+    setCleasFranchiseDistribution((current) => {
+      const next = typeof updater === 'function' ? updater(current) : updater;
+      return next.companyRequirement === 'TOTAL'
+        ? { ...next, companyRequiredAmount: next.franchiseAmount }
+        : next;
+    });
+  };
+  const addAccessoryWork = () => {
+    setAccessoryUi((current) => ({ ...current, enabled: 'SI', works: [...current.works, createAccessoryWork()] }));
+  };
+  const registerAccessoryPayment = () => {
+    setAccessoryUi((current) => ({
+      ...current,
+      payments: [...current.payments, current.paymentDraft],
+      paymentDraft: createAccessoryPayment(),
+    }));
+  };
+  const isCleasAdverseTotal = caseDetail.caseTypeCode === 'CLEAS' && cleasOver === 'damage' && cleasOpinion === 'unfavorable';
+  const isCleasWorkflowGuard = caseDetail.caseTypeCode === 'CLEAS' && cleasOver === 'damage' && ['pending', 'unfavorable'].includes(cleasOpinion);
+  const isCleasClosed = isCleasAdverseTotal && Boolean(cleasClosedAt);
+  const canOverrideVisibleState = caseDetail.caseTypeCode !== 'TODO_RIESGO' && !isCleasClosed;
+  const isCleasClosureBlockedTab = (tabCode) => isCleasWorkflowGuard && ['PRESUPUESTO', 'GESTION_REPARACION', 'PAGOS'].includes(tabCode);
+  const handleCleasOverChange = (value) => {
+    setCleasOver(value);
+    if (value !== 'damage' || cleasOpinion !== 'unfavorable') setCleasClosedAt(null);
+  };
+  const handleCleasOpinionChange = (value) => {
+    setCleasOpinion(value);
+    if (cleasOver !== 'damage' || value !== 'unfavorable') setCleasClosedAt(null);
+  };
   const overrideOptions = caseDetail.caseTypeCode === 'PARTICULAR'
     ? PARTICULAR_OVERRIDE_OPTIONS
     : caseDetail.caseTypeCode === 'TODO_RIESGO' ? TODO_RIESGO_OVERRIDE_OPTIONS : DEFAULT_OVERRIDE_OPTIONS;
-  const stageTabs = getOperationalTabs(readiness.tabs);
-  const completedStages = countCompletedStages(readiness.tabs);
+  const stageTabs = getOperationalTabs(effectiveTabs);
+  const completedStages = countCompletedStages(effectiveTabs);
   const taskSnapshot = getTaskSnapshot(tasksQuery.data?.items ?? []);
   const navigationHint = getHelpfulBlockingMessage(stageTabs.find((tab) => !tab.allowed && tab.blockingReasons?.length)?.blockingReasons?.[0]);
-  const nextStep = getNextStepDescriptor({ tabs: readiness.tabs, budget, widgets, particularFinanceSummary });
+  const nextStep = getNextStepDescriptor({ tabs: effectiveTabs, budget, widgets, particularFinanceSummary });
 
   return (
     <div className="space-y-5">
@@ -186,7 +265,8 @@ export const CaseWorkspacePage = () => {
             <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground">Carpeta</p>
             <div className="mt-2 flex flex-wrap items-center gap-3">
               <h2 className="text-3xl font-semibold tracking-tight">{caseDetail.folderCode}</h2>
-              <Badge variant="outline">{caseDetail.caseTypeCode}</Badge>
+               <Badge variant="outline">{caseDetail.caseTypeCode}</Badge>
+               {isCleasClosed ? <Badge variant="destructive">Caso cerrado</Badge> : null}
             </div>
             <p className="mt-3 max-w-3xl text-sm text-muted-foreground">
               {caseDetail.principalCustomerName} - {caseDetail.principalVehiclePlate || 'Sin patente'}
@@ -200,7 +280,7 @@ export const CaseWorkspacePage = () => {
             <div className="flex flex-wrap gap-2">
               {/* Trámite state — clickeable para override */}
               <div className="relative">
-                <button type="button" disabled={caseDetail.caseTypeCode === 'TODO_RIESGO'} onClick={() => setOverrideModal({ domain: 'tramite', currentCode: caseDetail.visibleTramiteState.code })}
+                <button type="button" disabled={!canOverrideVisibleState} onClick={() => { if (canOverrideVisibleState) setOverrideModal({ domain: 'tramite', currentCode: caseDetail.visibleTramiteState.code }); }}
                   className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition hover:ring-2 hover:ring-primary/30 ${
                     caseDetail.visibleTramiteState.code === 'PAGADO' ? 'border-emerald-200 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400' :
                     caseDetail.visibleTramiteState.code === 'RECHAZADO' || caseDetail.visibleTramiteState.code === 'DESISTIDO' ? 'border-red-200 bg-red-100 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-400' :
@@ -212,7 +292,7 @@ export const CaseWorkspacePage = () => {
 
               {/* Reparación state — clickeable para override */}
               <div className="relative">
-                <button type="button" disabled={caseDetail.caseTypeCode === 'TODO_RIESGO'} onClick={() => setOverrideModal({ domain: 'reparacion', currentCode: caseDetail.visibleRepairState.code })}
+                <button type="button" disabled={!canOverrideVisibleState} onClick={() => { if (canOverrideVisibleState) setOverrideModal({ domain: 'reparacion', currentCode: caseDetail.visibleRepairState.code }); }}
                   className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition hover:ring-2 hover:ring-primary/30 ${
                     caseDetail.visibleRepairState.code === 'REPARADO' ? 'border-emerald-200 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400' :
                     caseDetail.visibleRepairState.code === 'NO_DEBE_REPARARSE' ? 'border-blue-200 bg-blue-100 text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400' :
@@ -223,9 +303,10 @@ export const CaseWorkspacePage = () => {
                 </button>
               </div>
             </div>
-            <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">
-              {`${completedStages} de ${stageTabs.length || 4} etapas completas`}
-            </Badge>
+             <Badge variant="outline" className="border-primary/20 bg-primary/5 text-primary">
+               {`${completedStages} de ${stageTabs.length || 4} etapas completas`}
+             </Badge>
+             {isCleasClosed ? <Badge variant="destructive">Caso cerrado</Badge> : null}
           </div>
         </div>
       </Card>
@@ -244,10 +325,10 @@ export const CaseWorkspacePage = () => {
         <div className="overflow-x-auto pb-1" data-testid="workspace-tabs-scroll">
           <div className="flex min-w-max gap-2" role="tablist" aria-label="Secciones de la carpeta">
             <DetallesTabButton selectedTab={selectedTab} setSelectedTab={setSelectedTab} />
-            {readiness.tabs.map((tab) => {
+            {effectiveTabs.map((tab) => {
               const Icon = getTabIcon(tab.tabCode);
               const active = selectedTab === tab.tabCode;
-              const isBlocked = !tab.allowed;
+               const isBlocked = !tab.allowed || isCleasClosureBlockedTab(tab.tabCode);
               return (
                 <button
                   key={tab.tabCode}
@@ -255,8 +336,12 @@ export const CaseWorkspacePage = () => {
                   role="tab"
                   aria-selected={active}
                   aria-disabled={isBlocked}
-                  onClick={() => {
-                    if (isBlocked) {
+                   onClick={() => {
+                     if (isCleasClosureBlockedTab(tab.tabCode)) {
+                       setSelectedTab(tab.tabCode);
+                       return;
+                     }
+                     if (isBlocked) {
                       setSelectedReadinessTab(tab);
                       return;
                     }
@@ -298,7 +383,9 @@ export const CaseWorkspacePage = () => {
         ) : null}
 
         <div className="mt-5">
-          {selectedTab === 'DETALLES' ? (
+          {isCleasClosureBlockedTab(selectedTab) ? (
+            <EmptyState description={cleasOpinion === 'pending' ? 'No se puede avanzar hasta recibir el dictamen.' : 'Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra.'} />
+          ) : selectedTab === 'DETALLES' ? (
             <CaseDetailsPanel
               caseDetail={caseDetail}
               budget={budget}
@@ -329,17 +416,17 @@ export const CaseWorkspacePage = () => {
               onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })}
             />
           ) : currentTab?.tabCode === 'PRESUPUESTO' ? (
-            <BudgetEditorPanel caseId={caseId} budget={budget} caseDetail={caseDetail} workshopInfo={workshopInfo} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
+            <BudgetEditorPanel caseId={caseId} budget={budget} caseDetail={caseDetail} workshopInfo={workshopInfo} accessoryUi={accessoryUi} onAccessoryUiChange={setAccessoryUi} onAddAccessoryWork={addAccessoryWork} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'GESTION_TRAMITE' ? (
             caseDetail.caseTypeCode === 'RECUPERO_FRANQUICIA'
               ? <FranchiseRecoveryEditor caseId={caseId} caseDetail={caseDetail} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
-              : <GestionTramiteEditor caseId={caseId} caseDetail={caseDetail} budget={budget} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
+              : <GestionTramiteEditor caseId={caseId} caseDetail={caseDetail} budget={budget} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, setNroCleas, cleasInsurance, onCleasInsuranceChange: setCleasInsurance, cleasAgreedAmount, setCleasAgreedAmount, cleasFranchiseDistribution, onCleasFranchiseDistributionChange: handleCleasFranchiseDistributionChange, cleasOver, cleasOpinion, onCleasOverChange: handleCleasOverChange, onCleasOpinionChange: handleCleasOpinionChange, cleasClosedAt, onRequestCleasClosure: () => setShowCleasClosureDialog(true) } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'GESTION_REPARACION' ? (
             <RepairEditorPanel caseId={caseId} caseDetail={caseDetail} latestAppointment={latestAppointment} latestIntake={latestIntake} latestOutcome={latestOutcome} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'PAGOS' ? (
             caseDetail.caseTypeCode === 'RECUPERO_FRANQUICIA'
               ? <FranchiseRecoveryPaymentsEditor caseId={caseId} caseDetail={caseDetail} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
-              : <PaymentsEditorPanel caseId={caseId} caseDetail={caseDetail} budget={budget} particularFinanceSummary={particularFinanceSummary} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
+              : <PaymentsEditorPanel caseId={caseId} caseDetail={caseDetail} budget={budget} particularFinanceSummary={particularFinanceSummary} accessoryUi={accessoryUi} onAccessoryUiChange={setAccessoryUi} onRegisterAccessoryPayment={registerAccessoryPayment} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, cleasInsurance, onCleasInsuranceChange: setCleasInsurance, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange: setCleasPaymentsUi, cleasOver, cleasOpinion, cleasClosedAt, cleasWorkflowGuard: isCleasWorkflowGuard } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : null}
         </div>
       </Card>
@@ -378,7 +465,19 @@ export const CaseWorkspacePage = () => {
         ) : null}
       </Dialog>
 
-      {overrideModal ? (
+      <Dialog
+        open={showCleasClosureDialog}
+        onClose={() => setShowCleasClosureDialog(false)}
+        title="¿Cerrar caso CLEAS?"
+        description="Esta acción indica que el dictamen fue en contra y que el trámite no continuará. Por ahora es solo una simulación visual y no modificará datos reales."
+      >
+        <div className="flex gap-3">
+          <Button variant="outline" className="flex-1" onClick={() => setShowCleasClosureDialog(false)}>Cancelar</Button>
+          <Button variant="destructive" className="flex-1" onClick={() => { if (isCleasAdverseTotal) setCleasClosedAt(new Date().toISOString()); setShowCleasClosureDialog(false); }}>Confirmar cierre</Button>
+        </div>
+      </Dialog>
+
+      {overrideModal && !isCleasClosed ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setOverrideModal(null)}>
           <div className="w-full max-w-sm rounded-3xl border border-border bg-card p-6 shadow-haze" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold">Cambiar estado de {overrideModal.domain === 'tramite' ? 'Trámite' : 'Reparación'}</h3>

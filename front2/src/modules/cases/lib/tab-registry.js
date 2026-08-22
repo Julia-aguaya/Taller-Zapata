@@ -13,6 +13,22 @@ export const TAB_REGISTRY = {
   PAGOS:                 { icon: Receipt,       label: 'Pagos',                 order: 5 },
 };
 
+export const CLEAS_TAB_CODES = ['FICHA_TECNICA', 'GESTION_TRAMITE', 'PRESUPUESTO', 'GESTION_REPARACION', 'PAGOS'];
+
+const createDefaultCleasTab = (tabCode) => ({
+  tabCode,
+  allowed: true,
+  completed: false,
+  blockingReasons: [],
+  warningReasons: [],
+});
+
+export const getCleasTabs = (tabs = []) => {
+  const tabsByCode = new Map(tabs.map((tab) => [tab.tabCode, tab]));
+
+  return CLEAS_TAB_CODES.map((tabCode) => tabsByCode.get(tabCode) ?? createDefaultCleasTab(tabCode));
+};
+
 export const getOperationalTabs = (tabs = []) =>
   tabs
     .filter((tab) => TAB_REGISTRY[tab.tabCode])
