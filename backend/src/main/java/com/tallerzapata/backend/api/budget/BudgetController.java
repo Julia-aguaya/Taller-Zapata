@@ -68,6 +68,13 @@ public class BudgetController {
         return budgetService.closeBudget(caseId, request, httpRequest);
     }
 
+    @Operation(summary = "Generar presupuesto y snapshot de comparación")
+    @PreAuthorize("hasAuthority('presupuesto.crear')")
+    @PostMapping("/cases/{caseId}/budget/generate")
+    public BudgetGenerateResponse generateBudget(@PathVariable Long caseId, @RequestHeader("Idempotency-Key") String idempotencyKey, @RequestBody BudgetUpsertRequest request, HttpServletRequest httpRequest) {
+        return budgetService.generateBudget(caseId, request, idempotencyKey, httpRequest);
+    }
+
     @Operation(summary = "Listar items de presupuesto", description = "Devuelve los items de un presupuesto")
     @ApiResponse(responseCode = "200", description = "OK")
     @PreAuthorize("hasAuthority('presupuesto.ver')")
@@ -124,12 +131,19 @@ public class BudgetController {
         budgetService.deleteCasePart(caseId, partId, httpRequest);
     }
 
-    @Operation(summary = "Sincronizar repuestos desde presupuesto", description = "Crea repuestos de caso a partir de los items del presupuesto que indican REEMPLAZAR")
+    @Operation(summary = "Sincronizar repuestos desde presupuesto", description = "Reconcilia los repuestos canónicos existentes con las fuentes activas del presupuesto")
     @ApiResponse(responseCode = "200", description = "OK")
     @PreAuthorize("hasAuthority('presupuesto.crear')")
     @PostMapping("/cases/{caseId}/parts/sync-from-budget")
     public List<CasePartResponse> syncPartsFromBudget(@PathVariable Long caseId, HttpServletRequest httpRequest) {
         return budgetService.syncPartsFromBudget(caseId, httpRequest);
+    }
+
+    @Operation(summary = "Resolver advertencia de reconciliación", description = "Registra una resolución manual sin borrar actividad operativa")
+    @PreAuthorize("hasAuthority('presupuesto.crear')")
+    @PostMapping("/cases/{caseId}/parts/{partId}/reconciliation-warnings/{warningId}/resolve")
+    public CasePartReconciliationWarningResponse resolveReconciliationWarning(@PathVariable Long caseId, @PathVariable Long partId, @PathVariable Long warningId, @Valid @RequestBody CasePartWarningResolutionRequest request, HttpServletRequest httpRequest) {
+        return budgetService.resolveReconciliationWarning(caseId, partId, warningId, request, httpRequest);
     }
 
     @Operation(summary = "Descargar PDF del presupuesto", description = "Genera y devuelve el PDF del presupuesto. Requiere que el presupuesto este CERRADO.")

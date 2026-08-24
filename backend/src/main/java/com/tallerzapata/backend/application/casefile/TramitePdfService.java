@@ -3,6 +3,8 @@ package com.tallerzapata.backend.application.casefile;
 import com.lowagie.text.*;
 import com.lowagie.text.pdf.*;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
+import com.tallerzapata.backend.application.insurance.InsuranceService;
+import com.tallerzapata.backend.api.insurance.InsuranceProcessingResponse;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseIncidentEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseIncidentRepository;
@@ -34,7 +36,7 @@ public class TramitePdfService {
     private final CaseRepository caseRepository;
     private final CaseIncidentRepository caseIncidentRepository;
     private final CaseInsuranceRepository caseInsuranceRepository;
-    private final InsuranceProcessingRepository insuranceProcessingRepository;
+    private final InsuranceService insuranceService;
     private final CaseFranchiseRepository caseFranchiseRepository;
     private final InsuranceCompanyRepository companyRepository;
     private final PersonRepository personRepository;
@@ -45,7 +47,7 @@ public class TramitePdfService {
     public TramitePdfService(CaseRepository caseRepository,
                              CaseIncidentRepository caseIncidentRepository,
                              CaseInsuranceRepository caseInsuranceRepository,
-                             InsuranceProcessingRepository insuranceProcessingRepository,
+                              InsuranceService insuranceService,
                              CaseFranchiseRepository caseFranchiseRepository,
                              InsuranceCompanyRepository companyRepository,
                              PersonRepository personRepository,
@@ -55,7 +57,7 @@ public class TramitePdfService {
         this.caseRepository = caseRepository;
         this.caseIncidentRepository = caseIncidentRepository;
         this.caseInsuranceRepository = caseInsuranceRepository;
-        this.insuranceProcessingRepository = insuranceProcessingRepository;
+        this.insuranceService = insuranceService;
         this.caseFranchiseRepository = caseFranchiseRepository;
         this.companyRepository = companyRepository;
         this.personRepository = personRepository;
@@ -239,38 +241,40 @@ public class TramitePdfService {
 
             // ── 5. Tramitación ──
             addSection(document, "Tramitación");
-            InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseEntity.getId()).orElse(null);
+            InsuranceProcessingResponse processing = insuranceService.getCaseInsuranceProcessing(caseEntity.getId());
             if (processing != null) {
                 PdfPTable tramTable = new PdfPTable(4);
                 tramTable.setWidthPercentage(100);
                 tramTable.setWidths(new float[]{1, 1, 1, 1});
                 tramTable.setSpacingAfter(8);
                 addCell(tramTable, "Fecha presentado", boldFont);
-                addCell(tramTable, processing.getPresentedAt() != null ? processing.getPresentedAt().format(DATE_FMT) : "—", normalFont);
+                addCell(tramTable, processing.presentedAt() != null ? processing.presentedAt().format(DATE_FMT) : "—", normalFont);
                 addCell(tramTable, "Derivado a inspección", boldFont);
-                addCell(tramTable, processing.getInspectionForwardedAt() != null ? processing.getInspectionForwardedAt().format(DATE_FMT) : "—", normalFont);
+                addCell(tramTable, processing.inspectionForwardedAt() != null ? processing.inspectionForwardedAt().format(DATE_FMT) : "—", normalFont);
+                addCell(tramTable, "Fecha inspección", boldFont);
+                addCell(tramTable, processing.inspectionDate() != null ? processing.inspectionDate().format(DATE_FMT) : "—", normalFont);
                 addCell(tramTable, "Modalidad", boldFont);
-                addCell(tramTable, nvl(processing.getModalityCode()), normalFont);
+                addCell(tramTable, nvl(processing.modalityCode()), normalFont);
                 addCell(tramTable, "Dictamen", boldFont);
-                addCell(tramTable, nvl(processing.getOpinionCode()), normalFont);
+                addCell(tramTable, nvl(processing.opinionCode()), normalFont);
                 addCell(tramTable, "Mínimo para cierre", boldFont);
-                addCell(tramTable, processing.getMinimumCloseAmount() != null ? CURRENCY_FMT.format(processing.getMinimumCloseAmount()) : "—", normalFont);
+                addCell(tramTable, processing.minimumCloseAmount() != null ? CURRENCY_FMT.format(processing.minimumCloseAmount()) : "—", normalFont);
                 addCell(tramTable, "Lleva repuestos", boldFont);
-                addCell(tramTable, Boolean.TRUE.equals(processing.getIncludesParts()) ? "SI" : "NO", normalFont);
+                addCell(tramTable, Boolean.TRUE.equals(processing.includesParts()) ? "SI" : "NO", normalFont);
                 addCell(tramTable, "Cotización", boldFont);
-                addCell(tramTable, nvl(processing.getQuotationStatusCode()), normalFont);
+                addCell(tramTable, nvl(processing.quotationStatusCode()), normalFont);
                 addCell(tramTable, "Fecha cotización", boldFont);
-                addCell(tramTable, processing.getQuotationDate() != null ? processing.getQuotationDate().format(DATE_FMT) : "—", normalFont);
+                addCell(tramTable, processing.quotationDate() != null ? processing.quotationDate().format(DATE_FMT) : "—", normalFont);
                 addCell(tramTable, "Monto acordado", boldFont);
-                addCell(tramTable, processing.getAgreedAmount() != null ? CURRENCY_FMT.format(processing.getAgreedAmount()) : "—", normalFont);
+                addCell(tramTable, processing.agreedAmount() != null ? CURRENCY_FMT.format(processing.agreedAmount()) : "—", normalFont);
                 addCell(tramTable, "A facturar Cía.", boldFont);
-                addCell(tramTable, processing.getAmountToBillCompany() != null ? CURRENCY_FMT.format(processing.getAmountToBillCompany()) : "—", normalFont);
+                addCell(tramTable, processing.amountToBillCompany() != null ? CURRENCY_FMT.format(processing.amountToBillCompany()) : "—", normalFont);
                 addCell(tramTable, "Provee repuestos", boldFont);
-                addCell(tramTable, nvl(processing.getPartsSupplierText()), normalFont);
+                addCell(tramTable, nvl(processing.partsSupplierText()), normalFont);
                 addCell(tramTable, "Final a favor Taller", boldFont);
-                addCell(tramTable, processing.getFinalAmountForWorkshop() != null ? CURRENCY_FMT.format(processing.getFinalAmountForWorkshop()) : "—", normalFont);
+                addCell(tramTable, processing.finalAmountForWorkshop() != null ? CURRENCY_FMT.format(processing.finalAmountForWorkshop()) : "—", normalFont);
                 addCell(tramTable, "Autorización repuestos", boldFont);
-                addCell(tramTable, nvl(processing.getPartsAuthorizationCode()), normalFont);
+                addCell(tramTable, nvl(processing.partsAuthorizationCode()), normalFont);
                 document.add(tramTable);
             }
 

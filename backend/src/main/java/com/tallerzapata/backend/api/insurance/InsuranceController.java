@@ -94,11 +94,11 @@ public class InsuranceController {
     @GetMapping("/cases/{caseId}/insurance-processing")
     public InsuranceProcessingResponse getCaseInsuranceProcessing(@PathVariable Long caseId) { return insuranceService.getCaseInsuranceProcessing(caseId); }
 
-    @Operation(summary = "Actualizar procesamiento de seguro", description = "Crea o actualiza el procesamiento del seguro de un caso")
+    @Operation(summary = "Actualizar parcialmente el procesamiento de seguro", description = "Actualiza campos operativos y devuelve derivados calculados por el servidor")
     @ApiResponse(responseCode = "200", description = "OK")
     @PreAuthorize("hasAuthority('seguro.crear')")
-    @PutMapping("/cases/{caseId}/insurance-processing")
-    public InsuranceProcessingResponse upsertCaseInsuranceProcessing(@PathVariable Long caseId, @RequestBody InsuranceProcessingUpsertRequest request, HttpServletRequest httpRequest) { return insuranceService.upsertCaseInsuranceProcessing(caseId, request, httpRequest); }
+    @PatchMapping("/cases/{caseId}/insurance-processing")
+    public InsuranceProcessingResponse patchCaseInsuranceProcessing(@PathVariable Long caseId, @RequestBody InsuranceProcessingPatchRequest request, HttpServletRequest httpRequest) { return insuranceService.patchCaseInsuranceProcessing(caseId, request, httpRequest); }
 
     @Operation(summary = "Obtener franquicia de caso", description = "Devuelve la informacion de franquicia de un caso")
     @ApiResponse(responseCode = "200", description = "OK")

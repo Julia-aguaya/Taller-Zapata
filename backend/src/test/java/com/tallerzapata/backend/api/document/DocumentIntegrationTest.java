@@ -78,11 +78,18 @@ class DocumentIntegrationTest {
                         .header("X-User-Id", "3"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.categoryId").value(1))
+                .andExpect(jsonPath("$.observations").value("Carga inicial"))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
 
         Long documentId = objectMapper.readTree(uploadResponse).get("id").asLong();
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT observaciones FROM documentos WHERE id = ?",
+                String.class,
+                documentId
+        )).isEqualTo("Carga inicial");
 
         DocumentRelationCreateRequest relationRequest = new DocumentRelationCreateRequest(
                 100L,
@@ -106,6 +113,7 @@ class DocumentIntegrationTest {
                         .param("moduleCode", "OPERACION"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].documentId").value(documentId))
+                .andExpect(jsonPath("$[0].observations").value("Carga inicial"))
                 .andExpect(jsonPath("$[0].principal").value(true));
 
         mockMvc.perform(get("/api/v1/cases/100/documents/{documentId}/download", documentId)

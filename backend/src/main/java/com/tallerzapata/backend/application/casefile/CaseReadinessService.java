@@ -24,7 +24,6 @@ import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseInsuran
 import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseInsuranceRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingEntity;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingRepository;
-import com.tallerzapata.backend.infrastructure.persistence.operation.OperationalTaskRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.RepairAppointmentEntity;
 import com.tallerzapata.backend.infrastructure.persistence.operation.RepairAppointmentRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleIntakeEntity;
@@ -66,7 +65,6 @@ public class CaseReadinessService {
     private final InsuranceProcessingRepository insuranceProcessingRepository;
     private final CaseFranchiseRepository caseFranchiseRepository;
     private final FranchiseRecoveryRepository franchiseRecoveryRepository;
-    private final OperationalTaskRepository operationalTaskRepository;
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService caseAccessControlService;
 
@@ -87,7 +85,6 @@ public class CaseReadinessService {
             InsuranceProcessingRepository insuranceProcessingRepository,
             CaseFranchiseRepository caseFranchiseRepository,
             FranchiseRecoveryRepository franchiseRecoveryRepository,
-            OperationalTaskRepository operationalTaskRepository,
             CurrentUserService currentUserService,
             CaseAccessControlService caseAccessControlService
     ) {
@@ -107,7 +104,6 @@ public class CaseReadinessService {
         this.insuranceProcessingRepository = insuranceProcessingRepository;
         this.caseFranchiseRepository = caseFranchiseRepository;
         this.franchiseRecoveryRepository = franchiseRecoveryRepository;
-        this.operationalTaskRepository = operationalTaskRepository;
         this.currentUserService = currentUserService;
         this.caseAccessControlService = caseAccessControlService;
     }
@@ -310,9 +306,7 @@ public class CaseReadinessService {
         List<String> blocking = new ArrayList<>();
         CaseInsuranceEntity insurance = caseInsuranceRepository.findByCaseId(caseId).orElse(null);
         InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
-        CaseFranchiseEntity franchise = caseFranchiseRepository.findByCaseId(caseId).orElse(null);
         CaseIncidentEntity incident = caseIncidentRepository.findByCaseId(caseId).orElse(null);
-        List<CasePartEntity> parts = casePartRepository.findByCaseIdOrderByIdAsc(caseId);
 
         if (incident == null || incident.getIncidentDate() == null) {
             blocking.add("Falta la fecha del siniestro");
@@ -320,39 +314,9 @@ public class CaseReadinessService {
         if (insurance == null || insurance.getInsuranceCompanyId() == null) {
             blocking.add("Falta seleccionar compania de seguro");
         }
-        if (franchise == null || franchise.getRecoveryTypeCode() == null) {
-            blocking.add("Falta definir modo de recupero de franquicia");
-        }
         if (processing == null || processing.getPresentedAt() == null) {
             blocking.add("Falta registrar fecha de presentacion del tramite");
         }
-        boolean quotationAgreed = processing != null
-                && "ACORDADA".equals(normalizeCode(processing.getQuotationStatusCode()))
-                && processing.getAgreedAmount() != null
-                && processing.getQuotationDate() != null;
-        if (!quotationAgreed) {
-            blocking.add("Falta acordar cotizacion con la Cia. (estado ACORDADA + fecha + monto)");
-        }
-
-        // Repuestos: todos recibidos o no hay repuestos
-        if (!parts.isEmpty()) {
-            boolean allReceived = parts.stream().allMatch(p ->
-                    "RECIBIDO".equals(normalizeCode(p.getStatusCode())) || "INSTALADO".equals(normalizeCode(p.getStatusCode()))
-            );
-            if (!allReceived) {
-                blocking.add("Hay repuestos pendientes de recepcion");
-            }
-        }
-
-        // Tareas pendientes solo del modulo TRAMITE
-        boolean hasPendingTasks = operationalTaskRepository.findAll().stream()
-                .anyMatch(t -> t.getCaseId().equals(caseId)
-                        && !Boolean.TRUE.equals(t.getResolved())
-                        && "TRAMITE".equals(normalizeCode(t.getOriginModuleCode())));
-        if (hasPendingTasks) {
-            blocking.add("Hay tareas pendientes en la agenda de tramite");
-        }
-
         return toTab("GESTION_TRAMITE", true, blocking, List.of());
     }
 
@@ -393,9 +357,11 @@ public class CaseReadinessService {
             return new CaseReadinessTabResponse("GESTION_REPARACION", true, true, "BLUE", List.of(), List.of());
         }
 
-        if (!budgetCompleted || !tramiteCompleted) {
+        boolean quotationAgreed = isQuotationAgreed(processing);
+        if (!budgetCompleted || !tramiteCompleted || !quotationAgreed) {
             if (!budgetCompleted) blocking.add("Debe cerrar el presupuesto antes de gestionar la reparacion");
             if (!tramiteCompleted) blocking.add("Debe completar Gestion del Tramite antes de gestionar la reparacion");
+            if (!quotationAgreed) blocking.add("Falta acordar cotizacion con la Cia. antes de gestionar la reparacion");
             return toTab("GESTION_REPARACION", false, blocking, List.of());
         }
 
@@ -420,7 +386,7 @@ public class CaseReadinessService {
         List<String> blocking = new ArrayList<>();
         InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
 
-        if (processing == null || processing.getAgreedAmount() == null || processing.getQuotationDate() == null) {
+        if (!isQuotationAgreed(processing)) {
             blocking.add("Falta acordar cotizacion con la Cia. antes de registrar pagos");
             return toTab("PAGOS", false, blocking, List.of());
         }
@@ -434,7 +400,10 @@ public class CaseReadinessService {
         }
 
         // Verificar que la Cía. haya pagado
-        BigDecimal amountToBill = processing.getAmountToBillCompany();
+        CaseFranchiseEntity billingFranchise = caseFranchiseRepository.findByCaseId(caseId).orElse(null);
+        BigDecimal amountToBill = "PROPIA_CIA".equals(normalizeCode(billingFranchise == null ? null : billingFranchise.getRecoveryTypeCode()))
+                ? processing.getAgreedAmount()
+                : processing.getAgreedAmount().subtract(billingFranchise == null || billingFranchise.getFranchiseAmount() == null ? BigDecimal.ZERO : billingFranchise.getFranchiseAmount()).max(BigDecimal.ZERO);
         if (amountToBill != null && amountToBill.compareTo(BigDecimal.ZERO) > 0) {
             BigDecimal ciaPaid = financialMovementRepository.findByCaseId(caseId, Sort.by(Sort.Direction.DESC, "id")).stream()
                     .filter(m -> "ASEGURADORA".equals(normalizeCode(m.getFlowOriginCode())))
@@ -461,10 +430,6 @@ public class CaseReadinessService {
         if (processing == null || processing.getAgreedAmount() == null || processing.getQuotationDate() == null) {
             blocking.add("Falta acordar cotizacion con la Cia.");
         }
-
-        boolean hasPendingTasks = operationalTaskRepository.findAll().stream()
-                .anyMatch(t -> t.getCaseId().equals(caseId) && !Boolean.TRUE.equals(t.getResolved()));
-        if (hasPendingTasks) blocking.add("Hay tareas pendientes en la agenda");
 
         return toTab("GESTION_TRAMITE", true, blocking, List.of());
     }
@@ -575,6 +540,13 @@ public class CaseReadinessService {
 
     private String normalizeCode(String value) {
         return isBlank(value) ? null : value.trim().toUpperCase();
+    }
+
+    private boolean isQuotationAgreed(InsuranceProcessingEntity processing) {
+        return processing != null
+                && "ACEPTADA".equals(normalizeCode(processing.getQuotationStatusCode()))
+                && processing.getAgreedAmount() != null
+                && processing.getQuotationDate() != null;
     }
 
     private BigDecimal scale(BigDecimal value) {

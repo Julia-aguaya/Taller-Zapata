@@ -167,11 +167,15 @@ public class ParticularCaseClosureService {
 
     private LocalDateTime resolveTodoRiesgoPaidAt(Long caseId) {
         InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
-        if (processing == null || processing.getAmountToBillCompany() == null) {
+        if (processing == null || processing.getAgreedAmount() == null) {
             return null;
         }
 
-        BigDecimal target = scale(processing.getAmountToBillCompany());
+        CaseFranchiseEntity franchise = caseFranchiseRepository.findByCaseId(caseId).orElse(null);
+        BigDecimal target = "PROPIA_CIA".equals(normalizeCode(franchise == null ? null : franchise.getRecoveryTypeCode()))
+                ? processing.getAgreedAmount()
+                : processing.getAgreedAmount().subtract(franchise == null || franchise.getFranchiseAmount() == null ? BigDecimal.ZERO : franchise.getFranchiseAmount()).max(BigDecimal.ZERO);
+        target = scale(target);
         BigDecimal accumulated = BigDecimal.ZERO;
         List<FinancialMovementEntity> movements = financialMovementRepository.findByCaseId(caseId, MOVEMENT_SORT_ASC);
         for (FinancialMovementEntity movement : movements) {

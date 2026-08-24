@@ -18,8 +18,8 @@ import java.time.LocalDate;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -130,14 +130,13 @@ class InsuranceIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.insuranceCompanyId").value(1));
 
-        mockMvc.perform(put("/api/v1/cases/100/insurance-processing")
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(new InsuranceProcessingUpsertRequest(LocalDate.of(2026, 5, 12), LocalDate.of(2026, 5, 13), "CONVENIO", "APROBADO", "ACEPTADA", LocalDate.of(2026, 5, 14), new BigDecimal("2500.00"), LocalDate.of(2026, 5, 15), LocalDate.of(2026, 5, 16), new BigDecimal("1200.00"), true, "AUTORIZADO", "Proveedor X", new BigDecimal("2200.00"), new BigDecimal("1800.00"), false, true))))
+                        .content("{\"presentedAt\":\"2026-05-12\",\"inspectionForwardedAt\":\"2026-05-13\",\"modalityCode\":\"PRESENCIAL\",\"opinionCode\":\"APROBADO\",\"quotationStatusCode\":\"ACEPTADA\",\"quotationDate\":\"2026-05-14\",\"agreedAmount\":2500,\"partsSupplierText\":\"Proveedor X\",\"finalAmountForWorkshop\":1800}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.modalityCode").value("CONVENIO"))
-                .andExpect(jsonPath("$.agreementDate").value("2026-05-15"))
-                .andExpect(jsonPath("$.passedToPaymentsDate").value("2026-05-16"));
+                .andExpect(jsonPath("$.modalityCode").value("PRESENCIAL"))
+                .andExpect(jsonPath("$.inspectionDate").doesNotExist());
 
         mockMvc.perform(put("/api/v1/cases/100/franchise")
                         .header("X-User-Id", "3")
@@ -149,19 +148,29 @@ class InsuranceIntegrationTest {
         mockMvc.perform(get("/api/v1/insurance/catalogs")
                         .header("X-User-Id", "3"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.modalityCodes.length()").isNumber())
+                .andExpect(jsonPath("$.modalityCodes.length()").value(2))
+                .andExpect(jsonPath("$.modalityCodes[?(@.code == 'PRESENCIAL')].name").value("Presencial"))
+                .andExpect(jsonPath("$.modalityCodes[?(@.code == 'POR_FOTOS')].name").value("Por fotos"))
                 .andExpect(jsonPath("$.franchiseStatusCodes.length()").isNumber());
 
-        Integer auditCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo IN ('upsert_caso_seguro', 'upsert_tramitacion_seguro', 'upsert_franquicia')", Integer.class, 100L);
+        Integer auditCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo IN ('upsert_caso_seguro', 'patch_tramitacion_seguro', 'upsert_franquicia')", Integer.class, 100L);
         assertThat(auditCount).isEqualTo(3);
     }
 
     @Test
-    void shouldReturn200WithEmptyBodyWhenInsuranceProcessingDoesNotExist() throws Exception {
+    void shouldReturnDerivedProcessingProjectionBeforeAnyProcessingIsSaved() throws Exception {
+        jdbcTemplate.update("INSERT INTO presupuestos (id, caso_id, organizacion_id, sucursal_id, fecha_presupuesto, informe_estado_codigo, monto_minimo_cierre_mo, version_actual) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 500L, 100L, 1L, 1L, LocalDate.of(2026, 1, 1), "PENDIENTE", new BigDecimal("100.00"), 1);
+        jdbcTemplate.update("INSERT INTO presupuesto_items (id, presupuesto_id, orden_visual, pieza_afectada, requiere_reemplazo, valor_repuesto, importe_mano_obra, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 501L, 500L, 1, "Paragolpes", true, BigDecimal.ZERO, BigDecimal.ZERO, true);
+
         mockMvc.perform(get("/api/v1/cases/100/insurance-processing")
                         .header("X-User-Id", "3"))
                 .andExpect(status().isOk())
-                .andExpect(content().string(""));
+                .andExpect(jsonPath("$.id").doesNotExist())
+                .andExpect(jsonPath("$.caseId").value(100))
+                .andExpect(jsonPath("$.version").value(0))
+                .andExpect(jsonPath("$.minimumCloseAmount").value(100))
+                .andExpect(jsonPath("$.includesParts").value(true))
+                .andExpect(jsonPath("$.amountToBillCompany").doesNotExist());
     }
 
     @Test
@@ -314,16 +323,16 @@ class InsuranceIntegrationTest {
                         .content("{\"insuranceCompanyId\":1,\"policyNumber\":\"POL-123\",\"certificateNumber\":\"CERT-456\"}"))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(put("/api/v1/cases/{caseId}/insurance-processing", 100L)
+        mockMvc.perform(patch("/api/v1/cases/{caseId}/insurance-processing", 100L)
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"presentedAt\":\"2026-01-10\",\"inspectionForwardedAt\":\"2026-01-15\",\"modalityCode\":\"CONVENIO\",\"opinionCode\":null,\"quotationStatusCode\":null,\"quotationDate\":null,\"agreedAmount\":null,\"minimumCloseAmount\":50000,\"includesParts\":true,\"partsAuthorizationCode\":\"AUTORIZADO\",\"partsSupplierText\":\"CIA\",\"amountToBillCompany\":null,\"finalAmountForWorkshop\":null}"))
+                        .content("{\"presentedAt\":\"2026-01-10\",\"inspectionForwardedAt\":\"2026-01-15\",\"modalityCode\":\"PRESENCIAL\",\"opinionCode\":null,\"quotationStatusCode\":null,\"quotationDate\":null,\"agreedAmount\":null,\"partsSupplierText\":\"CIA\",\"finalAmountForWorkshop\":null}"))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(put("/api/v1/cases/{caseId}/insurance-processing", 100L)
+        mockMvc.perform(patch("/api/v1/cases/{caseId}/insurance-processing", 100L)
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"presentedAt\":\"2026-01-10\",\"inspectionForwardedAt\":\"2026-01-15\",\"modalityCode\":\"CONVENIO\",\"opinionCode\":\"APROBADO\",\"quotationStatusCode\":\"ACEPTADA\",\"quotationDate\":\"2026-01-20\",\"agreedAmount\":120000,\"minimumCloseAmount\":50000,\"includesParts\":true,\"partsAuthorizationCode\":\"AUTORIZADO\",\"partsSupplierText\":\"CIA\",\"amountToBillCompany\":120000,\"finalAmountForWorkshop\":120000}"))
+                        .content("{\"expectedVersion\":0,\"opinionCode\":\"APROBADO\",\"quotationStatusCode\":\"ACEPTADA\",\"quotationDate\":\"2026-01-20\",\"agreedAmount\":120000,\"partsSupplierText\":\"CIA\",\"finalAmountForWorkshop\":120000}"))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/cases/{caseId}/insurance-processing", 100L)
@@ -359,28 +368,165 @@ class InsuranceIntegrationTest {
     void shouldStoreInsuranceProviderSnapshotAndRejectInactiveProviders() throws Exception {
         jdbcTemplate.update("INSERT INTO proveedores (id, public_id, nombre, activo) VALUES (?, ?, ?, ?)", 702L, "00000000-0000-0000-0000-000000007002", "Proveedor Seguro", true);
 
-        mockMvc.perform(put("/api/v1/cases/100/insurance-processing")
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"includesParts\":true,\"providerId\":702,\"partsSupplierText\":\"Ignorado\"}"))
+                        .content("{\"presentedAt\":\"2026-01-10\",\"providerId\":702,\"partsSupplierText\":\"Ignorado\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.providerId").value(702))
                 .andExpect(jsonPath("$.partsSupplierText").value("Proveedor Seguro"));
 
         jdbcTemplate.update("UPDATE proveedores SET activo = false WHERE id = ?", 702L);
-        mockMvc.perform(put("/api/v1/cases/100/insurance-processing")
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"includesParts\":true,\"providerId\":702}"))
+                        .content("{\"providerId\":702}"))
                 .andExpect(status().isConflict());
 
-        mockMvc.perform(put("/api/v1/cases/100/insurance-processing")
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"includesParts\":true,\"partsSupplierText\":\"Proveedor Libre\"}"))
+                        .content("{\"providerId\":null,\"partsSupplierText\":\"Proveedor Libre\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.providerId").doesNotExist())
                 .andExpect(jsonPath("$.partsSupplierText").value("Proveedor Libre"));
+    }
+
+    @Test
+    void shouldRequireConfirmationAndAuditAgreedAmountBelowDerivedMinimum() throws Exception {
+        jdbcTemplate.update("INSERT INTO presupuestos (id, caso_id, organizacion_id, sucursal_id, fecha_presupuesto, informe_estado_codigo, monto_minimo_cierre_mo, version_actual) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 500L, 100L, 1L, 1L, LocalDate.of(2026, 1, 1), "PENDIENTE", new BigDecimal("100.00"), 1);
+
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-01-10\",\"agreedAmount\":90}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PROCESSING_AMOUNT_BELOW_MINIMUM_CONFIRMATION_REQUIRED"))
+                .andExpect(jsonPath("$.data.minimumCloseAmount").value(100))
+                .andExpect(jsonPath("$.data.difference").value(10));
+
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-01-10\",\"agreedAmount\":90,\"allowBelowMinimum\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.minimumCloseAmount").value(100))
+                .andExpect(jsonPath("$.amountToBillCompany").value(90));
+
+        Integer auditCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'patch_tramitacion_seguro'", Integer.class, 100L);
+        assertThat(auditCount).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT despues_json FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'patch_tramitacion_seguro'", String.class, 100L))
+                .contains("\"agreedAmount\":90.00", "\"minimumCloseAmount\":100.00", "\"difference\":10.00", "\"accepted\":true");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM notificaciones WHERE caso_id = ?", Integer.class, 100L)).isZero();
+    }
+
+    @Test
+    void shouldPersistInspectionRejectPrematureFieldsAndDetectVersionConflicts() throws Exception {
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"inspectionDate\":\"2026-02-10\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PROCESSING_PRESENTATION_DATE_REQUIRED"));
+
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"partsAuthorizationCode\":\"TOTAL\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PROCESSING_PRESENTATION_DATE_REQUIRED"));
+
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-02-01\",\"inspectionDate\":\"2026-02-10\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.inspectionDate").value("2026-02-10"))
+                .andExpect(jsonPath("$.version").value(0));
+
+        mockMvc.perform(get("/api/v1/cases/100/insurance-processing").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.inspectionDate").value("2026-02-10"));
+
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\":99,\"partsSupplierText\":\"Proveedor\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PROCESSING_VERSION_CONFLICT"))
+                .andExpect(jsonPath("$.data.expectedVersion").value(99))
+                .andExpect(jsonPath("$.data.actualVersion").value(0));
+    }
+
+    @Test
+    void shouldRecalculateAmountToBillFromCurrentFranchise() throws Exception {
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-02-01\",\"agreedAmount\":50}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.amountToBillCompany").value(50));
+
+        mockMvc.perform(put("/api/v1/cases/100/franchise")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"franchiseStatusCode\":\"PENDIENTE\",\"franchiseAmount\":80,\"recoveryTypeCode\":\"ABONA_CLIENTE\",\"franchiseOpinionCode\":\"A_FAVOR\",\"exceedsFranchise\":true,\"recoveryAmount\":0}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100/insurance-processing").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.amountToBillCompany").value(0));
+
+        mockMvc.perform(put("/api/v1/cases/100/franchise")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"franchiseStatusCode\":\"PENDIENTE\",\"franchiseAmount\":80,\"recoveryTypeCode\":\"PROPIA_CIA\",\"franchiseOpinionCode\":\"A_FAVOR\",\"exceedsFranchise\":true,\"recoveryAmount\":0}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100/insurance-processing").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.amountToBillCompany").value(50));
+    }
+
+    @Test
+    void shouldPersistProcessingPartsAuthorizationWithoutChangingIndividualParts() throws Exception {
+        jdbcTemplate.update("INSERT INTO presupuestos (id, caso_id, organizacion_id, sucursal_id, fecha_presupuesto, informe_estado_codigo, version_actual) VALUES (?, ?, ?, ?, ?, ?, ?)", 500L, 100L, 1L, 1L, LocalDate.of(2026, 1, 1), "PENDIENTE", 1);
+        jdbcTemplate.update("INSERT INTO presupuesto_items (id, presupuesto_id, orden_visual, pieza_afectada, requiere_reemplazo, valor_repuesto, importe_mano_obra, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 501L, 500L, 1, "Paragolpes", true, BigDecimal.ZERO, BigDecimal.ZERO, true);
+        jdbcTemplate.update("INSERT INTO repuestos_caso (id, caso_id, presupuesto_item_id, descripcion, autorizado_codigo, estado_codigo, usado, devuelto) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 502L, 100L, 501L, "Paragolpes", "AUTORIZADO", "PEDIDO", false, false);
+
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-02-01\",\"partsAuthorizationCode\":\"PARCIAL\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.includesParts").value(true))
+                .andExpect(jsonPath("$.partsAuthorizationCode").value("PARCIAL"));
+
+        mockMvc.perform(get("/api/v1/cases/100/insurance-processing").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.includesParts").value(true))
+                .andExpect(jsonPath("$.partsAuthorizationCode").value("PARCIAL"));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT autorizado_codigo FROM repuestos_caso WHERE id = ?", String.class, 502L)).isEqualTo("AUTORIZADO");
+        assertThat(jdbcTemplate.queryForObject("SELECT antes_json FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'patch_tramitacion_seguro'", String.class, 100L)).contains("\"partsAuthorizationCode\":null");
+        assertThat(jdbcTemplate.queryForObject("SELECT despues_json FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'patch_tramitacion_seguro'", String.class, 100L)).contains("\"partsAuthorizationCode\":\"PARCIAL\"");
+
+        jdbcTemplate.update("UPDATE presupuesto_items SET requiere_reemplazo = false WHERE presupuesto_id = ?", 500L);
+        mockMvc.perform(get("/api/v1/cases/100/insurance-processing").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.includesParts").value(false))
+                .andExpect(jsonPath("$.partsAuthorizationCode").doesNotExist());
+    }
+
+    @Test
+    void shouldRequireInsuranceCreatePermissionToUpdateProcessingPartsAuthorization() throws Exception {
+        jdbcTemplate.update("INSERT INTO usuarios (id, public_id, username, email, password_hash, nombre, apellido, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 4L, "00000000-0000-0000-0000-000000000400", "sin-permiso", "sin-permiso@tallerzapata.local", "hash", "Sin", "Permiso", true);
+
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "4")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"partsAuthorizationCode\":\"TOTAL\"}"))
+                .andExpect(status().isForbidden());
     }
 
     private void seedBaseData() {

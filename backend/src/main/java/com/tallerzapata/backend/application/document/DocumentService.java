@@ -703,6 +703,7 @@ public class DocumentService {
                 relation.getVisibleToCustomer(),
                 document.getDocumentDate(),
                 document.getOriginCode(),
+                document.getObservations(),
                 document.getCreatedAt()
         );
     }

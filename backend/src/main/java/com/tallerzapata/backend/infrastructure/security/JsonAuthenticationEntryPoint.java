@@ -38,7 +38,9 @@ public class JsonAuthenticationEntryPoint implements AuthenticationEntryPoint {
                 HttpStatus.UNAUTHORIZED.getReasonPhrase(),
                 authException.getMessage(),
                 request.getRequestURI(),
-                List.of()
+                List.of(),
+                null,
+                null
         );
         objectMapper.writeValue(response.getOutputStream(), payload);
     }

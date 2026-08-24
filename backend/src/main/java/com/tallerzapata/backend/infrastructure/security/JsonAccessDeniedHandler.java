@@ -38,7 +38,9 @@ public class JsonAccessDeniedHandler implements AccessDeniedHandler {
                 HttpStatus.FORBIDDEN.getReasonPhrase(),
                 accessDeniedException.getMessage(),
                 request.getRequestURI(),
-                List.of()
+                List.of(),
+                null,
+                null
         );
         objectMapper.writeValue(response.getOutputStream(), payload);
     }

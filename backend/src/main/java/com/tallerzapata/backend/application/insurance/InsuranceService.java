@@ -4,6 +4,7 @@ import com.tallerzapata.backend.api.insurance.*;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.common.ConflictException;
+import com.tallerzapata.backend.application.common.DomainConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.recovery.FranchiseRecoveryService;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
@@ -26,6 +27,7 @@ import com.tallerzapata.backend.infrastructure.persistence.todoriskstate.TodoRie
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
 import com.tallerzapata.backend.infrastructure.security.CurrentUserService;
 import jakarta.servlet.http.HttpServletRequest;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,8 +36,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.List;
-import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 public class InsuranceService {
@@ -73,7 +76,6 @@ public class InsuranceService {
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService accessControlService;
     private final CaseAuditService caseAuditService;
-    private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
     private final TodoRiesgoStateFactsRepository todoRiesgoStateFactsRepository;
     private final ProviderRepository providerRepository;
     private final BudgetRepository budgetRepository;
@@ -116,7 +118,6 @@ public class InsuranceService {
         this.currentUserService = currentUserService;
         this.accessControlService = accessControlService;
         this.caseAuditService = caseAuditService;
-        this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
         this.todoRiesgoStateFactsRepository = todoRiesgoStateFactsRepository;
         this.providerRepository = providerRepository;
         this.budgetRepository = budgetRepository;
@@ -256,65 +257,51 @@ public class InsuranceService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.ver");
-        return insuranceProcessingRepository.findByCaseId(caseId).map(this::toInsuranceProcessingResponse).orElse(null);
+        return insuranceProcessingRepository.findByCaseId(caseId)
+                .map(this::toInsuranceProcessingResponse)
+                .orElseGet(() -> toInsuranceProcessingProjection(caseId));
     }
 
     @Transactional
-    public InsuranceProcessingResponse upsertCaseInsuranceProcessing(Long caseId, InsuranceProcessingUpsertRequest request, HttpServletRequest httpRequest) {
+    public InsuranceProcessingResponse patchCaseInsuranceProcessing(Long caseId, InsuranceProcessingPatchRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
-        CaseEntity caseEntity = requireCase(caseId);
+        CaseEntity caseEntity = requireCaseForUpdate(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
-        validateInsuranceProcessingRequest(request);
         InsuranceProcessingEntity entity = insuranceProcessingRepository.findByCaseId(caseId).orElseGet(InsuranceProcessingEntity::new);
+        if (request.expectedVersion() != null && !request.expectedVersion().equals(entity.getVersion() == null ? 0L : entity.getVersion())) {
+            throw new DomainConflictException("PROCESSING_VERSION_CONFLICT", "La tramitacion fue modificada por otro usuario", Map.of("expectedVersion", request.expectedVersion(), "actualVersion", entity.getVersion() == null ? 0L : entity.getVersion()));
+        }
         entity.setCaseId(caseId);
-        entity.setPresentedAt(request.presentedAt());
-        entity.setInspectionForwardedAt(request.inspectionForwardedAt());
-        entity.setModalityCode(normalizedOptionalCode(request.modalityCode()));
-        entity.setOpinionCode(normalizedOptionalCode(request.opinionCode()));
-        entity.setQuotationStatusCode(normalizedOptionalCode(request.quotationStatusCode()));
-        entity.setQuotationDate(request.quotationDate());
-        entity.setAgreedAmount(scale(request.agreedAmount()));
-
-        // Auto-poblar desde Presupuesto: monto minimo cierre y lleva repuestos
-        BudgetEntity budget = budgetRepository.findByCaseId(caseId).orElse(null);
-        entity.setMinimumCloseAmount(budget != null ? scale(budget.getMinimumCloseAmount()) : scale(request.minimumCloseAmount()));
-        boolean hasReplacementParts = false;
-        if (budget != null) {
-            List<BudgetItemEntity> items = budgetItemRepository.findByBudgetIdOrderByVisualOrderAsc(budget.getId());
-            hasReplacementParts = items.stream().anyMatch(item ->
-                Boolean.TRUE.equals(item.getRequiresReplacement()) || "REEMPLAZAR".equals(normalizeCode(item.getPartDecisionCode()))
-            );
+        String previousPartsAuthorizationCode = entity.getPartsAuthorizationCode();
+        applyPatch(entity, request);
+        if (entity.getPresentedAt() == null && hasOperationalPatch(request)) {
+            throw new DomainConflictException("PROCESSING_PRESENTATION_DATE_REQUIRED", "Debe registrar la fecha de presentacion antes de continuar la tramitacion", Map.of());
         }
-        entity.setIncludesParts(hasReplacementParts || Boolean.TRUE.equals(request.includesParts()));
-        entity.setPartsAuthorizationCode(computePartsAuthorizationCode(caseId));
-        entity.setPartsSupplierText(blankToNull(request.partsSupplierText()));
-        if (request.providerId() != null) { var provider = providerRepository.findById(request.providerId()).orElseThrow(() -> new ResourceNotFoundException("No existe el proveedor " + request.providerId())); if (!Boolean.TRUE.equals(provider.getActive())) throw new ConflictException("El proveedor esta inactivo: " + request.providerId()); entity.setProviderId(provider.getId()); entity.setPartsSupplierText(provider.getName()); } else entity.setProviderId(null);
 
-        // Auto-calcular A facturar Cia: acordado - franquicia (o acordado si Propia Cia.)
-        BigDecimal agreedAmount = entity.getAgreedAmount();
-        if (agreedAmount != null) {
-            CaseFranchiseEntity franchise = caseFranchiseRepository.findByCaseId(caseId).orElse(null);
-            if (franchise != null && "PROPIA_CIA".equals(normalizeCode(franchise.getRecoveryTypeCode()))) {
-                entity.setAmountToBillCompany(agreedAmount);
-            } else {
-                BigDecimal franchiseAmount = franchise != null ? scale(franchise.getFranchiseAmount()) : BigDecimal.ZERO;
-                entity.setAmountToBillCompany(agreedAmount.subtract(franchiseAmount).max(BigDecimal.ZERO));
+        ProcessingDerivatives derivatives = processingDerivatives(caseId, entity.getAgreedAmount());
+        if (request.has("partsAuthorizationCode") && !derivatives.includesParts()) {
+            throw new DomainConflictException("PROCESSING_PARTS_AUTHORIZATION_REQUIRES_PARTS", "La autorizacion de repuestos requiere que el caso lleve repuestos", Map.of());
+        }
+        Map<String, Object> belowMinimumAudit = null;
+        if (request.has("agreedAmount") && entity.getAgreedAmount() != null && derivatives.minimumCloseAmount() != null && entity.getAgreedAmount().compareTo(derivatives.minimumCloseAmount()) < 0) {
+            BigDecimal difference = derivatives.minimumCloseAmount().subtract(entity.getAgreedAmount());
+            Map<String, Object> amounts = CaseAuditService.auditMap("agreedAmount", entity.getAgreedAmount(), "minimumCloseAmount", derivatives.minimumCloseAmount(), "difference", difference);
+            if (!Boolean.TRUE.equals(request.allowBelowMinimum())) {
+                throw new DomainConflictException("PROCESSING_AMOUNT_BELOW_MINIMUM_CONFIRMATION_REQUIRED", "El monto acordado es inferior al minimo de cierre", amounts);
             }
-        } else {
-            entity.setAmountToBillCompany(null);
+            belowMinimumAudit = CaseAuditService.auditMap("agreedAmount", entity.getAgreedAmount(), "minimumCloseAmount", derivatives.minimumCloseAmount(), "difference", difference, "accepted", true);
         }
-
-        entity.setFinalAmountForWorkshop(scale(request.finalAmountForWorkshop()));
-        entity.setNoRepair(Boolean.TRUE.equals(request.noRepair()));
-        entity.setAdminOverrideAppointment(Boolean.TRUE.equals(request.adminOverrideAppointment()));
-        entity.setPassedToPaymentsAt(request.passedToPaymentsAt());
-        entity.setEstimatedPaymentDate(request.estimatedPaymentDate());
         entity = insuranceProcessingRepository.save(entity);
-        Map<String, Object> processingSnapshot = new LinkedHashMap<>();
-        processingSnapshot.put("modalityCode", entity.getModalityCode());
-        processingSnapshot.put("quotationStatusCode", entity.getQuotationStatusCode());
-        caseAuditService.register(currentUser.id(), caseId, "caso_tramitacion_seguro", entity.getId(), "upsert_tramitacion_seguro", null, caseAuditService.toJson(processingSnapshot), caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
-        todoRiesgoEffectiveStateRecalculator.recordInsuranceProcedureFacts(caseId, request.agreementDate(), request.passedToPaymentsDate(), currentUser.id());
+        Map<String, Object> auditSnapshot = CaseAuditService.auditMap("modalityCode", entity.getModalityCode(), "quotationStatusCode", entity.getQuotationStatusCode());
+        Map<String, Object> auditBefore = null;
+        if (request.has("partsAuthorizationCode")) {
+            auditBefore = CaseAuditService.auditMap("partsAuthorizationCode", previousPartsAuthorizationCode);
+            auditSnapshot.put("partsAuthorizationCode", entity.getPartsAuthorizationCode());
+        }
+        if (belowMinimumAudit != null) {
+            auditSnapshot.putAll(belowMinimumAudit);
+        }
+        caseAuditService.register(currentUser.id(), caseId, "caso_tramitacion_seguro", entity.getId(), "patch_tramitacion_seguro", caseAuditService.toJson(auditBefore), caseAuditService.toJson(auditSnapshot), caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
         return toInsuranceProcessingResponse(entity);
     }
 
@@ -329,7 +316,7 @@ public class InsuranceService {
     @Transactional
     public CaseFranchiseResponse upsertCaseFranchise(Long caseId, CaseFranchiseUpsertRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
-        CaseEntity caseEntity = requireCase(caseId);
+        CaseEntity caseEntity = requireCaseForUpdate(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
         validateFranchiseRequest(caseId, request);
         CaseFranchiseEntity entity = caseFranchiseRepository.findByCaseId(caseId).orElseGet(CaseFranchiseEntity::new);
@@ -518,13 +505,6 @@ public class InsuranceService {
         if (request.partsProvisionModeCode() != null && !partsProvisionModeRepository.existsByCodeAndActiveTrue(normalizeCode(request.partsProvisionModeCode()))) throw new ConflictException("partsProvisionModeCode no permitido: " + request.partsProvisionModeCode());
     }
 
-    private void validateInsuranceProcessingRequest(InsuranceProcessingUpsertRequest request) {
-        if (request.modalityCode() != null && !modalityRepository.existsByCodeAndActiveTrue(normalizeCode(request.modalityCode()))) throw new ConflictException("modalityCode no permitido: " + request.modalityCode());
-        if (request.opinionCode() != null && !opinionRepository.existsByCodeAndActiveTrue(normalizeCode(request.opinionCode()))) throw new ConflictException("opinionCode no permitido: " + request.opinionCode());
-        if (request.quotationStatusCode() != null && !quotationStatusRepository.existsByCodeAndActiveTrue(normalizeCode(request.quotationStatusCode()))) throw new ConflictException("quotationStatusCode no permitido: " + request.quotationStatusCode());
-        if (request.partsAuthorizationCode() != null && !partsAuthorizationRepository.existsByCodeAndActiveTrue(normalizeCode(request.partsAuthorizationCode()))) throw new ConflictException("partsAuthorizationCode no permitido: " + request.partsAuthorizationCode());
-    }
-
     private void validateFranchiseRequest(Long caseId, CaseFranchiseUpsertRequest request) {
         if (request.franchiseStatusCode() != null && !franchiseStatusRepository.existsByCodeAndActiveTrue(normalizeCode(request.franchiseStatusCode()))) throw new ConflictException("franchiseStatusCode no permitido: " + request.franchiseStatusCode());
         if (request.recoveryTypeCode() != null && !franchiseRecoveryTypeRepository.existsByCodeAndActiveTrue(normalizeCode(request.recoveryTypeCode()))) throw new ConflictException("recoveryTypeCode no permitido: " + request.recoveryTypeCode());
@@ -555,6 +535,7 @@ public class InsuranceService {
 
     private InsuranceCompanyEntity requireCompany(Long companyId) { return companyRepository.findById(companyId).orElseThrow(() -> new ResourceNotFoundException("No existe la compania " + companyId)); }
     private CaseEntity requireCase(Long caseId) { return caseRepository.findById(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId)); }
+    private CaseEntity requireCaseForUpdate(Long caseId) { return caseRepository.findByIdForUpdate(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId)); }
     private InsuranceCompanyResponse toCompanyResponse(InsuranceCompanyEntity e) { return new InsuranceCompanyResponse(e.getId(), e.getPublicId(), e.getCode(), e.getName(), e.getTaxId(), e.getRequiresRepairPhotos(), e.getExpectedPaymentDays(), e.getActive()); }
     private InsuranceCompanyContactResponse toCompanyContactResponse(InsuranceCompanyContactEntity e) {
         String personName = e.getPersonId() != null
@@ -574,7 +555,12 @@ public class InsuranceService {
     }
     private InsuranceProcessingResponse toInsuranceProcessingResponse(InsuranceProcessingEntity e) {
         var facts = todoRiesgoStateFactsRepository.findById(e.getCaseId()).orElse(null);
-        return new InsuranceProcessingResponse(e.getId(), e.getCaseId(), e.getPresentedAt(), e.getInspectionForwardedAt(), e.getModalityCode(), e.getOpinionCode(), e.getQuotationStatusCode(), e.getQuotationDate(), e.getAgreedAmount(), facts == null ? null : facts.getAgreementDate(), facts == null ? null : facts.getPassedToPaymentsDate(), e.getMinimumCloseAmount(), e.getIncludesParts(), e.getPartsAuthorizationCode(), e.getPartsSupplierText(), e.getProviderId(), e.getAmountToBillCompany(), e.getFinalAmountForWorkshop(), e.getNoRepair(), e.getAdminOverrideAppointment(), e.getPassedToPaymentsAt(), e.getEstimatedPaymentDate(), null);
+        ProcessingDerivatives derivatives = processingDerivatives(e.getCaseId(), e.getAgreedAmount());
+        return new InsuranceProcessingResponse(e.getId(), e.getCaseId(), e.getPresentedAt(), e.getInspectionForwardedAt(), e.getModalityCode(), e.getOpinionCode(), e.getQuotationStatusCode(), e.getQuotationDate(), e.getAgreedAmount(), facts == null ? null : facts.getAgreementDate(), facts == null ? null : facts.getPassedToPaymentsDate(), derivatives.minimumCloseAmount(), derivatives.includesParts(), derivatives.includesParts() ? e.getPartsAuthorizationCode() : null, e.getPartsSupplierText(), e.getProviderId(), derivatives.amountToBillCompany(), e.getFinalAmountForWorkshop(), e.getNoRepair(), e.getAdminOverrideAppointment(), e.getPassedToPaymentsAt(), e.getEstimatedPaymentDate(), null, e.getInspectionDate(), e.getVersion());
+    }
+    private InsuranceProcessingResponse toInsuranceProcessingProjection(Long caseId) {
+        ProcessingDerivatives derivatives = processingDerivatives(caseId, null);
+        return new InsuranceProcessingResponse(null, caseId, null, null, null, null, null, null, null, null, null, derivatives.minimumCloseAmount(), derivatives.includesParts(), null, null, null, derivatives.amountToBillCompany(), null, null, null, null, null, null, null, 0L);
     }
     private CaseFranchiseResponse toCaseFranchiseResponse(CaseFranchiseEntity e) { return new CaseFranchiseResponse(e.getId(), e.getCaseId(), e.getFranchiseStatusCode(), e.getFranchiseAmount(), e.getRecoveryTypeCode(), e.getRelatedCaseId(), e.getFranchiseOpinionCode(), e.getExceedsFranchise(), e.getRecoveryAmount(), e.getNotes()); }
     private CaseCleasResponse toCaseCleasResponse(CaseCleasEntity e) { return new CaseCleasResponse(e.getId(), e.getCaseId(), e.getScopeCode(), e.getOpinionCode(), e.getFranchiseAmount(), e.getCustomerChargeAmount(), e.getCustomerPaymentStatusCode(), e.getCustomerPaymentDate(), e.getCompanyFranchisePaymentAmount(), e.getCompanyFranchisePaymentStatusCode(), e.getCompanyFranchisePaymentDate()); }
@@ -593,13 +579,67 @@ public class InsuranceService {
     private String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
     private BigDecimal scale(BigDecimal value) { return value == null ? null : value.setScale(2, RoundingMode.HALF_UP); }
 
-    private String computePartsAuthorizationCode(Long caseId) {
-        List<CasePartEntity> parts = casePartRepository.findByCaseIdOrderByIdAsc(caseId);
-        if (parts.isEmpty()) return null;
-        long authorizedCount = parts.stream()
-                .filter(part -> "AUTORIZADO".equals(normalizeCode(part.getAuthorizedCode())))
-                .count();
-        if (authorizedCount == 0) return null;
-        return authorizedCount == parts.size() ? "TOTAL" : "PARCIAL";
+    private void applyPatch(InsuranceProcessingEntity entity, InsuranceProcessingPatchRequest request) {
+        if (request.has("presentedAt")) entity.setPresentedAt(dateValue(request.presentedAt(), "presentedAt"));
+        if (request.has("inspectionForwardedAt")) entity.setInspectionForwardedAt(dateValue(request.inspectionForwardedAt(), "inspectionForwardedAt"));
+        if (request.has("inspectionDate")) entity.setInspectionDate(dateValue(request.inspectionDate(), "inspectionDate"));
+        if (request.has("modalityCode")) entity.setModalityCode(codeValue(request.modalityCode(), "modalityCode", modalityRepository::existsByCodeAndActiveTrue));
+        if (request.has("opinionCode")) entity.setOpinionCode(codeValue(request.opinionCode(), "opinionCode", opinionRepository::existsByCodeAndActiveTrue));
+        if (request.has("quotationStatusCode")) entity.setQuotationStatusCode(codeValue(request.quotationStatusCode(), "quotationStatusCode", quotationStatusRepository::existsByCodeAndActiveTrue));
+        if (request.has("quotationDate")) entity.setQuotationDate(dateValue(request.quotationDate(), "quotationDate"));
+        if (request.has("agreedAmount")) entity.setAgreedAmount(decimalValue(request.agreedAmount(), "agreedAmount"));
+        if (request.has("partsAuthorizationCode")) entity.setPartsAuthorizationCode(partsAuthorizationCodeValue(request.partsAuthorizationCode()));
+        if (request.has("partsSupplierText")) entity.setPartsSupplierText(textValue(request.partsSupplierText()));
+        if (request.has("providerId")) applyProvider(entity, longValue(request.providerId(), "providerId"));
+        if (request.has("finalAmountForWorkshop")) entity.setFinalAmountForWorkshop(decimalValue(request.finalAmountForWorkshop(), "finalAmountForWorkshop"));
+        if (request.has("passedToPaymentsAt")) entity.setPassedToPaymentsAt(dateValue(request.passedToPaymentsAt(), "passedToPaymentsAt"));
+        if (request.has("estimatedPaymentDate")) entity.setEstimatedPaymentDate(dateValue(request.estimatedPaymentDate(), "estimatedPaymentDate"));
     }
+
+    private boolean hasOperationalPatch(InsuranceProcessingPatchRequest request) {
+        return request.has("inspectionForwardedAt") || request.has("inspectionDate") || request.has("modalityCode") || request.has("opinionCode")
+                || request.has("quotationStatusCode") || request.has("quotationDate") || request.has("agreedAmount") || request.has("partsAuthorizationCode") || request.has("partsSupplierText")
+                || request.has("providerId") || request.has("finalAmountForWorkshop") || request.has("passedToPaymentsAt") || request.has("estimatedPaymentDate");
+    }
+
+    private ProcessingDerivatives processingDerivatives(Long caseId, BigDecimal agreedAmount) {
+        BudgetEntity budget = budgetRepository.findByCaseId(caseId).orElse(null);
+        List<BudgetItemEntity> items = budget == null ? List.of() : budgetItemRepository.findByBudgetIdOrderByVisualOrderAsc(budget.getId());
+        Set<Long> replacementItemIds = items.stream()
+                .filter(item -> Boolean.TRUE.equals(item.getActive()) && (Boolean.TRUE.equals(item.getRequiresReplacement()) || "REEMPLAZAR".equals(normalizeCode(item.getPartDecisionCode()))))
+                .map(BudgetItemEntity::getId)
+                .collect(Collectors.toSet());
+        boolean includesParts = !replacementItemIds.isEmpty();
+        CaseFranchiseEntity franchise = caseFranchiseRepository.findByCaseId(caseId).orElse(null);
+        BigDecimal amountToBill = null;
+        if (agreedAmount != null) {
+            amountToBill = franchise != null && "PROPIA_CIA".equals(normalizeCode(franchise.getRecoveryTypeCode()))
+                    ? agreedAmount
+                    : agreedAmount.subtract(franchise == null || franchise.getFranchiseAmount() == null ? BigDecimal.ZERO : scale(franchise.getFranchiseAmount())).max(BigDecimal.ZERO);
+        }
+        return new ProcessingDerivatives(budget == null ? null : scale(budget.getMinimumCloseAmount()), includesParts, amountToBill);
+    }
+
+    private void applyProvider(InsuranceProcessingEntity entity, Long providerId) {
+        if (providerId == null) { entity.setProviderId(null); return; }
+        var provider = providerRepository.findById(providerId).orElseThrow(() -> new ResourceNotFoundException("No existe el proveedor " + providerId));
+        if (!Boolean.TRUE.equals(provider.getActive())) throw new ConflictException("El proveedor esta inactivo: " + providerId);
+        entity.setProviderId(provider.getId());
+        entity.setPartsSupplierText(provider.getName());
+    }
+
+    private LocalDate dateValue(JsonNode node, String field) { return node.isNull() ? null : LocalDate.parse(node.asText()); }
+    private BigDecimal decimalValue(JsonNode node, String field) { if (node.isNull()) return null; if (!node.isNumber()) throw new ConflictException(field + " debe ser numerico"); return scale(node.decimalValue()); }
+    private Long longValue(JsonNode node, String field) { if (node.isNull()) return null; if (!node.canConvertToLong()) throw new ConflictException(field + " debe ser un identificador valido"); return node.longValue(); }
+    private String textValue(JsonNode node) { return node.isNull() ? null : blankToNull(node.asText()); }
+    private String codeValue(JsonNode node, String field, java.util.function.Predicate<String> exists) { if (node.isNull()) return null; String code = normalizeCode(node.asText()); if (!exists.test(code)) throw new ConflictException(field + " no permitido: " + node.asText()); return code; }
+    private String partsAuthorizationCodeValue(JsonNode node) {
+        if (node.isNull()) return null;
+        String code = normalizeCode(node.asText());
+        if (!Set.of("TOTAL", "PARCIAL", "RECHAZADO").contains(code) || !partsAuthorizationRepository.existsByCodeAndActiveTrue(code)) {
+            throw new ConflictException("partsAuthorizationCode no permitido: " + node.asText());
+        }
+        return code;
+    }
+    private record ProcessingDerivatives(BigDecimal minimumCloseAmount, boolean includesParts, BigDecimal amountToBillCompany) {}
 }

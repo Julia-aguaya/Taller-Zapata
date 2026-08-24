@@ -38,6 +38,7 @@ public record BudgetResponse(
         String mechanicalWorkCode,
         LocalDate quotedPartsDate,
         String quotedPartsSupplier,
-        Long providerId
+        Long providerId,
+        List<BudgetAccessoryWorkResponse> accessoryWorks
 ) {
 }

@@ -13,6 +13,10 @@ public record BudgetItemUpdateRequest(
         BigDecimal partValue,
         BigDecimal estimatedHours,
         BigDecimal laborAmount,
-        Boolean active
+        Boolean active,
+        Long providerId
 ) {
+    public BudgetItemUpdateRequest(Integer visualOrder, String affectedPiece, String taskCode, String damageLevelCode, String partDecisionCode, String actionCode, Boolean requiresReplacement, BigDecimal partValue, BigDecimal estimatedHours, BigDecimal laborAmount, Boolean active) {
+        this(visualOrder, affectedPiece, taskCode, damageLevelCode, partDecisionCode, actionCode, requiresReplacement, partValue, estimatedHours, laborAmount, active, null);
+    }
 }

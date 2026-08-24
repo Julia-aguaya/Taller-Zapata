@@ -18,6 +18,7 @@ public record CaseDocumentResponse(
         Boolean visibleToCustomer,
         LocalDate documentDate,
         String originCode,
+        String observations,
         LocalDateTime createdAt
 ) {
 }

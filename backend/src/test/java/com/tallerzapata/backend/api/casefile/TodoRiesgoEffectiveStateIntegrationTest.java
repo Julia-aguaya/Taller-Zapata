@@ -221,8 +221,8 @@ class TodoRiesgoEffectiveStateIntegrationTest {
     }
 
     private void upsertInsuranceProcessing(long caseId, String presentedAt, String quotationStatusCode, String quotationDate, String agreementDate, String passedToPaymentsDate) throws Exception {
-        mockMvc.perform(put("/api/v1/cases/{caseId}/insurance-processing", caseId).header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"presentedAt\":\"" + presentedAt + "\",\"inspectionForwardedAt\":null,\"modalityCode\":\"CONVENIO\",\"opinionCode\":null,\"quotationStatusCode\":" + nullableJson(quotationStatusCode) + ",\"quotationDate\":" + nullableJson(quotationDate) + ",\"agreedAmount\":null,\"agreementDate\":" + nullableJson(agreementDate) + ",\"passedToPaymentsDate\":" + nullableJson(passedToPaymentsDate) + ",\"minimumCloseAmount\":50000,\"includesParts\":false,\"partsAuthorizationCode\":null,\"partsSupplierText\":null,\"amountToBillCompany\":null,\"finalAmountForWorkshop\":null,\"noRepair\":false,\"adminOverrideAppointment\":false}"))
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/v1/cases/{caseId}/insurance-processing", caseId).header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"" + presentedAt + "\",\"inspectionForwardedAt\":null,\"modalityCode\":\"PRESENCIAL\",\"opinionCode\":null,\"quotationStatusCode\":" + nullableJson(quotationStatusCode) + ",\"quotationDate\":" + nullableJson(quotationDate) + ",\"agreedAmount\":null,\"agreementDate\":" + nullableJson(agreementDate) + ",\"passedToPaymentsDate\":" + nullableJson(passedToPaymentsDate) + ",\"minimumCloseAmount\":50000,\"includesParts\":false,\"partsAuthorizationCode\":null,\"partsSupplierText\":null,\"amountToBillCompany\":null,\"finalAmountForWorkshop\":null,\"noRepair\":false,\"adminOverrideAppointment\":false}"))
                 .andExpect(status().isOk());
     }
 

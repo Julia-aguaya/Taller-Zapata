@@ -273,7 +273,7 @@ public class CaseVisibleStateResolver {
         }
 
         if (insuranceProcessing != null) {
-            boolean quotationAgreed = "ACORDADA".equals(normalizeCode(insuranceProcessing.getQuotationStatusCode()))
+            boolean quotationAgreed = "ACEPTADA".equals(normalizeCode(insuranceProcessing.getQuotationStatusCode()))
                     && hasPositiveAmount(insuranceProcessing.getAgreedAmount())
                     && insuranceProcessing.getQuotationDate() != null;
             if (quotationAgreed) {

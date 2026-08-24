@@ -15,6 +15,8 @@ public record BudgetItemResponse(
         BigDecimal partValue,
         BigDecimal estimatedHours,
         BigDecimal laborAmount,
-        Boolean active
+        Boolean active,
+        Long providerId,
+        String providerSnapshot
 ) {
 }

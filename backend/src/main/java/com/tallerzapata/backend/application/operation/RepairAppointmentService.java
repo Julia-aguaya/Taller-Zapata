@@ -121,7 +121,7 @@ public class RepairAppointmentService {
             boolean hasAgreement = processing != null
                     && processing.getAgreedAmount() != null
                     && processing.getQuotationDate() != null
-                    && "ACORDADA".equals(normalizeCode(processing.getQuotationStatusCode()));
+                    && "ACEPTADA".equals(normalizeCode(processing.getQuotationStatusCode()));
             if (!hasAgreement) {
                 boolean hasOverride = SecurityContextHolder.getContext().getAuthentication()
                         .getAuthorities().stream()

@@ -2,6 +2,8 @@ package com.tallerzapata.backend.infrastructure.persistence.budget;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -30,5 +32,23 @@ public class CasePartEntity {
     @Column(name = "usado", nullable = false) private Boolean used;
     @Column(name = "devuelto", nullable = false) private Boolean returned;
     @Column(name = "numero_inventario") private String inventoryNumber;
-    public Long getId(){return id;} public Long getCaseId(){return caseId;} public void setCaseId(Long caseId){this.caseId=caseId;} public Long getBudgetItemId(){return budgetItemId;} public void setBudgetItemId(Long budgetItemId){this.budgetItemId=budgetItemId;} public String getDescription(){return description;} public void setDescription(String description){this.description=description;} public String getPartCode(){return partCode;} public void setPartCode(String partCode){this.partCode=partCode;} public String getFinalSupplier(){return finalSupplier;} public void setFinalSupplier(String finalSupplier){this.finalSupplier=finalSupplier;} public Long getProviderId(){return providerId;} public void setProviderId(Long providerId){this.providerId=providerId;} public String getAuthorizedCode(){return authorizedCode;} public void setAuthorizedCode(String authorizedCode){this.authorizedCode=authorizedCode;} public String getStatusCode(){return statusCode;} public void setStatusCode(String statusCode){this.statusCode=statusCode;} public String getPurchasedByCode(){return purchasedByCode;} public void setPurchasedByCode(String purchasedByCode){this.purchasedByCode=purchasedByCode;} public String getPaymentStatusCode(){return paymentStatusCode;} public void setPaymentStatusCode(String paymentStatusCode){this.paymentStatusCode=paymentStatusCode;} public BigDecimal getBudgetedPrice(){return budgetedPrice;} public void setBudgetedPrice(BigDecimal budgetedPrice){this.budgetedPrice=budgetedPrice;} public BigDecimal getFinalPrice(){return finalPrice;} public void setFinalPrice(BigDecimal finalPrice){this.finalPrice=finalPrice;} public LocalDate getReceivedDate(){return receivedDate;} public void setReceivedDate(LocalDate receivedDate){this.receivedDate=receivedDate;} public Boolean getUsed(){return used;} public void setUsed(Boolean used){this.used=used;} public Boolean getReturned(){return returned;} public void setReturned(Boolean returned){this.returned=returned;} public String getInventoryNumber(){return inventoryNumber;} public void setInventoryNumber(String inventoryNumber){this.inventoryNumber=inventoryNumber;}
+    @Column(name = "source_comparison_piece_id") private Long sourceComparisonPieceId;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "source_type", nullable = false) private CasePartSourceType sourceType;
+    @Column(name = "accessory_work_id") private Long accessoryWorkId;
+    @Column(name = "non_canonical", nullable = false) private Boolean nonCanonical;
+    @Column(name = "is_accessory", nullable = false) private Boolean accessory;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "provider_assignment_origin") private ProviderAssignmentOrigin providerAssignmentOrigin;
+    public Long getId(){return id;} public Long getCaseId(){return caseId;} public void setCaseId(Long caseId){this.caseId=caseId;} public Long getBudgetItemId(){return budgetItemId;} public void setBudgetItemId(Long budgetItemId){this.budgetItemId=budgetItemId;} public String getDescription(){return description;} public void setDescription(String description){this.description=description;} public String getPartCode(){return partCode;} public void setPartCode(String partCode){this.partCode=partCode;} public String getFinalSupplier(){return finalSupplier;} public void setFinalSupplier(String finalSupplier){this.finalSupplier=finalSupplier;} public Long getProviderId(){return providerId;} public void setProviderId(Long providerId){this.providerId=providerId;} public String getAuthorizedCode(){return authorizedCode;} public void setAuthorizedCode(String authorizedCode){this.authorizedCode=authorizedCode;} public String getStatusCode(){return statusCode;} public void setStatusCode(String statusCode){this.statusCode=statusCode;} public String getPurchasedByCode(){return purchasedByCode;} public void setPurchasedByCode(String purchasedByCode){this.purchasedByCode=purchasedByCode;} public String getPaymentStatusCode(){return paymentStatusCode;} public void setPaymentStatusCode(String paymentStatusCode){this.paymentStatusCode=paymentStatusCode;} public BigDecimal getBudgetedPrice(){return budgetedPrice;} public void setBudgetedPrice(BigDecimal budgetedPrice){this.budgetedPrice=budgetedPrice;} public BigDecimal getFinalPrice(){return finalPrice;} public void setFinalPrice(BigDecimal finalPrice){this.finalPrice=finalPrice;} public LocalDate getReceivedDate(){return receivedDate;} public void setReceivedDate(LocalDate receivedDate){this.receivedDate=receivedDate;} public Boolean getUsed(){return used;} public void setUsed(Boolean used){this.used=used;} public Boolean getReturned(){return returned;} public void setReturned(Boolean returned){this.returned=returned;} public String getInventoryNumber(){return inventoryNumber;} public void setInventoryNumber(String inventoryNumber){this.inventoryNumber=inventoryNumber;} public Long getSourceComparisonPieceId(){return sourceComparisonPieceId;} public void setSourceComparisonPieceId(Long value){sourceComparisonPieceId=value;}
+    public ProviderAssignmentOrigin getProviderAssignmentOrigin(){return providerAssignmentOrigin;}
+    public void setProviderAssignmentOrigin(ProviderAssignmentOrigin providerAssignmentOrigin){this.providerAssignmentOrigin=providerAssignmentOrigin;}
+    public CasePartSourceType getSourceType(){return sourceType;}
+    public void setSourceType(CasePartSourceType sourceType){this.sourceType=sourceType;}
+    public Long getAccessoryWorkId(){return accessoryWorkId;}
+    public void setAccessoryWorkId(Long accessoryWorkId){this.accessoryWorkId=accessoryWorkId;}
+    public Boolean getNonCanonical(){return nonCanonical;}
+    public void setNonCanonical(Boolean nonCanonical){this.nonCanonical=nonCanonical;}
+    public Boolean getAccessory(){return accessory;}
+    public void setAccessory(Boolean accessory){this.accessory=accessory;}
 }

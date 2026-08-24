@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.api.common;
 
 import com.tallerzapata.backend.application.common.ConflictException;
+import com.tallerzapata.backend.application.common.DomainConflictException;
 import com.tallerzapata.backend.application.common.ForbiddenException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import org.slf4j.Logger;
@@ -18,6 +19,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -83,6 +85,14 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.CONFLICT, exception.getMessage(), request, List.of());
     }
 
+    @ExceptionHandler(DomainConflictException.class)
+    public ResponseEntity<ApiErrorResponse> handleDomainConflict(
+            DomainConflictException exception,
+            HttpServletRequest request
+    ) {
+        return build(HttpStatus.CONFLICT, exception.getMessage(), request, List.of(), exception.getCode(), exception.getData());
+    }
+
     @ExceptionHandler(UnauthorizedException.class)
     public ResponseEntity<ApiErrorResponse> handleUnauthorized(
             UnauthorizedException exception,
@@ -106,13 +116,26 @@ public class GlobalExceptionHandler {
             HttpServletRequest request,
             List<String> details
     ) {
+        return build(status, message, request, details, null, null);
+    }
+
+    private ResponseEntity<ApiErrorResponse> build(
+            HttpStatus status,
+            String message,
+            HttpServletRequest request,
+            List<String> details,
+            String code,
+            Map<String, Object> data
+    ) {
         ApiErrorResponse response = new ApiErrorResponse(
                 OffsetDateTime.now(),
                 status.value(),
                 status.getReasonPhrase(),
                 message,
                 request.getRequestURI(),
-                details
+                details,
+                code,
+                data
         );
         return ResponseEntity.status(status).body(response);
     }

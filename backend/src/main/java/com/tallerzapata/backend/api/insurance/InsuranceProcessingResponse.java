@@ -26,6 +26,8 @@ public record InsuranceProcessingResponse(
         Boolean adminOverrideAppointment,
         LocalDate passedToPaymentsAt,
         LocalDate estimatedPaymentDate,
-        String paymentStatusCode
+        String paymentStatusCode,
+        LocalDate inspectionDate,
+        Long version
 ) {
 }
