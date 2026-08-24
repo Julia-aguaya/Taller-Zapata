@@ -268,6 +268,30 @@ describe('CaseWorkspacePage UI', () => {
     expect(screen.getByText('0 de 4 etapas completas')).toBeInTheDocument();
   });
 
+  it('abre Presupuesto para Todo Riesgo cuando readiness lo habilita sin franquicia', async () => {
+    const user = userEvent.setup();
+    await renderPage({
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'TODO_RIESGO' },
+      readiness: {
+        ...baseWorkspace.readiness,
+        caseTypeCode: 'TODO_RIESGO',
+        tabs: [
+          { tabCode: 'FICHA_TECNICA', allowed: true, completed: true, blockingReasons: [], warningReasons: [] },
+          { tabCode: 'GESTION_TRAMITE', allowed: true, completed: true, blockingReasons: [], warningReasons: [] },
+          { tabCode: 'PRESUPUESTO', allowed: true, completed: false, blockingReasons: ['Falta cargar el presupuesto'], warningReasons: [] },
+          { tabCode: 'GESTION_REPARACION', allowed: false, completed: false, blockingReasons: ['Debe cerrar el presupuesto antes de gestionar la reparacion'], warningReasons: [] },
+          { tabCode: 'PAGOS', allowed: false, completed: false, blockingReasons: ['Falta acordar cotizacion con la Cia. antes de registrar pagos'], warningReasons: [] },
+        ],
+      },
+    });
+
+    const budgetTab = screen.getByRole('tab', { name: /presupuesto/i });
+    expect(budgetTab).toHaveAttribute('aria-disabled', 'false');
+    await user.click(budgetTab);
+    expect(screen.getByText('Budget panel')).toBeInTheDocument();
+  });
+
   it('muestra las cinco etapas canónicas para CLEAS aunque readiness no las incluya', async () => {
     await renderPage({
       ...baseWorkspace,
@@ -380,6 +404,26 @@ describe('CaseWorkspacePage UI', () => {
     currentCaseId = '2';
     rendered.rerender(<CaseWorkspacePage />);
     await waitFor(() => expect(screen.getByTestId('accessory-ui-budget')).toHaveTextContent('"works":[]'));
+  });
+
+  it('rehidrata los trabajos extras persistidos al recargar la carpeta', async () => {
+    const user = userEvent.setup();
+    await renderPage({
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'TODO_RIESGO' },
+      budget: {
+        id: 15,
+        currentVersion: 2,
+        accessoryWorks: [{ id: 90, affectedPiece: 'Moldura lateral', actionCode: 'REEMPLAZAR_Y_PINTAR', damageLevelCode: 'LEVE', replacementAmount: 30000 }],
+      },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'TODO_RIESGO', tabs: [
+        { tabCode: 'PRESUPUESTO', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+      ] },
+    });
+
+    await user.click(screen.getByRole('tab', { name: /presupuesto/i }));
+    await waitFor(() => expect(screen.getByTestId('accessory-ui-budget')).toHaveTextContent('"affectedPiece":"Moldura lateral"'));
+    expect(screen.getByTestId('accessory-ui-budget')).toHaveTextContent('"replacementAmount":"30000"');
   });
 
   it('conserva la distribución de franquicia entre Tramitación y Pagos y la reinicia al cambiar de carpeta', async () => {

@@ -243,14 +243,14 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
             <Field label="Fecha pasado a pagos">
               <Input type="date" value={processing?.passedToPaymentsAt ?? ''}
                 onChange={async (e) => {
-                  await requestJson(`/cases/${caseId}/insurance-processing`, { method: 'PUT', body: JSON.stringify({ ...processing, passedToPaymentsAt: e.target.value || null }) });
+                  await requestJson(`/cases/${caseId}/insurance-processing`, { method: 'PATCH', body: JSON.stringify({ expectedVersion: processing?.version ?? 0, passedToPaymentsAt: e.target.value || null }) });
                   queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] });
                 }} />
             </Field>
             <Field label="Fecha estimada de pago">
               <Input type="date" value={processing?.estimatedPaymentDate ?? ''}
                 onChange={async (e) => {
-                  await requestJson(`/cases/${caseId}/insurance-processing`, { method: 'PUT', body: JSON.stringify({ ...processing, estimatedPaymentDate: e.target.value || null }) });
+                  await requestJson(`/cases/${caseId}/insurance-processing`, { method: 'PATCH', body: JSON.stringify({ expectedVersion: processing?.version ?? 0, estimatedPaymentDate: e.target.value || null }) });
                   queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] });
                 }} />
             </Field>

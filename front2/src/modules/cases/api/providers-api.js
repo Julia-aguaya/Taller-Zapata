@@ -5,3 +5,5 @@ export const searchProviders = (q) => {
   if (q?.trim()) params.set('q', q.trim());
   return requestJson(`/providers?${params}`);
 };
+
+export const createProvider = (payload) => requestJson('/providers', { method: 'POST', body: JSON.stringify(payload) });

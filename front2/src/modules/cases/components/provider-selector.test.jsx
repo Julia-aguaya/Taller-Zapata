@@ -50,4 +50,11 @@ describe('providerPayload', () => {
     await waitFor(() => expect(mockSearchProviders).toHaveBeenCalledWith('Nor'));
     expect(screen.queryByText(/displayName|razonSocial/i)).not.toBeInTheDocument();
   });
+
+  it('makes the catalog-versus-free-text persistence semantics explicit', () => {
+    renderSelector();
+
+    expect(screen.getByText(/Seleccionar vincula un proveedor existente/i)).toBeInTheDocument();
+    expect(screen.getByText(/no crea un proveedor/i)).toBeInTheDocument();
+  });
 });

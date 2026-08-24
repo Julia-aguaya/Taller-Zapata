@@ -16,6 +16,11 @@ export const syncPartsFromBudget = (caseId) => requestJson(`/cases/${caseId}/par
   method: 'POST',
 });
 
+export const resolvePartReconciliationWarning = (caseId, partId, warningId, resolution) => requestJson(`/cases/${caseId}/parts/${partId}/reconciliation-warnings/${warningId}/resolve`, {
+  method: 'POST',
+  body: JSON.stringify({ resolution }),
+});
+
 export const deleteCasePart = (caseId, partId) => requestJson(`/cases/${caseId}/parts/${partId}`, {
   method: 'DELETE',
 });

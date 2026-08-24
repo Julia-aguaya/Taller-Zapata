@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, FolderOpen, ReceiptText, Save } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { requestJson } from '@/shared/api/http-client';
 import { Button } from '@/shared/ui/button';
@@ -20,6 +21,7 @@ const toAmount = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0
 
 export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const recoveryQuery = useQuery({ queryKey: ['cases', String(caseId), 'franchise-recovery'], queryFn: () => requestJson(`/cases/${caseId}/franchise-recovery`) });
   const catalogsQuery = useQuery({ queryKey: ['recovery', 'catalogs'], queryFn: () => requestJson('/recovery/catalogs') });
@@ -94,12 +96,17 @@ export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
         <Button size="sm" onClick={handleSave} disabled={mutation.isPending}><Save className="mr-1.5 h-3.5 w-3.5" />Guardar</Button>
       </div>
 
-      {recovery?.baseFolderCode ? (
+      {recovery?.baseCaseId && recovery?.baseFolderCode ? (
         <div className="mt-3 flex items-center gap-2 rounded-xl border border-border/60 bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           <FolderOpen className="h-3.5 w-3.5 shrink-0" />
-          Recupero de la carpeta {recovery.baseFolderCode}
+          <span>Recupero de la carpeta {recovery.baseFolderCode}</span>
+          <Button type="button" size="sm" variant="outline" className="ml-auto" aria-label={`Abrir carpeta asociada ${recovery.baseFolderCode}`} onClick={() => navigate(`/cases/${recovery.baseCaseId}`)}>
+            Abrir carpeta
+          </Button>
         </div>
-      ) : null}
+      ) : (
+        <p className="mt-3 rounded-xl border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground">Sin carpeta asociada.</p>
+      )}
 
       <form id="franchise-recovery-form" key={recovery?.id ?? 'new'} className="mt-4 space-y-3">
         <div className="grid gap-x-6 gap-y-3 md:grid-cols-3">

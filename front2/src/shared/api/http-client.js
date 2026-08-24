@@ -60,7 +60,7 @@ export const requestJson = async (path, options = {}, retryOnAuthError = true) =
   const stored = readStoredAuth();
   const headers = new Headers(options.headers || {});
 
-  if (!headers.has('Content-Type') && options.body) {
+  if (!headers.has('Content-Type') && options.body && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
   if (stored?.accessToken) {
@@ -94,6 +94,20 @@ export const requestJson = async (path, options = {}, retryOnAuthError = true) =
   }
 
   return payload;
+};
+
+export const requestBlob = async (path, options = {}) => {
+  const stored = readStoredAuth();
+  const headers = new Headers(options.headers || {});
+  if (stored?.accessToken) {
+    headers.set('Authorization', `Bearer ${stored.accessToken}`);
+  }
+  const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+  if (!response.ok) {
+    const payload = await readJson(response);
+    throw buildError(response, payload, 'No se pudo descargar el archivo');
+  }
+  return response.blob();
 };
 
 export { AuthExpiredError };

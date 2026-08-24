@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { FolderOpen, FolderPlus, Search, UserPlus, Car } from 'lucide-react';
 import { toast } from 'sonner';
 import { createCase, createPerson, createVehicle, getCaseCatalogs, getPersonVehicles, getVehicleCatalogs, listBranches, listOrganizations, listVehicleBrands, listVehicleModels, searchPersons, searchVehicles } from '@/modules/cases/api/new-case-api';
-import { searchReferenciadores } from '@/modules/cases/api/cases-api';
+import { createReferenciador, searchReferenciadores } from '@/modules/cases/api/cases-api';
 import { useSession } from '@/modules/auth/providers/session-provider';
 import { Card } from '@/shared/ui/card';
 import { Input } from '@/shared/ui/input';
@@ -42,6 +42,7 @@ const createInitialState = () => ({
 });
 
 export const requiresReferenciador = (referenced, referenciadorId) => referenced === 'SI' && !referenciadorId;
+export const hasReferenciadorName = (value) => value.trim().split(/\s+/).length >= 2;
 
 export const NewCasePage = () => {
   const [createdCase, setCreatedCase] = useState(null);
@@ -54,10 +55,10 @@ export const NewCasePage = () => {
   const [vehicleSearch, setVehicleSearch] = useState('');
   const [referenciadorSearch, setReferenciadorSearch] = useState('');
   const [selectedReferenciadorId, setSelectedReferenciadorId] = useState(null);
+  const referenciadorInputRef = useRef(null);
   const [errors, setErrors] = useState({});
   const [form, setForm] = useState(createInitialState());
   const [referenciadorSearchDebounced, setReferenciadorSearchDebounced] = useState('');
-  const [selectedReferenciador, setSelectedReferenciador] = useState(null);
 
   const personDebounced = personSearch.trim();
   const vehicleDebounced = vehicleSearch.trim();
@@ -166,6 +167,20 @@ export const NewCasePage = () => {
 
   const createCaseMutation = useMutation({
     mutationFn: async () => {
+      let referenciadorId = selectedReferenciadorId;
+      if (form.referenced === 'SI' && !referenciadorId) {
+        const [nombre, ...apellido] = referenciadorSearch.trim().split(/\s+/);
+        try {
+          const referenciador = await createReferenciador({ nombre, apellido: apellido.join(' '), telefono: '' });
+          referenciadorId = referenciador.id;
+          setSelectedReferenciadorId(referenciadorId);
+        } catch (error) {
+          setErrors((current) => ({ ...current, referenciador: error.message || 'No pude crear el referenciador.' }));
+          referenciadorInputRef.current?.focus();
+          throw error;
+        }
+      }
+
       let personId = selectedPersonId;
       if (!personId) {
         try {
@@ -245,7 +260,7 @@ export const NewCasePage = () => {
         branchId: form.branchId ? Number(form.branchId) : null,
         principalVehicleId: vehicleId,
         principalCustomerPersonId: personId,
-        referenciadorId: selectedReferenciadorId,
+        referenciadorId,
         referenced: form.referenced === 'SI',
         referredByPersonId: null,
         referredByText: form.referenced === 'SI' ? form.referredByText || null : null,
@@ -285,7 +300,7 @@ export const NewCasePage = () => {
       if (!form.vehicle.modelText?.trim()) fieldErrors.vehicleModelo = 'El modelo es obligatorio';
       if (!form.vehicle.plate?.trim()) fieldErrors.vehiclePatente = 'El dominio es obligatorio';
     }
-    if (requiresReferenciador(form.referenced, selectedReferenciadorId)) fieldErrors.referenciador = 'Seleccioná un referenciador activo';
+    if (requiresReferenciador(form.referenced, selectedReferenciadorId) && !hasReferenciadorName(referenciadorSearch)) fieldErrors.referenciador = 'Ingresá nombre y apellido del referenciador';
 
     if (Object.keys(fieldErrors).length > 0) {
       setErrors(fieldErrors);
@@ -294,7 +309,11 @@ export const NewCasePage = () => {
     }
 
     setErrors({});
-    await createCaseMutation.mutateAsync();
+    try {
+      await createCaseMutation.mutateAsync();
+    } catch {
+      // The mutation handlers already surface field and request errors.
+    }
   };
 
   const caseTypeOptions = caseCatalogsQuery.data?.caseTypes ?? [];
@@ -322,7 +341,7 @@ export const NewCasePage = () => {
       if (!form.vehicle.modelText?.trim()) reasons.push('Falta el modelo del vehículo');
       if (!form.vehicle.plate?.trim()) reasons.push('Falta el dominio del vehículo');
     }
-    if (requiresReferenciador(form.referenced, selectedReferenciadorId)) reasons.push('Falta seleccionar el referenciador');
+    if (requiresReferenciador(form.referenced, selectedReferenciadorId) && !hasReferenciadorName(referenciadorSearch)) reasons.push('Falta seleccionar o ingresar nombre y apellido del referenciador');
     return reasons;
   }, [form, selectedPersonId, selectedVehicleId, showOrgSelector, resolvedScope]);
 
@@ -400,15 +419,15 @@ export const NewCasePage = () => {
                 {selectedReferenciadorId ? (
                   <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm dark:border-emerald-800 dark:bg-emerald-950">
                     <span className="font-medium text-emerald-800 dark:text-emerald-200">{selectedReferenciadorQuery.data?.displayName || `#${selectedReferenciadorId}`}</span>
-                    <button type="button" className="ml-auto text-xs text-muted-foreground hover:text-destructive" onClick={() => { setSelectedReferenciadorId(null); setSelectedReferenciador(null); setReferenciadorSearch(''); }}>✕</button>
+                    <button type="button" className="ml-auto text-xs text-muted-foreground hover:text-destructive" onClick={() => { setSelectedReferenciadorId(null); setReferenciadorSearch(''); }}>✕</button>
                   </div>
                 ) : (
                   <div className="relative">
-                    <Input value={referenciadorSearch} onChange={(event) => setReferenciadorSearch(event.target.value)} placeholder="Buscar por nombre..." />
+                    <Input ref={referenciadorInputRef} value={referenciadorSearch} onChange={(event) => setReferenciadorSearch(event.target.value)} placeholder="Buscar por nombre..." />
                     {(referenciadorQuery.data ?? []).length > 0 ? (
                       <div className="absolute z-10 mt-1 w-full rounded-2xl border border-border bg-card p-2 shadow-haze">
                         {referenciadorQuery.data.map((referenciador) => (
-                           <button key={referenciador.id} type="button" className="w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => { setSelectedReferenciadorId(referenciador.id); setSelectedReferenciador(referenciador); setReferenciadorSearch(''); }}>
+                           <button key={referenciador.id} type="button" className="w-full rounded-xl px-3 py-2 text-left text-sm hover:bg-accent" onClick={() => { setSelectedReferenciadorId(referenciador.id); setReferenciadorSearch(''); }}>
                             <span className="font-medium">{referenciador.displayName}</span>
                             {referenciador.telefono ? <span className="ml-2 text-xs text-muted-foreground">{referenciador.telefono}</span> : null}
                           </button>

@@ -7,14 +7,23 @@ import { readStoredAuth } from '@/shared/auth/session-storage';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Dialog } from '@/shared/ui/dialog';
+import { Textarea } from '@/shared/ui/textarea';
 
 const DATE_FMT = new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+const currentLocalDate = () => {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+};
 
 export const DocumentsSection = ({ caseId }) => {
   const queryClient = useQueryClient();
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadCategory, setUploadCategory] = useState('');
+  const [uploadDate, setUploadDate] = useState('');
+  const [uploadObservations, setUploadObservations] = useState('');
+  const [documentToDelete, setDocumentToDelete] = useState(null);
   const invalidateCaseViews = () => Promise.all([
     queryClient.invalidateQueries({ queryKey: ['cases'] }),
     queryClient.invalidateQueries({ queryKey: ['cases', String(caseId)] }),
@@ -29,32 +38,49 @@ export const DocumentsSection = ({ caseId }) => {
   });
 
   const categoriesQuery = useQuery({
-    queryKey: ['documents', 'categories'],
-    queryFn: () => requestJson('/document-categories'),
+    queryKey: ['documents', 'catalogs'],
+    queryFn: () => requestJson('/documents/catalogs'),
   });
 
   const documents = docsQuery.data ?? [];
-  const categories = categoriesQuery.data ?? [];
+  const categories = categoriesQuery.data?.categories ?? [];
+  const selectedCategory = categories.find((category) => String(category.id) === uploadCategory);
+  const requiresDate = Boolean(selectedCategory?.requiresDate);
 
   const deleteMutation = useMutation({
     mutationFn: (docId) => requestJson(`/documents/${docId}`, { method: 'DELETE' }),
-    onSuccess: async () => { await invalidateCaseViews(); toast.success('Documento eliminado.'); },
+    onSuccess: async () => { await invalidateCaseViews(); setDocumentToDelete(null); toast.success('Documento eliminado.'); },
     onError: (e) => toast.error(e.message),
   });
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
-      const auth = readStoredAuth();
       const fd = new FormData();
       fd.append('file', uploadFile);
-      fd.append('caseId', String(caseId));
-      fd.append('categoryId', uploadCategory || '1');
+      fd.append('categoryId', uploadCategory);
+      if (requiresDate) {
+        fd.append('documentDate', uploadDate);
+      }
+      if (uploadObservations.trim()) {
+        fd.append('observations', uploadObservations.trim());
+      }
       fd.append('originCode', 'SEED_LOCAL');
-      const resp = await fetch('/api/v1/documents', { method: 'POST', headers: { 'X-User-Id': auth?.userId ?? '1' }, body: fd });
-      if (!resp.ok) throw new Error(await resp.text());
-      return resp.json();
+      const document = await requestJson('/documents', { method: 'POST', body: fd });
+      await requestJson(`/documents/${document.id}/relations`, {
+        method: 'POST',
+        body: JSON.stringify({
+          caseId: Number(caseId),
+          entityType: 'CASO',
+          entityId: Number(caseId),
+          moduleCode: 'OPERACION',
+          principal: false,
+          visibleToCustomer: false,
+          visualOrder: 0,
+        }),
+      });
+      return document;
     },
-    onSuccess: async () => { await invalidateCaseViews(); toast.success('Documento subido.'); setShowUpload(false); setUploadFile(null); },
+    onSuccess: async () => { await invalidateCaseViews(); toast.success('Documento subido.'); setShowUpload(false); setUploadFile(null); setUploadDate(''); setUploadObservations(''); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -97,6 +123,7 @@ export const DocumentsSection = ({ caseId }) => {
   };
 
   const allComplete = documents.length > 0 && documents.every(d => d.active !== false);
+  const canUpload = Boolean(uploadFile && uploadCategory && (!requiresDate || uploadDate));
 
   return (
     <div className="rounded-3xl border border-border/70 bg-card p-5">
@@ -115,27 +142,34 @@ export const DocumentsSection = ({ caseId }) => {
 
       {/* Upload dialog */}
       {showUpload ? (
-        <Dialog open={showUpload} onOpenChange={setShowUpload}>
-          <div className="p-6">
-            <h5 className="mb-4 text-sm font-semibold">Subir documento</h5>
+        <Dialog open={showUpload} onClose={() => setShowUpload(false)} title="Subir documento">
             <div className="space-y-3">
               <div>
-                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Categoría</label>
-                <select value={uploadCategory} onChange={(e) => setUploadCategory(e.target.value)} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
+                <label htmlFor="document-category" className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Categoría</label>
+                <select id="document-category" value={uploadCategory} onChange={(e) => { const category = categories.find((item) => String(item.id) === e.target.value); setUploadCategory(e.target.value); setUploadDate(category?.requiresDate ? currentLocalDate() : ''); }} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
                   <option value="">Seleccionar...</option>
                   {categories.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
                 </select>
               </div>
-              <div>
-                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Archivo</label>
-                <Input type="file" onChange={(e) => setUploadFile(e.target.files[0])} />
-              </div>
-              <div className="flex gap-2">
-                <Button size="sm" onClick={() => uploadMutation.mutate()} disabled={!uploadFile || uploadMutation.isPending}>Subir</Button>
+               <div>
+                 <label htmlFor="document-file" className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Archivo</label>
+                 <Input id="document-file" type="file" onChange={(e) => setUploadFile(e.target.files[0])} />
+               </div>
+                {requiresDate ? (
+                  <div>
+                    <label htmlFor="document-date" className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Fecha del documento *</label>
+                    <Input id="document-date" type="date" value={uploadDate} required onChange={(e) => setUploadDate(e.target.value)} />
+                  </div>
+                ) : null}
+                <div>
+                  <label htmlFor="document-observations" className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Observaciones</label>
+                  <Textarea id="document-observations" value={uploadObservations} onChange={(e) => setUploadObservations(e.target.value)} className="min-h-[80px] resize-y" />
+                </div>
+               <div className="flex gap-2">
+                <Button size="sm" onClick={() => uploadMutation.mutate()} disabled={!canUpload || uploadMutation.isPending}>Subir</Button>
                 <Button size="sm" variant="ghost" onClick={() => setShowUpload(false)}>Cancelar</Button>
               </div>
             </div>
-          </div>
         </Dialog>
       ) : null}
 
@@ -158,12 +192,12 @@ export const DocumentsSection = ({ caseId }) => {
                   <td className="px-2 py-2.5">{categories.find(c => c.id === doc.categoryId)?.name ?? 'General'}</td>
                   <td className="px-2 py-2.5 font-medium">{doc.fileName ?? doc.storageKey ?? '—'}</td>
                   <td className="px-2 py-2.5 text-muted-foreground">{doc.createdAt ? new Date(doc.createdAt).toLocaleDateString('es-AR') : '—'}</td>
-                  <td className="px-2 py-2.5 text-muted-foreground max-w-[200px] truncate">{doc.notes ?? '—'}</td>
+                  <td className="px-2 py-2.5 text-muted-foreground max-w-[200px] truncate">{doc.observations ?? '—'}</td>
                   <td className="px-2 py-2.5">
                     <div className="flex gap-1">
-                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Ver" onClick={() => handleView(doc)}><Eye className="h-3.5 w-3.5" /></Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Descargar" onClick={() => handleDownload(doc)}><Download className="h-3.5 w-3.5" /></Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" title="Eliminar" onClick={() => deleteMutation.mutate(doc.documentId)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                      <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => handleView(doc)}><Eye className="mr-1.5 h-3.5 w-3.5" />Visualizar</Button>
+                      <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => handleDownload(doc)}><Download className="mr-1.5 h-3.5 w-3.5" />Descargar</Button>
+                       <Button variant="ghost" size="sm" className="h-8 px-2 text-destructive" onClick={() => setDocumentToDelete(doc)} disabled={deleteMutation.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Eliminar</Button>
                     </div>
                   </td>
                 </tr>
@@ -174,6 +208,20 @@ export const DocumentsSection = ({ caseId }) => {
       ) : (
         <p className="mt-4 text-xs text-muted-foreground">No hay documentos cargados.</p>
       )}
+
+      <Dialog
+        open={Boolean(documentToDelete)}
+        onClose={() => { if (!deleteMutation.isPending) setDocumentToDelete(null); }}
+        title="¿Eliminar documento?"
+        description={`El documento ${documentToDelete?.fileName ?? 'seleccionado'} se eliminará de forma permanente.`}
+      >
+        <div className="flex gap-3">
+          <Button type="button" variant="outline" className="flex-1" data-dialog-initial-focus onClick={() => setDocumentToDelete(null)} disabled={deleteMutation.isPending}>Cancelar</Button>
+          <Button type="button" variant="destructive" className="flex-1" onClick={() => documentToDelete && deleteMutation.mutate(documentToDelete.documentId)} disabled={deleteMutation.isPending}>
+            {deleteMutation.isPending ? 'Eliminando...' : 'Eliminar'}
+          </Button>
+        </div>
+      </Dialog>
 
       {/* Status */}
       <div className="mt-4 flex items-center gap-3">

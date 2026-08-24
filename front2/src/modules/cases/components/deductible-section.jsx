@@ -68,11 +68,11 @@ export const DeductibleSection = ({ caseId, caseDetail }) => {
         <Button size="sm" onClick={handleSave} disabled={mutation.isPending}><Save className="mr-1.5 h-3.5 w-3.5" />Guardar</Button>
       </div>
 
-      {/* Condicionante: sin recupero definido → warning */}
+      {/* La franquicia es opcional y no condiciona el presupuesto. */}
       {!recupero ? (
         <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-          Definí el modo de Recupero para habilitar el resto de la tramitación.
+          La franquicia es opcional. Podés definir el recupero más adelante.
         </div>
       ) : null}
 

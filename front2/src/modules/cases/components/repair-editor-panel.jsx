@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarPlus2, CarFront, CheckCheck, Clock, Flag, ImagePlus, Lock, PackagePlus, Plus, Printer, RefreshCw, Save, Trash2, X } from 'lucide-react';
+import { CalendarPlus2, CarFront, Clock, Flag, ImagePlus, Lock, PackagePlus, Plus, Save, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createRepairAppointment, createVehicleIntake, createVehicleOutcome, getOperationCatalogs, listRepairAppointments, listVehicleIntakes, listVehicleOutcomes, updateRepairAppointment } from '@/modules/cases/api/operations-api';
-import { createCasePart, deleteCasePart, getPartsCatalogs, listCaseParts, syncPartsFromBudget, updateCasePart } from '@/modules/cases/api/parts-api';
+import { createCasePart, deleteCasePart, getPartsCatalogs, listCaseParts, resolvePartReconciliationWarning, syncPartsFromBudget, updateCasePart } from '@/modules/cases/api/parts-api';
 import { requestJson } from '@/shared/api/http-client';
-import { readStoredAuth } from '@/shared/auth/session-storage';
 import { useSession } from '@/modules/auth/providers/session-provider';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
 import { ProviderSelector } from '@/modules/cases/components/provider-selector';
+import { ProviderCreateDialog } from '@/modules/cases/components/provider-create-dialog';
+import { Dialog } from '@/shared/ui/dialog';
 
 const addBusinessDays = (startDateStr, days) => {
   if (!startDateStr || !days || days <= 0) return startDateStr || '';
@@ -50,6 +51,7 @@ export const invalidateCaseProjection = async (queryClient, caseId) => {
     queryClient.invalidateQueries({ queryKey: ['cases'] }),
     queryClient.invalidateQueries({ queryKey: ['cases', String(caseId)] }),
     queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }),
+    queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] }),
     queryClient.invalidateQueries({ queryKey: ['panel'] }),
   ]);
 };
@@ -63,15 +65,6 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const appointmentsQuery = useQuery({ queryKey: ['cases', String(caseId), 'appointments'], queryFn: () => listRepairAppointments(caseId) });
   const intakesQuery = useQuery({ queryKey: ['cases', String(caseId), 'intakes'], queryFn: () => listVehicleIntakes(caseId) });
   const outcomesQuery = useQuery({ queryKey: ['cases', String(caseId), 'outcomes'], queryFn: () => listVehicleOutcomes(caseId) });
-
-  // Check if insurance company requires repair photos
-  const insuranceQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance'], queryFn: () => requestJson(`/cases/${caseId}/insurance`), enabled: caseDetail?.caseTypeCode !== 'PARTICULAR' });
-  const insuranceCompanyQuery = useQuery({
-    queryKey: ['insurance', 'company', insuranceQuery.data?.insuranceCompanyId],
-    queryFn: () => requestJson(`/insurance/companies/${insuranceQuery.data?.insuranceCompanyId}`),
-    enabled: !!insuranceQuery.data?.insuranceCompanyId,
-  });
-  const requiresRepairPhotos = insuranceCompanyQuery.data?.requiresRepairPhotos;
 
   const [appointment, setAppointment] = useState(() => createAppointmentState(latestAppointment));
 
@@ -217,7 +210,40 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const [editMode, setEditMode] = useState(false);
   const [draftParts, setDraftParts] = useState([]);
   const [newPartForm, setNewPartForm] = useState({ description: '', finalSupplier: '', providerId: null, finalPrice: '0', budgetedPrice: '0', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' });
+  const [newPartDialogOpen, setNewPartDialogOpen] = useState(false);
+  const [providerAssignment, setProviderAssignment] = useState(null);
+  const [providerCreateOpen, setProviderCreateOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [subTab, setSubTab] = useState('repuestos');
+  const syncStartedForCase = useRef(null);
+  const [warningToResolve, setWarningToResolve] = useState(null);
+  const [warningResolution, setWarningResolution] = useState('');
+
+  const entrySyncMutation = useMutation({
+    mutationFn: () => syncPartsFromBudget(caseId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'parts'] });
+      toast.success('Repuestos canónicos sincronizados desde el presupuesto.');
+    },
+    onError: (error) => toast.error(error.message || 'No pude sincronizar los repuestos desde el presupuesto.'),
+  });
+
+  useEffect(() => {
+    if (!isTodoRiesgo || syncStartedForCase.current === String(caseId)) return;
+    syncStartedForCase.current = String(caseId);
+    entrySyncMutation.mutate();
+  }, [caseId, isTodoRiesgo]);
+
+  const resolveWarningMutation = useMutation({
+    mutationFn: ({ partId, warningId, resolution }) => resolvePartReconciliationWarning(caseId, partId, warningId, resolution),
+    onSuccess: async () => {
+      setWarningToResolve(null);
+      setWarningResolution('');
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'parts'] });
+      toast.success('Advertencia resuelta y auditada. El repuesto se conservó sin cambios automáticos.');
+    },
+    onError: (error) => toast.error(error.message || 'No pude resolver la advertencia.'),
+  });
 
   const updatePartMutation = useMutation({
     mutationFn: ({ partId, payload }) => updateCasePart(caseId, partId, payload),
@@ -252,12 +278,6 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     onError: (error) => toast.error(error.message || 'No pude eliminar el repuesto.'),
   });
 
-  const syncPartsMutation = useMutation({
-    mutationFn: () => syncPartsFromBudget(caseId),
-    onSuccess: async (data) => { await refreshWorkspace(`${data.length} repuesto(s) sincronizado(s) desde el presupuesto.`); },
-    onError: (error) => toast.error(error.message || 'No pude sincronizar.'),
-  });
-
   const parts = partsQuery.data ?? [];
   const appointments = appointmentsQuery.data ?? [];
   const intakes = intakesQuery.data ?? [];
@@ -278,6 +298,8 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const cancelEdit = () => {
     setDraftParts([]);
     setNewPartForm({ description: '', finalSupplier: '', providerId: null, finalPrice: '0', budgetedPrice: '0', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' });
+    setNewPartDialogOpen(false);
+    setProviderAssignment(null);
     setEditMode(false);
   };
 
@@ -290,6 +312,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     const tempId = -Date.now();
     setDraftParts(prev => [...prev, { ...newPartForm, _tempId: tempId, id: tempId, budgetedPrice: Number(newPartForm.budgetedPrice) || 0, finalPrice: Number(newPartForm.finalPrice) || 0 }]);
     setNewPartForm({ description: '', finalSupplier: '', providerId: null, finalPrice: '0', budgetedPrice: '0', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' });
+    setNewPartDialogOpen(false);
   };
 
   const removeFromDraft = (tempId) => {
@@ -313,9 +336,9 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
         if (draft.paymentStatusCode !== original.paymentStatusCode) changes.paymentStatusCode = draft.paymentStatusCode || null;
         if (Object.keys(changes).length > 0) {
           promises.push(updateCasePart(caseId, draft.id, {
-            budgetItemId: null,
+            budgetItemId: original.budgetItemId || null,
             description: draft.description,
-            partCode: null,
+            partCode: original.partCode || null,
             finalSupplier: draft.finalSupplier || null,
             providerId: draft.providerId || null,
             authorizationCode: draft.authorizationCode || null,
@@ -324,9 +347,9 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
             paymentStatusCode: draft.paymentStatusCode || original.paymentStatusCode || null,
             budgetedPrice: Number(draft.budgetedPrice || original.budgetedPrice) || 0,
             finalPrice: Number(draft.finalPrice || original.finalPrice) || 0,
-            receivedDate: null,
-            used: false,
-            returned: false,
+            receivedDate: original.receivedDate || null,
+            used: Boolean(original.used),
+            returned: Boolean(original.returned),
           }));
         }
       }
@@ -362,9 +385,8 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   };
 
   const displayParts = editMode ? draftParts : parts;
-  const partsTotal = displayParts.reduce((sum, part) => sum + (Number(part.finalPrice) || Number(part.budgetedPrice) || 0), 0);
-
-  const [subTab, setSubTab] = useState('repuestos');
+  const partsTotal = displayParts.filter((part) => !part.accessory).reduce((sum, part) => sum + (Number(part.finalPrice) || Number(part.budgetedPrice) || 0), 0);
+  const openWarnings = parts.flatMap((part) => (part.reconciliationWarnings || []).map((warning) => ({ ...warning, part })));
 
   const subTabAvailability = useMemo(() => ({
     repuestos: { enabled: true, reason: null },
@@ -416,12 +438,6 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
 
   return (
     <div className="mt-5 space-y-5">
-      {requiresRepairPhotos ? (
-        <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-700 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400">
-          <ImagePlus className="h-4 w-4 shrink-0" />
-          <span><strong>{insuranceCompanyQuery.data?.name || 'La compañía'}</strong> requiere fotos del vehículo reparado como condición para pasar a pagos. Asegurate de cargarlas en Documentación antes del egreso.</span>
-        </div>
-      ) : null}
       {/* Sub-tabs */}
       <div className="flex flex-wrap gap-2">
         {[
@@ -471,7 +487,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
           <div>
             <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><PackagePlus className="h-5 w-5" /></div>
             <h4 className="text-lg font-semibold">Repuestos</h4>
-            <p className="mt-1 text-sm text-muted-foreground">Total: {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(partsTotal)}</p>
+            <p className="mt-1 text-sm text-muted-foreground">Total de repuestos: {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(partsTotal)}. Los trabajos extra no se incluyen.</p>
           </div>
           {isTodoRiesgo ? (
             <Button variant={isNoRepair ? 'outline' : 'destructive'} size="sm" onClick={() => setNoRepairDialog(isNoRepair ? 'revert' : 'apply')}>
@@ -480,32 +496,21 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
           ) : null}
           {editMode ? (
             <div className="ml-auto flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setNewPartDialogOpen(true)}>Agregar repuesto extra</Button>
               <Button variant="outline" size="sm" onClick={cancelEdit}>Cancelar</Button>
               <Button size="sm" onClick={saveAllChanges} disabled={saving}>{saving ? 'Guardando...' : 'Guardar cambios'}</Button>
             </div>
           ) : (
             <div className="ml-auto flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => syncPartsMutation.mutate()} disabled={syncPartsMutation.isPending}><RefreshCw className="mr-1.5 h-4 w-4" />Sincronizar con presupuesto</Button>
               <Button variant="outline" size="sm" onClick={enterEditMode}>Editar</Button>
             </div>
           )}
         </div>
-        {editMode ? (
-          <div className="mb-4 rounded-2xl border border-dashed border-border/60 bg-background/70 p-4">
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <div className="space-y-1"><Label className="text-xs">Descripción</Label><Input className="h-9 rounded-xl text-sm" value={newPartForm.description} onChange={(e) => setNewPartForm(f => ({...f, description: e.target.value}))} placeholder="Repuesto a agregar" /></div>
-              <div className="space-y-1"><Label className="text-xs">Proveedor</Label><ProviderSelector value={newPartForm.finalSupplier} providerId={newPartForm.providerId} onChange={({ providerId, snapshot }) => setNewPartForm((current) => ({ ...current, providerId, finalSupplier: snapshot || '' }))} /></div>
-              <div className="space-y-1"><Label className="text-xs">Importe</Label><Input className="h-9 rounded-xl text-sm" type="number" min="0" step="0.01" value={newPartForm.finalPrice} onChange={(e) => setNewPartForm(f => ({...f, finalPrice: e.target.value}))} /></div>
-              <div className="space-y-1"><Label className="text-xs">Estado</Label><select className="h-9 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" value={newPartForm.statusCode} onChange={(e) => setNewPartForm(f => ({...f, statusCode: e.target.value}))}><option value="">—</option>{statusCodeOptions.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}</select></div>
-              <div className="space-y-1"><Label className="text-xs">Compra</Label><select className="h-9 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" value={newPartForm.purchasedByCode} onChange={(e) => setNewPartForm(f => ({...f, purchasedByCode: e.target.value}))}><option value="">—</option>{purchasedByCodeOptions.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}</select></div>
-              <div className="space-y-1"><Label className="text-xs">Pago</Label><select className="h-9 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" value={newPartForm.paymentStatusCode} onChange={(e) => setNewPartForm(f => ({...f, paymentStatusCode: e.target.value}))}><option value="">—</option>{paymentStatusCodeOptions.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}</select></div>
-              <div className="flex items-end"><Button className="w-full" size="sm" onClick={addNewPartToDraft}><Plus className="mr-1.5 h-4 w-4" />Agregar</Button></div>
-            </div>
-          </div>
-        ) : null}
+        {isTodoRiesgo ? <p className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-100" role="status">Al ingresar se sincronizan automáticamente los repuestos canónicos desde las líneas REEMPLAZAR del presupuesto. La comparación solo actualiza proveedor y precio de repuestos existentes.</p> : null}
+        {openWarnings.length > 0 ? <section className="mb-4 rounded-2xl border border-amber-400 bg-amber-50 p-4 text-amber-950 dark:bg-amber-950 dark:text-amber-50" aria-labelledby="reconciliation-warnings-heading" role="alert"><h5 id="reconciliation-warnings-heading" className="font-semibold">Requiere resolución manual</h5><p className="mt-1 text-sm">La fuente canónica dejó de ser REEMPLAZAR o fue removida. Estos repuestos tienen actividad y no se modificaron ni eliminaron.</p><div className="mt-3 space-y-2">{openWarnings.map((warning) => <div key={warning.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-background/60 p-3 text-sm"><span><strong>{warning.part.description}</strong>: {warning.reason}</span><Button size="sm" variant="outline" onClick={() => setWarningToResolve(warning)}>Resolver manualmente</Button></div>)}</div></section> : null}
         {displayParts.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border/70 py-6 text-center text-sm text-muted-foreground">
-            {syncPartsMutation.isPending ? 'Sincronizando repuestos desde el presupuesto...' : 'Sin repuestos. Usá el botón "Sincronizar con presupuesto" para traerlos.'}
+            Sin repuestos. Los repuestos canónicos se originan en las líneas REEMPLAZAR y trabajos extra REEMPLAZAR del presupuesto.
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -513,11 +518,9 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
               <thead>
                 <tr className="border-b border-border/60 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   <th className="px-3 py-3 text-left">Repuesto</th>
-                  <th className="px-3 py-3 text-left">Inventario</th>
                   <th className="px-3 py-3 text-left">Proveedor</th>
                   <th className="px-3 py-3 text-right">Importe</th>
                   <th className="px-3 py-3 text-left">Estado</th>
-                  <th className="px-3 py-3 text-left">Autorizado</th>
                   <th className="px-3 py-3 text-left">Compra</th>
                   <th className="px-3 py-3 text-left">Pago</th>
                   {isTodoRiesgo ? <th className="px-3 py-3 text-left">Autorización</th> : null}
@@ -527,14 +530,12 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
               <tbody>
                 {displayParts.map((part) => (
                   <tr key={part._tempId || part.id} className="border-b border-border/40 hover:bg-muted/30 transition-colors">
-                    <td className="px-3 py-3 font-medium max-w-[200px] truncate">{part.description || 'Sin descripción'}</td>
-                    <td className="px-3 py-3 text-xs text-muted-foreground font-mono">{part.inventoryNumber || '—'}</td>
+                    <td className="px-3 py-3 font-medium max-w-[200px] truncate">{part.description || 'Sin descripción'}{part.accessory ? <span className="ml-2 rounded-full border px-2 py-0.5 text-xs font-normal text-muted-foreground">Trabajo extra</span> : null}</td>
                     <td className="px-3 py-3">
                       {editMode ? (
-                        <ProviderSelector value={part.finalSupplier || ''} providerId={part.providerId} onChange={({ providerId, snapshot }) => {
-                          updateDraftField(part._tempId || part.id, 'providerId', providerId);
-                          updateDraftField(part._tempId || part.id, 'finalSupplier', snapshot || '');
-                        }} />
+                        <Button type="button" variant="outline" size="sm" onClick={() => setProviderAssignment({ partId: part._tempId || part.id, providerId: part.providerId || null, finalSupplier: part.finalSupplier || '' })}>
+                          {part.finalSupplier || 'Asignar proveedor'}
+                        </Button>
                       ) : (
                         <span className="text-sm">{part.finalSupplier || '—'}</span>
                       )}
@@ -555,22 +556,6 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                       ) : (
                         <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/50 px-2.5 py-0.5 text-xs font-medium">{statusCodeOptions.find(o => o.value === part.statusCode)?.label || part.statusCode || '—'}</span>
                       )}
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex gap-1">
-                        <button type="button"
-                          className={`rounded-lg px-2 py-1 text-xs font-medium transition ${part.authorizedCode === 'AUTORIZADO' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400' : 'bg-muted/50 text-muted-foreground hover:bg-emerald-100 hover:text-emerald-700'}`}
-                          onClick={() => updatePartMutation.mutate({ partId: part.id, payload: { ...part, authorizedCode: part.authorizedCode === 'AUTORIZADO' ? null : 'AUTORIZADO' } })}
-                          title="Autorizar repuesto">
-                          <CheckCheck className="h-3.5 w-3.5" />
-                        </button>
-                        <button type="button"
-                          className={`rounded-lg px-2 py-1 text-xs font-medium transition ${part.authorizedCode === 'RECHAZADO' ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400' : 'bg-muted/50 text-muted-foreground hover:bg-red-100 hover:text-red-700'}`}
-                          onClick={() => updatePartMutation.mutate({ partId: part.id, payload: { ...part, authorizedCode: part.authorizedCode === 'RECHAZADO' ? null : 'RECHAZADO' } })}
-                          title="Rechazar repuesto">
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
                     </td>
                     <td className="px-3 py-3">
                       {editMode ? (
@@ -607,30 +592,11 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                       </td>
                     ) : null}
                     <td className="px-3 py-3">
-                      <div className="flex items-center gap-1">
-                        {part.id ? (
-                          <button type="button" className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-primary/10 hover:text-primary" title="Imprimir etiqueta"
-                            onClick={async () => {
-                              const stored = readStoredAuth();
-                              const token = stored?.accessToken;
-                              if (!token) { toast.error('No hay sesión activa.'); return; }
-                              const res = await fetch(`/api/v1/cases/${caseId}/parts/${part.id}/label`, { headers: { Authorization: `Bearer ${token}` } });
-                              if (!res.ok) { toast.error('No se pudo generar la etiqueta.'); return; }
-                              const blob = await res.blob();
-                              const a = document.createElement('a');
-                              a.href = URL.createObjectURL(blob);
-                              a.download = `etiqueta-${part.id}.pdf`;
-                              a.click();
-                            }}>
-                            <Printer className="h-4 w-4" />
-                          </button>
-                        ) : null}
-                        <button type="button" className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950"
-                          onClick={() => editMode ? removeFromDraft(part._tempId || part.id) : setDeletePartConfirm(part)}
-                          title={editMode ? 'Quitar de la lista' : 'Eliminar repuesto'}>
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
+                      <button type="button" className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950"
+                        onClick={() => editMode ? removeFromDraft(part._tempId || part.id) : setDeletePartConfirm(part)}
+                        title={editMode ? 'Quitar de la lista' : 'Eliminar repuesto'}>
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -657,6 +623,35 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
             </div>
           </div>
         ) : null}
+        <Dialog open={Boolean(warningToResolve)} onClose={() => setWarningToResolve(null)} title="Resolver advertencia manualmente" description="La resolución queda auditada. No se eliminará ni modificará automáticamente el repuesto ni su actividad.">
+          <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (!warningResolution.trim()) { toast.error('La resolución es obligatoria.'); return; } resolveWarningMutation.mutate({ partId: warningToResolve.part.id, warningId: warningToResolve.id, resolution: warningResolution.trim() }); }}>
+            <p className="text-sm"><strong>{warningToResolve?.part?.description}</strong>: {warningToResolve?.reason}</p>
+            <div className="space-y-1"><Label htmlFor="warning-resolution">Resolución</Label><Textarea id="warning-resolution" data-dialog-initial-focus rows={3} value={warningResolution} onChange={(event) => setWarningResolution(event.target.value)} required /></div>
+            <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setWarningToResolve(null)}>Cancelar</Button><Button type="submit" disabled={resolveWarningMutation.isPending}>{resolveWarningMutation.isPending ? 'Registrando...' : 'Registrar resolución'}</Button></div>
+          </form>
+        </Dialog>
+        <Dialog open={newPartDialogOpen} onClose={() => setNewPartDialogOpen(false)} title="Agregar repuesto extra" description="Sumá un repuesto manual a esta edición. Se guardará al confirmar los cambios.">
+          <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); addNewPartToDraft(); }}>
+            <div className="space-y-1"><Label htmlFor="extra-part-description">Descripción</Label><Input id="extra-part-description" data-dialog-initial-focus value={newPartForm.description} onChange={(event) => setNewPartForm((form) => ({ ...form, description: event.target.value }))} required /></div>
+            <div className="space-y-1"><Label>Proveedor</Label><Button type="button" variant="outline" className="w-full justify-start" onClick={() => setProviderAssignment({ partId: null, providerId: newPartForm.providerId, finalSupplier: newPartForm.finalSupplier })}>{newPartForm.finalSupplier || 'Asignar proveedor'}</Button></div>
+            <div className="space-y-1"><Label htmlFor="extra-part-price">Importe</Label><Input id="extra-part-price" type="number" min="0" step="0.01" value={newPartForm.finalPrice} onChange={(event) => setNewPartForm((form) => ({ ...form, finalPrice: event.target.value }))} /></div>
+            <div className="space-y-1"><Label htmlFor="extra-part-status">Estado</Label><select id="extra-part-status" className="h-11 w-full rounded-2xl border border-input bg-background px-4 text-sm" value={newPartForm.statusCode} onChange={(event) => setNewPartForm((form) => ({ ...form, statusCode: event.target.value }))}>{statusCodeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
+            <div className="space-y-1"><Label htmlFor="extra-part-purchaser">Compra</Label><select id="extra-part-purchaser" className="h-11 w-full rounded-2xl border border-input bg-background px-4 text-sm" value={newPartForm.purchasedByCode} onChange={(event) => setNewPartForm((form) => ({ ...form, purchasedByCode: event.target.value }))}>{purchasedByCodeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
+            <div className="space-y-1"><Label htmlFor="extra-part-payment">Pago</Label><select id="extra-part-payment" className="h-11 w-full rounded-2xl border border-input bg-background px-4 text-sm" value={newPartForm.paymentStatusCode} onChange={(event) => setNewPartForm((form) => ({ ...form, paymentStatusCode: event.target.value }))}>{paymentStatusCodeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
+            <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setNewPartDialogOpen(false)}>Cancelar</Button><Button type="submit"><Plus className="mr-1.5 h-4 w-4" />Agregar</Button></div>
+          </form>
+        </Dialog>
+        <Dialog open={Boolean(providerAssignment)} onClose={() => setProviderAssignment(null)} title="Asignar proveedor" description="Buscá un proveedor existente o ingresá un nombre manual para este repuesto.">
+          <div className="space-y-4">
+            <ProviderSelector value={providerAssignment?.finalSupplier || ''} providerId={providerAssignment?.providerId || null} onChange={({ providerId, snapshot }) => setProviderAssignment((current) => ({ ...current, providerId, finalSupplier: snapshot || '' }))} />
+            <div className="flex justify-end gap-2">
+              {session?.authorities?.includes('proveedor.gestionar') ? <Button type="button" variant="outline" onClick={() => setProviderCreateOpen(true)}>Crear global</Button> : null}
+              <Button type="button" variant="outline" onClick={() => setProviderAssignment(null)}>Cancelar</Button>
+              <Button type="button" onClick={() => { if (providerAssignment.partId == null) setNewPartForm((form) => ({ ...form, providerId: providerAssignment.providerId, finalSupplier: providerAssignment.finalSupplier })); else { updateDraftField(providerAssignment.partId, 'providerId', providerAssignment.providerId); updateDraftField(providerAssignment.partId, 'finalSupplier', providerAssignment.finalSupplier); } setProviderAssignment(null); }}>Asignar</Button>
+            </div>
+          </div>
+        </Dialog>
+        {session?.authorities?.includes('proveedor.gestionar') ? <ProviderCreateDialog open={providerCreateOpen} onClose={() => setProviderCreateOpen(false)} onCreated={(provider) => setProviderAssignment((current) => ({ ...current, providerId: provider.id, finalSupplier: provider.name }))} /> : null}
       </div>
       ) : null}
 

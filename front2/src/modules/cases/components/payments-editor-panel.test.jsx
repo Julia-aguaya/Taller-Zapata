@@ -8,6 +8,7 @@ const mockCreateReceipt = vi.fn().mockResolvedValue({ id: 10 });
 const mockGetFinanceCatalogs = vi.fn().mockResolvedValue({ paymentMethodCodes: [], cancellationTypeCodes: [] });
 const mockListFinancialMovements = vi.fn().mockResolvedValue([]);
 const mockListReceipts = vi.fn().mockResolvedValue([]);
+const mockRequestJson = vi.fn().mockResolvedValue({});
 const mockInvalidateQueries = vi.fn();
 const mockRefetchQueries = vi.fn().mockResolvedValue(undefined);
 let useQueryData = {};
@@ -38,6 +39,10 @@ vi.mock('@tanstack/react-query', () => ({
 
 vi.mock('@/modules/auth/providers/session-provider', () => ({
   useSession: () => ({ session: { user: { id: 1 } } }),
+}));
+
+vi.mock('@/shared/api/http-client', () => ({
+  requestJson: (...args) => mockRequestJson(...args),
 }));
 
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -87,6 +92,7 @@ const mount = (overrides = {}) => {
   useQueryData = {};
   mockCreateFinancialMovement.mockClear();
   mockCreateReceipt.mockClear();
+  mockRequestJson.mockClear();
   const props = { ...baseProps, ...overrides };
   if (props.accessoryUi) return render(<AccessoryPaymentsHarness {...props} />);
   return render(props.caseDetail.caseTypeCode === 'CLEAS' ? <CleasPaymentsHarness {...props} /> : <PaymentsEditorPanel {...props} />);
@@ -129,6 +135,17 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.queryByText('Facturación')).toBeNull();
     expect(screen.queryByText('Datos CLEAS del pago')).toBeNull();
     expect(screen.queryByLabelText('A facturar Cía.')).toBeNull();
+  });
+
+  it('updates insurance payment dates through the partial processing contract', async () => {
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'TODO_RIESGO' } });
+
+    fireEvent.change(screen.getByLabelText('Fecha pasado a pagos'), { target: { value: '2026-08-23' } });
+
+    await waitFor(() => expect(mockRequestJson).toHaveBeenCalledWith('/cases/42/insurance-processing', {
+      method: 'PATCH',
+      body: JSON.stringify({ expectedVersion: 0, passedToPaymentsAt: '2026-08-23' }),
+    }));
   });
 
   it('hides accessory payments for PARTICULAR', () => {

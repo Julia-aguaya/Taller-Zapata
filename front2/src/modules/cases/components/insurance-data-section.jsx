@@ -57,6 +57,11 @@ const ContactSelector = ({ label, companyId, selectedPersonId, roleCode, onSelec
     onError: (e) => toast.error(e.message),
   });
 
+  const handleCreate = (event) => {
+    event.preventDefault();
+    createMutation.mutate();
+  };
+
   if (!companyId) return <Field label={label}><p className="mt-1 text-sm text-muted-foreground">Seleccioná una compañía</p></Field>;
 
   if (selectedPersonId && selected) {
@@ -89,15 +94,13 @@ const ContactSelector = ({ label, companyId, selectedPersonId, roleCode, onSelec
       ) : (
         <div className="flex items-center gap-2">
           <p className="text-xs text-muted-foreground">Sin contactos.</p>
-          <Button size="sm" variant="outline" onClick={() => setShowNew(true)}><Plus className="mr-1 h-3 w-3" />Crear</Button>
+          <Button type="button" size="sm" variant="outline" onClick={() => setShowNew(true)}><Plus className="mr-1 h-3 w-3" />Crear</Button>
         </div>
       )}
 
       {showNew ? (
-        <Dialog open={showNew} onOpenChange={setShowNew}>
-          <div className="p-6">
-            <h5 className="mb-4 text-sm font-semibold">{label} — Crear nuevo contacto</h5>
-            <div className="space-y-3">
+        <Dialog open={showNew} onClose={() => setShowNew(false)} title={`${label} - Crear nuevo contacto`}>
+          <form className="space-y-3" onSubmit={handleCreate}>
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
                   <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Nombre</label>
@@ -117,11 +120,10 @@ const ContactSelector = ({ label, companyId, selectedPersonId, roleCode, onSelec
                 </div>
               </div>
               <div className="flex gap-2">
-                <Button size="sm" onClick={() => createMutation.mutate()} disabled={!newNombre || createMutation.isPending}>Crear</Button>
-                <Button size="sm" variant="ghost" onClick={() => setShowNew(false)}>Cancelar</Button>
+                <Button type="submit" size="sm" disabled={!newNombre || createMutation.isPending}>Crear</Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setShowNew(false)}>Cancelar</Button>
               </div>
-            </div>
-          </div>
+          </form>
         </Dialog>
       ) : null}
     </Field>
@@ -140,11 +142,13 @@ export const InsuranceDataSection = ({ caseId, caseDetail }) => {
   const [companyId, setCompanyId] = useState(null);
   const [tramitadorId, setTramitadorId] = useState(null);
   const [inspectorId, setInspectorId] = useState(null);
+  const [draft, setDraft] = useState({ claimNumber: '', coverageDetail: '' });
 
   useEffect(() => {
     if (insurance?.insuranceCompanyId) setCompanyId(insurance.insuranceCompanyId);
     if (insurance?.processorPersonId) setTramitadorId(insurance.processorPersonId);
     if (insurance?.inspectorPersonId) setInspectorId(insurance.inspectorPersonId);
+    if (insurance) setDraft({ claimNumber: insurance.claimNumber ?? '', coverageDetail: insurance.coverageDetail ?? '' });
   }, [insurance?.insuranceCompanyId, insurance?.processorPersonId, insurance?.inspectorPersonId]);
 
   const mutation = useMutation({
@@ -159,8 +163,8 @@ export const InsuranceDataSection = ({ caseId, caseDetail }) => {
       insuranceCompanyId: Number(companyId),
       policyNumber: insurance?.policyNumber ?? null,
       certificateNumber: insurance?.certificateNumber ?? null,
-      claimNumber: (document.getElementById('insurance-form')?.elements?.claimNumber?.value) || null,
-      coverageDetail: (document.getElementById('insurance-form')?.elements?.coverageDetail?.value) || null,
+      claimNumber: draft.claimNumber || null,
+      coverageDetail: draft.coverageDetail || null,
       processorCasePersonId: tramitadorId,
       inspectorCasePersonId: inspectorId,
     });
@@ -175,20 +179,20 @@ export const InsuranceDataSection = ({ caseId, caseDetail }) => {
           </div>
           <h4 className="text-sm font-semibold">Datos del seguro</h4>
         </div>
-        <Button size="sm" onClick={handleSave} disabled={mutation.isPending}><Save className="mr-1.5 h-3.5 w-3.5" />Guardar</Button>
+        <Button type="button" size="sm" onClick={handleSave} disabled={mutation.isPending}><Save className="mr-1.5 h-3.5 w-3.5" />Guardar</Button>
       </div>
 
-      <form id="insurance-form" key={insurance?.id ?? 'new'} className="mt-4 space-y-4">
+      <div className="mt-4 space-y-4">
         <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
           <Field label="Cía. aseguradora">
-            <select defaultValue={insurance?.insuranceCompanyId ?? ''} onChange={(e) => setCompanyId(e.target.value ? Number(e.target.value) : null)}
+            <select value={companyId ?? ''} onChange={(e) => setCompanyId(e.target.value ? Number(e.target.value) : null)}
               className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
               <option value="">Seleccionar...</option>
               {companies.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
             </select>
           </Field>
           <Field label="N° de Siniestro">
-            <Input name="claimNumber" defaultValue={insurance?.claimNumber ?? ''} placeholder="Ej: 4-2541587" />
+            <Input name="claimNumber" value={draft.claimNumber} onChange={(event) => setDraft((current) => ({ ...current, claimNumber: event.target.value }))} placeholder="Ej: 4-2541587" />
           </Field>
         </div>
 
@@ -200,9 +204,9 @@ export const InsuranceDataSection = ({ caseId, caseDetail }) => {
         </div>
 
         <Field label="Detalle de la cobertura">
-          <Input name="coverageDetail" defaultValue={insurance?.coverageDetail ?? ''} placeholder="Ej: Cobertura para luneta y equipo de GNC" />
+          <Input name="coverageDetail" value={draft.coverageDetail} onChange={(event) => setDraft((current) => ({ ...current, coverageDetail: event.target.value }))} placeholder="Ej: Cobertura para luneta y equipo de GNC" />
         </Field>
-      </form>
+      </div>
     </div>
   );
 };

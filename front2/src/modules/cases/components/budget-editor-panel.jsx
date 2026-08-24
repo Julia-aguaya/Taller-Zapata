@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Eye, FileDown, ImagePlus, Plus, Save, ShieldCheck, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { closeCaseBudget, createCaseBudgetItem, updateCaseBudgetItem, upsertCaseBudget } from '@/modules/cases/api/budget-api';
+import { closeCaseBudget, createCaseBudgetItem, generateCaseBudget, updateCaseBudgetItem, upsertCaseBudget } from '@/modules/cases/api/budget-api';
+import { BudgetComparisonPanel } from '@/modules/cases/components/budget-comparison-panel';
 import { getBudgetCatalogs } from '@/modules/cases/api/budget-catalogs-api';
 import { requestJson } from '@/shared/api/http-client';
 import { useSession } from '@/modules/auth/providers/session-provider';
@@ -12,6 +13,7 @@ import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
 import { ProviderSelector, providerPayload } from '@/modules/cases/components/provider-selector';
 import { getAccessoryWorkTotals } from '@/modules/cases/lib/accessory-work-total';
+import { syncPartsFromBudget } from '@/modules/cases/api/parts-api';
 
 const currency = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 });
 const fmt = (v) => (v == null ? '-' : currency.format(v));
@@ -21,7 +23,7 @@ const createEmptyItem = (visualOrder = 1, defaults = {}) => ({
   id: null, visualOrder, affectedPiece: '', taskCode: 'CHAPA',
   damageLevelCode: defaults.damageLevelCode || '', partDecisionCode: defaults.partDecisionCode || '',
   actionCode: defaults.actionCode || '', requiresReplacement: false,
-  partValue: '0', estimatedHours: '0', laborAmount: '0', active: true,
+  partValue: '0', estimatedHours: '0', laborAmount: '0', active: true, providerId: null, providerSnapshot: null,
 });
 
 const toItemState = (item) => ({
@@ -30,7 +32,7 @@ const toItemState = (item) => ({
   partDecisionCode: item.partDecisionCode || 'REPARAR', actionCode: item.actionCode || 'REPARAR',
   requiresReplacement: Boolean(item.requiresReplacement),
   partValue: item.partValue?.toString?.() || '0', estimatedHours: item.estimatedHours?.toString?.() || '0',
-  laborAmount: item.laborAmount?.toString?.() || '0', active: item.active ?? true,
+  laborAmount: item.laborAmount?.toString?.() || '0', active: item.active ?? true, providerId: item.providerId || null, providerSnapshot: item.providerSnapshot || null,
 });
 
 const toDecimal = (v) => { const p = Number(v); return Number.isFinite(p) ? p : 0; };
@@ -77,6 +79,16 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, ac
 
   const [header, setHeader] = useState(() => toHeaderState(budget));
   const [items, setItems] = useState(() => (budget?.items?.length ? budget.items.map(toItemState) : [createEmptyItem(1, defaults)]));
+  const [activeTab, setActiveTab] = useState('content');
+  const [comparisonAnnouncement, setComparisonAnnouncement] = useState('');
+  const comparisonHeadingRef = useRef(null);
+  const canViewComparison = session?.authorities?.includes('presupuesto.ver') ?? false;
+  const canViewProviders = session?.authorities?.includes('proveedor.ver') ?? false;
+  const tabIds = canViewComparison ? ['content', 'comparison'] : ['content'];
+  const moveTab = (nextTab) => {
+    setActiveTab(nextTab);
+    window.setTimeout(() => document.getElementById(`budget-tab-${nextTab}`)?.focus(), 0);
+  };
 
   useEffect(() => { setHeader(toHeaderState(budget)); setItems(budget?.items?.length ? budget.items.map(toItemState) : [createEmptyItem(1, defaults)]); }, [budget, defaults, toHeaderState]);
 
@@ -107,7 +119,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, ac
 
   const saveMutation = useMutation({
     mutationFn: async ({ closeAfterSave = false }) => {
-      await upsertCaseBudget(caseId, {
+      const payload = {
         budgetDate: header.budgetDate, reportStatusCode: closeAfterSave ? 'CERRADO' : 'BORRADOR',
         laborWithoutVat, vatRate: null, partsTotal: partsSum,
         estimatedDays: Number.parseInt(header.estimatedDays || '0', 10) || 0,
@@ -120,14 +132,21 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, ac
         electricalWorkApplies: header.electricalWorkApplies === 'SI', electricalDetail: header.electricalDetail || null,
         mechanicalWorkApplies: header.mechanicalWorkApplies === 'SI', mechanicalWorkCode: header.mechanicalWorkCode || null,
         quotedPartsDate: header.quotedPartsDate || null, quotedPartsSupplier: header.quotedPartsSupplier || null, providerId: header.providerId,
-      });
-      for (const item of normalizedItems) {
-        const p = { visualOrder: item.visualOrder, affectedPiece: item.affectedPiece, taskCode: item.taskCode, damageLevelCode: item.damageLevelCode, partDecisionCode: item.partDecisionCode, actionCode: item.actionCode, requiresReplacement: item.requiresReplacement, partValue: toDecimal(item.partValue), estimatedHours: toDecimal(item.estimatedHours), laborAmount: toDecimal(item.laborAmount), active: item.active };
-        if (item.id) await updateCaseBudgetItem(caseId, item.id, p); else await createCaseBudgetItem(caseId, p);
+        accessoryWorks: accessoryWorks.map((work) => ({ id: typeof work.id === 'number' ? work.id : null, affectedPiece: work.affectedPiece || null, actionCode: work.actionCode || null, damageLevelCode: work.damageLevelCode || null, replacementAmount: toDecimal(work.replacementAmount) })),
+      };
+      if (closeAfterSave) {
+        const response = await generateCaseBudget(caseId, { ...payload, items: normalizedItems.map((item) => ({ visualOrder: item.visualOrder, affectedPiece: item.affectedPiece, taskCode: item.taskCode, damageLevelCode: item.damageLevelCode, partDecisionCode: item.partDecisionCode, actionCode: item.actionCode, requiresReplacement: item.requiresReplacement, partValue: toDecimal(item.partValue), estimatedHours: toDecimal(item.estimatedHours), laborAmount: toDecimal(item.laborAmount), active: item.active, providerId: item.providerId })) }, crypto.randomUUID());
+        return response;
       }
-      if (closeAfterSave) await closeCaseBudget(caseId, { reportStatusCode: 'CERRADO', observations: header.observations || null });
+      await upsertCaseBudget(caseId, payload);
+       for (const item of normalizedItems) {
+        const p = { visualOrder: item.visualOrder, affectedPiece: item.affectedPiece, taskCode: item.taskCode, damageLevelCode: item.damageLevelCode, partDecisionCode: item.partDecisionCode, actionCode: item.actionCode, requiresReplacement: item.requiresReplacement, partValue: toDecimal(item.partValue), estimatedHours: toDecimal(item.estimatedHours), laborAmount: toDecimal(item.laborAmount), active: item.active, providerId: item.providerId };
+         if (item.id) await updateCaseBudgetItem(caseId, item.id, p); else await createCaseBudgetItem(caseId, p);
+       }
+       if (caseDetail?.caseTypeCode === 'TODO_RIESGO') await syncPartsFromBudget(caseId);
+       if (closeAfterSave) await closeCaseBudget(caseId, { reportStatusCode: 'CERRADO', observations: header.observations || null });
     },
-    onSuccess: async (_, variables) => { await invalidateWorkspace(); toast.success(variables.closeAfterSave ? 'Presupuesto cerrado.' : 'Presupuesto guardado.'); },
+    onSuccess: async (response, variables) => { await invalidateWorkspace(); if (variables.closeAfterSave) { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'budget-comparisons'] }); if (canViewComparison) { setActiveTab('comparison'); setComparisonAnnouncement(`Presupuesto generado. Se importaron ${response?.comparisonSnapshot?.importedPieceCount ?? 0} piezas para comparar.`); window.setTimeout(() => comparisonHeadingRef.current?.focus(), 0); } toast.success('Presupuesto generado y comparación creada.'); } else toast.success('Presupuesto guardado.'); },
     onError: (error) => toast.error(error.message || 'No pude guardar.'),
   });
 
@@ -182,7 +201,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, ac
   return (
     <div className="mt-5 space-y-5">
       {/* Barra superior */}
-      <div className="flex flex-wrap items-center gap-2">
+       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-card px-4 py-2 text-sm font-medium">{workshopInfo?.branchName || 'Taller Zapata'}</div>
         {budget?.reportStatusCode === 'CERRADO' ? (
             <Button className="bg-emerald-600 hover:bg-emerald-700" size="sm" onClick={async () => { const stored = JSON.parse(window.localStorage.getItem('front2.session.v1') || '{}'); const r = await fetch(`/api/v1/cases/${caseId}/budget/pdf`, { headers: { Authorization: `Bearer ${stored.accessToken}` } }); if (!r.ok) return toast.error('No se pudo descargar.'); const b = await r.blob(); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = `presupuesto-${caseId}.pdf`; a.click(); URL.revokeObjectURL(u); }}><FileDown className="mr-1.5 h-4 w-4" />Descargar PDF</Button>
@@ -191,8 +210,15 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, ac
           <Button variant="outline" onClick={() => guardedSave(false)} disabled={saveMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar cambios</Button>
           <Button onClick={() => guardedSave(true)} disabled={saveMutation.isPending}><ShieldCheck className="mr-1.5 h-4 w-4" />Generar presupuesto</Button>
         </div>
+        {caseDetail?.caseTypeCode === 'TODO_RIESGO' ? <p className="w-full text-sm text-muted-foreground" role="status">Al guardar o generar, las líneas REEMPLAZAR y trabajos extra REEMPLAZAR se sincronizan automáticamente con Reparación. Las líneas con actividad que dejan de calificar requieren resolución manual.</p> : null}
       </div>
 
+      <div role="tablist" aria-label="Presupuesto" className="flex w-fit rounded-xl border border-border/60 bg-muted/40 p-1">
+        {tabIds.map((id) => <button key={id} id={`budget-tab-${id}`} role="tab" aria-selected={activeTab === id} aria-controls={`budget-panel-${id}`} tabIndex={activeTab === id ? 0 : -1} className={`min-h-11 rounded-lg px-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${activeTab === id ? 'bg-card shadow-sm' : 'text-muted-foreground'}`} onClick={() => setActiveTab(id)} onKeyDown={(event) => { const current = tabIds.indexOf(activeTab); let next = current; if (event.key === 'ArrowRight') next = (current + 1) % tabIds.length; if (event.key === 'ArrowLeft') next = (current + tabIds.length - 1) % tabIds.length; if (event.key === 'Home') next = 0; if (event.key === 'End') next = tabIds.length - 1; if (next !== current) { event.preventDefault(); moveTab(tabIds[next]); } }}>{id === 'content' ? 'Contenido actual' : 'Comparación'}</button>)}
+      </div>
+      <p className="sr-only" aria-live="polite">{comparisonAnnouncement}</p>
+
+      <div id="budget-panel-content" role="tabpanel" aria-labelledby="budget-tab-content" hidden={activeTab !== 'content'}>
       {hasIncompleteLines ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
           ⚠️ {incompleteLines.length} línea(s) sin pieza, acción o daño.
@@ -228,6 +254,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, ac
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Acción a ejecutar</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Nivel de daño</th>
                 <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Decisión</th>
+                <th className="px-4 py-3 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Proveedor</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">$ Repuestos</th>
                 <th className="w-10 px-2 py-3" />
               </tr>
@@ -239,6 +266,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, ac
                   <td className="px-4 py-2"><select className="h-10 w-full min-w-[130px] rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-primary" value={item.actionCode} onChange={(e) => updateItem(setItems, index, 'actionCode', e.target.value)}>{actionOptions.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}</select></td>
                   <td className="px-4 py-2"><select className="h-10 w-full min-w-[130px] rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-primary" value={item.damageLevelCode} onChange={(e) => updateItem(setItems, index, 'damageLevelCode', e.target.value)}>{damageOptions.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}</select></td>
                   <td className="px-4 py-2"><select className="h-10 w-full min-w-[110px] rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-primary" value={item.partDecisionCode} onChange={(e) => updateItem(setItems, index, 'partDecisionCode', e.target.value)}>{decisionOptions.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}</select></td>
+                  <td className="min-w-[220px] px-4 py-2"><ProviderSelector value={item.providerSnapshot || ''} providerId={item.providerId} canSearch={canViewProviders} allowManual={false} ariaLabel={`Proveedor para ${item.affectedPiece || `línea ${index + 1}`}`} onChange={({ providerId, snapshot }) => setItems((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, providerId, providerSnapshot: snapshot } : entry))} /></td>
                   <td className="px-4 py-2"><Input className="h-10 w-28 rounded-xl text-right text-sm" type="number" min="0" step="0.01" value={item.partValue} onChange={(e) => updateItem(setItems, index, 'partValue', e.target.value)} /></td>
                   <td className="px-2 py-2"><Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" onClick={() => setItems((c) => c.filter((_, ci) => ci !== index))}><X className="h-3.5 w-3.5" /></Button></td>
                 </tr>
@@ -256,35 +284,28 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, ac
         <div className="rounded-2xl border border-border/60 bg-card p-5">
           <h4 className="text-sm font-semibold">Trabajos extras</h4>
           <div className="flex flex-wrap items-end justify-between gap-3">
-            <div className="grid flex-1 gap-3 md:grid-cols-3">
+            <div className="grid flex-1 gap-3 md:grid-cols-2">
               <div className="space-y-1"><Label className="text-xs" htmlFor="accessory-work-enabled">Trabajos extras</Label><select id="accessory-work-enabled" className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm" value={accessoryUi?.enabled ?? 'NO'} onChange={(event) => updateAccessoryUi((current) => ({ ...current, enabled: event.target.value }))}><option value="NO">No</option><option value="SI">Sí</option></select></div>
               <div className="space-y-1"><Label className="text-xs" htmlFor="accessory-work-quoted">Cotizado</Label><Input id="accessory-work-quoted" value={fmt(accessoryTotals.quoted)} readOnly className="cursor-not-allowed bg-muted/60 font-semibold" /></div>
-              <div className="space-y-1"><Label className="text-xs" htmlFor="accessory-work-vat">IVA</Label><select id="accessory-work-vat" className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm" value={accessoryUi?.vat ?? '21'} onChange={(event) => updateAccessoryUi((current) => ({ ...current, vat: event.target.value }))}><option value="0">0%</option><option value="10.5">10,5%</option><option value="21">21%</option></select></div>
             </div>
             <Button type="button" variant="outline" size="sm" onClick={onAddAccessoryWork}><Plus className="mr-1.5 h-4 w-4" />Agregar trabajo extra</Button>
           </div>
-          {/* Grilla local: estos extras no forman parte de las líneas ni del payload/PDF del presupuesto. */}
+          {/* Los extras se guardan por separado: no forman parte de las líneas, totales ni del PDF técnico. */}
           {accessoryUi?.enabled === 'SI' ? (
             <div className="mt-4 space-y-3">
               {accessoryWorks.map((work) => (
                 <div key={work.id} className="rounded-2xl border border-border/50 bg-background/50 p-4">
-                  {/* Grilla de cada extra: mantiene sus importes aislados del presupuesto principal. */}
-                    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_180px_auto]">
-                     <div className="space-y-1"><Label className="text-xs" htmlFor={`accessory-piece-${work.id}`}>Pieza afectada</Label><Input id={`accessory-piece-${work.id}`} value={work.affectedPiece ?? ''} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, affectedPiece: event.target.value } : entry) }))} /></div>
-                     <div className="space-y-1"><Label className="text-xs" htmlFor={`accessory-task-${work.id}`}>Tarea a ejecutar</Label><Input id={`accessory-task-${work.id}`} value={work.task ?? ''} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, task: event.target.value } : entry) }))} /></div>
-                      <div className="space-y-1"><Label className="text-xs" htmlFor={`accessory-labor-${work.id}`}>Total MO</Label><Input id={`accessory-labor-${work.id}`} type="number" min="0" step="0.01" value={work.amount} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, amount: event.target.value } : entry) }))} /></div>
-                    <div className="flex items-end"><Button type="button" variant="ghost" size="sm" onClick={() => updateAccessoryUi((current) => ({ ...current, works: current.works.filter((entry) => entry.id !== work.id), enabled: current.works.length === 1 ? 'NO' : current.enabled }))}>Quitar</Button></div>
-                   </div>
-                    <div className="mt-3 grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_180px]">
-                      <div className="space-y-1"><Label className="text-xs" htmlFor={`accessory-damage-${work.id}`}>Nivel de daño</Label><Input id={`accessory-damage-${work.id}`} value={work.damageLevel ?? ''} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, damageLevel: event.target.value } : entry) }))} /></div>
-                     <div className="space-y-1"><Label className="text-xs">Incluye repuesto</Label><select className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm" value={work.includesReplacement} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, includesReplacement: event.target.value, replacementPiece: event.target.value === 'SI' ? entry.replacementPiece : '', replacementAmount: event.target.value === 'SI' ? entry.replacementAmount : '' } : entry) }))}><option value="NO">No</option><option value="SI">Sí</option></select></div>
-                     {work.includesReplacement === 'SI' ? <><div className="space-y-1"><Label className="text-xs">Repuesto</Label><Input value={work.replacementPiece} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, replacementPiece: event.target.value } : entry) }))} /></div><div className="space-y-1"><Label className="text-xs">Monto repuesto</Label><Input type="number" min="0" step="0.01" value={work.replacementAmount} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, replacementAmount: event.target.value } : entry) }))} /></div></> : null}
+                   <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_180px_auto]">
+                      <div className="space-y-1"><Label className="text-xs" htmlFor={`accessory-piece-${work.id}`}>Pieza afectada</Label><Input id={`accessory-piece-${work.id}`} value={work.affectedPiece ?? ''} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, affectedPiece: event.target.value } : entry) }))} /></div>
+                      <div className="space-y-1"><Label className="text-xs" htmlFor={`accessory-task-${work.id}`}>Tarea a ejecutar</Label><select id={`accessory-task-${work.id}`} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={work.actionCode ?? ''} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, actionCode: event.target.value } : entry) }))}><option value="">Seleccionar...</option>{actionOptions.map((option) => <option key={option.code} value={option.code}>{option.name}</option>)}</select></div>
+                      <div className="space-y-1"><Label className="text-xs" htmlFor={`accessory-damage-${work.id}`}>Nivel de daño</Label><select id={`accessory-damage-${work.id}`} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={work.damageLevelCode ?? ''} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, damageLevelCode: event.target.value } : entry) }))}><option value="">Seleccionar...</option>{damageOptions.map((option) => <option key={option.code} value={option.code}>{option.name}</option>)}</select></div>
+                      <div className="space-y-1"><Label className="text-xs" htmlFor={`accessory-parts-${work.id}`}>$ Repuestos</Label><Input id={`accessory-parts-${work.id}`} type="number" min="0" step="0.01" value={work.replacementAmount ?? ''} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, replacementAmount: event.target.value } : entry) }))} /></div>
+                      <div className="flex items-end"><Button type="button" variant="ghost" size="sm" onClick={() => updateAccessoryUi((current) => ({ ...current, works: current.works.filter((entry) => entry.id !== work.id), enabled: current.works.length === 1 ? 'NO' : current.enabled }))}>Quitar</Button></div>
                    </div>
                  </div>
-              ))}
+               ))}
             </div>
           ) : <p className="mt-4 rounded-xl border border-border/50 bg-background/70 px-4 py-3 text-sm text-muted-foreground">No hay trabajos extras incluidos. Este bloque queda separado del presupuesto técnico y del reclamo a la compañía.</p>}
-           <div className="mt-4 grid gap-3 md:grid-cols-2"><div className="space-y-1"><Label className="text-xs">Cliente confirma</Label><select className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm" value={accessoryUi?.customerConfirmed ?? 'NO'} onChange={(event) => updateAccessoryUi((current) => ({ ...current, customerConfirmed: event.target.value }))}><option value="NO">No</option><option value="SI">Sí</option></select></div><div className="space-y-1"><Label className="text-xs">Anotaciones</Label><Textarea rows={3} value={accessoryUi?.notes ?? ''} onChange={(event) => updateAccessoryUi((current) => ({ ...current, notes: event.target.value }))} /></div></div>
         </div>
       ) : null}
 
@@ -372,6 +393,10 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, ac
           </div>
         </div>
       ) : null}
+      </div>
+      {canViewComparison ? <div id="budget-panel-comparison" role="tabpanel" aria-labelledby="budget-tab-comparison" hidden={activeTab !== 'comparison'} className="mt-5">
+        {activeTab === 'comparison' ? <BudgetComparisonPanel caseId={caseId} focusRef={comparisonHeadingRef} canViewProviders={session?.authorities?.includes('proveedor.ver')} canManageProviders={session?.authorities?.includes('proveedor.gestionar')} /> : null}
+      </div> : null}
 
       {/* Delete confirm */}
       {deleteConfirm ? (

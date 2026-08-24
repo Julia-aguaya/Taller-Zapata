@@ -72,9 +72,19 @@ const createCleasFranchiseDistribution = () => ({
 
 let accessorySequence = 0;
 const createAccessoryId = () => `accessory-${Date.now()}-${++accessorySequence}`;
-const createAccessoryWork = () => ({ id: createAccessoryId(), affectedPiece: '', task: '', damageLevel: '', amount: '', includesReplacement: 'NO', replacementPiece: '', replacementAmount: '' });
+const createAccessoryWork = () => ({ id: createAccessoryId(), affectedPiece: '', actionCode: '', damageLevelCode: '', replacementAmount: '' });
 const createAccessoryPayment = () => ({ id: createAccessoryId(), kind: 'Parcial', amount: '', date: '', mode: 'Efectivo', modeDetail: '', reason: '', document: { file: null, name: '' } });
 const createAccessoryUi = () => ({ enabled: 'NO', vat: '21', customerConfirmed: 'NO', notes: '', works: [], payments: [], paymentDraft: createAccessoryPayment() });
+const createAccessoryUiFromBudget = (budget) => {
+  const works = (budget?.accessoryWorks ?? []).map((work) => ({
+    id: work.id ?? createAccessoryId(),
+    affectedPiece: work.affectedPiece ?? '',
+    actionCode: work.actionCode ?? '',
+    damageLevelCode: work.damageLevelCode ?? '',
+    replacementAmount: work.replacementAmount?.toString?.() ?? '',
+  }));
+  return { ...createAccessoryUi(), enabled: works.length ? 'SI' : 'NO', works };
+};
 
 export const formatDisplayValue = (value) => {
   if (value == null || value === '') return 'Sin informar';
@@ -200,6 +210,10 @@ export const CaseWorkspacePage = () => {
     queryFn: () => getCaseWorkspace(caseId),
     enabled: Boolean(caseId),
   });
+
+  useEffect(() => {
+    if (workspaceQuery.data) setAccessoryUi(createAccessoryUiFromBudget(workspaceQuery.data.budget));
+  }, [workspaceQuery.data?.budget?.id, workspaceQuery.data?.budget?.currentVersion]);
 
   const effectiveTabs = useMemo(() => {
     const readinessTabs = workspaceQuery.data?.readiness?.tabs ?? [];

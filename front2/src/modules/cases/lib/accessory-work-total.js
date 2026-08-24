@@ -9,7 +9,7 @@ export const getAccessoryWorkTotals = (accessoryUi) => {
   const { labor, parts } = (accessoryUi.works ?? []).reduce(
     (totals, work) => ({
       labor: totals.labor + toAmount(work.amount),
-      parts: totals.parts + (work.includesReplacement === 'SI' ? toAmount(work.replacementAmount) : 0),
+      parts: totals.parts + toAmount(work.replacementAmount),
     }),
     { labor: 0, parts: 0 },
   );

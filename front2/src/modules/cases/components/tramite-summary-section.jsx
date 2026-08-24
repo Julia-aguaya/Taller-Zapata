@@ -31,26 +31,11 @@ export const TramiteSummarySection = ({ caseId }) => {
           prescriptionDate: editPrescriptionDate || null,
         })});
       }
-      // Save processing if date changed  
+      // Keep this cross-section edit partial so it cannot overwrite processing fields.
       if (editPresentedAt) {
-        await requestJson(`/cases/${caseId}/insurance-processing`, { method: 'PUT', body: JSON.stringify({
+        await requestJson(`/cases/${caseId}/insurance-processing`, { method: 'PATCH', body: JSON.stringify({
+          expectedVersion: processing?.version ?? 0,
           presentedAt: editPresentedAt || null,
-          inspectionForwardedAt: processing?.inspectionForwardedAt ?? null,
-          modalityCode: processing?.modalityCode ?? null,
-          opinionCode: processing?.opinionCode ?? null,
-          quotationStatusCode: processing?.quotationStatusCode ?? null,
-          quotationDate: processing?.quotationDate ?? null,
-          agreedAmount: processing?.agreedAmount ?? null,
-          minimumCloseAmount: processing?.minimumCloseAmount ?? null,
-          includesParts: processing?.includesParts ?? false,
-          partsAuthorizationCode: processing?.partsAuthorizationCode ?? null,
-          partsSupplierText: processing?.partsSupplierText ?? null,
-          amountToBillCompany: processing?.amountToBillCompany ?? null,
-          finalAmountForWorkshop: processing?.finalAmountForWorkshop ?? null,
-          noRepair: processing?.noRepair ?? false,
-          adminOverrideAppointment: processing?.adminOverrideAppointment ?? false,
-          passedToPaymentsAt: processing?.passedToPaymentsAt ?? null,
-          estimatedPaymentDate: processing?.estimatedPaymentDate ?? null,
         })});
       }
     },
