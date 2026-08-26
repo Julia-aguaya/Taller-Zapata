@@ -153,7 +153,11 @@ export const InsuranceDataSection = ({ caseId, caseDetail }) => {
 
   const mutation = useMutation({
     mutationFn: (payload) => requestJson(`/cases/${caseId}/insurance`, { method: 'PUT', body: JSON.stringify(payload) }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance'] }); toast.success('Seguro guardado.'); },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance'] });
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
+      toast.success('Seguro guardado.');
+    },
     onError: (e) => toast.error(e.message),
   });
 
@@ -165,8 +169,8 @@ export const InsuranceDataSection = ({ caseId, caseDetail }) => {
       certificateNumber: insurance?.certificateNumber ?? null,
       claimNumber: draft.claimNumber || null,
       coverageDetail: draft.coverageDetail || null,
-      processorCasePersonId: tramitadorId,
-      inspectorCasePersonId: inspectorId,
+      processorPersonId: tramitadorId,
+      inspectorPersonId: inspectorId,
     });
   };
 
@@ -185,7 +189,11 @@ export const InsuranceDataSection = ({ caseId, caseDetail }) => {
       <div className="mt-4 space-y-4">
         <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
           <Field label="Cía. aseguradora">
-            <select value={companyId ?? ''} onChange={(e) => setCompanyId(e.target.value ? Number(e.target.value) : null)}
+            <select value={companyId ?? ''} onChange={(e) => {
+              setCompanyId(e.target.value ? Number(e.target.value) : null);
+              setTramitadorId(null);
+              setInspectorId(null);
+            }}
               className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
               <option value="">Seleccionar...</option>
               {companies.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}

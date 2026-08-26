@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { GestionTramiteEditor } from './gestion-tramite-editor';
 
@@ -46,7 +47,7 @@ const MountedGestionTramiteEditor = ({ overrides }) => {
   />;
 };
 
-const mount = (overrides = {}) => render(<MountedGestionTramiteEditor overrides={overrides} />);
+const mount = (overrides = {}) => render(<MemoryRouter><MountedGestionTramiteEditor overrides={overrides} /></MemoryRouter>);
 
 describe('GestionTramiteEditor', () => {
   it('renders all 6 sections for TODO_RIESGO', () => {
@@ -64,11 +65,13 @@ describe('GestionTramiteEditor', () => {
     expect(screen.getByText('Agenda de tareas')).toBeTruthy();
   });
 
-  it('hides Franquicia for GRANIZO cases', () => {
+  it('renders only the compact backend-owned incident fields for GRANIZO cases', () => {
     mount({ caseTypeCode: 'GRANIZO' });
-    expect(screen.getByText('Datos generales del trámite')).toBeTruthy();
     expect(screen.getByText('Datos del seguro')).toBeTruthy();
-    expect(screen.getByText('Datos del siniestro')).toBeTruthy();
+    expect(screen.queryByText('Datos generales del trámite')).toBeNull();
+    expect(screen.queryByText('Datos del siniestro')).toBeNull();
+    expect(screen.getByLabelText('Fecha del hecho')).toBeRequired();
+    expect(screen.getByLabelText('Prescripción')).toHaveAttribute('readonly');
     expect(screen.queryByText('Franquicia')).toBeNull();
   });
 

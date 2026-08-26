@@ -41,6 +41,8 @@ import java.util.Set;
 @Service
 public class CaseVisibleStateResolver {
 
+    private final InsuranceRepairCasePolicy insuranceRepairCasePolicy = new InsuranceRepairCasePolicy();
+
     private static final Sort REPAIR_APPOINTMENT_SORT = Sort.by(Sort.Order.desc("appointmentDate"), Sort.Order.desc("appointmentTime"), Sort.Order.desc("id"));
     private static final Sort VEHICLE_INTAKE_SORT = Sort.by(Sort.Order.desc("intakeAt"), Sort.Order.desc("id"));
     private static final Sort VEHICLE_OUTCOME_SORT = Sort.by(Sort.Order.desc("outcomeAt"), Sort.Order.desc("id"));
@@ -152,7 +154,7 @@ public class CaseVisibleStateResolver {
                     DOMAIN_REPARACION, buildVisibleState(DOMAIN_REPARACION, "EN_TRAMITE", null)
             ));
         }
-        if ("TODO_RIESGO".equals(normalizeCode(caseType.getCode()))) {
+        if (insuranceRepairCasePolicy.isInsuranceRepair(caseType.getCode())) {
             return todoRiesgoEffectiveStateRepository.findByCaseId(caseEntity.getId()).map(state -> {
                 Map<String, CaseVisibleStateResponse> result = new LinkedHashMap<>();
                 result.put(DOMAIN_TRAMITE, buildVisibleState(DOMAIN_TRAMITE, state.getProcedureCode(), null));

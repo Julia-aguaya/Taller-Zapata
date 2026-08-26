@@ -38,6 +38,8 @@ import java.util.Objects;
 @Service
 public class CaseWorkflowService {
 
+    private final InsuranceRepairCasePolicy insuranceRepairCasePolicy = new InsuranceRepairCasePolicy();
+
     private final CaseRepository caseRepository;
     private final WorkflowTransitionRepository workflowTransitionRepository;
     private final WorkflowStateRepository workflowStateRepository;
@@ -94,9 +96,9 @@ public class CaseWorkflowService {
                 throw new ConflictException("PARTICULAR solo admite overrides terminales");
             }
             particularEffectiveStateRecalculator.override(caseId, domain, stateCode, currentUser.id(), request.reason());
-        } else if (isTodoRiesgo(caseEntity)) {
+        } else if (isInsuranceRepair(caseEntity)) {
             if (!"reparacion".equals(domain) || (stateCode != null && !"NO_DEBE_REPARARSE".equals(stateCode))) {
-                throw new ConflictException("TODO_RIESGO solo admite NO_DEBE_REPARARSE mediante la accion explicita");
+                throw new ConflictException("La reparacion con seguro solo admite NO_DEBE_REPARARSE mediante la accion explicita");
             }
             if (stateCode == null) {
                 todoRiesgoEffectiveStateRecalculator.revertNoRepair(caseId, request.reason(), currentUser.id());
@@ -108,7 +110,7 @@ public class CaseWorkflowService {
         } else {
             caseEntity.setVisibleRepairStateOverrideCode(stateCode);
         }
-        if (!isParticular(caseEntity) && !isTodoRiesgo(caseEntity)) caseRepository.save(caseEntity);
+        if (!isParticular(caseEntity) && !isInsuranceRepair(caseEntity)) caseRepository.save(caseEntity);
 
         Map<String, Object> after = new LinkedHashMap<>();
         after.put("domain", domain);
@@ -402,8 +404,10 @@ public class CaseWorkflowService {
         return caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> "PARTICULAR".equalsIgnoreCase(type.getCode())).orElse(false);
     }
 
-    private boolean isTodoRiesgo(CaseEntity caseEntity) {
-        return caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> "TODO_RIESGO".equalsIgnoreCase(type.getCode())).orElse(false);
+    private boolean isInsuranceRepair(CaseEntity caseEntity) {
+        return caseTypeRepository.findById(caseEntity.getCaseTypeId())
+                .map(type -> insuranceRepairCasePolicy.isInsuranceRepair(type.getCode()))
+                .orElse(false);
     }
 
     private Long resolveCurrentStateId(CaseEntity caseEntity, String domain) {

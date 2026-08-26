@@ -21,7 +21,11 @@ export const ClaimDataSection = ({ caseId }) => {
 
   const mutation = useMutation({
     mutationFn: (payload) => requestJson(`/cases/${caseId}/incident`, { method: 'PUT', body: JSON.stringify(payload) }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'incident'] }); toast.success('Siniestro guardado.'); },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'incident'] });
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
+      toast.success('Siniestro guardado.');
+    },
     onError: (e) => toast.error(e.message),
   });
 
@@ -33,7 +37,6 @@ export const ClaimDataSection = ({ caseId }) => {
       incidentTime: fd.get('incidentTime') || null,
       location: fd.get('location') || null,
       dynamics: fd.get('dynamics') || null,
-      prescriptionDate: null,
       observations: incident?.observations ?? null,
     });
   };

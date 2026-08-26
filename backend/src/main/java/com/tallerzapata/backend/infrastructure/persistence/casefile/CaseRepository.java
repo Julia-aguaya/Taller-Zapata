@@ -27,10 +27,10 @@ public interface CaseRepository extends JpaRepository<CaseEntity, Long> {
 
     @Query("""
         select c from CaseEntity c join CaseTypeEntity t on t.id = c.caseTypeId
-        where upper(trim(t.code)) = 'TODO_RIESGO'
+        where upper(trim(t.code)) in ('TODO_RIESGO', 'GRANIZO')
         order by c.id asc
         """)
-    List<CaseEntity> findTodoRiesgoCasesOrderByIdAsc();
+    List<CaseEntity> findInsuranceRepairCasesOrderByIdAsc();
 
     @Query("select coalesce(max(c.orderNumber), 0) from CaseEntity c where c.organizationId = :organizationId")
     Long findMaxOrderNumberByOrganizationId(Long organizationId);

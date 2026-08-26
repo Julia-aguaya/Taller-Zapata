@@ -8,6 +8,7 @@ import com.tallerzapata.backend.api.insurance.InsuranceProcessingResponse;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseIncidentEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseIncidentRepository;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CasePersonRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.*;
 import com.tallerzapata.backend.infrastructure.persistence.organization.BranchEntity;
@@ -36,6 +37,7 @@ public class TramitePdfService {
     private final CaseRepository caseRepository;
     private final CaseIncidentRepository caseIncidentRepository;
     private final CaseInsuranceRepository caseInsuranceRepository;
+    private final CasePersonRepository casePersonRepository;
     private final InsuranceService insuranceService;
     private final CaseFranchiseRepository caseFranchiseRepository;
     private final InsuranceCompanyRepository companyRepository;
@@ -45,9 +47,10 @@ public class TramitePdfService {
     private final BranchRepository branchRepository;
 
     public TramitePdfService(CaseRepository caseRepository,
-                             CaseIncidentRepository caseIncidentRepository,
-                             CaseInsuranceRepository caseInsuranceRepository,
-                              InsuranceService insuranceService,
+                              CaseIncidentRepository caseIncidentRepository,
+                              CaseInsuranceRepository caseInsuranceRepository,
+                              CasePersonRepository casePersonRepository,
+                               InsuranceService insuranceService,
                              CaseFranchiseRepository caseFranchiseRepository,
                              InsuranceCompanyRepository companyRepository,
                              PersonRepository personRepository,
@@ -57,6 +60,7 @@ public class TramitePdfService {
         this.caseRepository = caseRepository;
         this.caseIncidentRepository = caseIncidentRepository;
         this.caseInsuranceRepository = caseInsuranceRepository;
+        this.casePersonRepository = casePersonRepository;
         this.insuranceService = insuranceService;
         this.caseFranchiseRepository = caseFranchiseRepository;
         this.companyRepository = companyRepository;
@@ -170,8 +174,7 @@ public class TramitePdfService {
                 addCell(insTable, nvl(insurance.getClaimNumber()), normalFont);
 
                 // Tramitador
-                PersonEntity tramitador = insurance.getProcessorCasePersonId() != null
-                        ? personRepository.findById(insurance.getProcessorCasePersonId()).orElse(null) : null;
+                PersonEntity tramitador = resolveCasePerson(caseEntity.getId(), insurance.getProcessorCasePersonId());
                 addCell(insTable, "Tramitador/a", boldFont);
                 if (tramitador != null) {
                     addCell(insTable, tramitador.getNombreMostrar() + " — " + nvl(tramitador.getEmailPrincipal()) + " — " + nvl(tramitador.getTelefonoPrincipal()), normalFont);
@@ -180,8 +183,7 @@ public class TramitePdfService {
                 }
 
                 // Inspector
-                PersonEntity inspector = insurance.getInspectorCasePersonId() != null
-                        ? personRepository.findById(insurance.getInspectorCasePersonId()).orElse(null) : null;
+                PersonEntity inspector = resolveCasePerson(caseEntity.getId(), insurance.getInspectorCasePersonId());
                 addCell(insTable, "Inspector/a", boldFont);
                 if (inspector != null) {
                     addCell(insTable, inspector.getNombreMostrar() + " — " + nvl(inspector.getEmailPrincipal()) + " — " + nvl(inspector.getTelefonoPrincipal()), normalFont);
@@ -331,4 +333,11 @@ public class TramitePdfService {
     }
 
     private String nvl(String value) { return value != null && !value.isBlank() ? value : "—"; }
+
+    private PersonEntity resolveCasePerson(Long caseId, Long casePersonId) {
+        if (casePersonId == null) return null;
+        return casePersonRepository.findByIdAndCaseId(casePersonId, caseId)
+                .flatMap(link -> personRepository.findById(link.getPersonId()))
+                .orElse(null);
+    }
 }

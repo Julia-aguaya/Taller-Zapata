@@ -28,7 +28,7 @@ public class TodoRiesgoStateRepairService {
 
     public RepairSummary repair(boolean apply) {
         RepairSummary summary = new RepairSummary();
-        for (CaseEntity caseEntity : caseRepository.findTodoRiesgoCasesOrderByIdAsc()) {
+        for (CaseEntity caseEntity : caseRepository.findInsuranceRepairCasesOrderByIdAsc()) {
             summary.scanned++;
             if (hasAmbiguousLegacyState(caseEntity)) {
                 summary.ambiguousSkipped++;

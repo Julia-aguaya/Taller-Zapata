@@ -28,7 +28,7 @@ class TodoRiesgoStateRepairServiceTest {
         TransactionOperations transactions = mock(TransactionOperations.class);
         CaseEntity caseEntity = mock(CaseEntity.class);
         when(caseEntity.getId()).thenReturn(7L);
-        when(cases.findTodoRiesgoCasesOrderByIdAsc()).thenReturn(List.of(caseEntity));
+        when(cases.findInsuranceRepairCasesOrderByIdAsc()).thenReturn(List.of(caseEntity));
         when(insurance.findByCaseId(7L)).thenReturn(java.util.Optional.empty());
         when(transactions.execute(any())).thenAnswer((Answer<Object>) invocation -> invocation.<org.springframework.transaction.support.TransactionCallback<?>>getArgument(0).doInTransaction(null));
         when(recalculator.preview(7L)).thenReturn(new TodoRiesgoEffectiveStateRecalculator.RecalculationResult(true, true, false));
@@ -56,7 +56,7 @@ class TodoRiesgoStateRepairServiceTest {
         CaseEntity caseEntity = mock(CaseEntity.class);
         when(caseEntity.getId()).thenReturn(8L);
         when(caseEntity.getVisibleRepairStateOverrideCode()).thenReturn("NO_DEBE_REPARARSE");
-        when(cases.findTodoRiesgoCasesOrderByIdAsc()).thenReturn(List.of(caseEntity));
+        when(cases.findInsuranceRepairCasesOrderByIdAsc()).thenReturn(List.of(caseEntity));
         TodoRiesgoStateRepairService service = new TodoRiesgoStateRepairService(cases, insurance, facts, recalculator, transactions);
 
         TodoRiesgoStateRepairService.RepairSummary summary = service.repair(true);

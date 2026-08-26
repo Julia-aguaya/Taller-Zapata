@@ -1,6 +1,8 @@
 package com.tallerzapata.backend.api.insurance;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lowagie.text.pdf.PdfReader;
+import com.lowagie.text.pdf.parser.PdfTextExtractor;
 import com.tallerzapata.backend.testsupport.TestDatabaseCleaner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -126,7 +128,7 @@ class InsuranceIntegrationTest {
         mockMvc.perform(put("/api/v1/cases/100/insurance")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(new CaseInsuranceUpsertRequest(1L, "POL-123", "CERT-1", "Todo riesgo", null, null, null, 1L, null))))
+                        .content(objectMapper.writeValueAsBytes(new CaseInsuranceUpsertRequest(1L, "POL-123", "CERT-1", "Todo riesgo", null, null, null, null, null))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.insuranceCompanyId").value(1));
 
@@ -174,6 +176,63 @@ class InsuranceIntegrationTest {
     }
 
     @Test
+    void shouldAssociateInsuranceContactsByPersonIdAndRenderTheirLinkedIdentityInPdf() throws Exception {
+        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, cuit, requiere_fotos_reparado, dias_pago_esperados, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 1L, "00000000-0000-0000-0000-000000004001", "RIVA", "Rivadavia", "30711222334", true, 30, true);
+        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, cuit, requiere_fotos_reparado, dias_pago_esperados, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 2L, "00000000-0000-0000-0000-000000004002", "OTRA", "Otra", "30711222335", true, 30, true);
+        jdbcTemplate.update("INSERT INTO personas (id, public_id, tipo_persona, nombre, apellido, nombre_mostrar, tipo_documento_codigo, numero_documento, numero_documento_normalizado, email_principal, telefono_principal, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 11L, "00000000-0000-0000-0000-000000001011", "fisica", "Ana", "Tramitadora", "Ana Tramitadora", "DNI", "30111223", "30111223", "ana@riva.test", "111", true);
+        jdbcTemplate.update("INSERT INTO personas (id, public_id, tipo_persona, nombre, apellido, nombre_mostrar, tipo_documento_codigo, numero_documento, numero_documento_normalizado, email_principal, telefono_principal, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 12L, "00000000-0000-0000-0000-000000001012", "fisica", "Ines", "Inspectora", "Ines Inspectora", "DNI", "30111224", "30111224", "ines@riva.test", "222", true);
+        jdbcTemplate.update("INSERT INTO personas (id, public_id, tipo_persona, nombre, apellido, nombre_mostrar, tipo_documento_codigo, numero_documento, numero_documento_normalizado, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 13L, "00000000-0000-0000-0000-000000001013", "fisica", "Otra", "Compania", "Otra Compania", "DNI", "30111225", "30111225", true);
+        jdbcTemplate.update("INSERT INTO companias_contactos (id, compania_id, persona_id, rol_contacto_codigo) VALUES (?, ?, ?, ?)", 1L, 1L, 11L, "TRAMITADOR");
+        jdbcTemplate.update("INSERT INTO companias_contactos (id, compania_id, persona_id, rol_contacto_codigo) VALUES (?, ?, ?, ?)", 2L, 1L, 12L, "INSPECTOR");
+        jdbcTemplate.update("INSERT INTO companias_contactos (id, compania_id, persona_id, rol_contacto_codigo) VALUES (?, ?, ?, ?)", 3L, 2L, 13L, "TRAMITADOR");
+        // case-person ID 11 deliberately collides with processor person ID 11 but points to another person.
+        jdbcTemplate.update("INSERT INTO caso_personas (id, caso_id, persona_id, rol_caso_codigo, vehiculo_id, es_principal, notas) VALUES (?, ?, ?, ?, ?, ?, ?)", 11L, 100L, 10L, "CLIENTE", null, false, null);
+
+        mockMvc.perform(put("/api/v1/cases/100/insurance")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"insuranceCompanyId\":1,\"processorPersonId\":11,\"inspectorPersonId\":12}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.processorPersonId").value(11))
+                .andExpect(jsonPath("$.inspectorPersonId").value(12))
+                .andExpect(jsonPath("$.processorCasePersonId").isNumber())
+                .andExpect(jsonPath("$.inspectorCasePersonId").isNumber());
+
+        assertThat(jdbcTemplate.queryForObject("SELECT persona_id FROM caso_personas WHERE caso_id = ? AND rol_caso_codigo = 'TRAMITADOR'", Long.class, 100L)).isEqualTo(11L);
+        assertThat(jdbcTemplate.queryForObject("SELECT persona_id FROM caso_personas WHERE caso_id = ? AND rol_caso_codigo = 'INSPECTOR'", Long.class, 100L)).isEqualTo(12L);
+        assertThat(jdbcTemplate.queryForObject("SELECT tramitador_caso_persona_id FROM caso_seguro WHERE caso_id = ?", Long.class, 100L)).isNotEqualTo(11L);
+
+        byte[] pdf = mockMvc.perform(get("/api/v1/cases/100/tramite/pdf").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray();
+        PdfReader reader = new PdfReader(pdf);
+        String text = new PdfTextExtractor(reader).getTextFromPage(1);
+        assertThat(text).contains("Ana Tramitadora", "Ines Inspectora");
+
+        mockMvc.perform(put("/api/v1/cases/100/insurance")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"insuranceCompanyId\":1,\"processorPersonId\":12}"))
+                .andExpect(status().isConflict());
+        mockMvc.perform(put("/api/v1/cases/100/insurance")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"insuranceCompanyId\":1,\"processorPersonId\":13}"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldRejectAmbiguousLegacyCasePersonContactFields() throws Exception {
+        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, cuit, requiere_fotos_reparado, dias_pago_esperados, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 1L, "00000000-0000-0000-0000-000000004001", "RIVA", "Rivadavia", "30711222334", true, 30, true);
+
+        mockMvc.perform(put("/api/v1/cases/100/insurance")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"insuranceCompanyId\":1,\"processorCasePersonId\":1}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
     void shouldUpsertCaseCleas() throws Exception {
         mockMvc.perform(put("/api/v1/cases/100/cleas")
                         .header("X-User-Id", "3")
@@ -212,6 +271,27 @@ class InsuranceIntegrationTest {
 
         Integer auditCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'upsert_caso_terceros'", Integer.class, 100L);
         assertThat(auditCount).isEqualTo(1);
+    }
+
+    @Test
+    void shouldRejectGranizoFranchiseCleasAndThirdPartyWrites() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = ? WHERE id = ?", 3L, 100L);
+
+        mockMvc.perform(put("/api/v1/cases/100/franchise")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isConflict());
+        mockMvc.perform(put("/api/v1/cases/100/cleas")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isConflict());
+        mockMvc.perform(put("/api/v1/cases/100/third-party")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isConflict());
     }
 
     @Test

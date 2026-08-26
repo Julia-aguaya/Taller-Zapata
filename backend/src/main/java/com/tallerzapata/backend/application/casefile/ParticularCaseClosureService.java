@@ -27,6 +27,7 @@ import java.util.Locale;
 
 @Service
 public class ParticularCaseClosureService {
+    private final InsuranceRepairCasePolicy insuranceRepairCasePolicy = new InsuranceRepairCasePolicy();
 
     private static final Sort MOVEMENT_SORT_ASC = Sort.by(Sort.Order.asc("movementAt"), Sort.Order.asc("id"));
     private static final Sort OUTCOME_SORT_DESC = Sort.by(Sort.Order.desc("outcomeAt"), Sort.Order.desc("id"));
@@ -118,7 +119,7 @@ public class ParticularCaseClosureService {
         }
 
         // GRANIZO no tiene franquicia — solo verificamos que la Cía. haya pagado
-        LocalDateTime paidAt = resolveTodoRiesgoPaidAt(caseId);
+        LocalDateTime paidAt = resolveInsuranceRepairPaidAt(caseEntity, caseId);
         if (paidAt == null) {
             caseEntity.setClosedAt(null);
             caseRepository.save(caseEntity);
@@ -153,7 +154,7 @@ public class ParticularCaseClosureService {
         }
 
         // Payment full → TODO when PAGOS TODO_RIESGO is built
-        LocalDateTime paidAt = resolveTodoRiesgoPaidAt(caseId);
+        LocalDateTime paidAt = resolveInsuranceRepairPaidAt(caseEntity, caseId);
         if (paidAt == null) {
             caseEntity.setClosedAt(null);
             caseRepository.save(caseEntity);
@@ -165,16 +166,15 @@ public class ParticularCaseClosureService {
         caseRepository.save(caseEntity);
     }
 
-    private LocalDateTime resolveTodoRiesgoPaidAt(Long caseId) {
+    private LocalDateTime resolveInsuranceRepairPaidAt(CaseEntity caseEntity, Long caseId) {
         InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
         if (processing == null || processing.getAgreedAmount() == null) {
             return null;
         }
 
         CaseFranchiseEntity franchise = caseFranchiseRepository.findByCaseId(caseId).orElse(null);
-        BigDecimal target = "PROPIA_CIA".equals(normalizeCode(franchise == null ? null : franchise.getRecoveryTypeCode()))
-                ? processing.getAgreedAmount()
-                : processing.getAgreedAmount().subtract(franchise == null || franchise.getFranchiseAmount() == null ? BigDecimal.ZERO : franchise.getFranchiseAmount()).max(BigDecimal.ZERO);
+        String caseTypeCode = caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(CaseTypeEntity::getCode).orElse("");
+        BigDecimal target = insuranceRepairCasePolicy.companyPaymentTarget(caseTypeCode, processing.getAgreedAmount(), franchise);
         target = scale(target);
         BigDecimal accumulated = BigDecimal.ZERO;
         List<FinancialMovementEntity> movements = financialMovementRepository.findByCaseId(caseId, MOVEMENT_SORT_ASC);

@@ -177,7 +177,7 @@ class CaseClosureIntegrationTest {
         String response = mockMvc.perform(post("/api/v1/cases")
                 .header("X-User-Id", "1")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"caseTypeId\":2,\"organizationId\":1,\"branchId\":1,\"principalVehicleId\":10,\"principalCustomerPersonId\":10,\"referenced\":false,\"priorityCode\":null,\"customerRoleCode\":\"CLIENTE\",\"principalVehicleRoleCode\":\"PRINCIPAL\"}"))
+                .content("{\"caseTypeId\":2,\"organizationId\":1,\"branchId\":1,\"principalVehicleId\":10,\"principalCustomerPersonId\":10,\"referenced\":false,\"incidentDate\":\"2026-01-01\",\"priorityCode\":null,\"customerRoleCode\":\"CLIENTE\",\"principalVehicleRoleCode\":\"PRINCIPAL\"}"))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return objectMapper.readTree(response).get("id").asLong();
@@ -187,7 +187,7 @@ class CaseClosureIntegrationTest {
         String response = mockMvc.perform(post("/api/v1/cases")
                 .header("X-User-Id", "1")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("{\"caseTypeId\":3,\"organizationId\":1,\"branchId\":1,\"principalVehicleId\":10,\"principalCustomerPersonId\":10,\"referenced\":false,\"priorityCode\":null,\"customerRoleCode\":\"CLIENTE\",\"principalVehicleRoleCode\":\"PRINCIPAL\"}"))
+                .content("{\"caseTypeId\":3,\"organizationId\":1,\"branchId\":1,\"principalVehicleId\":10,\"principalCustomerPersonId\":10,\"referenced\":false,\"incidentDate\":\"2026-01-01\",\"priorityCode\":null,\"customerRoleCode\":\"CLIENTE\",\"principalVehicleRoleCode\":\"PRINCIPAL\"}"))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return objectMapper.readTree(response).get("id").asLong();

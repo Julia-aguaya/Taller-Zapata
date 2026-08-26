@@ -195,7 +195,7 @@ class TodoRiesgoEffectiveStateIntegrationTest {
     }
 
     @Test
-    void isIdempotentAndStrictlyIsolatedFromParticularAndOtherCaseTypes() throws Exception {
+    void isIdempotentForBothInsuranceRepairTypesAndIsolatedFromParticular() throws Exception {
         long todoRiesgoId = createCase("TODO_RIESGO");
         int historyBefore = historyCount(todoRiesgoId);
         recalculator.recalculate(todoRiesgoId);
@@ -206,16 +206,21 @@ class TodoRiesgoEffectiveStateIntegrationTest {
         long granizoId = createCase("GRANIZO");
         recalculator.recalculate(particularId);
         recalculator.recalculate(granizoId);
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM todo_riesgo_effective_state WHERE caso_id IN (?, ?)", Integer.class, particularId, granizoId)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM todo_riesgo_effective_state WHERE caso_id = ?", Integer.class, particularId)).isZero();
+        assertProjection(granizoId, "SIN_PRESENTAR", "DAR_TURNO");
         assertThatThrownBy(() -> recalculator.markNoRepair(particularId, "No aplica", 1L)).isInstanceOf(ConflictException.class);
-        assertThatThrownBy(() -> recalculator.revertNoRepair(granizoId, "No aplica", 1L)).isInstanceOf(ConflictException.class);
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM todo_riesgo_state_facts WHERE caso_id IN (?, ?)", Integer.class, particularId, granizoId)).isZero();
+        recalculator.markNoRepair(granizoId, "Daño por granizo no reparable", 1L);
+        assertProjection(granizoId, "SIN_PRESENTAR", "NO_DEBE_REPARARSE");
+        recalculator.revertNoRepair(granizoId, "Reapertura autorizada", 1L);
+        assertProjection(granizoId, "SIN_PRESENTAR", "DAR_TURNO");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM todo_riesgo_state_facts WHERE caso_id = ?", Integer.class, particularId)).isZero();
     }
 
     private long createCase(String typeCode) throws Exception {
         Long typeId = jdbcTemplate.queryForObject("SELECT id FROM tipos_tramite WHERE codigo = ?", Long.class, typeCode);
+        String incidentDate = ("TODO_RIESGO".equals(typeCode) || "GRANIZO".equals(typeCode)) ? ",\"incidentDate\":\"2026-01-01\"" : "";
         MvcResult result = mockMvc.perform(post("/api/v1/cases").header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"caseTypeId\":" + typeId + ",\"organizationId\":1,\"branchId\":1,\"principalVehicleId\":10,\"principalCustomerPersonId\":10,\"referenced\":false,\"customerRoleCode\":\"CLIENTE\",\"principalVehicleRoleCode\":\"PRINCIPAL\"}"))
+                        .content("{\"caseTypeId\":" + typeId + ",\"organizationId\":1,\"branchId\":1,\"principalVehicleId\":10,\"principalCustomerPersonId\":10,\"referenced\":false" + incidentDate + ",\"customerRoleCode\":\"CLIENTE\",\"principalVehicleRoleCode\":\"PRINCIPAL\"}"))
                 .andExpect(status().isOk()).andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
     }

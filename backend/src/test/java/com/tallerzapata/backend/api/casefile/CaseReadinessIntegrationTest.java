@@ -517,6 +517,7 @@ class CaseReadinessIntegrationTest {
     @Test
     void shouldAllowBudgetWithInitialTodoRiesgoDataWithoutQuotation() throws Exception {
         Long caseId = createTodoRiesgoCase();
+        completeVehicle(caseId);
         seedInitialTodoRiesgoTramite(caseId);
 
         mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
@@ -532,6 +533,54 @@ class CaseReadinessIntegrationTest {
                 .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))
                 .andExpect(jsonPath("$.tabs[4].allowed").value(false))
                 .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("Falta acordar cotizacion con la Cia. antes de registrar pagos"));
+    }
+
+    @Test
+    void shouldKeepTodoRiesgoBudgetBlockedWhileTramiteIsPendingEvenWithCompleteInsuranceData() throws Exception {
+        Long caseId = createTodoRiesgoCase();
+        seedTodoRiesgoBudgetAccessData(caseId);
+        jdbcTemplate.update("UPDATE caso_siniestro SET hora_siniestro = NULL, lugar = NULL, dinamica = NULL WHERE caso_id = ?", caseId);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[1].tabCode").value("GESTION_TRAMITE"))
+                .andExpect(jsonPath("$.tabs[1].completed").value(false))
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[2].blockingReasons").value(org.hamcrest.Matchers.contains("Debe completar Gestion del Tramite antes de cargar el presupuesto")))
+                .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
+                .andExpect(jsonPath("$.tabs[3].allowed").value(false));
+    }
+
+    @Test
+    void shouldAllowTodoRiesgoBudgetWithPersistedRequiredDataAndNoFranchise() throws Exception {
+        Long caseId = createTodoRiesgoCase();
+        completeVehicle(caseId);
+        seedTodoRiesgoBudgetAccessData(caseId);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(true))
+                .andExpect(jsonPath("$.tabs[2].blockingReasons[0]").value("Falta cargar el presupuesto"))
+                .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
+                .andExpect(jsonPath("$.tabs[3].allowed").value(false));
+    }
+
+    @Test
+    void shouldBlockTodoRiesgoBudgetWhenCompleteInsuranceDataIsMissing() throws Exception {
+        Long caseId = createTodoRiesgoCase();
+        seedTodoRiesgoBudgetAccessData(caseId);
+        jdbcTemplate.update("UPDATE caso_seguro SET numero_siniestro = NULL WHERE caso_id = ?", caseId);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[2].blockingReasons").value(org.hamcrest.Matchers.contains("Falta numero de siniestro")));
     }
 
     @Test
@@ -559,6 +608,7 @@ class CaseReadinessIntegrationTest {
     @Test
     void shouldAllowBudgetWithoutFranchiseWhenOtherTodoRiesgoRequirementsAreComplete() throws Exception {
         Long caseId = createTodoRiesgoCase();
+        completeVehicle(caseId);
         seedCompletedTodoRiesgoTramite(caseId);
 
         mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
@@ -579,6 +629,7 @@ class CaseReadinessIntegrationTest {
     @Test
     void shouldAllowBudgetWithPendingTasksAndPartsForTodoRiesgo() throws Exception {
         Long caseId = createTodoRiesgoCase();
+        completeVehicle(caseId);
         seedCompletedTodoRiesgoTramite(caseId);
         seedPendingTaskAndPart(caseId);
 
@@ -612,6 +663,7 @@ class CaseReadinessIntegrationTest {
                 .andExpect(jsonPath("$.tabs[1].tabCode").value("GESTION_TRAMITE"))
                 .andExpect(jsonPath("$.tabs[1].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(false))
                 .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
                 .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"));
     }
@@ -620,12 +672,50 @@ class CaseReadinessIntegrationTest {
     void shouldNotRequireFranchiseForGranizo() throws Exception {
         Long caseId = createGranizoCase();
         seedInsuranceData(caseId);
+        jdbcTemplate.update("UPDATE caso_tramitacion_seguro SET fecha_presentacion = ? WHERE caso_id = ?", LocalDate.of(2026, 1, 2), caseId);
 
         mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
                         .header("X-User-Id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tabs[1].tabCode").value("GESTION_TRAMITE"))
                 .andExpect(jsonPath("$.tabs[1].blockingReasons.length()").value(0));
+    }
+
+    @Test
+    void shouldAllowGranizoBudgetWithPersistedIncidentDateAndCompleteInsuranceWhileTramiteIsPending() throws Exception {
+        Long caseId = createGranizoCase();
+        seedTodoRiesgoBudgetAccessData(caseId);
+        jdbcTemplate.update("UPDATE caso_siniestro SET hora_siniestro = NULL, lugar = NULL, dinamica = NULL WHERE caso_id = ?", caseId);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[1].tabCode").value("GESTION_TRAMITE"))
+                .andExpect(jsonPath("$.tabs[1].completed").value(false))
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(true))
+                .andExpect(jsonPath("$.tabs[2].blockingReasons").value(org.hamcrest.Matchers.contains("Falta cargar el presupuesto")))
+                .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
+                .andExpect(jsonPath("$.tabs[3].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))
+                .andExpect(jsonPath("$.tabs[4].allowed").value(false));
+    }
+
+    @Test
+    void shouldUseTodoRiesgoPaymentGateWithoutFranchiseForGranizo() throws Exception {
+        Long caseId = createGranizoCase();
+        seedInsuranceData(caseId);
+        jdbcTemplate.update("UPDATE caso_tramitacion_seguro SET fecha_presentacion = ?, cotizacion_estado_codigo = ? WHERE caso_id = ?", LocalDate.of(2026, 1, 2), "ACEPTADA", caseId);
+        jdbcTemplate.update("INSERT INTO caso_franquicia (caso_id, estado_franquicia_codigo, monto_franquicia, tipo_recupero_codigo) VALUES (?, ?, ?, ?)",
+                caseId, "PENDIENTE", new BigDecimal("50000"), "TERCERO");
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))
+                .andExpect(jsonPath("$.tabs[4].allowed").value(true))
+                .andExpect(jsonPath("$.tabs[4].blockingReasons").value(org.hamcrest.Matchers.hasItem("La Cia. aun no completo el pago")))
+                .andExpect(jsonPath("$.tabs[4].blockingReasons").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("La franquicia sigue pendiente de resolucion"))));
     }
 
     // ── PARTICULAR: presupuesto cerrado desbloquea reparación ──
@@ -717,7 +807,7 @@ class CaseReadinessIntegrationTest {
 
     private Long createTodoRiesgoCase() throws Exception {
         CaseCreateRequest request = new CaseCreateRequest(
-                2L, 1L, 1L, 10L, 10L, false, null, null, null, null, null, null,
+                2L, 1L, 1L, 10L, 10L, false, null, null, null, null, null, LocalDate.of(2026, 1, 1),
                 null, null, null, null, null, null, "CLIENTE", "PRINCIPAL"
         );
         MvcResult result = mockMvc.perform(post("/api/v1/cases")
@@ -731,7 +821,7 @@ class CaseReadinessIntegrationTest {
 
     private Long createGranizoCase() throws Exception {
         CaseCreateRequest request = new CaseCreateRequest(
-                3L, 1L, 1L, 10L, 10L, false, null, null, null, null, null, null,
+                3L, 1L, 1L, 10L, 10L, false, null, null, null, null, null, LocalDate.of(2026, 1, 1),
                 null, null, null, null, null, null, "CLIENTE", "PRINCIPAL"
         );
         MvcResult result = mockMvc.perform(post("/api/v1/cases")
@@ -753,21 +843,32 @@ class CaseReadinessIntegrationTest {
     }
 
     private void seedCompletedTodoRiesgoTramite(Long caseId) {
-        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, activo) VALUES (?,?,?,?,?)",
-                1L, "00000000-0000-0000-0000-000000000101", "LA_SEGUNDA", "La Segunda", true);
-        jdbcTemplate.update("INSERT INTO caso_seguro (caso_id, compania_seguro_id) VALUES (?,?)", caseId, 1L);
-        jdbcTemplate.update("INSERT INTO caso_siniestro (caso_id, fecha_siniestro) VALUES (?,?)", caseId, LocalDate.of(2026, 1, 1));
+        seedTodoRiesgoBudgetAccessData(caseId);
         jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_presentacion, cotizacion_estado_codigo, fecha_cotizacion, monto_acordado) VALUES (?,?,?,?,?)",
                 caseId, LocalDate.of(2026, 1, 2), "ACEPTADA", LocalDate.of(2026, 1, 3), new BigDecimal("100000"));
     }
 
     private void seedInitialTodoRiesgoTramite(Long caseId) {
-        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, activo) VALUES (?,?,?,?,?)",
-                1L, "00000000-0000-0000-0000-000000000101", "LA_SEGUNDA", "La Segunda", true);
-        jdbcTemplate.update("INSERT INTO caso_seguro (caso_id, compania_seguro_id) VALUES (?,?)", caseId, 1L);
-        jdbcTemplate.update("INSERT INTO caso_siniestro (caso_id, fecha_siniestro) VALUES (?,?)", caseId, LocalDate.of(2026, 1, 1));
+        seedTodoRiesgoBudgetAccessData(caseId);
         jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_presentacion) VALUES (?,?)",
                 caseId, LocalDate.of(2026, 1, 2));
+    }
+
+    private void seedTodoRiesgoBudgetAccessData(Long caseId) {
+        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, activo) VALUES (?,?,?,?,?)",
+                1L, "00000000-0000-0000-0000-000000000101", "LA_SEGUNDA", "La Segunda", true);
+        jdbcTemplate.update("INSERT INTO personas (id, public_id, tipo_persona, nombre, apellido, nombre_mostrar, tipo_documento_codigo, numero_documento, numero_documento_normalizado, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                11L, "00000000-0000-0000-0000-000000001011", "fisica", "Tamara", "Tramitadora", "Tamara Tramitadora", "DNI", "30111223", "30111223", true);
+        jdbcTemplate.update("INSERT INTO personas (id, public_id, tipo_persona, nombre, apellido, nombre_mostrar, tipo_documento_codigo, numero_documento, numero_documento_normalizado, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                12L, "00000000-0000-0000-0000-000000001012", "fisica", "Ines", "Inspectora", "Ines Inspectora", "DNI", "30111224", "30111224", true);
+        jdbcTemplate.update("INSERT INTO caso_personas (id, caso_id, persona_id, rol_caso_codigo, vehiculo_id, es_principal, notas) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                101L, caseId, 11L, "TRAMITADOR", null, false, null);
+        jdbcTemplate.update("INSERT INTO caso_personas (id, caso_id, persona_id, rol_caso_codigo, vehiculo_id, es_principal, notas) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                102L, caseId, 12L, "INSPECTOR", null, false, null);
+        jdbcTemplate.update("INSERT INTO caso_seguro (caso_id, compania_seguro_id, numero_siniestro, tramitador_caso_persona_id, inspector_caso_persona_id, detalle_cobertura) VALUES (?, ?, ?, ?, ?, ?)",
+                caseId, 1L, "4-2541587", 101L, 102L, "Todo riesgo");
+        jdbcTemplate.update("UPDATE caso_siniestro SET fecha_siniestro = ?, hora_siniestro = ?, lugar = ?, dinamica = ? WHERE caso_id = ?",
+                LocalDate.of(2026, 1, 1), LocalTime.of(10, 30), "Mitre 400, Rosario", "Colision trasera", caseId);
     }
 
     private void seedPendingTaskAndPart(Long caseId) {

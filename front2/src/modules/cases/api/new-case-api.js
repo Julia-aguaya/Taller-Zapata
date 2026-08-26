@@ -15,6 +15,20 @@ export const createCase = (payload) => requestJson('/cases', {
   body: JSON.stringify(payload),
 });
 
+export const createCaseWithReferenciador = (payload) => requestJson('/cases/with-referenciador', {
+  method: 'POST',
+  body: JSON.stringify(payload),
+});
+
+export const createCaseWithInsurance = (payload) => requestJson('/cases/with-insurance', {
+  method: 'POST',
+  body: JSON.stringify(payload),
+});
+
+export const listInsuranceCompanies = () => requestJson('/insurance/companies');
+
+export const listInsuranceCompanyContacts = (companyId) => requestJson(`/insurance/companies/${companyId}/contacts`);
+
 export const getCaseCatalogs = () => requestJson('/cases/catalogs');
 
 export const getInsuranceCatalogs = () => requestJson('/insurance/catalogs');

@@ -12,7 +12,7 @@ import { readStoredAuth } from '@/shared/auth/session-storage';
 
 export const GestionTramiteEditor = ({ caseId, caseDetail, budget, nroCleas, setNroCleas, cleasInsurance, onCleasInsuranceChange, cleasAgreedAmount, setCleasAgreedAmount, cleasFranchiseDistribution, onCleasFranchiseDistributionChange, cleasOver, cleasOpinion, onCleasOverChange, onCleasOpinionChange, cleasClosedAt, onRequestCleasClosure, onSaved }) => {
   const caseTypeCode = caseDetail?.caseTypeCode;
-  const showFranchise = caseTypeCode !== 'GRANIZO';
+  const isGranizo = caseTypeCode === 'GRANIZO';
 
   if (caseTypeCode === 'CLEAS') {
     return <CleasGestionTramiteEditor caseId={caseId} caseDetail={caseDetail} nroCleas={nroCleas} setNroCleas={setNroCleas} insurance={cleasInsurance} onInsuranceChange={onCleasInsuranceChange} cleasAgreedAmount={cleasAgreedAmount} setCleasAgreedAmount={setCleasAgreedAmount} cleasFranchiseDistribution={cleasFranchiseDistribution} onCleasFranchiseDistributionChange={onCleasFranchiseDistributionChange} cleasOver={cleasOver} opinion={cleasOpinion} onCleasOverChange={onCleasOverChange} onOpinionChange={onCleasOpinionChange} cleasClosedAt={cleasClosedAt} onRequestClosure={onRequestCleasClosure} />;
@@ -41,16 +41,16 @@ export const GestionTramiteEditor = ({ caseId, caseDetail, budget, nroCleas, set
   return (
     <div className="mt-5 space-y-5 pb-20">
       {/* 1. Datos generales del trámite */}
-      <TramiteSummarySection caseId={caseId} />
+       <TramiteSummarySection caseId={caseId} caseTypeCode={caseTypeCode} />
 
       {/* 2. Datos del seguro */}
       <InsuranceDataSection caseId={caseId} caseDetail={caseDetail} />
 
-      {/* 3. Datos del siniestro */}
-      <ClaimDataSection caseId={caseId} />
+       {/* GRANIZO only needs the backend-owned incident date and prescription. */}
+       {!isGranizo ? <ClaimDataSection caseId={caseId} /> : null}
 
       {/* 4. Franquicia (no aplica para GRANIZO) */}
-      {showFranchise ? (
+       {!isGranizo ? (
         <DeductibleSection caseId={caseId} caseDetail={caseDetail} />
       ) : null}
 

@@ -5,6 +5,7 @@ import com.tallerzapata.backend.api.recovery.FranchiseRecoveryCatalogsResponse;
 import com.tallerzapata.backend.api.recovery.FranchiseRecoveryResponse;
 import com.tallerzapata.backend.api.recovery.FranchiseRecoveryUpsertRequest;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
+import com.tallerzapata.backend.application.casefile.InsuranceRepairCasePolicy;
 import com.tallerzapata.backend.application.casefile.CaseService;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
@@ -13,6 +14,7 @@ import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRelationEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRelationRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.recovery.*;
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
 import com.tallerzapata.backend.infrastructure.security.CurrentUserService;
@@ -27,23 +29,26 @@ import java.util.Map;
 
 @Service
 public class FranchiseRecoveryService {
+    private final InsuranceRepairCasePolicy insuranceRepairCasePolicy = new InsuranceRepairCasePolicy();
     private final FranchiseRecoveryRepository franchiseRecoveryRepository;
     private final FranchiseRecoveryManagerRepository managerRepository;
     private final FranchiseRecoveryOpinionRepository opinionRepository;
     private final FranchiseRecoveryPaymentStatusRepository paymentStatusRepository;
     private final CaseRepository caseRepository;
+    private final CaseTypeRepository caseTypeRepository;
     private final CaseRelationRepository caseRelationRepository;
     private final CaseService caseService;
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService accessControlService;
     private final CaseAuditService caseAuditService;
 
-    public FranchiseRecoveryService(FranchiseRecoveryRepository franchiseRecoveryRepository, FranchiseRecoveryManagerRepository managerRepository, FranchiseRecoveryOpinionRepository opinionRepository, FranchiseRecoveryPaymentStatusRepository paymentStatusRepository, CaseRepository caseRepository, CaseRelationRepository caseRelationRepository, CaseService caseService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService) {
+    public FranchiseRecoveryService(FranchiseRecoveryRepository franchiseRecoveryRepository, FranchiseRecoveryManagerRepository managerRepository, FranchiseRecoveryOpinionRepository opinionRepository, FranchiseRecoveryPaymentStatusRepository paymentStatusRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CaseRelationRepository caseRelationRepository, CaseService caseService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService) {
         this.franchiseRecoveryRepository = franchiseRecoveryRepository;
         this.managerRepository = managerRepository;
         this.opinionRepository = opinionRepository;
         this.paymentStatusRepository = paymentStatusRepository;
         this.caseRepository = caseRepository;
+        this.caseTypeRepository = caseTypeRepository;
         this.caseRelationRepository = caseRelationRepository;
         this.caseService = caseService;
         this.currentUserService = currentUserService;
@@ -67,7 +72,7 @@ public class FranchiseRecoveryService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "recupero.ver");
-        return franchiseRecoveryRepository.findByCaseId(caseId).map(this::toResponse).orElse(null);
+        return isGranizo(caseEntity) ? null : franchiseRecoveryRepository.findByCaseId(caseId).map(this::toResponse).orElse(null);
     }
 
     @Transactional
@@ -75,6 +80,7 @@ public class FranchiseRecoveryService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "recupero.crear");
+        requireRecoveryAllowed(caseEntity);
         validateRequest(caseId, request);
         FranchiseRecoveryEntity entity = franchiseRecoveryRepository.findByCaseId(caseId).orElseGet(FranchiseRecoveryEntity::new);
         entity.setCaseId(caseId);
@@ -101,6 +107,7 @@ public class FranchiseRecoveryService {
     public Long createRecoveryFromBaseCase(Long baseCaseId, HttpServletRequest httpRequest) {
         CaseEntity base = caseRepository.findById(baseCaseId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el caso base " + baseCaseId));
+        requireRecoveryAllowed(base);
         CaseEntity child = caseService.createRecoveryChildCase(baseCaseId, httpRequest);
 
         FranchiseRecoveryEntity recovery = new FranchiseRecoveryEntity();
@@ -133,6 +140,8 @@ public class FranchiseRecoveryService {
     }
 
     private CaseEntity requireCase(Long caseId) { return caseRepository.findById(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId)); }
+    private boolean isGranizo(CaseEntity caseEntity) { return caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> insuranceRepairCasePolicy.isGranizo(type.getCode())).orElse(false); }
+    private void requireRecoveryAllowed(CaseEntity caseEntity) { if (isGranizo(caseEntity)) throw new ConflictException("Recupero de franquicia no aplica a casos GRANIZO"); }
     private FranchiseRecoveryResponse toResponse(FranchiseRecoveryEntity e) { return new FranchiseRecoveryResponse(e.getId(), e.getCaseId(), e.getManagerCode(), e.getBaseCaseId(), e.getBaseFolderCode(), e.getOpinionCode(), e.getAgreedAmount(), e.getRecoveryAmount(), e.getEnablesRepair(), e.getRecoversClient(), e.getClientAmount(), e.getClientPaymentStatusCode(), e.getClientPaymentDate(), e.getApprovedLowerAgreement(), e.getApprovalNote(), e.getReusesBaseData()); }
     private String normalizeCode(String value) { return value == null || value.isBlank() ? null : value.trim().toUpperCase(); }
     private String normalizedOptionalCode(String value) { return value == null || value.isBlank() ? null : normalizeCode(value); }

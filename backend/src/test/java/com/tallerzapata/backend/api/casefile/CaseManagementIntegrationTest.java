@@ -106,6 +106,51 @@ class CaseManagementIntegrationTest {
     }
 
     @Test
+    void shouldOwnGranizoPrescriptionAndRejectClientOverride() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = ? WHERE id = ?", 3L, 100L);
+
+        mockMvc.perform(put("/api/v1/cases/100/incident")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isConflict());
+
+        mockMvc.perform(put("/api/v1/cases/100/incident")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"incidentDate\":\"2026-04-20\",\"prescriptionDate\":\"2029-04-20\"}"))
+                .andExpect(status().isConflict());
+
+        mockMvc.perform(put("/api/v1/cases/100/incident")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"incidentDate\":\"2026-04-20\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100/incident")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.prescriptionDate").value("2027-04-20"));
+    }
+
+    @Test
+    void shouldPreserveTodoRiesgoClientPrescriptionWithoutRequiringIncidentDate() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = ? WHERE id = ?", 2L, 100L);
+
+        mockMvc.perform(put("/api/v1/cases/100/incident")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"prescriptionDate\":\"2029-04-20\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100/incident")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.incidentDate").doesNotExist())
+                .andExpect(jsonPath("$.prescriptionDate").value("2029-04-20"));
+    }
+
+    @Test
     void shouldRejectDuplicateMainPerson() throws Exception {
         mockMvc.perform(post("/api/v1/cases/100/persons")
                         .header("X-User-Id", "3")

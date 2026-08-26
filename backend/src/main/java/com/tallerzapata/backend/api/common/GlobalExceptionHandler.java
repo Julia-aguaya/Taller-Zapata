@@ -16,6 +16,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -51,6 +52,11 @@ public class GlobalExceptionHandler {
                 .toList();
 
         return build(HttpStatus.BAD_REQUEST, "Constraint violation", request, details);
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiErrorResponse> handleUnreadableMessage(HttpMessageNotReadableException exception, HttpServletRequest request) {
+        return build(HttpStatus.BAD_REQUEST, "El cuerpo de la solicitud contiene valores inválidos", request, List.of());
     }
 
     @ExceptionHandler(AccessDeniedException.class)

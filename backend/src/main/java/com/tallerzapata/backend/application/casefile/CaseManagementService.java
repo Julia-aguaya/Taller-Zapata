@@ -37,6 +37,8 @@ import java.util.Map;
 @Service
 public class CaseManagementService {
 
+    private final InsuranceRepairCasePolicy insuranceRepairCasePolicy = new InsuranceRepairCasePolicy();
+
     private final CaseRepository caseRepository;
     private final CasePersonRepository casePersonRepository;
     private final CaseVehicleRepository caseVehicleRepository;
@@ -158,6 +160,16 @@ public class CaseManagementService {
         CaseEntity caseEntity = requireCase(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "caso.crear");
 
+        CaseTypeEntity caseType = caseTypeRepository.findById(caseEntity.getCaseTypeId())
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el tipo de tramite " + caseEntity.getCaseTypeId()));
+        boolean backendOwnedPrescription = insuranceRepairCasePolicy.requiresGranizoBackendIncident(caseType.getCode());
+        if (backendOwnedPrescription && request.incidentDate() == null) {
+            throw new ConflictException("incidentDate es obligatoria para " + caseType.getCode());
+        }
+        if (backendOwnedPrescription && request.prescriptionDate() != null) {
+            throw new ConflictException("prescriptionDate es calculada por el backend para " + caseType.getCode());
+        }
+
         CaseIncidentEntity entity = caseIncidentRepository.findByCaseId(caseId)
                 .orElseGet(CaseIncidentEntity::new);
         boolean isNew = entity.getCaseId() == null;
@@ -168,9 +180,10 @@ public class CaseManagementService {
         entity.setDinamica(blankToNull(request.dynamics()));
         entity.setObservaciones(blankToNull(request.observations()));
 
-        // Auto-calcular prescripción: 1 año desde fecha del siniestro para trámites con seguro
         LocalDate prescriptionDate = request.prescriptionDate();
-        if (prescriptionDate == null && entity.getIncidentDate() != null && requiresProcessing(caseEntity)) {
+        if (backendOwnedPrescription) {
+            prescriptionDate = entity.getIncidentDate().plusYears(1);
+        } else if (prescriptionDate == null && entity.getIncidentDate() != null && requiresProcessing(caseEntity)) {
             prescriptionDate = entity.getIncidentDate().plusYears(1);
         }
         entity.setPrescriptionDate(prescriptionDate);

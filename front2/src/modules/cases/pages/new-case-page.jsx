@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { FolderOpen, FolderPlus, Search, UserPlus, Car } from 'lucide-react';
 import { toast } from 'sonner';
-import { createCase, createPerson, createVehicle, getCaseCatalogs, getPersonVehicles, getVehicleCatalogs, listBranches, listOrganizations, listVehicleBrands, listVehicleModels, searchPersons, searchVehicles } from '@/modules/cases/api/new-case-api';
-import { createReferenciador, searchReferenciadores } from '@/modules/cases/api/cases-api';
+import { createCase, createCaseWithReferenciador, createPerson, createVehicle, getCaseCatalogs, getPersonVehicles, getVehicleCatalogs, listBranches, listOrganizations, listVehicleBrands, listVehicleModels, searchPersons, searchVehicles } from '@/modules/cases/api/new-case-api';
+import { searchReferenciadores } from '@/modules/cases/api/cases-api';
 import { useSession } from '@/modules/auth/providers/session-provider';
 import { Card } from '@/shared/ui/card';
 import { Input } from '@/shared/ui/input';
@@ -55,7 +55,6 @@ export const NewCasePage = () => {
   const [vehicleSearch, setVehicleSearch] = useState('');
   const [referenciadorSearch, setReferenciadorSearch] = useState('');
   const [selectedReferenciadorId, setSelectedReferenciadorId] = useState(null);
-  const referenciadorInputRef = useRef(null);
   const [errors, setErrors] = useState({});
   const [form, setForm] = useState(createInitialState());
   const [referenciadorSearchDebounced, setReferenciadorSearchDebounced] = useState('');
@@ -167,19 +166,13 @@ export const NewCasePage = () => {
 
   const createCaseMutation = useMutation({
     mutationFn: async () => {
-      let referenciadorId = selectedReferenciadorId;
-      if (form.referenced === 'SI' && !referenciadorId) {
+      const referenciadorId = selectedReferenciadorId;
+      const newReferenciador = form.referenced === 'SI' && !referenciadorId
+        ? (() => {
         const [nombre, ...apellido] = referenciadorSearch.trim().split(/\s+/);
-        try {
-          const referenciador = await createReferenciador({ nombre, apellido: apellido.join(' '), telefono: '' });
-          referenciadorId = referenciador.id;
-          setSelectedReferenciadorId(referenciadorId);
-        } catch (error) {
-          setErrors((current) => ({ ...current, referenciador: error.message || 'No pude crear el referenciador.' }));
-          referenciadorInputRef.current?.focus();
-          throw error;
-        }
-      }
+          return { nombre, apellido: apellido.join(' '), telefono: '' };
+        })()
+        : null;
 
       let personId = selectedPersonId;
       if (!personId) {
@@ -254,7 +247,7 @@ export const NewCasePage = () => {
         }
       }
 
-      return createCase({
+      const casePayload = {
         caseTypeId: Number(form.caseTypeId),
         organizationId: form.organizationId ? Number(form.organizationId) : null,
         branchId: form.branchId ? Number(form.branchId) : null,
@@ -266,7 +259,6 @@ export const NewCasePage = () => {
         referredByText: form.referenced === 'SI' ? form.referredByText || null : null,
         priorityCode: null,
         generalObservations: form.generalObservations || null,
-        incidentDate: null,
         incidentTime: null,
         incidentPlace: null,
         incidentDynamics: null,
@@ -275,7 +267,11 @@ export const NewCasePage = () => {
         daysInProcess: null,
         customerRoleCode: 'CLIENTE',
         principalVehicleRoleCode: 'PRINCIPAL',
-      });
+      };
+      if (newReferenciador) {
+        return createCaseWithReferenciador({ caseRequest: casePayload, referenciador: newReferenciador });
+      }
+      return createCase(casePayload);
     },
     onSuccess: (payload) => {
       setCreatedCase(payload);
@@ -301,7 +297,6 @@ export const NewCasePage = () => {
       if (!form.vehicle.plate?.trim()) fieldErrors.vehiclePatente = 'El dominio es obligatorio';
     }
     if (requiresReferenciador(form.referenced, selectedReferenciadorId) && !hasReferenciadorName(referenciadorSearch)) fieldErrors.referenciador = 'Ingresá nombre y apellido del referenciador';
-
     if (Object.keys(fieldErrors).length > 0) {
       setErrors(fieldErrors);
       toast.error('Completá los campos obligatorios antes de crear la carpeta.');
@@ -327,7 +322,6 @@ export const NewCasePage = () => {
     const selected = caseTypeOptions.find((ct) => ct.id === form.caseTypeId);
     return selected?.name || 'Particular';
   }, [caseTypeOptions, form.caseTypeId]);
-
   const blockingReasons = useMemo(() => {
     const reasons = [];
     if (showOrgSelector && !form.organizationId) reasons.push('Falta seleccionar la organización');
@@ -423,7 +417,7 @@ export const NewCasePage = () => {
                   </div>
                 ) : (
                   <div className="relative">
-                    <Input ref={referenciadorInputRef} value={referenciadorSearch} onChange={(event) => setReferenciadorSearch(event.target.value)} placeholder="Buscar por nombre..." />
+                    <Input value={referenciadorSearch} onChange={(event) => setReferenciadorSearch(event.target.value)} placeholder="Buscar por nombre..." />
                     {(referenciadorQuery.data ?? []).length > 0 ? (
                       <div className="absolute z-10 mt-1 w-full rounded-2xl border border-border bg-card p-2 shadow-haze">
                         {referenciadorQuery.data.map((referenciador) => (
@@ -442,6 +436,7 @@ export const NewCasePage = () => {
               </Field>
             </div>
           ) : null}
+
         </Card>
 
         <div className="space-y-5">

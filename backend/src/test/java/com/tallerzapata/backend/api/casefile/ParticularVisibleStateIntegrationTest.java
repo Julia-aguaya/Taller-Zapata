@@ -413,9 +413,10 @@ class ParticularVisibleStateIntegrationTest {
 
     private long createCase(String typeCode) throws Exception {
         Long typeId = jdbcTemplate.queryForObject("SELECT id FROM tipos_tramite WHERE codigo = ?", Long.class, typeCode);
+        String incidentDate = ("TODO_RIESGO".equals(typeCode) || "GRANIZO".equals(typeCode)) ? ",\"incidentDate\":\"2026-01-01\"" : "";
         MvcResult result = mockMvc.perform(post("/api/v1/cases").header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"caseTypeId\":" + typeId + ",\"organizationId\":1,\"branchId\":1,\"principalVehicleId\":10,\"principalCustomerPersonId\":10,\"referenced\":false,\"customerRoleCode\":\"CLIENTE\",\"principalVehicleRoleCode\":\"PRINCIPAL\"}"))
+                        .content("{\"caseTypeId\":" + typeId + ",\"organizationId\":1,\"branchId\":1,\"principalVehicleId\":10,\"principalCustomerPersonId\":10,\"referenced\":false" + incidentDate + ",\"customerRoleCode\":\"CLIENTE\",\"principalVehicleRoleCode\":\"PRINCIPAL\"}"))
                 .andExpect(status().isOk()).andReturn();
         JsonNode body = objectMapper.readTree(result.getResponse().getContentAsString());
         return body.get("id").asLong();

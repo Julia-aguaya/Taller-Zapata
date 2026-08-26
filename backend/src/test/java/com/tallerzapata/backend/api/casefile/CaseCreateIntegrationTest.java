@@ -206,6 +206,30 @@ class CaseCreateIntegrationTest {
     }
 
     @Test
+    void shouldCreateGranizoFoldersWithoutIncidentData() throws Exception {
+        CaseCreateRequest request = new CaseCreateRequest(
+                3L, 1L, 1L, 10L, 10L, false, null, null, null, null,
+                null, null, null, null, null, null, null, null, "CLIENTE", "PRINCIPAL"
+        );
+
+        mockMvc.perform(post("/api/v1/cases")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.folderCode").value("0001GZ"))
+                .andExpect(jsonPath("$.caseTypeCode").value("GRANIZO"))
+                .andExpect(jsonPath("$.incidentDate").doesNotExist());
+
+        mockMvc.perform(post("/api/v1/cases")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.folderCode").value("0002GZ"));
+    }
+
+    @Test
     void shouldRejectCreateWhenPrincipalPersonDoesNotExist() throws Exception {
         CaseCreateRequest request = new CaseCreateRequest(
                 1L,
@@ -282,6 +306,39 @@ class CaseCreateIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(request)))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").value("customerRoleCode no permitido: NO_EXISTE"));
+    }
+
+    @Test
+    void shouldCreateAndRehydrateNewReferenciadorWithCaseWithoutInsuranceContact() throws Exception {
+        String request = """
+                {"caseRequest":{"caseTypeId":1,"organizationId":1,"branchId":1,"principalVehicleId":10,"principalCustomerPersonId":10,"referenced":true},
+                 "referenciador":{"nombre":"Nora","apellido":"Nueva","telefono":"341555"}}
+                """;
+        String response = mockMvc.perform(post("/api/v1/cases/with-referenciador").header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON).content(request))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.referenced").value(true))
+                .andReturn().getResponse().getContentAsString();
+        Long caseId = objectMapper.readTree(response).get("id").asLong();
+        Long referenciadorId = objectMapper.readTree(response).get("referenciadorId").asLong();
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM referenciadores WHERE id = ? AND nombre = ?", Integer.class, referenciadorId, "Nora")).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT referenciador_id FROM casos WHERE id = ?", Long.class, caseId)).isEqualTo(referenciadorId);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM companias_contactos", Integer.class)).isZero();
+        mockMvc.perform(get("/api/v1/cases/{caseId}", caseId).header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.referenciadorId").value(referenciadorId));
+    }
+
+    @Test
+    void shouldRollbackNewReferenciadorWhenCaseCreationFails() throws Exception {
+        String invalidCase = """
+                {"caseRequest":{"caseTypeId":1,"organizationId":1,"branchId":999,"principalVehicleId":10,"principalCustomerPersonId":10},
+                 "referenciador":{"nombre":"NoDebe","apellido":"Persistir"}}
+                """;
+
+        mockMvc.perform(post("/api/v1/cases/with-referenciador").header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON).content(invalidCase))
+                .andExpect(status().isNotFound());
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM referenciadores WHERE nombre = ?", Integer.class, "NoDebe")).isZero();
     }
 
     private void seedPeopleAndVehicles() {

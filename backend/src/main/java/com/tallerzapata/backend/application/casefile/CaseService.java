@@ -1,6 +1,8 @@
 package com.tallerzapata.backend.application.casefile;
 
 import com.tallerzapata.backend.api.casefile.CaseCreateRequest;
+import com.tallerzapata.backend.api.casefile.CaseCreateWithInsuranceRequest;
+import com.tallerzapata.backend.api.casefile.CaseCreateWithReferenciadorRequest;
 import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
 import com.tallerzapata.backend.api.casefile.CaseCatalogsResponse;
@@ -32,6 +34,13 @@ import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseVehicleR
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementEntity;
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseLegalRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseInsuranceEntity;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseInsuranceRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceCompanyContactEntity;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceCompanyContactRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceCompanyEntity;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceCompanyRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceRoleContactRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingRepository;
 import com.tallerzapata.backend.infrastructure.persistence.organization.BranchEntity;
 import com.tallerzapata.backend.infrastructure.persistence.organization.BranchRepository;
@@ -74,6 +83,8 @@ import java.util.stream.Collectors;
 @Service
 public class CaseService {
 
+    private final InsuranceRepairCasePolicy insuranceRepairCasePolicy = new InsuranceRepairCasePolicy();
+
     private final CaseRepository caseRepository;
     private final CaseTypeRepository caseTypeRepository;
     private final BranchRepository branchRepository;
@@ -94,6 +105,10 @@ public class CaseService {
     private final InsuranceProcessingRepository insuranceProcessingRepository;
     private final FranchiseRecoveryRepository franchiseRecoveryRepository;
     private final CaseLegalRepository caseLegalRepository;
+    private final InsuranceCompanyRepository insuranceCompanyRepository;
+    private final InsuranceCompanyContactRepository insuranceCompanyContactRepository;
+    private final CaseInsuranceRepository caseInsuranceRepository;
+    private final InsuranceRoleContactRepository insuranceRoleContactRepository;
     private final OperationalTaskRepository operationalTaskRepository;
     private final UserRoleRepository userRoleRepository;
     private final UserRepository userRepository;
@@ -124,6 +139,10 @@ public class CaseService {
             InsuranceProcessingRepository insuranceProcessingRepository,
             FranchiseRecoveryRepository franchiseRecoveryRepository,
             CaseLegalRepository caseLegalRepository,
+            InsuranceCompanyRepository insuranceCompanyRepository,
+            InsuranceCompanyContactRepository insuranceCompanyContactRepository,
+            CaseInsuranceRepository caseInsuranceRepository,
+            InsuranceRoleContactRepository insuranceRoleContactRepository,
             OperationalTaskRepository operationalTaskRepository,
             UserRoleRepository userRoleRepository,
             UserRepository userRepository,
@@ -152,6 +171,10 @@ public class CaseService {
         this.insuranceProcessingRepository = insuranceProcessingRepository;
         this.franchiseRecoveryRepository = franchiseRecoveryRepository;
         this.caseLegalRepository = caseLegalRepository;
+        this.insuranceCompanyRepository = insuranceCompanyRepository;
+        this.insuranceCompanyContactRepository = insuranceCompanyContactRepository;
+        this.caseInsuranceRepository = caseInsuranceRepository;
+        this.insuranceRoleContactRepository = insuranceRoleContactRepository;
         this.operationalTaskRepository = operationalTaskRepository;
         this.userRoleRepository = userRoleRepository;
         this.userRepository = userRepository;
@@ -322,7 +345,11 @@ public class CaseService {
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el estado inicial de legal"));
 
         Long nextOrderNumber = caseRepository.findMaxOrderNumberByOrganizationId(creationScope.organizationId()) + 1;
-        String folderCode = CaseFolderCodeGenerator.generate(nextOrderNumber, caseType.getFolderPrefix(), branch.getCode());
+        String folderCode = CaseFolderCodeGenerator.generate(
+                nextOrderNumber,
+                insuranceRepairCasePolicy.folderPrefix(caseType.getCode(), caseType.getFolderPrefix()),
+                branch.getCode()
+        );
 
         CaseEntity entity = new CaseEntity();
         entity.setOrderNumber(nextOrderNumber);
@@ -362,6 +389,9 @@ public class CaseService {
         caseVehicle.setVisualOrder(1);
         caseVehicleRepository.save(caseVehicle);
 
+        if (insuranceRepairCasePolicy.requiresGranizoBackendIncident(caseType.getCode()) && request.prescriptionDate() != null) {
+            throw new ConflictException("prescriptionDate es calculada por el backend para " + caseType.getCode());
+        }
         if (request.incidentDate() != null || request.incidentTime() != null || request.incidentPlace() != null || request.incidentDynamics() != null || request.incidentObservations() != null || request.prescriptionDate() != null || request.daysInProcess() != null) {
             CaseIncidentEntity incidentEntity = new CaseIncidentEntity();
             incidentEntity.setCaseId(entity.getId());
@@ -370,7 +400,9 @@ public class CaseService {
             incidentEntity.setLugar(blankToNull(request.incidentPlace()));
             incidentEntity.setDinamica(blankToNull(request.incidentDynamics()));
             incidentEntity.setObservaciones(blankToNull(request.incidentObservations()));
-            incidentEntity.setPrescriptionDate(request.prescriptionDate());
+            incidentEntity.setPrescriptionDate(insuranceRepairCasePolicy.requiresGranizoBackendIncident(caseType.getCode()) && request.incidentDate() != null
+                    ? request.incidentDate().plusYears(1)
+                    : request.prescriptionDate());
             incidentEntity.setDaysInProcess(request.daysInProcess());
             caseIncidentRepository.save(incidentEntity);
         }
@@ -420,6 +452,74 @@ public class CaseService {
         todoRiesgoEffectiveStateRecalculator.recalculate(entity.getId());
 
         return toResponse(entity);
+    }
+
+    @Transactional
+    public CaseResponse createWithReferenciador(CaseCreateWithReferenciadorRequest request, HttpServletRequest httpRequest) {
+        if (request.caseRequest().referenciadorId() != null) {
+            throw new ConflictException("No se puede seleccionar y crear un referenciador a la vez");
+        }
+
+        ReferenciadorEntity referenciador = new ReferenciadorEntity();
+        referenciador.setNombre(request.referenciador().nombre().trim());
+        referenciador.setApellido(blankToNull(request.referenciador().apellido()));
+        referenciador.setTelefono(blankToNull(request.referenciador().telefono()));
+        referenciador.setActivo(true);
+        referenciador = referenciadorRepository.save(referenciador);
+
+        CaseCreateRequest caseRequest = request.caseRequest();
+        return create(new CaseCreateRequest(
+                caseRequest.caseTypeId(), caseRequest.organizationId(), caseRequest.branchId(),
+                caseRequest.principalVehicleId(), caseRequest.principalCustomerPersonId(), caseRequest.referenced(),
+                caseRequest.referredByPersonId(), referenciador.getId(), caseRequest.referredByText(),
+                caseRequest.priorityCode(), caseRequest.generalObservations(), caseRequest.incidentDate(),
+                caseRequest.incidentTime(), caseRequest.incidentPlace(), caseRequest.incidentDynamics(),
+                caseRequest.incidentObservations(), caseRequest.prescriptionDate(), caseRequest.daysInProcess(),
+                caseRequest.customerRoleCode(), caseRequest.principalVehicleRoleCode()
+        ), httpRequest);
+    }
+
+    @Transactional
+    public CaseResponse createWithInsurance(CaseCreateWithInsuranceRequest request, HttpServletRequest httpRequest) {
+        caseAccessControlService.requirePermission(currentUserService.requireCurrentUser(), "seguro.crear");
+        Long companyId = request.insurance().insuranceCompanyId();
+        InsuranceCompanyEntity company = insuranceCompanyRepository.findById(companyId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe la compania aseguradora " + companyId));
+        if (!Boolean.TRUE.equals(company.getActive())) throw new ConflictException("La compania aseguradora esta inactiva: " + companyId);
+        if (!insuranceRoleContactRepository.existsByCodeAndActiveTrue("TRAMITADOR")) throw new ConflictException("El rol de contacto TRAMITADOR no esta activo");
+
+        Long processorPersonId = request.insurance().processorPersonId();
+        if (processorPersonId != null && request.insurance().newProcessor() != null) throw new ConflictException("Seleccioná un tramitador existente o ingresá uno nuevo, no ambos");
+        if (processorPersonId == null && request.insurance().newProcessor() == null) throw new ConflictException("Seleccioná o ingresá un tramitador");
+        if (request.insurance().newProcessor() != null) {
+            String name = blankToNull(request.insurance().newProcessor().nombre());
+            if (name == null) throw new ConflictException("El nombre del nuevo tramitador es obligatorio");
+            PersonEntity person = new PersonEntity();
+            person.setTipoPersona("fisica"); person.setNombre(name);
+            String surname = blankToNull(request.insurance().newProcessor().apellido());
+            person.setApellido(surname); person.setNombreMostrar((name + " " + (surname == null ? "" : surname)).trim());
+            person.setEmailPrincipal(blankToNull(request.insurance().newProcessor().email()));
+            person.setTelefonoPrincipal(blankToNull(request.insurance().newProcessor().telefono())); person.setActivo(true);
+            processorPersonId = personRepository.save(person).getId();
+        } else {
+            Long existingProcessorPersonId = processorPersonId;
+            PersonEntity person = personRepository.findById(existingProcessorPersonId).orElseThrow(() -> new ResourceNotFoundException("No existe la persona " + existingProcessorPersonId));
+            if (!Boolean.TRUE.equals(person.getActivo()) || !insuranceCompanyContactRepository.existsByCompanyIdAndPersonIdAndContactRoleCode(companyId, existingProcessorPersonId, "TRAMITADOR")) throw new ConflictException("La persona seleccionada no es un contacto activo TRAMITADOR de la compania indicada");
+        }
+        CaseResponse response = create(request.caseRequest(), httpRequest);
+        if (!insuranceCompanyContactRepository.existsByCompanyIdAndPersonIdAndContactRoleCode(companyId, processorPersonId, "TRAMITADOR")) {
+            InsuranceCompanyContactEntity contact = new InsuranceCompanyContactEntity();
+            contact.setCompanyId(companyId); contact.setPersonId(processorPersonId); contact.setContactRoleCode("TRAMITADOR");
+            insuranceCompanyContactRepository.save(contact);
+        }
+        CasePersonEntity processorLink = new CasePersonEntity();
+        processorLink.setCaseId(response.id()); processorLink.setPersonId(processorPersonId); processorLink.setCaseRoleCode("TRAMITADOR"); processorLink.setPrincipal(false);
+        processorLink = casePersonRepository.save(processorLink);
+        CaseInsuranceEntity insurance = new CaseInsuranceEntity();
+        insurance.setCaseId(response.id()); insurance.setInsuranceCompanyId(companyId); insurance.setClaimNumber(blankToNull(request.insurance().claimNumber()));
+        insurance.setCoverageDetail(blankToNull(request.insurance().coverageDetail())); insurance.setProcessorCasePersonId(processorLink.getId());
+        caseInsuranceRepository.save(insurance);
+        return response;
     }
 
     @Transactional
@@ -1010,7 +1110,7 @@ public class CaseService {
     }
 
     private String compatibleVisibleCode(String caseTypeCode, CaseVisibleStateResponse visibleState) {
-        return ("PARTICULAR".equalsIgnoreCase(caseTypeCode) || "TODO_RIESGO".equalsIgnoreCase(caseTypeCode))
+        return ("PARTICULAR".equalsIgnoreCase(caseTypeCode) || insuranceRepairCasePolicy.isInsuranceRepair(caseTypeCode))
                 && visibleState != null ? visibleState.code() : null;
     }
 

@@ -131,6 +131,20 @@ public class CaseController {
         return caseService.create(request, httpRequest);
     }
 
+    @Operation(summary = "Crear caso con referenciador", description = "Crea una carpeta y su referenciador en una sola transaccion")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PostMapping("/with-referenciador")
+    public CaseResponse createWithReferenciador(@Valid @RequestBody CaseCreateWithReferenciadorRequest request, HttpServletRequest httpRequest) {
+        return caseService.createWithReferenciador(request, httpRequest);
+    }
+
+    @Operation(summary = "Crear caso con seguro", description = "Crea una carpeta y su contacto tramitador de aseguradora en una sola transaccion")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PostMapping("/with-insurance")
+    public CaseResponse createWithInsurance(@Valid @RequestBody CaseCreateWithInsuranceRequest request, HttpServletRequest httpRequest) {
+        return caseService.createWithInsurance(request, httpRequest);
+    }
+
     @Operation(summary = "Actualizar caso", description = "Actualiza los datos de un caso existente")
     @ApiResponse(responseCode = "200", description = "OK")
     @PutMapping("/{caseId}")

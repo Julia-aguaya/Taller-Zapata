@@ -136,25 +136,27 @@ public class CaseReadinessService {
             tabs.add(buildParticularPaymentsReadiness(caseId));
         } else if ("TODO_RIESGO".equals(caseType.getCode())) {
             CaseReadinessTabResponse tramiteTab = buildTodoRiesgoGestionTramiteReadiness(caseId);
+            boolean gestionTramiteCompleted = tramiteTab.completed();
             tabs.add(tramiteTab);
-            CaseReadinessTabResponse budgetTab = buildTodoRiesgoPresupuestoReadiness(caseId, principalVehicle, tramiteTab.completed());
+            CaseReadinessTabResponse budgetTab = buildTodoRiesgoPresupuestoReadiness(caseId, principalVehicle, gestionTramiteCompleted);
             tabs.add(budgetTab);
-            tabs.add(buildTodoRiesgoReparacionReadiness(caseId, budgetTab.completed(), tramiteTab.completed()));
+            tabs.add(buildTodoRiesgoReparacionReadiness(caseId, budgetTab.completed(), gestionTramiteCompleted));
             tabs.add(buildTodoRiesgoPagosReadiness(caseId));
         } else if ("GRANIZO".equals(caseType.getCode())) {
-            CaseReadinessTabResponse tramiteTab = buildGranizoGestionTramiteReadiness(caseId);
+            CaseReadinessTabResponse tramiteTab = buildTodoRiesgoGestionTramiteReadiness(caseId);
             tabs.add(tramiteTab);
-            CaseReadinessTabResponse budgetTab = buildTodoRiesgoPresupuestoReadiness(caseId, principalVehicle, tramiteTab.completed());
+            CaseReadinessTabResponse budgetTab = buildGranizoPresupuestoReadiness(
+                    caseId, principalVehicle, collectInsuranceRepairBudgetAccessBlockingReasons(caseId));
             tabs.add(budgetTab);
             tabs.add(buildTodoRiesgoReparacionReadiness(caseId, budgetTab.completed(), tramiteTab.completed()));
-            tabs.add(buildGranizoPagosReadiness(caseId));
+            tabs.add(buildInsuranceRepairPagosReadiness(caseId, false));
         } else if ("RECUPERO_FRANQUICIA".equals(caseType.getCode())) {
             FranchiseRecoveryEntity recovery = franchiseRecoveryRepository.findByCaseId(caseId).orElse(null);
             CaseReadinessTabResponse tramiteTab = buildFranchiseRecoveryGestionTramiteReadiness(recovery);
             tabs.add(tramiteTab);
             boolean enablesRepair = recovery != null && Boolean.TRUE.equals(recovery.getEnablesRepair());
             if (enablesRepair) {
-                CaseReadinessTabResponse budgetTab = buildTodoRiesgoPresupuestoReadiness(caseId, principalVehicle, tramiteTab.completed());
+                CaseReadinessTabResponse budgetTab = buildTramiteGatedPresupuestoReadiness(caseId, principalVehicle, tramiteTab.completed());
                 tabs.add(budgetTab);
                 tabs.add(buildTodoRiesgoReparacionReadiness(caseId, budgetTab.completed(), tramiteTab.completed()));
             }
@@ -321,12 +323,29 @@ public class CaseReadinessService {
     }
 
     private CaseReadinessTabResponse buildTodoRiesgoPresupuestoReadiness(Long caseId, VehicleEntity vehicle, boolean tramiteCompleted) {
+        return buildTramiteGatedPresupuestoReadiness(caseId, vehicle, tramiteCompleted);
+    }
+
+    private CaseReadinessTabResponse buildGranizoPresupuestoReadiness(Long caseId, VehicleEntity vehicle, List<String> budgetAccessBlockingReasons) {
+        if (!budgetAccessBlockingReasons.isEmpty()) {
+            return toTab("PRESUPUESTO", false, budgetAccessBlockingReasons, List.of());
+        }
+        return buildBudgetCompletionReadiness(caseId, vehicle);
+    }
+
+    private CaseReadinessTabResponse buildTramiteGatedPresupuestoReadiness(Long caseId, VehicleEntity vehicle, boolean tramiteCompleted) {
         List<String> blocking = new ArrayList<>();
 
         if (!tramiteCompleted) {
             blocking.add("Debe completar Gestion del Tramite antes de cargar el presupuesto");
             return toTab("PRESUPUESTO", false, blocking, List.of());
         }
+
+        return buildBudgetCompletionReadiness(caseId, vehicle);
+    }
+
+    private CaseReadinessTabResponse buildBudgetCompletionReadiness(Long caseId, VehicleEntity vehicle) {
+        List<String> blocking = new ArrayList<>();
 
         BudgetEntity budget = budgetRepository.findByCaseId(caseId).orElse(null);
         if (budget == null) {
@@ -383,6 +402,10 @@ public class CaseReadinessService {
     }
 
     private CaseReadinessTabResponse buildTodoRiesgoPagosReadiness(Long caseId) {
+        return buildInsuranceRepairPagosReadiness(caseId, true);
+    }
+
+    private CaseReadinessTabResponse buildInsuranceRepairPagosReadiness(Long caseId, boolean includesFranchise) {
         List<String> blocking = new ArrayList<>();
         InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
 
@@ -391,7 +414,7 @@ public class CaseReadinessService {
             return toTab("PAGOS", false, blocking, List.of());
         }
 
-        CaseFranchiseEntity franchise = caseFranchiseRepository.findByCaseId(caseId).orElse(null);
+        CaseFranchiseEntity franchise = includesFranchise ? caseFranchiseRepository.findByCaseId(caseId).orElse(null) : null;
         if (franchise != null && franchise.getFranchiseStatusCode() != null) {
             String franchiseStatus = normalizeCode(franchise.getFranchiseStatusCode());
             if ("PENDIENTE".equals(franchiseStatus)) {
@@ -400,10 +423,9 @@ public class CaseReadinessService {
         }
 
         // Verificar que la Cía. haya pagado
-        CaseFranchiseEntity billingFranchise = caseFranchiseRepository.findByCaseId(caseId).orElse(null);
-        BigDecimal amountToBill = "PROPIA_CIA".equals(normalizeCode(billingFranchise == null ? null : billingFranchise.getRecoveryTypeCode()))
+        BigDecimal amountToBill = "PROPIA_CIA".equals(normalizeCode(franchise == null ? null : franchise.getRecoveryTypeCode()))
                 ? processing.getAgreedAmount()
-                : processing.getAgreedAmount().subtract(billingFranchise == null || billingFranchise.getFranchiseAmount() == null ? BigDecimal.ZERO : billingFranchise.getFranchiseAmount()).max(BigDecimal.ZERO);
+                : processing.getAgreedAmount().subtract(franchise == null || franchise.getFranchiseAmount() == null ? BigDecimal.ZERO : franchise.getFranchiseAmount()).max(BigDecimal.ZERO);
         if (amountToBill != null && amountToBill.compareTo(BigDecimal.ZERO) > 0) {
             BigDecimal ciaPaid = financialMovementRepository.findByCaseId(caseId, Sort.by(Sort.Direction.DESC, "id")).stream()
                     .filter(m -> "ASEGURADORA".equals(normalizeCode(m.getFlowOriginCode())))
@@ -412,35 +434,6 @@ public class CaseReadinessService {
             if (ciaPaid.compareTo(amountToBill) < 0) {
                 blocking.add("La Cia. aun no completo el pago");
             }
-        }
-
-        return toTab("PAGOS", true, blocking, List.of());
-    }
-
-    // ── GRANIZO ────────────────────────────────────────────────
-
-    private CaseReadinessTabResponse buildGranizoGestionTramiteReadiness(Long caseId) {
-        List<String> blocking = new ArrayList<>();
-        CaseInsuranceEntity insurance = caseInsuranceRepository.findByCaseId(caseId).orElse(null);
-        InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
-
-        if (insurance == null || insurance.getInsuranceCompanyId() == null) {
-            blocking.add("Falta seleccionar compania de seguro");
-        }
-        if (processing == null || processing.getAgreedAmount() == null || processing.getQuotationDate() == null) {
-            blocking.add("Falta acordar cotizacion con la Cia.");
-        }
-
-        return toTab("GESTION_TRAMITE", true, blocking, List.of());
-    }
-
-    private CaseReadinessTabResponse buildGranizoPagosReadiness(Long caseId) {
-        List<String> blocking = new ArrayList<>();
-        InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
-
-        if (processing == null || processing.getAgreedAmount() == null || processing.getQuotationDate() == null) {
-            blocking.add("Falta acordar cotizacion con la Cia. antes de registrar pagos");
-            return toTab("PAGOS", false, blocking, List.of());
         }
 
         return toTab("PAGOS", true, blocking, List.of());
@@ -542,6 +535,19 @@ public class CaseReadinessService {
         return isBlank(value) ? null : value.trim().toUpperCase();
     }
 
+    private List<String> collectInsuranceRepairBudgetAccessBlockingReasons(Long caseId) {
+        List<String> reasons = new ArrayList<>();
+        CaseInsuranceEntity insurance = caseInsuranceRepository.findByCaseId(caseId).orElse(null);
+        CaseIncidentEntity incident = caseIncidentRepository.findByCaseId(caseId).orElse(null);
+        if (insurance == null || insurance.getInsuranceCompanyId() == null) reasons.add("Falta seleccionar compania de seguro");
+        if (insurance == null || isBlank(insurance.getClaimNumber())) reasons.add("Falta numero de siniestro");
+        if (insurance == null || insurance.getProcessorCasePersonId() == null) reasons.add("Falta seleccionar tramitador/a");
+        if (insurance == null || insurance.getInspectorCasePersonId() == null) reasons.add("Falta seleccionar inspector/a");
+        if (insurance == null || isBlank(insurance.getCoverageDetail())) reasons.add("Falta detalle de cobertura");
+        if (incident == null || incident.getIncidentDate() == null) reasons.add("Falta la fecha del siniestro");
+        return reasons;
+    }
+
     private boolean isQuotationAgreed(InsuranceProcessingEntity processing) {
         return processing != null
                 && "ACEPTADA".equals(normalizeCode(processing.getQuotationStatusCode()))
@@ -552,4 +558,5 @@ public class CaseReadinessService {
     private BigDecimal scale(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value.setScale(2, java.math.RoundingMode.HALF_UP);
     }
+
 }
