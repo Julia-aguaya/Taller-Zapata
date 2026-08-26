@@ -120,6 +120,128 @@ class FinanceIntegrationTest {
     }
 
     @Test
+    void shouldRejectDirectGranizoFranchiseMovementWithoutPersistingIt() throws Exception {
+        Long caseId = createGranizoCase();
+        int movementsBefore = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ?", Integer.class, caseId);
+        int auditEventsBefore = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ?", Integer.class, caseId);
+
+        mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId)
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"CLIENTE\",\"counterpartyTypeCode\":\"PERSONA\",\"counterpartyPersonId\":10,\"movementAt\":\"2026-05-11T10:30:00\",\"grossAmount\":1000,\"netAmount\":1000,\"paymentMethodCode\":\"TRANSFERENCIA\",\"cancellationTypeCode\":\"FRANQUICIA\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[],\"applications\":[]}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Franquicia no aplica a casos GRANIZO"));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ?", Integer.class, caseId)).isEqualTo(movementsBefore);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ?", Integer.class, caseId)).isEqualTo(auditEventsBefore);
+    }
+
+    @Test
+    void shouldApplyPartialAndFullTodoRiesgoFranchiseWithoutAffectingCompanyBalance() throws Exception {
+        Long caseId = createTodoRiesgoCase();
+        jdbcTemplate.update("INSERT INTO caso_franquicia (caso_id, estado_franquicia_codigo, monto_franquicia, tipo_recupero_codigo) VALUES (?, ?, ?, ?)", caseId, "SIN_DEFINIR", new BigDecimal("100.00"), "TERCERO");
+        jdbcTemplate.update("INSERT INTO caso_seguro (caso_id, compania_seguro_id) VALUES (?, ?)", caseId, 1L);
+        jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_cotizacion, monto_acordado, monto_facturar_compania) VALUES (?, ?, ?, ?)", caseId, LocalDate.of(2026, 5, 11), new BigDecimal("500.00"), new BigDecimal("400.00"));
+
+        postFranchiseMovement(caseId, "INGRESO", "40.00").andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/cases/{caseId}/finance/payment-breakdown", caseId).header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.client.franchisePaid").value(40.00))
+                .andExpect(jsonPath("$.client.franchisePending").value(60.00))
+                .andExpect(jsonPath("$.insurer.paid").value(0.00));
+
+        mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId).header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"ASEGURADORA\",\"counterpartyTypeCode\":\"COMPANIA\",\"counterpartyCompanyId\":1,\"movementAt\":\"2026-05-11T10:30:00\",\"grossAmount\":400,\"netAmount\":400,\"paymentMethodCode\":\"TRANSFERENCIA\",\"cancellationTypeCode\":\"COMPANIA\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[],\"applications\":[]}"))
+                .andExpect(status().isOk());
+        postFranchiseMovement(caseId, "INGRESO", "60.00").andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/finance/payment-breakdown", caseId).header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.client.franchisePending").value(0.00))
+                .andExpect(jsonPath("$.client.extrasPaid").value(0.00))
+                .andExpect(jsonPath("$.insurer.paid").value(400.00));
+    }
+
+    @Test
+    void shouldAcceptExactCompanyPaymentAndRejectOverpaymentForTheSelectedInsurer() throws Exception {
+        Long caseId = createTodoRiesgoCase();
+        jdbcTemplate.update("INSERT INTO caso_seguro (caso_id, compania_seguro_id) VALUES (?, ?)", caseId, 1L);
+        jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_cotizacion, monto_acordado, monto_facturar_compania) VALUES (?, ?, ?, ?)",
+                caseId, LocalDate.of(2026, 5, 11), new BigDecimal("10.00"), new BigDecimal("10.00"));
+
+        mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId).header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content(companyPaymentJson(1L, "10.00")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.flowOriginCode").value("ASEGURADORA"))
+                .andExpect(jsonPath("$.counterpartyTypeCode").value("COMPANIA"))
+                .andExpect(jsonPath("$.counterpartyCompanyId").value(1))
+                .andExpect(jsonPath("$.cancellationTypeCode").value("COMPANIA"));
+
+        mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId).header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content(companyPaymentJson(1L, "0.01")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("El pago no puede superar el saldo pendiente de la compania"));
+    }
+
+    @Test
+    void shouldRejectCompanyPaymentWithoutAnAgreementOrForAnotherInsurer() throws Exception {
+        Long caseId = createTodoRiesgoCase();
+        jdbcTemplate.update("INSERT INTO caso_seguro (caso_id, compania_seguro_id) VALUES (?, ?)", caseId, 1L);
+
+        mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId).header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content(companyPaymentJson(1L, "10.00")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("No hay un monto acordado de la compania para registrar el pago"));
+
+        jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_cotizacion, monto_acordado, monto_facturar_compania) VALUES (?, ?, ?, ?)",
+                caseId, LocalDate.of(2026, 5, 11), new BigDecimal("10.00"), new BigDecimal("10.00"));
+        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, cuit, requiere_fotos_reparado, dias_pago_esperados, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                2L, "00000000-0000-0000-0000-000000004002", "OTRA", "Otra Compania", "30-98765432-1", false, 30, true);
+
+        mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId).header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content(companyPaymentJson(2L, "10.00")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("El pago debe registrarse para la compania aseguradora del caso"));
+    }
+
+    @Test
+    void shouldRejectInvalidTodoRiesgoFranchiseAndRestoreOnlyFranchiseWhenAnnulled() throws Exception {
+        Long caseId = createTodoRiesgoCase();
+        jdbcTemplate.update("INSERT INTO caso_franquicia (caso_id, estado_franquicia_codigo, monto_franquicia, tipo_recupero_codigo) VALUES (?, ?, ?, ?)", caseId, "SIN_DEFINIR", new BigDecimal("100.00"), "TERCERO");
+
+        postFranchiseMovement(caseId, "INGRESO", "101.00").andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("El pago no puede superar la franquicia pendiente"));
+        postFranchiseMovement(caseId, "INGRESO", "40.00").andExpect(status().isOk());
+        postFranchiseMovement(caseId, "EGRESO", "40.00").andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/finance/payment-breakdown", caseId).header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.client.franchisePaid").value(0.00))
+                .andExpect(jsonPath("$.client.franchisePending").value(100.00));
+        mockMvc.perform(post("/api/v1/cases/100/financial-movements").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content(franchiseMovementJson("INGRESO", "10.00")))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Franquicia solo aplica a casos TODO_RIESGO"));
+    }
+
+    @Test
+    void shouldKeepGranizoInsurerTargetAtFullAgreementDespiteHistoricalFranchise() throws Exception {
+        Long caseId = createGranizoCase();
+        jdbcTemplate.update("INSERT INTO caso_seguro (caso_id, compania_seguro_id) VALUES (?, ?)", caseId, 1L);
+        jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_cotizacion, monto_acordado, monto_facturar_compania) VALUES (?, ?, ?, ?)",
+                caseId, LocalDate.of(2026, 5, 11), new BigDecimal("1000.00"), new BigDecimal("1000.00"));
+        jdbcTemplate.update("INSERT INTO caso_franquicia (caso_id, estado_franquicia_codigo, monto_franquicia, tipo_recupero_codigo) VALUES (?, ?, ?, ?)",
+                caseId, "SIN_DEFINIR", new BigDecimal("200.00"), "TERCERO");
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/finance/payment-breakdown", caseId)
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.client.eligibleFranchise").value(0.00))
+                .andExpect(jsonPath("$.insurer.agreement").value(1000.00))
+                .andExpect(jsonPath("$.insurer.total").value(1000.00));
+    }
+
+    @Test
     void shouldCreateReceiptAndListFinanceCatalogs() throws Exception {
         IssuedReceiptCreateRequest request = new IssuedReceiptCreateRequest(
                 "FACTURA",
@@ -363,6 +485,39 @@ class FinanceIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
+    }
+
+    private Long createGranizoCase() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/cases")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"caseTypeId\":3,\"organizationId\":1,\"branchId\":1,\"principalVehicleId\":10,\"principalCustomerPersonId\":10,\"referenced\":false,\"incidentDate\":\"2026-01-01\",\"customerRoleCode\":\"CLIENTE\",\"principalVehicleRoleCode\":\"PRINCIPAL\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
+    }
+
+    private Long createTodoRiesgoCase() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/cases")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"caseTypeId\":2,\"organizationId\":1,\"branchId\":1,\"principalVehicleId\":10,\"principalCustomerPersonId\":10,\"referenced\":false,\"incidentDate\":\"2026-01-01\",\"customerRoleCode\":\"CLIENTE\",\"principalVehicleRoleCode\":\"PRINCIPAL\"}"))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
+    }
+
+    private org.springframework.test.web.servlet.ResultActions postFranchiseMovement(Long caseId, String movementType, String amount) throws Exception {
+        return mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId).header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                .content(franchiseMovementJson(movementType, amount)));
+    }
+
+    private String franchiseMovementJson(String movementType, String amount) {
+        return "{\"movementTypeCode\":\"" + movementType + "\",\"flowOriginCode\":\"CLIENTE\",\"counterpartyTypeCode\":\"PERSONA\",\"counterpartyPersonId\":10,\"movementAt\":\"2026-05-11T10:30:00\",\"grossAmount\":" + amount + ",\"netAmount\":" + amount + ",\"paymentMethodCode\":\"TRANSFERENCIA\",\"cancellationTypeCode\":\"FRANQUICIA\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[],\"applications\":[]}";
+    }
+
+    private String companyPaymentJson(Long companyId, String amount) {
+        return "{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"ASEGURADORA\",\"counterpartyTypeCode\":\"COMPANIA\",\"counterpartyCompanyId\":" + companyId + ",\"movementAt\":\"2026-05-11T10:30:00\",\"grossAmount\":" + amount + ",\"netAmount\":" + amount + ",\"paymentMethodCode\":\"TRANSFERENCIA\",\"cancellationTypeCode\":\"COMPANIA\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[],\"applications\":[]}";
     }
 
     private void seedBaseData() {

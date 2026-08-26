@@ -19,7 +19,7 @@ class BudgetComparisonPdfServiceTest {
     @Test
     void shouldRenderTheCompleteLandscapeMatrixWithTermsAndExplicitPriceStates() throws Exception {
         Detail detail = new Detail(
-                new Snapshot(1L, 7, LocalDate.of(2026, 8, 24), 1, "MATRIX", 1),
+                new Snapshot(1L, 7, LocalDate.of(2026, 8, 24), 1, "MATRIX", 1, "MAIN"),
                 List.of(
                         new ProviderColumn(10L, 100L, "Norte", "A", "CONTADO", 1),
                         new ProviderColumn(20L, 200L, "Sur", "SIN_FACTURA", "TARJETA_CUOTAS_SIN_INTERES", 1)),

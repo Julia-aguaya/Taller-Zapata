@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.application.budget;
 
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
+import com.tallerzapata.backend.application.casefile.InsuranceRepairCasePolicy;
 import com.tallerzapata.backend.infrastructure.persistence.budget.*;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
@@ -24,6 +25,7 @@ public class CanonicalPartReconciliationService {
     private final PartSupplierQuoteRepository quotes;
     private final CasePartReconciliationWarningRepository warnings;
     private final CaseAuditService audit;
+    private final InsuranceRepairCasePolicy insuranceRepairCasePolicy = new InsuranceRepairCasePolicy();
 
     public CanonicalPartReconciliationService(CaseRepository cases, CaseTypeRepository caseTypes, BudgetRepository budgets, BudgetItemRepository items, BudgetAccessoryWorkRepository accessoryWorks, CasePartRepository parts, PartSupplierQuoteRepository quotes, CasePartReconciliationWarningRepository warnings, CaseAuditService audit) {
         this.cases = cases; this.caseTypes = caseTypes; this.budgets = budgets; this.items = items; this.accessoryWorks = accessoryWorks; this.parts = parts; this.quotes = quotes; this.warnings = warnings; this.audit = audit;
@@ -32,7 +34,7 @@ public class CanonicalPartReconciliationService {
     @Transactional
     public List<CasePartEntity> reconcile(Long caseId, AuthenticatedUser user, HttpServletRequest request) {
         CaseEntity caseEntity = cases.findByIdForUpdate(caseId).orElseThrow();
-        if (!caseTypes.findById(caseEntity.getCaseTypeId()).map(type -> "TODO_RIESGO".equals(type.getCode())).orElse(false)) return List.of();
+        if (!caseTypes.findById(caseEntity.getCaseTypeId()).map(type -> insuranceRepairCasePolicy.isInsuranceRepair(type.getCode())).orElse(false)) return List.of();
         var budget = budgets.findByCaseId(caseId).orElse(null);
         if (budget == null) return List.of();
 
@@ -101,7 +103,7 @@ public class CanonicalPartReconciliationService {
         return part.getAuthorizedCode() != null || !"PENDIENTE".equals(part.getStatusCode()) || part.getPurchasedByCode() != null || part.getPaymentStatusCode() != null || part.getReceivedDate() != null || Boolean.TRUE.equals(part.getUsed()) || Boolean.TRUE.equals(part.getReturned()) || part.getInventoryNumber() != null || part.getPartCode() != null || part.getProviderAssignmentOrigin() == ProviderAssignmentOrigin.MANUAL || !quotes.findByPartIdOrderByIdAsc(part.getId()).isEmpty();
     }
     private void createWarning(CasePartEntity part, CasePartSourceType sourceType, Long sourceId) {
-        if (warnings.existsByPartIdAndSourceTypeAndSourceIdAndState(part.getId(), sourceType, sourceId, "OPEN")) return;
-        CasePartReconciliationWarningEntity warning = new CasePartReconciliationWarningEntity(); warning.setCaseId(part.getCaseId()); warning.setPartId(part.getId()); warning.setSourceType(sourceType); warning.setSourceId(sourceId); warning.setReason("La fuente canónica fue removida o dejó de ser REEMPLAZAR y el repuesto tiene actividad"); warning.setState("OPEN"); warnings.save(warning);
+        if (warnings.existsByPartIdAndSourceTypeAndSourceIdAndState(part.getId(), sourceType, sourceId, CasePartReconciliationWarningState.OPEN)) return;
+        CasePartReconciliationWarningEntity warning = new CasePartReconciliationWarningEntity(); warning.setCaseId(part.getCaseId()); warning.setPartId(part.getId()); warning.setSourceType(sourceType); warning.setSourceId(sourceId); warning.setReason("La fuente canónica fue removida o dejó de ser REEMPLAZAR y el repuesto tiene actividad"); warning.setState(CasePartReconciliationWarningState.OPEN); warnings.save(warning);
     }
 }

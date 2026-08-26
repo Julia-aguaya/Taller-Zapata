@@ -12,7 +12,7 @@ public class CasePartReconciliationWarningEntity {
     @Enumerated(EnumType.STRING) @Column(name = "source_type", nullable = false) private CasePartSourceType sourceType;
     @Column(name = "source_id", nullable = false) private Long sourceId;
     @Column(name = "reason", nullable = false) private String reason;
-    @Column(name = "state", nullable = false) private String state;
+    @Enumerated(EnumType.STRING) @Column(name = "state", nullable = false) private CasePartReconciliationWarningState state;
     @Column(name = "resolution") private String resolution;
     @Column(name = "created_at", insertable = false, updatable = false) private LocalDateTime createdAt;
     @Column(name = "resolved_at") private LocalDateTime resolvedAt;
@@ -23,7 +23,7 @@ public class CasePartReconciliationWarningEntity {
     public CasePartSourceType getSourceType() { return sourceType; }
     public Long getSourceId() { return sourceId; }
     public String getReason() { return reason; }
-    public String getState() { return state; }
+    public CasePartReconciliationWarningState getState() { return state; }
     public String getResolution() { return resolution; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCaseId(Long caseId) { this.caseId = caseId; }
@@ -31,7 +31,7 @@ public class CasePartReconciliationWarningEntity {
     public void setSourceType(CasePartSourceType sourceType) { this.sourceType = sourceType; }
     public void setSourceId(Long sourceId) { this.sourceId = sourceId; }
     public void setReason(String reason) { this.reason = reason; }
-    public void setState(String state) { this.state = state; }
+    public void setState(CasePartReconciliationWarningState state) { this.state = state; }
     public void setResolution(String resolution) { this.resolution = resolution; }
     public void setResolvedAt(LocalDateTime resolvedAt) { this.resolvedAt = resolvedAt; }
     public void setResolvedBy(Long resolvedBy) { this.resolvedBy = resolvedBy; }

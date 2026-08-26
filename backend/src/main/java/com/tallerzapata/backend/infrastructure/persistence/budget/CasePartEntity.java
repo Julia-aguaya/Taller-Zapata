@@ -36,6 +36,7 @@ public class CasePartEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "source_type", nullable = false) private CasePartSourceType sourceType;
     @Column(name = "accessory_work_id") private Long accessoryWorkId;
+    @Column(name = "presupuesto_extra_item_id") private Long extraBudgetItemId;
     @Column(name = "non_canonical", nullable = false) private Boolean nonCanonical;
     @Column(name = "is_accessory", nullable = false) private Boolean accessory;
     @Enumerated(EnumType.STRING)
@@ -47,6 +48,8 @@ public class CasePartEntity {
     public void setSourceType(CasePartSourceType sourceType){this.sourceType=sourceType;}
     public Long getAccessoryWorkId(){return accessoryWorkId;}
     public void setAccessoryWorkId(Long accessoryWorkId){this.accessoryWorkId=accessoryWorkId;}
+    public Long getExtraBudgetItemId(){return extraBudgetItemId;}
+    public void setExtraBudgetItemId(Long extraBudgetItemId){this.extraBudgetItemId=extraBudgetItemId;}
     public Boolean getNonCanonical(){return nonCanonical;}
     public void setNonCanonical(Boolean nonCanonical){this.nonCanonical=nonCanonical;}
     public Boolean getAccessory(){return accessory;}

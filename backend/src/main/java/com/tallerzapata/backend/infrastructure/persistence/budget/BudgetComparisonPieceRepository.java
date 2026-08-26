@@ -5,4 +5,5 @@ public interface BudgetComparisonPieceRepository extends JpaRepository<BudgetCom
     List<BudgetComparisonPieceEntity> findBySnapshotIdOrderByIdAsc(Long snapshotId);
     List<BudgetComparisonPieceEntity> findBySnapshotIdInOrderByIdAsc(Collection<Long> snapshotIds);
     Optional<BudgetComparisonPieceEntity> findByIdAndSnapshotId(Long id, Long snapshotId);
+    Optional<BudgetComparisonPieceEntity> findBySnapshotIdAndSourceExtraBudgetItemId(Long snapshotId, Long sourceExtraBudgetItemId);
 }

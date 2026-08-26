@@ -6,5 +6,6 @@ import java.util.List;
 
 public interface BudgetAccessoryWorkRepository extends JpaRepository<BudgetAccessoryWorkEntity, Long> {
     List<BudgetAccessoryWorkEntity> findByBudgetIdOrderByIdAsc(Long budgetId);
+    List<BudgetAccessoryWorkEntity> findByBudgetIdAndActiveTrueOrderByIdAsc(Long budgetId);
     void deleteByBudgetId(Long budgetId);
 }

@@ -1,25 +1,34 @@
 package com.tallerzapata.backend.infrastructure.persistence;
 
-import com.tallerzapata.backend.testsupport.TestDatabaseCleaner;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @ActiveProfiles("test")
+@Testcontainers
 class FlywayMigrationTest {
 
-    @Autowired private JdbcTemplate jdbcTemplate;
-    @Autowired private TestDatabaseCleaner cleaner;
+    @Container
+    static final MySQLContainer<?> mysql = new MySQLContainer<>("mysql:8.4");
 
-    @BeforeEach
-    void cleanTransactions() {
-        cleaner.cleanAll();
+    @Autowired private JdbcTemplate jdbcTemplate;
+
+    @DynamicPropertySource
+    static void configureDataSource(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", mysql::getJdbcUrl);
+        registry.add("spring.datasource.username", mysql::getUsername);
+        registry.add("spring.datasource.password", mysql::getPassword);
+        registry.add("spring.datasource.driver-class-name", mysql::getDriverClassName);
     }
 
     @Test
@@ -60,12 +69,58 @@ class FlywayMigrationTest {
 
     @Test
     void canonicalPartMigrationAddsValidatedSourcesWarningsAndBackfillAuditWithoutChangingPriorMigrations() {
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'PRESUPUESTO_TRABAJOS_EXTRAS' AND COLUMN_NAME = 'ACTIVO' AND IS_NULLABLE = 'NO'", Integer.class)).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'REPUESTOS_CASO' AND COLUMN_NAME IN ('SOURCE_TYPE', 'ACCESSORY_WORK_ID', 'NON_CANONICAL', 'IS_ACCESSORY')", Integer.class)).isEqualTo(4);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'REPUESTOS_CASO_RECONCILIATION_WARNINGS'", Integer.class)).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'REPUESTOS_CASO_CANONICAL_BACKFILL_AUDIT'", Integer.class)).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_NAME = 'REPUESTOS_CASO' AND INDEX_NAME = 'uq_repuestos_caso_accessory_work' AND NON_UNIQUE = 0", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_NAME = 'REPUESTOS_CASO' AND CONSTRAINT_NAME = 'fk_repuestos_caso_accessory_work' AND CONSTRAINT_TYPE = 'FOREIGN KEY'", Integer.class)).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_NAME = 'REPUESTOS_CASO' AND CONSTRAINT_NAME = 'ck_repuestos_caso_source' AND CONSTRAINT_TYPE = 'CHECK'", Integer.class)).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'REPUESTOS_CASO' AND COLUMN_NAME = 'SOURCE_TYPE' AND IS_NULLABLE = 'NO'", Integer.class)).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE version IN ('63', '64', '66', '67') AND success = 1", Integer.class)).isEqualTo(4);
+    }
+
+    @Test
+    void extraBudgetMigrationIsSeparateFromV66V68CanonicalAndMainBudgetTables() {
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME IN ('PRESUPUESTOS_EXTRA', 'PRESUPUESTO_EXTRA_VERSIONES', 'PRESUPUESTO_EXTRA_ITEMS', 'PRESUPUESTO_EXTRA_EVENTOS', 'PRESUPUESTO_EXTRA_PAGO_APLICACIONES', 'SECUENCIAS_PRESUPUESTO_EXTRA')", Integer.class)).isEqualTo(6);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_NAME = 'PRESUPUESTO_EXTRA_PAGO_APLICACIONES' AND CONSTRAINT_NAME = 'FK_PRESUPUESTO_EXTRA_PAGO_APLICACIONES_MOVIMIENTO' AND CONSTRAINT_TYPE = 'FOREIGN KEY'", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_NAME = 'PRESUPUESTO_EXTRA_PAGO_APLICACIONES' AND INDEX_NAME = 'UQ_PRESUPUESTO_EXTRA_PAGO_APLICACIONES_MOVIMIENTO' AND NON_UNIQUE = 0", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'PRESUPUESTO_EXTRA_PAGO_APLICACIONES' AND COLUMN_NAME = 'REVIERTE_APLICACION_ID' AND IS_NULLABLE = 'YES'", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_NAME = 'PRESUPUESTO_EXTRA_PAGO_APLICACIONES' AND INDEX_NAME = 'UQ_PRESUPUESTO_EXTRA_PAGO_APLICACIONES_REVERSION' AND NON_UNIQUE = 0", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'PRESUPUESTO_TRABAJOS_EXTRAS' AND COLUMN_NAME = 'ACTIVO'", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE version IN ('66', '68', '69', '70') AND success = 1", Integer.class)).isEqualTo(4);
+    }
+
+    @Test
+    void extraBudgetTablesStartEmptyWithoutBackfillingMainOrCanonicalData() {
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM presupuestos_extra", Integer.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM presupuesto_extra_versiones", Integer.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM presupuesto_extra_items", Integer.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM presupuesto_extra_pago_aplicaciones", Integer.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'PRESUPUESTOS' AND COLUMN_NAME LIKE '%EXTRA%'", Integer.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'PRESUPUESTO_TRABAJOS_EXTRAS' AND COLUMN_NAME LIKE '%PAGO%'", Integer.class)).isZero();
+    }
+
+    @Test
+    void v71KeepsLegacyManualRowsNullableAndEnforcesOneSourcePerExtraVersion() {
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'PRESUPUESTO_EXTRA_ITEMS' AND COLUMN_NAME IN ('SOURCE_TYPE', 'SOURCE_ID') AND IS_NULLABLE = 'YES'", Integer.class)).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_NAME = 'PRESUPUESTO_EXTRA_ITEMS' AND INDEX_NAME = 'UQ_PRESUPUESTO_EXTRA_ITEMS_SOURCE' AND NON_UNIQUE = 0", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE version IN ('68', '69', '70', '71') AND success = 1", Integer.class)).isEqualTo(4);
+    }
+
+    @Test
+    void extraBudgetItemsKeepTheNonNullActiveDefaultForDirectLegacyInserts() {
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'PRESUPUESTO_EXTRA_ITEMS' AND COLUMN_NAME = 'ACTIVO' AND IS_NULLABLE = 'NO' AND COLUMN_DEFAULT = '1'", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void v78AddsExtraContextToTheCommonMatrixWithoutChangingV73TablesOrCreatingRepairParts() {
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'COMPARACION_PRESUPUESTO_SNAPSHOT' AND COLUMN_NAME IN ('CONTEXTO', 'PRESUPUESTO_EXTRA_VERSION_ID')", Integer.class)).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'COMPARACION_PIEZA' AND COLUMN_NAME IN ('CONTEXTO', 'PRESUPUESTO_EXTRA_ITEM_ORIGEN_ID')", Integer.class)).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_NAME = 'COMPARACION_PRESUPUESTO_SNAPSHOT' AND CONSTRAINT_NAME = 'FK_COMPARACION_SNAPSHOT_PRESUPUESTO_EXTRA_VERSION' AND CONSTRAINT_TYPE = 'FOREIGN KEY'", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_NAME = 'COMPARACION_PIEZA' AND CONSTRAINT_NAME = 'FK_COMPARACION_PIEZA_PRESUPUESTO_EXTRA_ITEM' AND CONSTRAINT_TYPE = 'FOREIGN KEY'", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME IN ('COMPARACION_PRESUPUESTO_EXTRA_PIEZAS', 'COMPARACION_PRESUPUESTO_EXTRA_COTIZACIONES')", Integer.class)).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM repuestos_caso", Integer.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE version = '78' AND success = 1", Integer.class)).isEqualTo(1);
     }
 }

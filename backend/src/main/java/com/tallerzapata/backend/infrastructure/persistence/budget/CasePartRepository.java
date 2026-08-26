@@ -12,5 +12,7 @@ public interface CasePartRepository extends JpaRepository<CasePartEntity, Long> 
     Optional<CasePartEntity> findByCaseIdAndBudgetItemIdAndSourceTypeAndNonCanonicalFalse(Long caseId, Long budgetItemId, CasePartSourceType sourceType);
     Optional<CasePartEntity> findByCaseIdAndAccessoryWorkId(Long caseId, Long accessoryWorkId);
     Optional<CasePartEntity> findByCaseIdAndAccessoryWorkIdAndSourceTypeAndNonCanonicalFalse(Long caseId, Long accessoryWorkId, CasePartSourceType sourceType);
+    Optional<CasePartEntity> findByCaseIdAndExtraBudgetItemIdAndSourceTypeAndNonCanonicalFalse(Long caseId, Long extraBudgetItemId, CasePartSourceType sourceType);
+    List<CasePartEntity> findByCaseIdAndSourceTypeOrderByIdAsc(Long caseId, CasePartSourceType sourceType);
     boolean existsBySourceComparisonPieceId(Long sourceComparisonPieceId);
 }

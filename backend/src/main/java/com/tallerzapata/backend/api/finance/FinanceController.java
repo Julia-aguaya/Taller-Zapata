@@ -99,6 +99,11 @@ public class FinanceController {
     @GetMapping("/cases/{caseId}/finance/particular-summary")
     public FinanceParticularSummaryResponse summarizeParticular(@PathVariable Long caseId) { return financeService.summarizeParticularCase(caseId); }
 
+    @Operation(summary = "Desglose autoritativo de obligaciones de cliente y aseguradora")
+    @PreAuthorize("hasAuthority('finanza.ver')")
+    @GetMapping("/cases/{caseId}/finance/payment-breakdown")
+    public FinancePaymentBreakdownResponse paymentBreakdown(@PathVariable Long caseId) { return financeService.paymentBreakdown(caseId); }
+
     @Operation(summary = "Agregar retenciones", description = "Agrega retenciones a un movimiento financiero")
     @ApiResponse(responseCode = "200", description = "OK")
     @PreAuthorize("hasAuthority('finanza.crear')")

@@ -422,8 +422,8 @@ public class BudgetService {
         if (!part.getCaseId().equals(caseId)) throw new ConflictException("El repuesto no pertenece al caso indicado");
         CasePartReconciliationWarningEntity warning = warningRepository.findById(warningId).orElseThrow(() -> new ResourceNotFoundException("No existe la advertencia " + warningId));
         if (!warning.getCaseId().equals(caseId) || !warning.getPartId().equals(partId)) throw new ConflictException("La advertencia no pertenece al repuesto indicado");
-        if (!"OPEN".equals(warning.getState())) throw new ConflictException("La advertencia ya fue resuelta");
-        warning.setState("RESOLVED");
+        if (warning.getState() != CasePartReconciliationWarningState.OPEN) throw new ConflictException("La advertencia ya fue resuelta");
+        warning.setState(CasePartReconciliationWarningState.RESOLVED);
         warning.setResolution(caseAuditService.toJson(Map.of("resolution", request.resolution().trim())));
         warning.setResolvedAt(LocalDateTime.now());
         warning.setResolvedBy(currentUser.id());
@@ -534,12 +534,12 @@ public class BudgetService {
     }
 
     private CasePartResponse toCasePartResponse(CasePartEntity e) {
-        List<CasePartReconciliationWarningResponse> partWarnings = warningRepository.findByCaseIdAndStateOrderByIdAsc(e.getCaseId(), "OPEN").stream().filter(warning -> warning.getPartId().equals(e.getId())).map(this::toWarningResponse).toList();
+        List<CasePartReconciliationWarningResponse> partWarnings = warningRepository.findByCaseIdAndStateOrderByIdAsc(e.getCaseId(), CasePartReconciliationWarningState.OPEN).stream().filter(warning -> warning.getPartId().equals(e.getId())).map(this::toWarningResponse).toList();
         return new CasePartResponse(e.getId(), e.getCaseId(), e.getBudgetItemId(), e.getDescription(), e.getPartCode(), e.getFinalSupplier(), e.getAuthorizedCode(), e.getStatusCode(), e.getPurchasedByCode(), e.getPaymentStatusCode(), e.getBudgetedPrice(), e.getFinalPrice(), e.getReceivedDate(), e.getUsed(), e.getReturned(), e.getProviderId(), e.getSourceType() == null ? null : e.getSourceType().name(), e.getAccessoryWorkId(), e.getAccessory(), e.getNonCanonical(), partWarnings);
     }
 
     private CasePartReconciliationWarningResponse toWarningResponse(CasePartReconciliationWarningEntity warning) {
-        return new CasePartReconciliationWarningResponse(warning.getId(), warning.getPartId(), warning.getSourceType().name(), warning.getSourceId(), warning.getReason(), warning.getState(), warning.getCreatedAt());
+        return new CasePartReconciliationWarningResponse(warning.getId(), warning.getPartId(), warning.getSourceType().name(), warning.getSourceId(), warning.getReason(), warning.getState().name(), warning.getCreatedAt());
     }
 
     private void applyBudgetProvider(BudgetEntity entity, Long providerId, String supplierText) {

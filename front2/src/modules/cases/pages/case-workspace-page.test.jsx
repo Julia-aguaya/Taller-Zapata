@@ -43,13 +43,7 @@ vi.mock('@/shared/api/http-client', () => ({
 }));
 
 vi.mock('@/modules/cases/components/budget-editor-panel', () => ({
-  BudgetEditorPanel: ({ accessoryUi, onAccessoryUiChange }) => (
-    <div>
-      <div>Budget panel</div>
-      <output data-testid="accessory-ui-budget">{JSON.stringify(accessoryUi)}</output>
-      <button type="button" onClick={() => onAccessoryUiChange((current) => ({ ...current, enabled: 'SI', works: [...current.works, { id: 'local-accessory', detail: 'Moldura', amount: '180000' }] }))}>Agregar trabajo accesorio</button>
-    </div>
-  ),
+  BudgetEditorPanel: () => <div>Budget panel</div>,
 }));
 
 vi.mock('@/modules/cases/components/repair-editor-panel', () => ({
@@ -57,7 +51,7 @@ vi.mock('@/modules/cases/components/repair-editor-panel', () => ({
 }));
 
 vi.mock('@/modules/cases/components/payments-editor-panel', () => ({
-  PaymentsEditorPanel: ({ nroCleas, cleasInsurance, onCleasInsuranceChange, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange, accessoryUi, onAccessoryUiChange }) => cleasPaymentsUi ? (
+  PaymentsEditorPanel: ({ nroCleas, cleasInsurance, onCleasInsuranceChange, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange }) => cleasPaymentsUi ? (
     <div>
        <div>Payments panel {nroCleas} {cleasAgreedAmount}</div>
        <output data-testid="cleas-franchise-distribution">{JSON.stringify(cleasFranchiseDistribution)}</output>
@@ -67,7 +61,7 @@ vi.mock('@/modules/cases/components/payments-editor-panel', () => ({
       <button type="button" onClick={() => onCleasPaymentsUiChange((current) => ({ ...current, invoiceAcknowledged: true, paymentDraft: { ...current.paymentDraft, hasRetentions: 'SI' }, paymentDocument: { file: new File(['pago'], 'pago.pdf'), name: 'pago.pdf' } }))}>Completar UI CLEAS</button>
       <output data-testid="cleas-payments-ui">{JSON.stringify({ invoiceAcknowledged: cleasPaymentsUi.invoiceAcknowledged, hasRetentions: cleasPaymentsUi.paymentDraft.hasRetentions, paymentDocumentName: cleasPaymentsUi.paymentDocument.name })}</output>
     </div>
-  ) : <div><div>Payments panel</div><output data-testid="accessory-ui-payments">{JSON.stringify(accessoryUi)}</output><button type="button" onClick={() => onAccessoryUiChange((current) => ({ ...current, notes: 'Cobro pendiente' }))}>Actualizar accesorios</button></div>,
+  ) : <div>Payments panel</div>,
 }));
 
 vi.mock('@/shared/ui/dialog', () => ({
@@ -268,7 +262,7 @@ describe('CaseWorkspacePage UI', () => {
     expect(screen.getByText('0 de 4 etapas completas')).toBeInTheDocument();
   });
 
-  it('abre Presupuesto para Todo Riesgo cuando readiness lo habilita sin franquicia', async () => {
+  it('abre Presupuesto para Todo Riesgo cuando el readiness del servidor lo habilita aunque Gestión del Trámite siga pendiente', async () => {
     const user = userEvent.setup();
     await renderPage({
       ...baseWorkspace,
@@ -278,7 +272,7 @@ describe('CaseWorkspacePage UI', () => {
         caseTypeCode: 'TODO_RIESGO',
         tabs: [
           { tabCode: 'FICHA_TECNICA', allowed: true, completed: true, blockingReasons: [], warningReasons: [] },
-          { tabCode: 'GESTION_TRAMITE', allowed: true, completed: true, blockingReasons: [], warningReasons: [] },
+          { tabCode: 'GESTION_TRAMITE', allowed: true, completed: false, blockingReasons: ['Falta registrar fecha de presentacion del tramite'], warningReasons: [] },
           { tabCode: 'PRESUPUESTO', allowed: true, completed: false, blockingReasons: ['Falta cargar el presupuesto'], warningReasons: [] },
           { tabCode: 'GESTION_REPARACION', allowed: false, completed: false, blockingReasons: ['Debe cerrar el presupuesto antes de gestionar la reparacion'], warningReasons: [] },
           { tabCode: 'PAGOS', allowed: false, completed: false, blockingReasons: ['Falta acordar cotizacion con la Cia. antes de registrar pagos'], warningReasons: [] },
@@ -290,6 +284,8 @@ describe('CaseWorkspacePage UI', () => {
     expect(budgetTab).toHaveAttribute('aria-disabled', 'false');
     await user.click(budgetTab);
     expect(screen.getByText('Budget panel')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Presupuesto de trabajos extras' })).toBeInTheDocument();
+    expect(budgetTab).toHaveAttribute('aria-selected', 'true');
   });
 
   it('muestra las cinco etapas canónicas para CLEAS aunque readiness no las incluya', async () => {
@@ -379,51 +375,6 @@ describe('CaseWorkspacePage UI', () => {
       await user.click(tab);
       expect(screen.getByText(message)).toBeInTheDocument();
     }
-  });
-
-  it('conserva los extras entre Presupuesto y Pagos y los reinicia al cambiar de carpeta', async () => {
-    const user = userEvent.setup();
-    const workspace = {
-      ...baseWorkspace,
-      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'TODO_RIESGO' },
-      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'TODO_RIESGO', tabs: [
-        { tabCode: 'PRESUPUESTO', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
-        { tabCode: 'PAGOS', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
-      ] },
-    };
-    const rendered = await renderPage(workspace);
-
-    await user.click(screen.getByRole('tab', { name: /presupuesto/i }));
-    await user.click(screen.getByRole('button', { name: 'Agregar trabajo accesorio' }));
-    await user.click(screen.getByRole('tab', { name: /pagos/i }));
-    expect(screen.getByTestId('accessory-ui-payments')).toHaveTextContent('"detail":"Moldura"');
-    await user.click(screen.getByRole('button', { name: 'Actualizar accesorios' }));
-    await user.click(screen.getByRole('tab', { name: /presupuesto/i }));
-    expect(screen.getByTestId('accessory-ui-budget')).toHaveTextContent('"notes":"Cobro pendiente"');
-
-    currentCaseId = '2';
-    rendered.rerender(<CaseWorkspacePage />);
-    await waitFor(() => expect(screen.getByTestId('accessory-ui-budget')).toHaveTextContent('"works":[]'));
-  });
-
-  it('rehidrata los trabajos extras persistidos al recargar la carpeta', async () => {
-    const user = userEvent.setup();
-    await renderPage({
-      ...baseWorkspace,
-      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'TODO_RIESGO' },
-      budget: {
-        id: 15,
-        currentVersion: 2,
-        accessoryWorks: [{ id: 90, affectedPiece: 'Moldura lateral', actionCode: 'REEMPLAZAR_Y_PINTAR', damageLevelCode: 'LEVE', replacementAmount: 30000 }],
-      },
-      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'TODO_RIESGO', tabs: [
-        { tabCode: 'PRESUPUESTO', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
-      ] },
-    });
-
-    await user.click(screen.getByRole('tab', { name: /presupuesto/i }));
-    await waitFor(() => expect(screen.getByTestId('accessory-ui-budget')).toHaveTextContent('"affectedPiece":"Moldura lateral"'));
-    expect(screen.getByTestId('accessory-ui-budget')).toHaveTextContent('"replacementAmount":"30000"');
   });
 
   it('conserva la distribución de franquicia entre Tramitación y Pagos y la reinicia al cambiar de carpeta', async () => {
@@ -713,13 +664,13 @@ describe('CaseWorkspacePage UI', () => {
     expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases'] });
   });
 
-  it('no ofrece overrides manuales para TODO_RIESGO', async () => {
+  it.each(['TODO_RIESGO', 'GRANIZO'])('no ofrece overrides manuales para el flujo asegurado: %s', async (caseTypeCode) => {
     const user = userEvent.setup();
     await renderPage({
       ...baseWorkspace,
       caseDetail: {
         ...baseWorkspace.caseDetail,
-        caseTypeCode: 'TODO_RIESGO',
+        caseTypeCode,
         visibleTramiteState: { code: 'PAGADO', label: 'Pagado' },
         visibleRepairState: { code: 'NO_DEBE_REPARARSE', label: 'No debe repararse' },
       },

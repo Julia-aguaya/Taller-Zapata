@@ -100,12 +100,12 @@ describe('invalidateCaseProjection', () => {
     expect(screen.getByRole('button', { name: /Casa\s*Norte/ })).toBeInTheDocument();
   });
 
-  it('shows the authorization selector only for TODO_RIESGO parts', async () => {
+  it.each(['TODO_RIESGO', 'GRANIZO'])('shows the authorization selector for insured repair parts: %s', async (caseTypeCode) => {
     partsApi.list.mockResolvedValue([{ id: 7, description: 'Paragolpes', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' }]);
     partsApi.catalogs.mockResolvedValue({ authorizationCodes: [{ code: 'AUTORIZADO', name: 'Autorizado' }] });
     const { RepairEditorPanel } = await import('./repair-editor-panel');
 
-    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'TODO_RIESGO', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode, visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
 
     expect(await screen.findByLabelText('Autorización Paragolpes')).toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: 'Inventario' })).toBeNull();
@@ -114,17 +114,29 @@ describe('invalidateCaseProjection', () => {
     expect(screen.queryByTitle('Rechazar repuesto')).toBeNull();
   });
 
-  it('runs the explicit entry sync only for TODO_RIESGO and explains canonical behavior', async () => {
+  it.each(['TODO_RIESGO', 'GRANIZO'])('runs the canonical entry sync for insured repair cases: %s', async (caseTypeCode) => {
     partsApi.list.mockResolvedValue([]);
     partsApi.catalogs.mockResolvedValue({});
     partsApi.sync.mockResolvedValue([]);
     const { RepairEditorPanel } = await import('./repair-editor-panel');
 
-    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'TODO_RIESGO', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode, visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
 
     await waitFor(() => expect(partsApi.sync).toHaveBeenCalledWith('42'));
-    expect(screen.getByText(/al ingresar se sincronizan automáticamente/i)).toBeInTheDocument();
-    expect(screen.getByText(/comparación solo actualiza proveedor y precio/i)).toBeInTheDocument();
+  });
+
+  it.each(['TODO_RIESGO', 'GRANIZO'])('offers no-repair and revert actions for insured repair cases: %s', async (caseTypeCode) => {
+    partsApi.list.mockResolvedValue([]);
+    partsApi.catalogs.mockResolvedValue({});
+    partsApi.sync.mockResolvedValue([]);
+    const { RepairEditorPanel } = await import('./repair-editor-panel');
+
+    const { rerender } = render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode, visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
+
+    expect(await screen.findByRole('button', { name: 'No debe repararse' })).toBeInTheDocument();
+
+    rerender(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode, visibleRepairState: { code: 'NO_DEBE_REPARARSE' } }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
+    expect(await screen.findByRole('button', { name: 'Volver a automático' })).toBeInTheDocument();
   });
 
   it('requires and submits an audited manual resolution for an active canonical warning', async () => {

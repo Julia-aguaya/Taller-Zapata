@@ -1,9 +1,9 @@
-import { cloneElement, useId, useMemo, useRef, useState } from 'react';
+import { cloneElement, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ban, Building2, CheckCircle, FileDown, Receipt, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { createFinancialMovement, createReceipt, getClientPaymentPdfUrl, getFinanceCatalogs, getReceiptPdfUrl, listFinancialMovements, listReceipts } from '@/modules/cases/api/finance-api';
-import { useSession } from '@/modules/auth/providers/session-provider';
+import { extraBudgetQueryKey, registerExtraBudgetPayment } from '@/modules/cases/api/extra-budget-api';
 import { requestJson } from '@/shared/api/http-client';
 import { readStoredAuth } from '@/shared/auth/session-storage';
 import { Button } from '@/shared/ui/button';
@@ -12,7 +12,6 @@ import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
 import { Dialog } from '@/shared/ui/dialog';
 import { Card } from '@/shared/ui/card';
-import { getAccessoryWorkTotals } from '@/modules/cases/lib/accessory-work-total';
 
 const toAmount = (value) => {
   const parsed = Number(value);
@@ -42,9 +41,8 @@ const PAYMENT_METHODS = [
   { value: 'OTRO', label: 'Otro' },
 ];
 
-export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFinanceSummary, accessoryUi, onAccessoryUiChange, onRegisterAccessoryPayment, nroCleas, cleasInsurance, onCleasInsuranceChange, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange, cleasOver, cleasOpinion, cleasClosedAt, cleasWorkflowGuard, onSaved }) => {
+export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFinanceSummary, clientPaymentRequest, onClientPaymentRequestHandled, nroCleas, cleasInsurance, onCleasInsuranceChange, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange, cleasOver, cleasOpinion, cleasClosedAt, cleasWorkflowGuard, onSaved }) => {
   const queryClient = useQueryClient();
-  const { session } = useSession();
 
   const [comprobanteTipo, setComprobanteTipo] = useState('A');
   const [form, setForm] = useState({
@@ -64,20 +62,23 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
     reason: '',
   });
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [showFranchiseClientPaymentModal, setShowFranchiseClientPaymentModal] = useState(false);
-  const [showAccessoryPaymentModal, setShowAccessoryPaymentModal] = useState(false);
+  const [localClientPaymentRequest, setLocalClientPaymentRequest] = useState(null);
   const [cancelMovement, setCancelMovement] = useState(null);
   const paymentDocumentInputRef = useRef(null);
-  const franchiseClientPaymentDocumentInputRef = useRef(null);
-  const accessoryPaymentDocumentInputRef = useRef(null);
+  const companyPaymentSubmittingRef = useRef(false);
+  const clientPaymentSubmittingRef = useRef(false);
 
   const financeCatalogsQuery = useQuery({ queryKey: ['finance', 'catalogs'], queryFn: getFinanceCatalogs });
   const movementsQuery = useQuery({ queryKey: ['cases', String(caseId), 'financial-movements'], queryFn: () => listFinancialMovements(caseId) });
   const receiptsQuery = useQuery({ queryKey: ['cases', String(caseId), 'receipts'], queryFn: () => listReceipts(caseId) });
   const insuranceProcessingQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance-processing'], queryFn: () => requestJson(`/cases/${caseId}/insurance-processing`), enabled: caseDetail?.caseTypeCode === 'TODO_RIESGO' || caseDetail?.caseTypeCode === 'GRANIZO' });
+  const caseInsuranceQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance'], queryFn: () => requestJson(`/cases/${caseId}/insurance`), enabled: caseDetail?.caseTypeCode === 'TODO_RIESGO' || caseDetail?.caseTypeCode === 'GRANIZO' });
+  const paymentBreakdownQuery = useQuery({ queryKey: ['cases', String(caseId), 'finance', 'payment-breakdown'], queryFn: () => requestJson(`/cases/${caseId}/finance/payment-breakdown`), enabled: caseDetail?.caseTypeCode !== 'GRANIZO' });
   const processing = insuranceProcessingQuery.data;
 
   const isInsurance = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
+  const isTodoRiesgo = caseDetail?.caseTypeCode === 'TODO_RIESGO';
+  const isGranizo = caseDetail?.caseTypeCode === 'GRANIZO';
   const isCleas = caseDetail?.caseTypeCode === 'CLEAS';
   const isCleasAdverseTotal = isCleas && cleasOver === 'damage' && cleasOpinion === 'unfavorable';
   const isClosedCleas = isCleasAdverseTotal && Boolean(cleasClosedAt);
@@ -89,17 +90,15 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const cleasAmountToBill = isUnfavorableFranchise
     ? toAmount(cleasAgreedAmount) - (franchiseAmount - companyRequiredAmount)
     : cleasAgreedAmount || '';
-  const franchiseClientAmount = toAmount(cleasAgreedAmount) - toAmount(cleasAmountToBill);
-  const franchiseClientPayment = cleasPaymentsUi?.franchiseClientPayment ?? { status: 'PENDIENTE', paidAt: '', amount: '', paymentMethod: 'TRANSFERENCIA', externalReference: '', notes: '', document: { file: null, name: '' }, registered: false };
-  const showAccessoryPayments = Boolean(caseDetail?.caseTypeCode) && caseDetail.caseTypeCode !== 'PARTICULAR';
-  const accessoryWorks = accessoryUi?.enabled === 'SI' ? accessoryUi.works ?? [] : [];
-  const accessoryPayments = accessoryUi?.enabled === 'SI' ? accessoryUi.payments ?? [] : [];
-  const accessoryTotals = getAccessoryWorkTotals(accessoryUi);
-  const accessoryTotal = accessoryTotals.quoted;
-  const accessoryPaid = accessoryPayments.reduce((sum, payment) => sum + (payment.kind === 'Bonificacion' ? 0 : toAmount(payment.amount)), 0);
-  const accessoryBalance = Math.max(0, accessoryTotal - accessoryPaid);
-  const accessoryPaymentDraft = accessoryUi?.paymentDraft ?? { id: '', kind: 'Parcial', amount: '', date: '', mode: 'Efectivo', modeDetail: '', reason: '', document: { file: null, name: '' } };
-  const updateAccessoryUi = (updater) => onAccessoryUiChange?.((current) => typeof updater === 'function' ? updater(current) : updater);
+  const franchiseClientAmount = toAmount(paymentBreakdownQuery.data?.client?.franchisePending ?? (toAmount(cleasAgreedAmount) - toAmount(cleasAmountToBill)));
+  const requestedClientPayment = clientPaymentRequest ?? localClientPaymentRequest;
+  const activeClientPaymentRequest = isGranizo && requestedClientPayment?.concept === 'FRANQUICIA' ? null : requestedClientPayment;
+
+  useEffect(() => {
+    if (!activeClientPaymentRequest) return;
+    setForm((current) => ({ ...current, amount: activeClientPaymentRequest.amount || '', cancelacionTipo: activeClientPaymentRequest.concept, movementAt: new Date().toISOString().slice(0, 16) }));
+    setShowPaymentModal(true);
+  }, [activeClientPaymentRequest]);
 
   // Derivar MO y repuestos del presupuesto
   const budgetItems = budget?.items ?? [];
@@ -119,6 +118,10 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
     mutationFn: async () => {
       const monto = toAmount(form.amount);
       if (monto <= 0) { toast.error('Ingresá un monto mayor a 0.'); throw new Error(); }
+      if (activeClientPaymentRequest?.concept === 'FRANQUICIA' && monto > toAmount(activeClientPaymentRequest.amount)) {
+        toast.error('El pago no puede superar la franquicia pendiente.');
+        throw new Error();
+      }
       // Si factura=SI, crear recibo primero
       let receiptId = null;
       if (form.factura === 'SI') {
@@ -139,6 +142,18 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
         receiptId = receipt.id;
       }
       // Crear movimiento
+      if (activeClientPaymentRequest?.concept === 'TRABAJOS_EXTRAS') {
+        return registerExtraBudgetPayment(caseId, {
+          expectedVersion: activeClientPaymentRequest.expectedVersion,
+          amount: monto,
+          movementAt: form.movementAt,
+          paymentMethodCode: form.paymentMethodCode,
+          paymentMethodDetail: form.paymentMethodDetail || null,
+          receiptId,
+          reason: form.reason || null,
+          externalReference: form.externalReference || null,
+        });
+      }
       return createFinancialMovement(caseId, {
         receiptId,
         movementTypeCode: 'INGRESO',
@@ -151,7 +166,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
         netAmount: monto,
         paymentMethodCode: form.paymentMethodCode,
         paymentMethodDetail: form.paymentMethodDetail || null,
-        cancellationTypeCode: form.cancelacionTipo === 'BONIFICACION' ? 'PRESUPUESTO' : 'PRESUPUESTO',
+        cancellationTypeCode: activeClientPaymentRequest?.concept ?? 'PRESUPUESTO',
         advancePayment: form.advancePayment === 'SI',
         bonification: form.cancelacionTipo === 'BONIFICACION',
         reason: form.reason || null,
@@ -161,29 +176,37 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
       });
     },
     onSuccess: async () => {
+      clientPaymentSubmittingRef.current = false;
       await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
       await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] });
-      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'receipts'] });
+       await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'receipts'] });
+       await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'finance', 'payment-breakdown'] });
+      await queryClient.invalidateQueries({ queryKey: extraBudgetQueryKey(caseId) });
       await onSaved?.();
       setShowPaymentModal(false);
+      setLocalClientPaymentRequest(null);
+      onClientPaymentRequestHandled?.();
       toast.success(form.factura === 'SI' ? 'Pago y factura registrados.' : 'Pago registrado.');
       setForm((c) => ({ ...c, amount: '', reason: '', externalReference: '', paymentMethodDetail: '', bonificacionMonto: '', bonificacionMotivo: '', razonSocial: '', facturaNumero: '' }));
     },
-    onError: (error) => toast.error(error.message || 'No pude registrar el pago.'),
+    onError: (error) => { clientPaymentSubmittingRef.current = false; toast.error(error.message || 'No pude registrar el pago.'); },
   });
 
   const [ciaPayment, setCiaPayment] = useState({ amount: '', movementAt: new Date().toISOString().slice(0, 16), paymentMethodCode: 'TRANSFERENCIA' });
   const ciaPaymentMutation = useMutation({
     mutationFn: (payload) => createFinancialMovement(caseId, payload),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); await onSaved?.(); toast.success('Pago de la Cía. registrado.'); setCiaPayment({ amount: '', movementAt: new Date().toISOString().slice(0, 16), paymentMethodCode: 'TRANSFERENCIA' }); },
-    onError: (error) => toast.error(error.message),
+    onSuccess: async () => { companyPaymentSubmittingRef.current = false; await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'finance', 'payment-breakdown'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); await onSaved?.(); toast.success('Pago de la Cía. registrado.'); setCiaPayment({ amount: '', movementAt: new Date().toISOString().slice(0, 16), paymentMethodCode: 'TRANSFERENCIA' }); },
+    onError: (error) => { companyPaymentSubmittingRef.current = false; toast.error(error.message || 'No pude registrar el pago de la compañía.'); },
   });
 
   // ── Derived for insurance ──
-  const ciaMovements = (movementsQuery.data ?? []).filter(m => m.flowOriginCode === 'ASEGURADORA' || m.counterpartyTypeCode === 'COMPANY');
-  const ciaTotalPaid = ciaMovements.reduce((sum, m) => sum + toAmount(m.netAmount || 0), 0);
-  const amountToPay = toAmount(processing?.amountToBillCompany || processing?.agreedAmount || 0);
-  const ciaPending = Math.max(0, amountToPay - ciaTotalPaid);
+  const ciaMovements = (movementsQuery.data ?? []).filter(m => m.flowOriginCode === 'ASEGURADORA' && m.counterpartyTypeCode === 'COMPANIA' && m.cancellationTypeCode === 'COMPANIA');
+  const fallbackCiaPaid = ciaMovements.reduce((sum, m) => sum + toAmount(m.netAmount || 0), 0);
+  const fallbackAmountToPay = toAmount(isGranizo ? processing?.agreedAmount : processing?.amountToBillCompany || processing?.agreedAmount || 0);
+  const insurerBreakdown = paymentBreakdownQuery.data?.insurer;
+  const amountToPay = toAmount(insurerBreakdown?.total ?? fallbackAmountToPay);
+  const ciaTotalPaid = toAmount(insurerBreakdown?.paid ?? fallbackCiaPaid);
+  const ciaPending = toAmount(insurerBreakdown?.pending ?? Math.max(0, fallbackAmountToPay - fallbackCiaPaid));
 
   const paymentStatus = useMemo(() => {
     const estimated = processing?.estimatedPaymentDate;
@@ -226,7 +249,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
       </div>
 
       {/* ── Pago de la Compañía (TODO_RIESGO) ── */}
-      {isInsurance ? (
+       {isInsurance ? (
         <div className="rounded-3xl border border-border/70 bg-card p-5">
           <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Building2 className="h-5 w-5" /></div>
           <h4 className="text-lg font-semibold">Facturación y Pago — Compañía</h4>
@@ -258,9 +281,9 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
           <div className="mt-4 rounded-2xl border border-border/60 bg-background/70 p-4">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Registrar pago de la Cía.</p>
             <div className="grid gap-3 md:grid-cols-3">
-              <Field label="Monto"><Input type="number" min="0" step="0.01" value={ciaPayment.amount} onChange={(e) => setCiaPayment((c) => ({ ...c, amount: e.target.value }))} /></Field>
+              <Field label="Monto"><Input type="number" min="0" max={ciaPending} step="0.01" value={ciaPayment.amount} onChange={(e) => setCiaPayment((c) => ({ ...c, amount: e.target.value }))} /></Field>
               <Field label="Fecha"><Input type="datetime-local" value={ciaPayment.movementAt} onChange={(e) => setCiaPayment((c) => ({ ...c, movementAt: e.target.value }))} /></Field>
-              <div className="flex items-end"><Button className="w-full" onClick={() => { const m = toAmount(ciaPayment.amount); if (m <= 0) { toast.error('Ingresá un monto.'); return; } ciaPaymentMutation.mutate({ movementTypeCode: 'INGRESO', flowOriginCode: 'ASEGURADORA', counterpartyTypeCode: 'COMPANY', counterpartyPersonId: null, counterpartyCompanyId: null, movementAt: ciaPayment.movementAt, grossAmount: m, netAmount: m, paymentMethodCode: ciaPayment.paymentMethodCode, paymentMethodDetail: null, cancellationTypeCode: 'PRESUPUESTO', advancePayment: false, bonification: false, reason: null, externalReference: null, retentions: [], applications: [] }); }} disabled={ciaPaymentMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Registrar</Button></div>
+              <div className="flex items-end"><Button className="w-full" onClick={() => { if (ciaPaymentMutation.isPending || companyPaymentSubmittingRef.current) return; const m = toAmount(ciaPayment.amount); const companyId = insurerBreakdown?.companyId ?? caseInsuranceQuery.data?.insuranceCompanyId; if (m <= 0) { toast.error('Ingresá un monto.'); return; } if (m > ciaPending) { toast.error('El pago no puede superar el saldo pendiente de la compañía.'); return; } if (!companyId) { toast.error('El caso no tiene compañía aseguradora configurada.'); return; } companyPaymentSubmittingRef.current = true; ciaPaymentMutation.mutate({ movementTypeCode: 'INGRESO', flowOriginCode: 'ASEGURADORA', counterpartyTypeCode: 'COMPANIA', counterpartyPersonId: null, counterpartyCompanyId: companyId, movementAt: ciaPayment.movementAt, grossAmount: m, netAmount: m, paymentMethodCode: ciaPayment.paymentMethodCode, paymentMethodDetail: null, cancellationTypeCode: 'COMPANIA', advancePayment: false, bonification: false, reason: 'Pago de compañía', externalReference: null, retentions: [], applications: [] }); }} disabled={ciaPaymentMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar pago de la compañía</Button></div>
             </div>
           </div>
           {ciaMovements.length > 0 ? <div className="mt-3"><p className="text-xs text-muted-foreground">{ciaMovements.length} pago(s) de la Cía.</p></div> : null}
@@ -281,7 +304,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
       ) : null}
 
       {/* Comprobante + Formulario */}
-        {!blockCleasPayments ? (
+        {!blockCleasPayments && !isInsurance ? (
          <div className="rounded-3xl border border-border/70 bg-card p-5">
            <div className="flex items-center justify-between">
              <h5 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Nuevo pago</h5>
@@ -290,39 +313,23 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
          </div>
        ) : null}
 
-       {isUnfavorableFranchise ? (
+         {isTodoRiesgo && toAmount(paymentBreakdownQuery.data?.client?.franchisePending) > 0 ? <div className="rounded-3xl border border-border/70 bg-card p-5" aria-label="Pagos del cliente">
+          <div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Cliente</p><h4 className="mt-1 text-lg font-semibold">Pagos del cliente</h4><p className="mt-1 text-sm text-muted-foreground">Franquicia canónica pendiente, sin afectar extras ni la liquidación de la compañía.</p></div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2"><MiniCard label="Franquicia pendiente" value={formatCurrency(paymentBreakdownQuery.data.client.franchisePending)} highlight /><MiniCard label="Total pendiente cliente" value={formatCurrency(paymentBreakdownQuery.data.client.franchisePending)} highlight /></div>
+         {Number(paymentBreakdownQuery.data.client.franchisePending) > 0 ? <div className="mt-4"><Button variant="outline" onClick={() => setLocalClientPaymentRequest({ concept: 'FRANQUICIA', amount: String(paymentBreakdownQuery.data.client.franchisePending) })}>Registrar pago de franquicia</Button></div> : null}
+       </div> : null}
+
+        {isUnfavorableFranchise && franchiseClientAmount > 0 ? (
          <Card className="rounded-3xl border-border/70 p-5">
            <h4 className="text-lg font-semibold">Pago de franquicia a cargo del cliente</h4>
-           <p className="mt-1 text-sm text-muted-foreground">Pago del cliente al taller. No corresponde al pago de la compañía.</p>
-           {/* Tarjeta independiente: mantiene el pago del cliente separado de Facturación y del flujo genérico. */}
-           <div className="mt-4 grid gap-4 md:grid-cols-3">
-             <Field label="A cargo del cliente"><Input value={franchiseClientAmount} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
-             <Field label="Estado"><Select value={franchiseClientPayment.status} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, franchiseClientPayment: { ...current.franchiseClientPayment, status: event.target.value } }))} options={[{ value: 'PENDIENTE', label: 'Pendiente' }, { value: 'CANCELADO', label: 'Cancelado' }]} /></Field>
-             <Field label="Fecha de pago"><Input type="date" value={franchiseClientPayment.paidAt} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, franchiseClientPayment: { ...current.franchiseClientPayment, paidAt: event.target.value } }))} /></Field>
-           </div>
-           <div className="mt-4 flex flex-wrap items-center gap-3">
-             <Button type="button" onClick={() => { onCleasPaymentsUiChange((current) => ({ ...current, franchiseClientPayment: { ...current.franchiseClientPayment, amount: current.franchiseClientPayment.amount || String(franchiseClientAmount) } })); setShowFranchiseClientPaymentModal(true); }}>+ Registrar pago del cliente</Button>
-             {franchiseClientPayment.registered ? <span className="text-sm text-emerald-700 dark:text-emerald-400">Pago del cliente registrado visualmente.</span> : null}
-           </div>
-         </Card>
-       ) : null}
-
-        {showAccessoryPayments && !blockCleasPayments ? (
-         <Card className="rounded-3xl border-border/70 p-5">
-           <div className="flex flex-wrap items-center justify-between gap-3">
-              <div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Pagos cliente</p><h4 className="mt-1 text-lg font-semibold">Pagos adicionales del cliente</h4></div>
-              <Button type="button" disabled={accessoryWorks.length === 0} onClick={() => setShowAccessoryPaymentModal(true)}>+ Agregar pago</Button>
-           </div>
-           {/* Resumen derivado: los extras y sus cobros no alteran los totales financieros principales. */}
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-              <MiniCard label="Total MO extras" value={formatCurrency(accessoryTotals.labor)} />
-              <MiniCard label="Total repuestos extras" value={formatCurrency(accessoryTotals.parts)} />
-              <MiniCard label="Cotizado extras" value={formatCurrency(accessoryTotal)} highlight />
-              <MiniCard label="Total abonado por el cliente" value={formatCurrency(accessoryPaid)} />
-              <MiniCard label="Saldo pendiente" value={formatCurrency(accessoryBalance)} highlight={accessoryBalance > 0} variant={accessoryBalance > 0 ? 'warning' : 'success'} />
-           </div>
-            {accessoryUi?.enabled !== 'SI' || accessoryWorks.length === 0 ? <p className="mt-4 rounded-2xl border border-border/60 bg-background/60 px-4 py-3 text-sm text-muted-foreground">Primero cargá un trabajo extra desde Presupuesto.</p> : null}
-            {accessoryPayments.length > 0 ? <div className="mt-4 space-y-2">{accessoryPayments.map((payment) => <div key={payment.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background/50 px-4 py-3 text-sm"><span>{payment.kind} · {formatCurrency(payment.amount)} · {payment.date || 'Sin fecha'} · {payment.mode || 'Sin modo'}{payment.document?.name ? ` · ${payment.document.name}` : ''}</span><Button type="button" variant="ghost" size="sm" onClick={() => updateAccessoryUi((current) => ({ ...current, payments: current.payments.filter((entry) => entry.id !== payment.id) }))}>Eliminar</Button></div>)}</div> : null}
+          <p className="mt-1 text-sm text-muted-foreground">Pago pendiente del cliente al taller. No corresponde al pago de la compañía.</p>
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <Field label="A cargo del cliente"><Input value={franchiseClientAmount} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
+              <MiniCard label="Pendiente de franquicia" value={formatCurrency(franchiseClientAmount)} highlight />
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Button type="button" onClick={() => setLocalClientPaymentRequest({ concept: 'FRANQUICIA', amount: String(franchiseClientAmount) })}>+ Registrar pago del cliente</Button>
+            </div>
          </Card>
        ) : null}
 
@@ -349,10 +356,10 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
 
         {/* Formulario */}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Field label="Monto"><Input type="number" min="0" step="0.01" value={form.amount} onChange={(e) => setForm((c) => ({ ...c, amount: e.target.value }))} placeholder={cotizadoConIva > 0 ? `Ej: ${Math.round(cotizadoConIva)}` : '0'} /></Field>
+          <Field label="Monto"><Input type="number" min="0" max={activeClientPaymentRequest?.concept === 'FRANQUICIA' ? activeClientPaymentRequest.amount : undefined} step="0.01" value={form.amount} onChange={(e) => setForm((c) => ({ ...c, amount: e.target.value }))} placeholder={cotizadoConIva > 0 ? `Ej: ${Math.round(cotizadoConIva)}` : '0'} /></Field>
           <Field label="Fecha y hora"><Input type="datetime-local" value={form.movementAt} onChange={(e) => setForm((c) => ({ ...c, movementAt: e.target.value }))} /></Field>
           <Field label="Seña"><Select value={form.advancePayment} onChange={(e) => setForm((c) => ({ ...c, advancePayment: e.target.value }))} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
-          <Field label="Cancela saldo"><Select value={form.cancelacionTipo} onChange={(e) => setForm((c) => ({ ...c, cancelacionTipo: e.target.value }))} options={CANCELACION_TYPES} /></Field>
+          <Field label="Cancela saldo"><Select value={form.cancelacionTipo} disabled={Boolean(activeClientPaymentRequest)} onChange={(e) => setForm((c) => ({ ...c, cancelacionTipo: e.target.value }))} options={activeClientPaymentRequest ? [{ value: activeClientPaymentRequest.concept, label: activeClientPaymentRequest.concept === 'TRABAJOS_EXTRAS' ? 'Trabajos extras' : 'Franquicia' }] : CANCELACION_TYPES} /></Field>
           <Field label="Modo"><Select value={form.paymentMethodCode} onChange={(e) => setForm((c) => ({ ...c, paymentMethodCode: e.target.value }))} options={PAYMENT_METHODS} /></Field>
           <Field label="Factura"><Select value={form.factura} onChange={(e) => setForm((c) => ({ ...c, factura: e.target.value }))} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
         </div>
@@ -422,46 +429,8 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
         ) : null}
 
         <div className="mt-5 flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={() => setShowPaymentModal(false)}>Cancelar</Button>
-          <Button className="flex-1" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !caseDetail.principalCustomerPersonId}><Save className="mr-1.5 h-4 w-4" />Registrar pago</Button>
-        </div>
-      </Dialog>
-
-      <Dialog open={isUnfavorableFranchise && showFranchiseClientPaymentModal} onClose={() => setShowFranchiseClientPaymentModal(false)} title="Pago de franquicia — Cliente" description="Registro visual local del pago del cliente al taller.">
-        {/* Modal local: no usa el formulario genérico ni genera movimientos o payloads. */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Monto"><Input type="number" value={franchiseClientPayment.amount} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, franchiseClientPayment: { ...current.franchiseClientPayment, amount: event.target.value } }))} /></Field>
-          <Field label="Fecha y hora"><Input type="datetime-local" value={franchiseClientPayment.paidAt} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, franchiseClientPayment: { ...current.franchiseClientPayment, paidAt: event.target.value } }))} /></Field>
-          <Field label="Medio de pago"><Select value={franchiseClientPayment.paymentMethod} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, franchiseClientPayment: { ...current.franchiseClientPayment, paymentMethod: event.target.value } }))} options={PAYMENT_METHODS} /></Field>
-          <Field label="Referencia externa"><Input value={franchiseClientPayment.externalReference} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, franchiseClientPayment: { ...current.franchiseClientPayment, externalReference: event.target.value } }))} /></Field>
-          <Field label="Notas"><Textarea rows={3} value={franchiseClientPayment.notes} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, franchiseClientPayment: { ...current.franchiseClientPayment, notes: event.target.value } }))} /></Field>
-          <div className="flex items-end">
-            <input ref={franchiseClientPaymentDocumentInputRef} type="file" className="hidden" onChange={(event) => { const file = event.target.files?.[0] ?? null; onCleasPaymentsUiChange((current) => ({ ...current, franchiseClientPayment: { ...current.franchiseClientPayment, document: { file, name: file?.name || '' } } })); }} />
-            <Button type="button" variant="outline" className="w-full" onClick={() => franchiseClientPaymentDocumentInputRef.current?.click()}>Documentación</Button>
-          </div>
-        </div>
-        {franchiseClientPayment.document?.name ? <p className="mt-2 text-xs text-muted-foreground">{franchiseClientPayment.document.name}</p> : null}
-        <div className="mt-5 flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={() => setShowFranchiseClientPaymentModal(false)}>Cancelar</Button>
-          <Button className="flex-1" onClick={() => { onCleasPaymentsUiChange((current) => ({ ...current, franchiseClientPayment: { ...current.franchiseClientPayment, registered: true } })); setShowFranchiseClientPaymentModal(false); }}>Confirmar pago</Button>
-        </div>
-      </Dialog>
-
-      <Dialog open={showAccessoryPayments && accessoryWorks.length > 0 && showAccessoryPaymentModal} onClose={() => setShowAccessoryPaymentModal(false)} title="Pago adicional del cliente" description="Registro visual local de un pago adicional del cliente; no genera movimientos ni comprobantes.">
-        {/* Modal local de extras: sus campos se mantienen fuera del formulario financiero genérico. */}
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Cancela saldo"><Select value={accessoryPaymentDraft.kind} onChange={(event) => updateAccessoryUi((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, kind: event.target.value } }))} options={[{ value: 'Parcial', label: 'Parcial' }, { value: 'Total', label: 'Total' }, { value: 'Bonificacion', label: 'Bonificación' }]} /></Field>
-          <Field label="Monto"><Input type="number" min="0" step="0.01" value={accessoryPaymentDraft.amount} onChange={(event) => updateAccessoryUi((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, amount: event.target.value } }))} /></Field>
-          <Field label="Fecha"><Input type="date" value={accessoryPaymentDraft.date} onChange={(event) => updateAccessoryUi((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, date: event.target.value } }))} /></Field>
-          {accessoryPaymentDraft.kind !== 'Bonificacion' ? <Field label="Modo"><Select value={accessoryPaymentDraft.mode} onChange={(event) => updateAccessoryUi((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, mode: event.target.value, modeDetail: event.target.value === 'Otro' ? current.paymentDraft.modeDetail : '' } }))} options={[{ value: 'Efectivo', label: 'Efectivo' }, { value: 'Transferencia', label: 'Transferencia' }, { value: 'Cheque', label: 'Cheque' }, { value: 'Tarjeta', label: 'Tarjeta' }, { value: 'Otro', label: 'Otro' }]} /></Field> : null}
-          {accessoryPaymentDraft.kind !== 'Bonificacion' && accessoryPaymentDraft.mode === 'Otro' ? <Field label="Detalle modo otro"><Input value={accessoryPaymentDraft.modeDetail} onChange={(event) => updateAccessoryUi((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, modeDetail: event.target.value } }))} /></Field> : null}
-          {accessoryPaymentDraft.kind === 'Bonificacion' ? <Field label="Motivo bonificación"><Input value={accessoryPaymentDraft.reason} onChange={(event) => updateAccessoryUi((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, reason: event.target.value } }))} /></Field> : null}
-          <div className="flex items-end"><input ref={accessoryPaymentDocumentInputRef} type="file" className="hidden" onChange={(event) => { const file = event.target.files?.[0] ?? null; updateAccessoryUi((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, document: { file, name: file?.name || '' } } })); }} /><Button type="button" variant="outline" className="w-full" onClick={() => accessoryPaymentDocumentInputRef.current?.click()}>Documentación</Button></div>
-        </div>
-        {accessoryPaymentDraft.document?.name ? <p className="mt-2 text-xs text-muted-foreground">{accessoryPaymentDraft.document.name}</p> : null}
-        <div className="mt-5 flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={() => setShowAccessoryPaymentModal(false)}>Cancelar</Button>
-          <Button className="flex-1" onClick={() => { onRegisterAccessoryPayment?.(); setShowAccessoryPaymentModal(false); }}>Registrar pago</Button>
+          <Button variant="outline" className="flex-1" onClick={() => { setShowPaymentModal(false); setLocalClientPaymentRequest(null); onClientPaymentRequestHandled?.(); }}>Cancelar</Button>
+          <Button className="flex-1" onClick={() => { if (saveMutation.isPending || clientPaymentSubmittingRef.current) return; clientPaymentSubmittingRef.current = true; saveMutation.mutate(); }} disabled={saveMutation.isPending || !caseDetail.principalCustomerPersonId}><Save className="mr-1.5 h-4 w-4" />Registrar pago</Button>
         </div>
       </Dialog>
 
@@ -469,7 +438,6 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
       <div className="rounded-3xl border border-border/70 bg-card p-5">
         <div className="flex items-center justify-between mb-4">
           <h5 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Historial de movimientos</h5>
-            {!blockCleasPayments ? <Button size="sm" onClick={() => setShowPaymentModal(true)}>+ Registrar pago</Button> : null}
         </div>
         {(movementsQuery.data ?? []).length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border/70 py-6 text-center text-sm text-muted-foreground">Sin movimientos registrados.</p>
@@ -478,12 +446,14 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
             <table className="w-full border-collapse text-sm">
               <thead>
                 <tr className="border-b border-border/60 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  <th className="px-3 py-3 text-left">Fecha</th>
-                  <th className="px-3 py-3 text-left">Tipo</th>
+                   <th className="px-3 py-3 text-left">Fecha</th>
+                   <th className="px-3 py-3 text-left">Pagador</th>
+                   <th className="px-3 py-3 text-left">Tipo</th>
+                   <th className="px-3 py-3 text-left">Concepto</th>
                   <th className="px-3 py-3 text-right">Monto</th>
                   <th className="px-3 py-3 text-left">Medio</th>
-                  <th className="px-3 py-3 text-left">Cancela</th>
-                  <th className="px-3 py-3 text-left">Motivo</th>
+                   <th className="px-3 py-3 text-left">Estado / anulación</th>
+                   <th className="px-3 py-3 text-left">Comprobante / notas</th>
                   <th className="px-3 py-3 w-10"></th>
                 </tr>
               </thead>
@@ -491,13 +461,15 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
                 {(movementsQuery.data ?? []).map((m) => (
                   <tr key={m.id} className="border-b border-border/40 hover:bg-muted/30 transition-colors">
                     <td className="px-3 py-3 font-medium">{m.movementAt?.slice(0, 16).replace('T', ' ')}</td>
-                    <td className="px-3 py-3">
-                      <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${m.movementTypeCode === 'INGRESO' ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400' : 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400'}`}>{m.movementTypeCode}</span>
-                    </td>
+                     <td className="px-3 py-3">{m.flowOriginCode === 'ASEGURADORA' ? 'Compañía' : 'Cliente'}</td>
+                     <td className="px-3 py-3">
+                       <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${m.movementTypeCode === 'INGRESO' ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400' : 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400'}`}>{m.movementTypeCode}</span>
+                     </td>
                     <td className="px-3 py-3 text-right font-medium">{formatCurrency(m.netAmount)}</td>
                     <td className="px-3 py-3 text-muted-foreground">{m.paymentMethodCode || '—'}</td>
-                    <td className="px-3 py-3">{m.cancellationTypeCode ? <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/50 px-2.5 py-0.5 text-xs font-medium">{m.cancellationTypeCode}</span> : '—'}</td>
-                    <td className="px-3 py-3 text-xs text-muted-foreground max-w-[150px] truncate">{m.reason || '—'}</td>
+                     <td className="px-3 py-3">{m.cancellationTypeCode ? <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/50 px-2.5 py-0.5 text-xs font-medium">{m.cancellationTypeCode}</span> : '—'}</td>
+                     <td className="px-3 py-3 text-xs text-muted-foreground max-w-[150px] truncate">{m.movementTypeCode === 'EGRESO' ? `Anulado: ${m.reason || 'sí'}` : 'Vigente'}</td>
+                     <td className="px-3 py-3 text-xs text-muted-foreground max-w-[150px] truncate">{m.receiptId ? `Recibo #${m.receiptId}` : m.externalReference || m.reason || '—'}</td>
                     <td className="px-3 py-3">
                      {!blockCleasPayments ? (
                       <div className="flex items-center gap-1">
@@ -564,21 +536,6 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
         </div>
       ) : null}
 
-      {!blockCleasPayments ? <div className="mt-5 flex justify-end">
-        <Button variant="outline" size="sm" onClick={async () => {
-          const url = getClientPaymentPdfUrl(caseId, caseDetail?.principalCustomerName || 'Cliente', caseDetail?.principalVehiclePlate || '', comprobanteTipo, cotizadoConIva, form.reason, form.razonSocial, form.facturaNumero);
-          const stored = readStoredAuth();
-          const token = stored?.accessToken;
-          if (!token) { toast.error('No hay sesión activa.'); return; }
-          const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-          if (!res.ok) { toast.error('No se pudo generar el PDF.'); return; }
-          const blob = await res.blob();
-          const a = document.createElement('a');
-          a.href = URL.createObjectURL(blob);
-          a.download = `comprobante-pago-${caseId}.pdf`;
-          a.click();
-        }}><FileDown className="mr-1.5 h-4 w-4" />Generar PDF</Button>
-      </div> : null}
     </div>
 
     {/* Confirmación anular pago */}
@@ -592,15 +549,16 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
             await createFinancialMovement(caseId, {
               movementTypeCode: 'EGRESO', flowOriginCode: m.flowOriginCode || 'CLIENTE',
               counterpartyTypeCode: m.counterpartyTypeCode || 'PERSONA',
-              counterpartyPersonId: m.counterpartyPersonId || null, counterpartyCompanyId: null,
+              counterpartyPersonId: m.counterpartyPersonId || null, counterpartyCompanyId: m.counterpartyCompanyId || null,
               movementAt: new Date().toISOString(),
               grossAmount: m.netAmount, netAmount: m.netAmount,
               paymentMethodCode: m.paymentMethodCode || null,
-              cancellationTypeCode: null, advancePayment: false, bonification: false,
+              cancellationTypeCode: m.cancellationTypeCode || null, advancePayment: false, bonification: false,
               reason: `Anulación de pago #${m.id}`, externalReference: null, retentions: [], applications: [],
             });
             await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] });
-            await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
+             await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
+             await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'finance', 'payment-breakdown'] });
             await onSaved?.();
             toast.success('Pago anulado.');
           } catch (e) { toast.error('No se pudo anular el pago.'); }

@@ -8,16 +8,17 @@ import { getBudgetCatalogs } from '@/modules/cases/api/budget-catalogs-api';
 import { requestJson } from '@/shared/api/http-client';
 import { useSession } from '@/modules/auth/providers/session-provider';
 import { Button } from '@/shared/ui/button';
+import { Dialog } from '@/shared/ui/dialog';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
 import { ProviderSelector, providerPayload } from '@/modules/cases/components/provider-selector';
-import { getAccessoryWorkTotals } from '@/modules/cases/lib/accessory-work-total';
 import { syncPartsFromBudget } from '@/modules/cases/api/parts-api';
 
 const currency = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 });
 const fmt = (v) => (v == null ? '-' : currency.format(v));
 const yesNoAV = ['NO', 'SI', 'A/V'];
+const emptyOptions = [];
 
 const createEmptyItem = (visualOrder = 1, defaults = {}) => ({
   id: null, visualOrder, affectedPiece: '', taskCode: 'CHAPA',
@@ -37,14 +38,14 @@ const toItemState = (item) => ({
 
 const toDecimal = (v) => { const p = Number(v); return Number.isFinite(p) ? p : 0; };
 
-export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, accessoryUi, onAccessoryUiChange, onAddAccessoryWork, onSaved }) => {
+export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, onSaved }) => {
   const queryClient = useQueryClient();
   const { session } = useSession();
   const catalogsQuery = useQuery({ queryKey: ['budget', 'catalogs'], queryFn: getBudgetCatalogs });
-  const taskOptions = catalogsQuery.data?.taskCodes ?? [];
-  const damageOptions = catalogsQuery.data?.damageLevelCodes ?? [];
-  const decisionOptions = catalogsQuery.data?.partDecisionCodes ?? [];
-  const actionOptions = catalogsQuery.data?.actionCodes ?? [];
+  const taskOptions = catalogsQuery.data?.taskCodes ?? emptyOptions;
+  const damageOptions = catalogsQuery.data?.damageLevelCodes ?? emptyOptions;
+  const decisionOptions = catalogsQuery.data?.partDecisionCodes ?? emptyOptions;
+  const actionOptions = catalogsQuery.data?.actionCodes ?? emptyOptions;
 
   const defaults = useMemo(() => ({
     taskCode: taskOptions[0]?.code || '', damageLevelCode: damageOptions[0]?.code || '',
@@ -100,10 +101,6 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, ac
   const partsSum = normalizedItems.reduce((s, i) => s + toDecimal(i.partValue), 0);
   const laborWithoutVat = toDecimal(header.laborWithoutVat);
   const laborWithVat = laborWithoutVat * 1.21;
-  const showAccessoryBlock = Boolean(caseDetail?.caseTypeCode) && caseDetail.caseTypeCode !== 'PARTICULAR';
-  const accessoryWorks = accessoryUi?.enabled === 'SI' ? accessoryUi.works ?? [] : [];
-  const accessoryTotals = getAccessoryWorkTotals(accessoryUi);
-  const updateAccessoryUi = (updater) => onAccessoryUiChange?.((current) => typeof updater === 'function' ? updater(current) : updater);
 
   const invalidateWorkspace = async () => {
     await Promise.all([
@@ -132,7 +129,6 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, ac
         electricalWorkApplies: header.electricalWorkApplies === 'SI', electricalDetail: header.electricalDetail || null,
         mechanicalWorkApplies: header.mechanicalWorkApplies === 'SI', mechanicalWorkCode: header.mechanicalWorkCode || null,
         quotedPartsDate: header.quotedPartsDate || null, quotedPartsSupplier: header.quotedPartsSupplier || null, providerId: header.providerId,
-        accessoryWorks: accessoryWorks.map((work) => ({ id: typeof work.id === 'number' ? work.id : null, affectedPiece: work.affectedPiece || null, actionCode: work.actionCode || null, damageLevelCode: work.damageLevelCode || null, replacementAmount: toDecimal(work.replacementAmount) })),
       };
       if (closeAfterSave) {
         const response = await generateCaseBudget(caseId, { ...payload, items: normalizedItems.map((item) => ({ visualOrder: item.visualOrder, affectedPiece: item.affectedPiece, taskCode: item.taskCode, damageLevelCode: item.damageLevelCode, partDecisionCode: item.partDecisionCode, actionCode: item.actionCode, requiresReplacement: item.requiresReplacement, partValue: toDecimal(item.partValue), estimatedHours: toDecimal(item.estimatedHours), laborAmount: toDecimal(item.laborAmount), active: item.active, providerId: item.providerId })) }, crypto.randomUUID());
@@ -143,7 +139,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, ac
         const p = { visualOrder: item.visualOrder, affectedPiece: item.affectedPiece, taskCode: item.taskCode, damageLevelCode: item.damageLevelCode, partDecisionCode: item.partDecisionCode, actionCode: item.actionCode, requiresReplacement: item.requiresReplacement, partValue: toDecimal(item.partValue), estimatedHours: toDecimal(item.estimatedHours), laborAmount: toDecimal(item.laborAmount), active: item.active, providerId: item.providerId };
          if (item.id) await updateCaseBudgetItem(caseId, item.id, p); else await createCaseBudgetItem(caseId, p);
        }
-       if (caseDetail?.caseTypeCode === 'TODO_RIESGO') await syncPartsFromBudget(caseId);
+        if (['TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode)) await syncPartsFromBudget(caseId);
        if (closeAfterSave) await closeCaseBudget(caseId, { reportStatusCode: 'CERRADO', observations: header.observations || null });
     },
     onSuccess: async (response, variables) => { await invalidateWorkspace(); if (variables.closeAfterSave) { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'budget-comparisons'] }); if (canViewComparison) { setActiveTab('comparison'); setComparisonAnnouncement(`Presupuesto generado. Se importaron ${response?.comparisonSnapshot?.importedPieceCount ?? 0} piezas para comparar.`); window.setTimeout(() => comparisonHeadingRef.current?.focus(), 0); } toast.success('Presupuesto generado y comparación creada.'); } else toast.success('Presupuesto guardado.'); },
@@ -210,7 +206,6 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, ac
           <Button variant="outline" onClick={() => guardedSave(false)} disabled={saveMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar cambios</Button>
           <Button onClick={() => guardedSave(true)} disabled={saveMutation.isPending}><ShieldCheck className="mr-1.5 h-4 w-4" />Generar presupuesto</Button>
         </div>
-        {caseDetail?.caseTypeCode === 'TODO_RIESGO' ? <p className="w-full text-sm text-muted-foreground" role="status">Al guardar o generar, las líneas REEMPLAZAR y trabajos extra REEMPLAZAR se sincronizan automáticamente con Reparación. Las líneas con actividad que dejan de calificar requieren resolución manual.</p> : null}
       </div>
 
       <div role="tablist" aria-label="Presupuesto" className="flex w-fit rounded-xl border border-border/60 bg-muted/40 p-1">
@@ -280,36 +275,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, ac
         </div>
        </div>
 
-      {showAccessoryBlock ? (
-        <div className="rounded-2xl border border-border/60 bg-card p-5">
-          <h4 className="text-sm font-semibold">Trabajos extras</h4>
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div className="grid flex-1 gap-3 md:grid-cols-2">
-              <div className="space-y-1"><Label className="text-xs" htmlFor="accessory-work-enabled">Trabajos extras</Label><select id="accessory-work-enabled" className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm" value={accessoryUi?.enabled ?? 'NO'} onChange={(event) => updateAccessoryUi((current) => ({ ...current, enabled: event.target.value }))}><option value="NO">No</option><option value="SI">Sí</option></select></div>
-              <div className="space-y-1"><Label className="text-xs" htmlFor="accessory-work-quoted">Cotizado</Label><Input id="accessory-work-quoted" value={fmt(accessoryTotals.quoted)} readOnly className="cursor-not-allowed bg-muted/60 font-semibold" /></div>
-            </div>
-            <Button type="button" variant="outline" size="sm" onClick={onAddAccessoryWork}><Plus className="mr-1.5 h-4 w-4" />Agregar trabajo extra</Button>
-          </div>
-          {/* Los extras se guardan por separado: no forman parte de las líneas, totales ni del PDF técnico. */}
-          {accessoryUi?.enabled === 'SI' ? (
-            <div className="mt-4 space-y-3">
-              {accessoryWorks.map((work) => (
-                <div key={work.id} className="rounded-2xl border border-border/50 bg-background/50 p-4">
-                   <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_180px_auto]">
-                      <div className="space-y-1"><Label className="text-xs" htmlFor={`accessory-piece-${work.id}`}>Pieza afectada</Label><Input id={`accessory-piece-${work.id}`} value={work.affectedPiece ?? ''} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, affectedPiece: event.target.value } : entry) }))} /></div>
-                      <div className="space-y-1"><Label className="text-xs" htmlFor={`accessory-task-${work.id}`}>Tarea a ejecutar</Label><select id={`accessory-task-${work.id}`} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={work.actionCode ?? ''} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, actionCode: event.target.value } : entry) }))}><option value="">Seleccionar...</option>{actionOptions.map((option) => <option key={option.code} value={option.code}>{option.name}</option>)}</select></div>
-                      <div className="space-y-1"><Label className="text-xs" htmlFor={`accessory-damage-${work.id}`}>Nivel de daño</Label><select id={`accessory-damage-${work.id}`} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" value={work.damageLevelCode ?? ''} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, damageLevelCode: event.target.value } : entry) }))}><option value="">Seleccionar...</option>{damageOptions.map((option) => <option key={option.code} value={option.code}>{option.name}</option>)}</select></div>
-                      <div className="space-y-1"><Label className="text-xs" htmlFor={`accessory-parts-${work.id}`}>$ Repuestos</Label><Input id={`accessory-parts-${work.id}`} type="number" min="0" step="0.01" value={work.replacementAmount ?? ''} onChange={(event) => updateAccessoryUi((current) => ({ ...current, works: current.works.map((entry) => entry.id === work.id ? { ...entry, replacementAmount: event.target.value } : entry) }))} /></div>
-                      <div className="flex items-end"><Button type="button" variant="ghost" size="sm" onClick={() => updateAccessoryUi((current) => ({ ...current, works: current.works.filter((entry) => entry.id !== work.id), enabled: current.works.length === 1 ? 'NO' : current.enabled }))}>Quitar</Button></div>
-                   </div>
-                 </div>
-               ))}
-            </div>
-          ) : <p className="mt-4 rounded-xl border border-border/50 bg-background/70 px-4 py-3 text-sm text-muted-foreground">No hay trabajos extras incluidos. Este bloque queda separado del presupuesto técnico y del reclamo a la compañía.</p>}
-        </div>
-      ) : null}
-
-      {/* Trabajos adicionales */}
+       {/* Trabajos adicionales */}
       <div className="rounded-2xl border border-border/60 bg-card p-5">
         <h4 className="mb-3 text-sm font-semibold">Trabajos adicionales</h4>
         <div className="flex flex-col gap-3">

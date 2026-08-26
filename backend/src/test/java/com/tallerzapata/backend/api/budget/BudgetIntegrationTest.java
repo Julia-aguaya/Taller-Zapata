@@ -529,6 +529,10 @@ class BudgetIntegrationTest {
 
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM comparacion_presupuesto_snapshot WHERE caso_id = 100", Integer.class)).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM comparacion_pieza WHERE snapshot_id = ?", Integer.class, snapshotId)).isEqualTo(4);
+        mockMvc.perform(get("/api/v1/cases/100/budget-comparisons").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(snapshotId))
+                .andExpect(jsonPath("$[0].context").value("MAIN"));
         mockMvc.perform(get("/api/v1/cases/100/budget-comparisons/{snapshotId}", snapshotId).header("X-User-Id", "3"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.pieces.length()").value(4));
@@ -550,6 +554,20 @@ class BudgetIntegrationTest {
         mockMvc.perform(delete("/api/v1/cases/100/budget-comparisons/{snapshotId}/providers/{columnId}", snapshotId, south).header("X-User-Id", "3")).andExpect(status().isOk());
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM comparacion_proveedor WHERE id = ?", Integer.class, south)).isZero();
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM comparacion_precio WHERE comparacion_proveedor_id = ?", Integer.class, south)).isZero();
+    }
+
+    @Test
+    void shouldRequireAPricedComparisonSelectionForMainBudgetItems() throws Exception {
+        Long snapshotId = objectMapper.readTree(generateComparison("main-selection-required", List.of(comparisonItem(1, "Optica", "REEMPLAZAR", 250)))).path("comparisonSnapshot").path("id").asLong();
+        Long pieceId = jdbcTemplate.queryForObject("SELECT id FROM comparacion_pieza WHERE snapshot_id = ?", Long.class, snapshotId);
+        jdbcTemplate.update("INSERT INTO proveedores (id, public_id, nombre, activo) VALUES (702, '00000000-0000-0000-0000-000000007002', 'Norte', true)");
+        mockMvc.perform(post("/api/v1/cases/100/budget-comparisons/{snapshotId}/providers", snapshotId).header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"providerId\":702,\"billingCode\":\"A\",\"paymentMethodCode\":\"CONTADO\"}"))
+                .andExpect(status().isOk());
+        Long columnId = jdbcTemplate.queryForObject("SELECT id FROM comparacion_proveedor WHERE snapshot_id = ? AND proveedor_id = 702", Long.class, snapshotId);
+
+        mockMvc.perform(post("/api/v1/cases/100/budget-comparisons/{snapshotId}/pieces/{pieceId}/providers/{columnId}/select", snapshotId, pieceId, columnId).header("X-User-Id", "3"))
+                .andExpect(status().isConflict());
     }
 
     @Test
@@ -580,6 +598,27 @@ class BudgetIntegrationTest {
 
         mockMvc.perform(post("/api/v1/cases/100/parts/import-from-comparison").header("X-User-Id", "3"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void shouldSynchronizeGranizoCanonicalBudgetAndAccessoryPartsExactlyOnce() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = 3 WHERE id = 100");
+        BudgetUpsertRequest request = new BudgetUpsertRequest(
+                LocalDate.of(2026, 4, 20), "BORRADOR", new BigDecimal("1000.00"), new BigDecimal("21.00"),
+                BigDecimal.ZERO, 5, null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null,
+                List.of(comparisonItem(1, "Optica", "REEMPLAZAR", 250)),
+                List.of(new BudgetAccessoryWorkRequest("Moldura", "REEMPLAZAR", "LEVE", new BigDecimal("75.00")))
+        );
+
+        mockMvc.perform(put("/api/v1/cases/100/budget").header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/cases/100/parts/sync-from-budget").header("X-User-Id", "3")).andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/cases/100/parts/sync-from-budget").header("X-User-Id", "3")).andExpect(status().isOk());
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM repuestos_caso WHERE caso_id = 100 AND source_type = 'BUDGET_ITEM' AND non_canonical = 0", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM repuestos_caso WHERE caso_id = 100 AND source_type = 'ACCESSORY_WORK' AND non_canonical = 0", Integer.class)).isEqualTo(1);
     }
 
     @Test

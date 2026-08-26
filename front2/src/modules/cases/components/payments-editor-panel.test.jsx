@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { PaymentsEditorPanel } from './payments-editor-panel';
+import { ExtraBudgetPaymentsPanel } from './extra-budget-payments-panel';
 
 const mockCreateFinancialMovement = vi.fn().mockResolvedValue({ id: 1 });
 const mockCreateReceipt = vi.fn().mockResolvedValue({ id: 10 });
@@ -11,6 +12,9 @@ const mockListReceipts = vi.fn().mockResolvedValue([]);
 const mockRequestJson = vi.fn().mockResolvedValue({});
 const mockInvalidateQueries = vi.fn();
 const mockRefetchQueries = vi.fn().mockResolvedValue(undefined);
+const mockGetExtraBudget = vi.fn();
+const mockAnnulExtraBudgetPayment = vi.fn();
+const mockRegisterExtraBudgetPayment = vi.fn().mockResolvedValue({});
 let useQueryData = {};
 
 vi.mock('@/modules/cases/api/finance-api', () => ({
@@ -45,6 +49,13 @@ vi.mock('@/shared/api/http-client', () => ({
   requestJson: (...args) => mockRequestJson(...args),
 }));
 
+vi.mock('@/modules/cases/api/extra-budget-api', () => ({
+  extraBudgetQueryKey: (caseId) => ['cases', String(caseId), 'extra-budget'],
+  getExtraBudget: (...args) => mockGetExtraBudget(...args),
+  registerExtraBudgetPayment: (...args) => mockRegisterExtraBudgetPayment(...args),
+  annulExtraBudgetPayment: (...args) => mockAnnulExtraBudgetPayment(...args),
+}));
+
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const baseProps = {
@@ -69,32 +80,12 @@ const CleasPaymentsHarness = (props) => {
   return <PaymentsEditorPanel {...props} cleasFranchiseDistribution={cleasFranchiseDistribution} cleasPaymentsUi={cleasPaymentsUi} onCleasPaymentsUiChange={setCleasPaymentsUi} />;
 };
 
-const AccessoryPaymentsHarness = (props) => {
-  const [accessoryUi, setAccessoryUi] = useState({
-    enabled: 'SI',
-    works: [{ id: 'local-accessory', detail: 'Moldura lateral', amount: '180000', includesReplacement: 'SI', replacementPiece: 'Moldura', replacementAmount: '20000' }],
-    notes: '',
-    payments: [],
-    paymentDraft: { id: 'local-payment', kind: 'Parcial', amount: '', date: '', mode: 'Efectivo', modeDetail: '', reason: '', document: { file: null, name: '' } },
-    ...(props.accessoryUi === true ? {} : props.accessoryUi),
-  });
-  const registerAccessoryPayment = () => setAccessoryUi((current) => ({
-    ...current,
-    payments: [...current.payments, current.paymentDraft],
-    paymentDraft: { id: 'next-local-payment', kind: 'Parcial', amount: '', date: '', mode: 'Efectivo', modeDetail: '', reason: '', document: { file: null, name: '' } },
-  }));
-  const [cleasPaymentsUi, setCleasPaymentsUi] = useState(createCleasPaymentsUi);
-  const [cleasFranchiseDistribution] = useState({ franchiseAmount: '', companyRequirement: 'NO', companyRequiredAmount: '', companyPaymentStatus: 'PENDIENTE', companyPaymentDate: '' });
-  return <PaymentsEditorPanel {...props} accessoryUi={accessoryUi} onAccessoryUiChange={setAccessoryUi} onRegisterAccessoryPayment={registerAccessoryPayment} cleasPaymentsUi={cleasPaymentsUi} onCleasPaymentsUiChange={setCleasPaymentsUi} cleasFranchiseDistribution={cleasFranchiseDistribution} />;
-};
-
-const mount = (overrides = {}) => {
-  useQueryData = {};
+  const mount = (overrides = {}) => {
+   useQueryData = { [JSON.stringify(['cases', '42', 'insurance'])]: { insuranceCompanyId: 7 } };
   mockCreateFinancialMovement.mockClear();
   mockCreateReceipt.mockClear();
   mockRequestJson.mockClear();
   const props = { ...baseProps, ...overrides };
-  if (props.accessoryUi) return render(<AccessoryPaymentsHarness {...props} />);
   return render(props.caseDetail.caseTypeCode === 'CLEAS' ? <CleasPaymentsHarness {...props} /> : <PaymentsEditorPanel {...props} />);
 };
 
@@ -148,73 +139,149 @@ describe('PaymentsEditorPanel', () => {
     }));
   });
 
-  it('hides accessory payments for PARTICULAR', () => {
-    mount({ accessoryUi: true, caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'PARTICULAR' } });
-    expect(screen.queryByText('Pagos adicionales del cliente')).toBeNull();
+  it('uses the full insurer agreement and suppresses franchise payment UI for GRANIZO', () => {
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'insurance'])]: { insuranceCompanyId: 7 },
+      [JSON.stringify(['cases', '42', 'insurance-processing'])]: { agreedAmount: 300000, amountToBillCompany: 200000 },
+      [JSON.stringify(['cases', '42', 'finance', 'payment-breakdown'])]: { client: { franchisePending: 100000, acceptedExtras: 0, extrasPending: 0, pending: 100000 } },
+    };
+
+    render(<PaymentsEditorPanel {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'GRANIZO' }} clientPaymentRequest={{ concept: 'FRANQUICIA', amount: '100000' }} />);
+
+    expect(screen.getByText('A facturar Cía.').parentElement).toHaveTextContent('300.000');
+    expect(screen.queryByLabelText('Desglose de pagos del cliente')).toBeNull();
+    expect(screen.queryByRole('button', { name: /franquicia/i })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Registrar pago' })).toBeNull();
   });
 
-  it('hides accessory payments when the case type is absent', () => {
-    mount({ accessoryUi: true, caseDetail: baseProps.caseDetail });
-    expect(screen.queryByText('Pagos adicionales del cliente')).toBeNull();
+  it('exposes exactly the insurer and extra-client saving actions, never one in movement history', () => {
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'financial-movements'])]: [{ id: 1, movementAt: '2026-08-24T10:00', movementTypeCode: 'INGRESO', netAmount: 100, paymentMethodCode: 'TRANSFERENCIA', cancellationTypeCode: 'PRESUPUESTO' }],
+      [JSON.stringify(['cases', '42', 'extra-budget'])]: {
+        issuedNumber: 77, currentVersion: 2, versionLock: 9, currentStatus: 'ACEPTADO', acceptedVersionId: 202, paidAmount: 30, balance: 91, payments: [],
+        versions: [{ id: 202, laborWithVat: 121, partsTotal: 50, total: 171 }],
+      },
+      [JSON.stringify(['cases', '42', 'finance', 'payment-breakdown'])]: { client: { franchisePending: 100, acceptedExtras: 0, extrasPending: 91, pending: 191 } },
+    };
+
+    render(<><PaymentsEditorPanel {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'TODO_RIESGO' }} /><ExtraBudgetPaymentsPanel caseId="42" /></>);
+
+    expect(screen.getAllByRole('button', { name: /^Guardar pago de la compañía$/i })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: /^Registrar pago de franquicia$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^(Registrar|Guardar) pago$/i })).toBeNull();
+    const history = screen.getByText('Historial de movimientos').closest('.rounded-3xl');
+    expect(within(history).getByRole('button', { name: 'Descargar comprobante' })).toBeInTheDocument();
+    expect(within(history).getByRole('button', { name: 'Anular' })).toBeInTheDocument();
+    expect(within(history).queryByRole('button', { name: /^(Registrar|Guardar) pago/i })).toBeNull();
   });
 
-  it('keeps the additional-payment modal unavailable when extras are NO', () => {
-    mount({
-      caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'TODO_RIESGO' },
-      accessoryUi: { enabled: 'NO', works: [] },
-    });
+  it('uses the authoritative insurer balance and selected company for a valid company payment', async () => {
+    mockCreateFinancialMovement.mockClear();
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'insurance'])]: { insuranceCompanyId: 7 },
+      [JSON.stringify(['cases', '42', 'finance', 'payment-breakdown'])]: { insurer: { companyId: 7, total: 10, paid: 0, pending: 10 } },
+    };
+    render(<PaymentsEditorPanel {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'TODO_RIESGO' }} />);
 
-    const addPayment = screen.getByRole('button', { name: '+ Agregar pago' });
-    expect(addPayment).toBeDisabled();
-    fireEvent.click(addPayment);
-    expect(screen.queryByRole('heading', { name: 'Pago adicional del cliente' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Monto'), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Guardar pago de la compañía$/i }));
+
+    await waitFor(() => expect(mockCreateFinancialMovement).toHaveBeenCalledWith(42, expect.objectContaining({
+      flowOriginCode: 'ASEGURADORA',
+      counterpartyTypeCode: 'COMPANIA',
+      counterpartyCompanyId: 7,
+      cancellationTypeCode: 'COMPANIA',
+      netAmount: 10,
+    })));
   });
 
-  it.each(['TODO_RIESGO', 'GRANIZO', 'CLEAS', 'CODIGO_DESCONOCIDO'])('shows accessory payments for the non-PARTICULAR case type %s', (caseTypeCode) => {
-    mount({ accessoryUi: true, caseDetail: { ...baseProps.caseDetail, caseTypeCode } });
-    expect(screen.getByText('Pagos adicionales del cliente')).toBeTruthy();
-  });
+  it('does not submit a company payment over the authoritative pending balance', () => {
+    mockCreateFinancialMovement.mockClear();
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'insurance'])]: { insuranceCompanyId: 7 },
+      [JSON.stringify(['cases', '42', 'finance', 'payment-breakdown'])]: { insurer: { companyId: 7, total: 10, paid: 0, pending: 10 } },
+    };
+    render(<PaymentsEditorPanel {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'TODO_RIESGO' }} />);
 
-  it('registers an accessory payment only in local UI state', () => {
-    mount({ accessoryUi: true, caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'GRANIZO' } });
+    fireEvent.change(screen.getByLabelText('Monto'), { target: { value: '11' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Guardar pago de la compañía$/i }));
 
-    expect(screen.getByText('Cotizado extras')).toBeTruthy();
-    expect(screen.getByText('Cotizado extras').parentElement).toHaveTextContent('200.000');
-    fireEvent.click(screen.getByRole('button', { name: '+ Agregar pago' }));
-    const accessoryDialog = screen.getByRole('heading', { name: 'Pago adicional del cliente' }).closest('.max-w-xl');
-    expect(accessoryDialog).toBeTruthy();
-    fireEvent.change(within(accessoryDialog).getByLabelText('Monto'), { target: { value: '80000' } });
-    fireEvent.change(within(accessoryDialog).getByLabelText('Fecha'), { target: { value: '2026-08-21' } });
-    fireEvent.click(within(accessoryDialog).getByRole('button', { name: /^Registrar pago$/ }));
-
-    expect(screen.getByText(/Parcial.*80\.000.*2026-08-21.*Efectivo/)).toBeTruthy();
     expect(mockCreateFinancialMovement).not.toHaveBeenCalled();
-    expect(mockCreateReceipt).not.toHaveBeenCalled();
   });
 
-  it('derives accessory quoted total and balance without VAT', () => {
-    mount({ accessoryUi: true, caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'GRANIZO' }, particularFinanceSummary: { ...baseProps.particularFinanceSummary, customerPaid: 50000 } });
+  it('guards the company save against a second click while its request is pending', () => {
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'insurance'])]: { insuranceCompanyId: 7 },
+      [JSON.stringify(['cases', '42', 'finance', 'payment-breakdown'])]: { insurer: { companyId: 7, total: 100000, paid: 0, pending: 100000 } },
+    };
+    mockCreateFinancialMovement.mockClear();
+    let resolvePayment;
+    mockCreateFinancialMovement.mockImplementationOnce(() => new Promise((resolve) => { resolvePayment = resolve; }));
+    render(<PaymentsEditorPanel {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'TODO_RIESGO' }} />);
 
-    expect(screen.getByText('Total MO extras').parentElement).toHaveTextContent('180.000');
-    expect(screen.getByText('Total repuestos extras').parentElement).toHaveTextContent('20.000');
-    expect(screen.getByText('Cotizado extras')).toBeTruthy();
-    expect(screen.getByText('Cotizado extras').parentElement).toHaveTextContent('200.000');
-    expect(screen.getByText('Saldo pendiente').parentElement).toHaveTextContent(/200\.000/);
-    expect(screen.getByText('Total abonado por el cliente').parentElement).toHaveTextContent(/\$ 0/);
+    fireEvent.change(screen.getByLabelText('Monto'), { target: { value: '100000' } });
+    const saveButton = screen.getByRole('button', { name: /^Guardar pago de la compañía$/i });
+    fireEvent.click(saveButton);
+    fireEvent.click(saveButton);
+
+    expect(mockCreateFinancialMovement).toHaveBeenCalledTimes(1);
+    resolvePayment({ id: 1 });
   });
 
-  it('keeps accessory payment documentation local and out of financial history', () => {
-    mount({ accessoryUi: true, caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CODIGO_DESCONOCIDO' } });
-    fireEvent.click(screen.getByRole('button', { name: '+ Agregar pago' }));
-    fireEvent.change(screen.getByLabelText('Monto'), { target: { value: '180000' } });
-    fireEvent.change(document.querySelector('input[type="file"]'), { target: { files: [new File(['local'], 'respaldo.pdf', { type: 'application/pdf' })] } });
-    expect(screen.getByText('respaldo.pdf')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /^Registrar pago$/ }));
+  it('reuses the complete modal for extras with a fixed concept, suggested balance, and isolated partial-payment request', async () => {
+    mockRegisterExtraBudgetPayment.mockClear();
+    mockCreateFinancialMovement.mockClear();
+    let resolvePayment;
+    mockRegisterExtraBudgetPayment.mockImplementationOnce(() => new Promise((resolve) => { resolvePayment = resolve; }));
+    mount({ clientPaymentRequest: { concept: 'TRABAJOS_EXTRAS', amount: '91', expectedVersion: 9 } });
 
-    expect(screen.getByText(/respaldo\.pdf/)).toBeTruthy();
-    expect(screen.getByText('Sin movimientos registrados.')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Registrar pago' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Monto')).toHaveValue(91);
+    expect(screen.getByLabelText('Cancela saldo')).toHaveValue('TRABAJOS_EXTRAS');
+    ['Fecha y hora', 'Modo', 'Detalle medio de pago (opcional)', 'Factura', 'Referencia externa', 'Motivo / notas'].forEach((label) => expect(screen.getByLabelText(label)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('Monto'), { target: { value: '40' } });
+    fireEvent.change(screen.getByLabelText('Referencia externa'), { target: { value: 'OP-40' } });
+    const submit = screen.getByRole('button', { name: /^Registrar pago$/i });
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+
+    await waitFor(() => expect(mockRegisterExtraBudgetPayment).toHaveBeenCalledWith(42, expect.objectContaining({ expectedVersion: 9, amount: 40, externalReference: 'OP-40' })));
+    expect(mockRegisterExtraBudgetPayment).toHaveBeenCalledTimes(1);
     expect(mockCreateFinancialMovement).not.toHaveBeenCalled();
-    expect(mockCreateReceipt).not.toHaveBeenCalled();
+    resolvePayment({});
+  });
+
+  it('uses the shared modal for a TODO_RIESGO franchise with the canonical payload and partial cap', async () => {
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'insurance'])]: { insuranceCompanyId: 7 },
+      [JSON.stringify(['cases', '42', 'finance', 'payment-breakdown'])]: { client: { franchisePending: 91, acceptedExtras: 30, extrasPending: 61, pending: 152 } },
+    };
+    render(<PaymentsEditorPanel {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'TODO_RIESGO' }} />);
+
+    expect(screen.getByLabelText('Pagos del cliente')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /registrar pago de franquicia/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /registrar pago de franquicia/i }));
+    const franchiseAmountInput = screen.getAllByLabelText('Monto').at(-1);
+    expect(franchiseAmountInput).toHaveValue(91);
+    expect(franchiseAmountInput).toHaveAttribute('max', '91');
+    fireEvent.change(franchiseAmountInput, { target: { value: '40' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Registrar pago$/i }));
+
+    await waitFor(() => expect(mockCreateFinancialMovement).toHaveBeenCalledWith(42, expect.objectContaining({
+      flowOriginCode: 'CLIENTE',
+      counterpartyTypeCode: 'PERSONA',
+      counterpartyPersonId: 1,
+      cancellationTypeCode: 'FRANQUICIA',
+      netAmount: 40,
+    })));
+  });
+
+  it.each(['PARTICULAR', 'GRANIZO'])('does not render the TODO_RIESGO franchise section for %s', (caseTypeCode) => {
+    useQueryData = { [JSON.stringify(['cases', '42', 'finance', 'payment-breakdown'])]: { client: { franchisePending: 91 } } };
+    render(<PaymentsEditorPanel {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode }} />);
+
+    expect(screen.queryByLabelText('Pagos del cliente')).toBeNull();
+    expect(screen.queryByRole('button', { name: /registrar pago de franquicia/i })).toBeNull();
   });
 
   it('renders the visual-only CLEAS billing card with shared calculated amount and fallback', () => {
@@ -262,7 +329,7 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.getByRole('button', { name: /^registrar pago$/i })).toBeEnabled();
   });
 
-  it('uses the unfavorable franchise derived company amount and provides a separate local client payment modal', () => {
+  it('uses the unfavorable franchise derived company amount and reuses the generic client payment modal', () => {
     mount({
       caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' },
       cleasOver: 'franchise',
@@ -275,11 +342,9 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.getByText('Pago de franquicia a cargo del cliente')).toBeTruthy();
     expect(screen.getByLabelText('A cargo del cliente')).toHaveValue('500000');
     fireEvent.click(screen.getByRole('button', { name: '+ Registrar pago del cliente' }));
-    expect(screen.getByRole('heading', { name: 'Pago de franquicia — Cliente' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Registrar pago' })).toBeTruthy();
     expect(screen.getByLabelText('Monto')).toHaveValue(500000);
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar pago' }));
-    expect(screen.getByText('Pago del cliente registrado visualmente.')).toBeTruthy();
-    expect(mockCreateFinancialMovement).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Cancela saldo')).toHaveValue('FRANQUICIA');
   });
 
   it('shows CLEAS payment draft fields and only reveals retentions when selected', () => {

@@ -189,7 +189,8 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     () => (partsCatalogsQuery.data?.authorizationCodes ?? []).map((item) => ({ value: item.code, label: item.name || item.code })),
     [partsCatalogsQuery.data?.authorizationCodes],
   );
-  const isTodoRiesgo = caseDetail?.caseTypeCode === 'TODO_RIESGO';
+  const isInsuranceRepair = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
+  const supportsNoRepair = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
   const isNoRepair = caseDetail?.visibleRepairState?.code === 'NO_DEBE_REPARARSE';
   const [noRepairDialog, setNoRepairDialog] = useState(null);
   const [noRepairReason, setNoRepairReason] = useState('');
@@ -229,10 +230,10 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   });
 
   useEffect(() => {
-    if (!isTodoRiesgo || syncStartedForCase.current === String(caseId)) return;
+    if (!isInsuranceRepair || syncStartedForCase.current === String(caseId)) return;
     syncStartedForCase.current = String(caseId);
     entrySyncMutation.mutate();
-  }, [caseId, isTodoRiesgo]);
+  }, [caseId, isInsuranceRepair]);
 
   const resolveWarningMutation = useMutation({
     mutationFn: ({ partId, warningId, resolution }) => resolvePartReconciliationWarning(caseId, partId, warningId, resolution),
@@ -489,7 +490,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
             <h4 className="text-lg font-semibold">Repuestos</h4>
             <p className="mt-1 text-sm text-muted-foreground">Total de repuestos: {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(partsTotal)}. Los trabajos extra no se incluyen.</p>
           </div>
-          {isTodoRiesgo ? (
+          {supportsNoRepair ? (
             <Button variant={isNoRepair ? 'outline' : 'destructive'} size="sm" onClick={() => setNoRepairDialog(isNoRepair ? 'revert' : 'apply')}>
               {isNoRepair ? 'Volver a automático' : 'No debe repararse'}
             </Button>
@@ -506,7 +507,6 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
             </div>
           )}
         </div>
-        {isTodoRiesgo ? <p className="mb-4 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-100" role="status">Al ingresar se sincronizan automáticamente los repuestos canónicos desde las líneas REEMPLAZAR del presupuesto. La comparación solo actualiza proveedor y precio de repuestos existentes.</p> : null}
         {openWarnings.length > 0 ? <section className="mb-4 rounded-2xl border border-amber-400 bg-amber-50 p-4 text-amber-950 dark:bg-amber-950 dark:text-amber-50" aria-labelledby="reconciliation-warnings-heading" role="alert"><h5 id="reconciliation-warnings-heading" className="font-semibold">Requiere resolución manual</h5><p className="mt-1 text-sm">La fuente canónica dejó de ser REEMPLAZAR o fue removida. Estos repuestos tienen actividad y no se modificaron ni eliminaron.</p><div className="mt-3 space-y-2">{openWarnings.map((warning) => <div key={warning.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-background/60 p-3 text-sm"><span><strong>{warning.part.description}</strong>: {warning.reason}</span><Button size="sm" variant="outline" onClick={() => setWarningToResolve(warning)}>Resolver manualmente</Button></div>)}</div></section> : null}
         {displayParts.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border/70 py-6 text-center text-sm text-muted-foreground">
@@ -523,7 +523,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                   <th className="px-3 py-3 text-left">Estado</th>
                   <th className="px-3 py-3 text-left">Compra</th>
                   <th className="px-3 py-3 text-left">Pago</th>
-                  {isTodoRiesgo ? <th className="px-3 py-3 text-left">Autorización</th> : null}
+                   {isInsuranceRepair ? <th className="px-3 py-3 text-left">Autorización</th> : null}
                   <th className="px-3 py-3 w-10"></th>
                 </tr>
               </thead>
@@ -577,7 +577,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                         <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/50 px-2.5 py-0.5 text-xs font-medium">{paymentStatusCodeOptions.find(o => o.value === part.paymentStatusCode)?.label || part.paymentStatusCode || '—'}</span>
                       )}
                     </td>
-                    {isTodoRiesgo ? (
+                    {isInsuranceRepair ? (
                       <td className="px-3 py-3">
                         <select
                           aria-label={`Autorización ${part.description || part.id}`}

@@ -35,6 +35,7 @@ public class TestDatabaseCleaner {
             "notificaciones",
 
             // Finanzas
+            "presupuesto_extra_pago_aplicaciones",
             "movimiento_aplicaciones",
             "movimiento_retenciones",
             "movimientos_financieros",
@@ -65,6 +66,11 @@ public class TestDatabaseCleaner {
             "recuperos_franquicia",
 
             // Presupuestos y repuestos
+            "presupuesto_extra_eventos",
+            "presupuesto_extra_items",
+            "presupuesto_extra_versiones",
+            "presupuestos_extra",
+            "secuencias_presupuesto_extra",
             "presupuesto_items",
             "presupuestos",
             "cotizaciones_repuesto",
