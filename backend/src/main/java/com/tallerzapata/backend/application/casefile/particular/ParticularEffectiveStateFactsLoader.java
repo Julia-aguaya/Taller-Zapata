@@ -48,7 +48,8 @@ public class ParticularEffectiveStateFactsLoader {
                 appointments.stream().anyMatch(this::isValidNormalAppointment),
                 partRepository.findByCaseIdOrderByIdAsc(caseId).stream().anyMatch(part -> !"RECIBIDO".equals(normalize(part.getStatusCode()))),
                 receiptRepository.findByCaseId(caseId, Sort.unsorted()).stream().anyMatch(receipt -> "FACTURA".equals(normalize(receipt.getReceiptTypeCode())) || "RECIBO".equals(normalize(receipt.getReceiptTypeCode()))),
-                balanceService.balanceFor(caseId)
+                balanceService.balanceFor(caseId),
+                balanceService.expectedQuotedTotal(caseId)
         );
     }
 

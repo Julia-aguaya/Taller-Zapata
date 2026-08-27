@@ -51,13 +51,13 @@ class ParticularVisibleStateIntegrationTest {
     @Test
     void createsProjectionAndPersistsManualOverrideRevertAndReadContract() throws Exception {
         long caseId = createCase("PARTICULAR");
-        assertProjection(caseId, "PAGADO", "EN_TRAMITE");
+        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
         assertThat(countHistory(caseId)).isEqualTo(1);
 
         mockMvc.perform(put("/api/v1/cases/{caseId}/visible-states", caseId).header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON).content("{\"domain\":\"reparacion\",\"stateCode\":\"RECHAZADO\",\"reason\":\"Peritaje rechazado\"}"))
                 .andExpect(status().isOk());
-        assertProjection(caseId, "PAGADO", "RECHAZADO");
+        assertProjection(caseId, "INGRESADO", "RECHAZADO");
         assertThat(countHistory(caseId)).isEqualTo(2);
         assertThat(jdbcTemplate.queryForObject("SELECT actor_usuario_id FROM particular_effective_state_history WHERE caso_id = ? ORDER BY id DESC LIMIT 1", Long.class, caseId)).isEqualTo(1L);
         assertThat(jdbcTemplate.queryForObject("SELECT reason FROM particular_effective_state_history WHERE caso_id = ? ORDER BY id DESC LIMIT 1", String.class, caseId)).isEqualTo("Peritaje rechazado");
@@ -69,7 +69,7 @@ class ParticularVisibleStateIntegrationTest {
         mockMvc.perform(put("/api/v1/cases/{caseId}/visible-states", caseId).header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON).content("{\"domain\":\"reparacion\",\"stateCode\":null,\"reason\":\"Vuelve a calculo automatico\"}"))
                 .andExpect(status().isOk());
-        assertProjection(caseId, "PAGADO", "EN_TRAMITE");
+        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
         assertThat(countHistory(caseId)).isEqualTo(3);
         assertThat(jdbcTemplate.queryForObject("SELECT cause FROM particular_effective_state_history WHERE caso_id = ? ORDER BY id DESC LIMIT 1", String.class, caseId)).isEqualTo("OVERRIDE_REVERT");
     }
@@ -120,39 +120,39 @@ class ParticularVisibleStateIntegrationTest {
         long caseId = createCase("PARTICULAR");
 
         createReceipt(caseId, "NOTA_CREDITO");
-        assertProjection(caseId, "PAGADO", "EN_TRAMITE");
+        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
         createReceipt(caseId, "FACTURA");
-        assertProjection(caseId, "PAGADO", "DAR_TURNO");
+        assertProjection(caseId, "INGRESADO", "DAR_TURNO");
 
         long firstPart = createPart(caseId, "PENDIENTE");
         long secondPart = createPart(caseId, "PEDIDO");
-        assertProjection(caseId, "PAGADO", "FALTAN_REPUESTOS");
+        assertProjection(caseId, "INGRESADO", "FALTAN_REPUESTOS");
         updatePart(caseId, firstPart, "RECIBIDO");
-        assertProjection(caseId, "PAGADO", "FALTAN_REPUESTOS");
+        assertProjection(caseId, "INGRESADO", "FALTAN_REPUESTOS");
         updatePart(caseId, secondPart, "RECIBIDO");
-        assertProjection(caseId, "PAGADO", "DAR_TURNO");
+        assertProjection(caseId, "INGRESADO", "DAR_TURNO");
         mockMvc.perform(delete("/api/v1/cases/{caseId}/parts/{partId}", caseId, secondPart).header("X-User-Id", "1"))
                 .andExpect(status().isOk());
         mockMvc.perform(delete("/api/v1/cases/{caseId}/parts/{partId}", caseId, firstPart).header("X-User-Id", "1"))
                 .andExpect(status().isOk());
-        assertProjection(caseId, "PAGADO", "DAR_TURNO");
+        assertProjection(caseId, "INGRESADO", "DAR_TURNO");
     }
 
     @Test
     void recalculatesForEveryAppointmentCurrentnessStatusAndMultipleAppointments() throws Exception {
         long caseId = createCase("PARTICULAR");
         long appointmentId = createAppointment(caseId, "PENDIENTE", false);
-        assertProjection(caseId, "PAGADO", "CON_TURNO");
+        assertProjection(caseId, "INGRESADO", "CON_TURNO");
         updateAppointment(appointmentId, "REPROGRAMADO", false);
-        assertProjection(caseId, "PAGADO", "CON_TURNO");
+        assertProjection(caseId, "INGRESADO", "CON_TURNO");
         updateAppointment(appointmentId, "CANCELADO", false);
-        assertProjection(caseId, "PAGADO", "EN_TRAMITE");
+        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
         updateAppointment(appointmentId, "CUMPLIDO", false);
-        assertProjection(caseId, "PAGADO", "EN_TRAMITE");
+        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
 
         createAppointment(caseId, "CANCELADO", false);
         createAppointment(caseId, "REPROGRAMADO", false);
-        assertProjection(caseId, "PAGADO", "CON_TURNO");
+        assertProjection(caseId, "INGRESADO", "CON_TURNO");
     }
 
     @Test
@@ -160,7 +160,7 @@ class ParticularVisibleStateIntegrationTest {
         long caseId = createCase("PARTICULAR");
         long intakeId = createIntake(caseId, 1);
         createOutcome(caseId, intakeId, false, true);
-        assertProjection(caseId, "PAGADO", "EN_TRAMITE");
+        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
     }
 
     @Test
@@ -171,7 +171,7 @@ class ParticularVisibleStateIntegrationTest {
         Long reentryAppointmentId = jdbcTemplate.queryForObject("SELECT turno_reingreso_id FROM egresos_vehiculo WHERE id = ?", Long.class, outcomeId);
 
         updateAppointment(reentryAppointmentId, "REPROGRAMADO", true);
-        assertProjection(caseId, "PAGADO", "EN_TRAMITE");
+        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
     }
 
     @Test
@@ -182,7 +182,7 @@ class ParticularVisibleStateIntegrationTest {
         Long reentryAppointmentId = jdbcTemplate.queryForObject("SELECT turno_reingreso_id FROM egresos_vehiculo WHERE id = ?", Long.class, outcomeId);
 
         updateAppointment(reentryAppointmentId, "CANCELADO", true);
-        assertProjection(caseId, "PAGADO", "DEBE_REINGRESAR");
+        assertProjection(caseId, "INGRESADO", "DEBE_REINGRESAR");
     }
 
     @Test
@@ -193,12 +193,12 @@ class ParticularVisibleStateIntegrationTest {
 
         Long reentryAppointmentId = jdbcTemplate.queryForObject("SELECT turno_reingreso_id FROM egresos_vehiculo WHERE id = ?", Long.class, outcomeId);
         updateAppointment(reentryAppointmentId, "CUMPLIDO", true);
-        assertProjection(caseId, "PAGADO", "DEBE_REINGRESAR");
+        assertProjection(caseId, "INGRESADO", "DEBE_REINGRESAR");
 
         createIntake(caseId, 2);
-        assertProjection(caseId, "PAGADO", "EN_TRAMITE");
+        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
         updateOutcome(outcomeId, true, false);
-        assertProjection(caseId, "PAGADO", "REPARADO");
+        assertProjection(caseId, "PASADO_A_PAGOS", "REPARADO");
     }
 
     @Test
@@ -206,14 +206,14 @@ class ParticularVisibleStateIntegrationTest {
         long caseId = createCase("PARTICULAR");
         createReceipt(caseId, "FACTURA");
         long partId = createPart(caseId, "PENDIENTE");
-        assertProjection(caseId, "PAGADO", "FALTAN_REPUESTOS");
+        assertProjection(caseId, "INGRESADO", "FALTAN_REPUESTOS");
 
         long appointmentId = createAppointment(caseId, "PENDIENTE", false);
-        assertProjection(caseId, "PAGADO", "CON_TURNO");
+        assertProjection(caseId, "INGRESADO", "CON_TURNO");
         updateAppointment(appointmentId, "CUMPLIDO", false);
-        assertProjection(caseId, "PAGADO", "FALTAN_REPUESTOS");
+        assertProjection(caseId, "INGRESADO", "FALTAN_REPUESTOS");
         updatePart(caseId, partId, "RECIBIDO");
-        assertProjection(caseId, "PAGADO", "DAR_TURNO");
+        assertProjection(caseId, "INGRESADO", "DAR_TURNO");
     }
 
     @Test
@@ -222,32 +222,32 @@ class ParticularVisibleStateIntegrationTest {
         createReceipt(caseId, "RECIBO");
         createAppointment(caseId, "CUMPLIDO", false);
 
-        assertProjection(caseId, "PAGADO", "DAR_TURNO");
+        assertProjection(caseId, "INGRESADO", "DAR_TURNO");
     }
 
     @Test
     void recalculatesForClientPaymentsAndPreservesReadCompatibility() throws Exception {
         long caseId = createCase("PARTICULAR");
         createReceipt(caseId, "RECIBO");
-        assertProjection(caseId, "PAGADO", "DAR_TURNO");
+        assertProjection(caseId, "INGRESADO", "DAR_TURNO");
         createClientMovement(caseId, "50.00");
-        assertProjection(caseId, "PAGADO", "DAR_TURNO");
+        assertProjection(caseId, "INGRESADO", "DAR_TURNO");
 
         mockMvc.perform(get("/api/v1/cases/{caseId}", caseId).header("X-User-Id", "1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.visibleTramiteState.code").value("PAGADO"))
+                .andExpect(jsonPath("$.visibleTramiteState.code").value("INGRESADO"))
                 .andExpect(jsonPath("$.visibleRepairState.code").value("DAR_TURNO"))
-                .andExpect(jsonPath("$.tramiteCode").value("PAGADO"))
+                .andExpect(jsonPath("$.tramiteCode").value("INGRESADO"))
                 .andExpect(jsonPath("$.reparacionCode").value("DAR_TURNO"));
         mockMvc.perform(get("/api/v1/cases/{caseId}/workspace", caseId).header("X-User-Id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.caseDetail.visibleRepairState.code").value("DAR_TURNO"))
-                .andExpect(jsonPath("$.caseDetail.tramiteCode").value("PAGADO"))
+                .andExpect(jsonPath("$.caseDetail.tramiteCode").value("INGRESADO"))
                 .andExpect(jsonPath("$.caseDetail.reparacionCode").value("DAR_TURNO"));
         mockMvc.perform(get("/api/v1/cases?visibleRepairState=DAR_TURNO").header("X-User-Id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items[0].visibleRepairState.code").value("DAR_TURNO"))
-                .andExpect(jsonPath("$.items[0].tramiteCode").value("PAGADO"))
+                .andExpect(jsonPath("$.items[0].tramiteCode").value("INGRESADO"))
                 .andExpect(jsonPath("$.items[0].reparacionCode").value("DAR_TURNO"));
     }
 
@@ -261,7 +261,7 @@ class ParticularVisibleStateIntegrationTest {
                 .andExpect(jsonPath("$.summary.casesWithoutAppointment").value(1))
                 .andExpect(jsonPath("$.priorityBuckets[0].items[0].caseId").value(caseId))
                 .andExpect(jsonPath("$.priorityBuckets[0].items[0].visibleRepairState.code").value("DAR_TURNO"))
-                .andExpect(jsonPath("$.priorityBuckets[0].items[0].tramiteCode").value("PAGADO"))
+                .andExpect(jsonPath("$.priorityBuckets[0].items[0].tramiteCode").value("INGRESADO"))
                 .andExpect(jsonPath("$.priorityBuckets[0].items[0].reparacionCode").value("DAR_TURNO"));
     }
 
@@ -289,8 +289,8 @@ class ParticularVisibleStateIntegrationTest {
         mockMvc.perform(get("/api/v1/cases/{caseId}", caseId).header("X-User-Id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.visibleRepairState.code").value("CON_TURNO"))
-                .andExpect(jsonPath("$.tramiteCode").doesNotExist())
-                .andExpect(jsonPath("$.reparacionCode").doesNotExist());
+                .andExpect(jsonPath("$.tramiteCode").value("SIN_PRESENTAR"))
+                .andExpect(jsonPath("$.reparacionCode").value("CON_TURNO"));
     }
 
     @Test
@@ -303,7 +303,7 @@ class ParticularVisibleStateIntegrationTest {
             mockMvc.perform(put("/api/v1/cases/{caseId}/visible-states", caseId).header("X-User-Id", "1")
                             .contentType(MediaType.APPLICATION_JSON).content("{\"domain\":\"reparacion\",\"stateCode\":\"RECHAZADO\",\"reason\":\"Sin permiso\"}"))
                     .andExpect(status().isForbidden());
-            assertProjection(caseId, "PAGADO", "EN_TRAMITE");
+            assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
             assertThat(countHistory(caseId)).isEqualTo(historyBefore);
         } finally {
             jdbcTemplate.update("INSERT INTO rol_permisos (rol_id, permiso_id, allow_flag) VALUES (?, ?, ?)", 1L, permissionId, true);
@@ -321,7 +321,7 @@ class ParticularVisibleStateIntegrationTest {
                 .andExpect(status().isConflict());
 
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM turnos_reparacion WHERE caso_id = ?", Integer.class, caseId)).isZero();
-        assertProjection(caseId, "PAGADO", "EN_TRAMITE");
+        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
         assertThat(countHistory(caseId)).isEqualTo(historyBefore);
     }
 
@@ -348,37 +348,39 @@ class ParticularVisibleStateIntegrationTest {
                 .andExpect(status().isOk());
         assertThat(countHistory(caseId)).isEqualTo(historyBeforeNonStateFinancialMutations);
 
+        // InsuranceRepairCasePolicy gates canonical part reconciliation to TODO_RIESGO/GRANIZO:
+        // a PARTICULAR budget no longer derives case parts, so repair stays EN_TRAMITE.
         mockMvc.perform(post("/api/v1/cases/{caseId}/budget/items", caseId).header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"visualOrder\":1,\"affectedPiece\":\"Optica\",\"taskCode\":\"ELECTRICIDAD\",\"damageLevelCode\":\"LEVE\",\"partDecisionCode\":\"REEMPLAZAR\",\"actionCode\":\"REEMPLAZAR\",\"requiresReplacement\":true,\"partValue\":10,\"estimatedHours\":1,\"laborAmount\":1}"))
                 .andExpect(status().isOk());
         mockMvc.perform(post("/api/v1/cases/{caseId}/parts/sync-from-budget", caseId).header("X-User-Id", "1"))
                 .andExpect(status().isOk());
-        assertProjection(caseId, "PAGADO", "FALTAN_REPUESTOS");
+        assertProjection(caseId, "PAGADO", "EN_TRAMITE");
 
         mockMvc.perform(post("/api/v1/cases/{caseId}/budget/close", caseId).header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON).content("{\"reportStatusCode\":\"CERRADO\",\"observations\":\"Cierre de matriz\"}"))
                 .andExpect(status().isOk());
-        assertProjection(caseId, "PAGADO", "FALTAN_REPUESTOS");
+        assertProjection(caseId, "PAGADO", "EN_TRAMITE");
     }
 
     @Test
     void keepsProjectionAuthoritativeAcrossIntakeUpdatesAndGenericWorkflowTransitions() throws Exception {
         long caseId = createCase("PARTICULAR");
         long intakeId = createIntake(caseId, 1);
-        assertProjection(caseId, "PAGADO", "EN_TRAMITE");
+        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
 
         mockMvc.perform(put("/api/v1/vehicle-intakes/{intakeId}", intakeId).header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"vehicleId\":10,\"intakeAt\":\"2026-08-06T09:00:00\",\"receivedByUserId\":1,\"mileage\":101,\"fuelCode\":\"MEDIO\",\"estimatedExitDate\":\"2026-08-20\",\"hasObservations\":false}"))
                 .andExpect(status().isOk());
-        assertProjection(caseId, "PAGADO", "EN_TRAMITE");
+        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
 
         mockMvc.perform(post("/api/v1/cases/{caseId}/workflow/transitions", caseId).header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"domain\":\"tramite\",\"actionCode\":\"tramite.avanzar\",\"reason\":\"No gobierna PARTICULAR\",\"automatic\":false}"))
                 .andExpect(status().isOk());
-        assertProjection(caseId, "PAGADO", "EN_TRAMITE");
+        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
     }
 
     @Test
@@ -408,7 +410,7 @@ class ParticularVisibleStateIntegrationTest {
 
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM particular_effective_state WHERE caso_id = ?", Integer.class, caseId)).isEqualTo(1);
         assertThat(countHistory(caseId)).isEqualTo(1);
-        assertProjection(caseId, "PAGADO", "EN_TRAMITE");
+        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
     }
 
     private long createCase(String typeCode) throws Exception {
@@ -473,7 +475,7 @@ class ParticularVisibleStateIntegrationTest {
     private long createAppointment(long caseId, String statusCode, boolean reentry) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/cases/{caseId}/appointments", caseId).header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"appointmentDate\":\"2026-08-10\",\"appointmentTime\":\"09:00:00\",\"estimatedDays\":1,\"statusCode\":\"" + statusCode + "\",\"reentry\":" + reentry + ",\"userId\":1}"))
+                        .content("{\"appointmentDate\":\"2026-08-10\",\"appointmentTime\":\"09:00:00\",\"estimatedDays\":1,\"statusCode\":\"" + statusCode + "\",\"reentry\":" + reentry + ",\"overridePendingParts\":true,\"userId\":1}"))
                 .andExpect(status().isOk()).andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
     }

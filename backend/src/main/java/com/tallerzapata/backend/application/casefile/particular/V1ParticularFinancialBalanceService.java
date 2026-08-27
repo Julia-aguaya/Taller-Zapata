@@ -30,6 +30,13 @@ public class V1ParticularFinancialBalanceService implements ParticularFinancialB
         return totalQuoted.subtract(customerNet);
     }
 
+    @Override
+    public BigDecimal expectedQuotedTotal(Long caseId) {
+        return budgetRepository.findByCaseId(caseId)
+                .map(budget -> budget.getTotalQuoted())
+                .orElse(null);
+    }
+
     private BigDecimal signedMovement(String typeCode, BigDecimal amount) {
         BigDecimal value = zeroWhenNull(amount);
         return "INGRESO".equals(normalize(typeCode)) || ("AJUSTE".equals(normalize(typeCode)) && value.signum() >= 0)

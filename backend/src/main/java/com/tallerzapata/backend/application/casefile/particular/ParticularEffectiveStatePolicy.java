@@ -24,9 +24,21 @@ public final class ParticularEffectiveStatePolicy {
 
     private String procedureCode(ParticularEffectiveStateFacts facts, String repairCode) {
         if (isTerminal(facts.procedureTerminalOverrideCode())) return facts.procedureTerminalOverrideCode();
-        if (facts.balance() == null || facts.balance().compareTo(BigDecimal.ZERO) <= 0) return "PAGADO";
+        if (isFullyPaid(facts)) return "PAGADO";
         if ("REPARADO".equals(repairCode)) return "PASADO_A_PAGOS";
         return "INGRESADO";
+    }
+
+    /**
+     * "Pagado" exige que haya existido algo que pagar: un monto citado positivo
+     * cubierto por los pagos del cliente. Una carpeta sin presupuesto (o con saldo
+     * desconocido) nunca nace pagada.
+     */
+    private boolean isFullyPaid(ParticularEffectiveStateFacts facts) {
+        BigDecimal expected = facts.expectedTotal();
+        BigDecimal balance = facts.balance();
+        return expected != null && expected.signum() > 0
+                && balance != null && balance.signum() <= 0;
     }
 
     private boolean isTerminal(String code) { return code != null && TERMINAL_CODES.contains(code); }

@@ -53,7 +53,9 @@ class ParticularEffectiveStatePolicyTest {
                 new PolicyCase("received or deleted parts", "INGRESADO", "DAR_TURNO", facts(null, null, null, false, false, true, "10")),
                 new PolicyCase("no qualifying receipt", "INGRESADO", "EN_TRAMITE", facts(null, null, null, false, false, false, "10")),
                 new PolicyCase("zero balance wins after repaired", "PAGADO", "REPARADO", facts(null, null, outcome(true, false, false), false, false, false, "0")),
-                new PolicyCase("null balance is paid", "PAGADO", "EN_TRAMITE", facts(null, null, null, false, false, false, null)),
+                new PolicyCase("null balance has no proof of payment", "INGRESADO", "EN_TRAMITE", facts(null, null, null, false, false, false, null)),
+                new PolicyCase("nothing quoted is never paid", "INGRESADO", "EN_TRAMITE", facts(null, null, null, false, false, false, "0", null)),
+                new PolicyCase("zero quoted total repaired goes to payments only", "PASADO_A_PAGOS", "REPARADO", facts(null, null, outcome(true, false, false), false, false, false, "0", "0")),
                 new PolicyCase("procedure override remains independent", "RECHAZADO", "REPARADO", facts(null, "RECHAZADO", outcome(true, false, false), false, false, false, "0"))
         );
 
@@ -64,6 +66,15 @@ class ParticularEffectiveStatePolicyTest {
         }
     }
 
+    @Test
+    void freshlyCreatedCaseWithoutBudgetOrPaymentsIsNeverPaid() {
+        // Regresión: una carpeta recién creada (sin presupuesto ni movimientos)
+        // no debe figurar como PAGADO aunque su saldo sea cero.
+        assertState("INGRESADO", "EN_TRAMITE", facts(null, null, null, false, false, false, "0", null));
+        // Reparada sin monto citado avanza a PASADO_A_PAGOS, jamás a PAGADO.
+        assertState("PASADO_A_PAGOS", "REPARADO", facts(null, null, outcome(true, false, false), false, false, false, "0", null));
+    }
+
     private void assertState(String procedure, String repair, ParticularEffectiveStateFacts facts) {
         ParticularEffectiveStatePolicy.ParticularEffectiveState actual = policy.evaluate(facts);
         assertEquals(procedure, actual.procedureCode());
@@ -72,8 +83,15 @@ class ParticularEffectiveStatePolicyTest {
 
     private ParticularEffectiveStateFacts facts(String repairOverride, String procedureOverride, ParticularEffectiveStateFacts.OutcomeFact outcome,
                                                   boolean appointment, boolean unreceivedPart, boolean qualifyingReceipt, String balance) {
+        return facts(repairOverride, procedureOverride, outcome, appointment, unreceivedPart, qualifyingReceipt, balance, "100");
+    }
+
+    private ParticularEffectiveStateFacts facts(String repairOverride, String procedureOverride, ParticularEffectiveStateFacts.OutcomeFact outcome,
+                                                  boolean appointment, boolean unreceivedPart, boolean qualifyingReceipt, String balance,
+                                                  String expectedTotal) {
         return new ParticularEffectiveStateFacts(repairOverride, procedureOverride, outcome, appointment, unreceivedPart, qualifyingReceipt,
-                balance == null ? null : new BigDecimal(balance));
+                balance == null ? null : new BigDecimal(balance),
+                expectedTotal == null ? null : new BigDecimal(expectedTotal));
     }
 
     private ParticularEffectiveStateFacts.OutcomeFact outcome(Boolean definitive, Boolean shouldReenter, boolean hasReentry) {

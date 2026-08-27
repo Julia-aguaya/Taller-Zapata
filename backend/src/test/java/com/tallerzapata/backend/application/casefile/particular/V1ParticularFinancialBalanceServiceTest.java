@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -27,7 +28,21 @@ class V1ParticularFinancialBalanceServiceTest {
                 movement("CLIENTE", "INGRESO", "60.00"), movement("CLIENTE", "EGRESO", "10.00"), movement("ASEGURADORA", "INGRESO", "99.00")
         ));
 
-        assertEquals(new BigDecimal("50.00"), new V1ParticularFinancialBalanceService(budgets, movements).balanceFor(7L));
+        V1ParticularFinancialBalanceService service = new V1ParticularFinancialBalanceService(budgets, movements);
+        assertEquals(new BigDecimal("50.00"), service.balanceFor(7L));
+        assertEquals(new BigDecimal("100.00"), service.expectedQuotedTotal(7L));
+    }
+
+    @Test
+    void missingBudgetHasNoExpectedTotalSoNothingCanBeReportedAsPaid() {
+        BudgetRepository budgets = mock(BudgetRepository.class);
+        FinancialMovementRepository movements = mock(FinancialMovementRepository.class);
+        when(budgets.findByCaseId(7L)).thenReturn(Optional.empty());
+        when(movements.findByCaseId(org.mockito.ArgumentMatchers.eq(7L), any())).thenReturn(List.of());
+
+        V1ParticularFinancialBalanceService service = new V1ParticularFinancialBalanceService(budgets, movements);
+        assertEquals(new BigDecimal("0"), service.balanceFor(7L));
+        assertNull(service.expectedQuotedTotal(7L));
     }
 
     @Test

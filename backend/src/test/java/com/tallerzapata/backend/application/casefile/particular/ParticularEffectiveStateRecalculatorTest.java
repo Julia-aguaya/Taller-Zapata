@@ -183,13 +183,13 @@ class ParticularEffectiveStateRecalculatorTest {
     }
 
     private ParticularEffectiveStateFacts facts(String repairOverride, String procedureOverride, String balance, boolean appointment) {
-        return new ParticularEffectiveStateFacts(repairOverride, procedureOverride, null, appointment, false, false, new BigDecimal(balance));
+        return new ParticularEffectiveStateFacts(repairOverride, procedureOverride, null, appointment, false, false, new BigDecimal(balance), new BigDecimal("100"));
     }
 
     private ParticularEffectiveStateFacts repairedFacts(String balance) {
         return new ParticularEffectiveStateFacts(null, null,
                 new ParticularEffectiveStateFacts.OutcomeFact(1L, null, true, null, false),
-                false, false, false, new BigDecimal(balance));
+                false, false, false, new BigDecimal(balance), new BigDecimal("100"));
     }
 
     private ParticularEffectiveStateEntity state(String procedure, String repair, String procedureOverride, String repairOverride) {

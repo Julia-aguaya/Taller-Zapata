@@ -11,7 +11,8 @@ public record ParticularEffectiveStateFacts(
         boolean hasValidNormalAppointment,
         boolean hasUnreceivedPart,
         boolean hasQualifyingReceipt,
-        BigDecimal balance
+        BigDecimal balance,
+        BigDecimal expectedTotal
 ) {
     public record OutcomeFact(Long id, LocalDateTime occurredAt, Boolean definitive, Boolean shouldReenter,
                                boolean hasLaterValidReentryAppointment, boolean hasLaterAdvancedFact) {

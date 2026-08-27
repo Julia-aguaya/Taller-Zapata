@@ -1,11 +1,16 @@
 -- This comparison belongs exclusively to canonical extra-budget items. It never references repair parts or the main budget comparison.
 ALTER TABLE presupuesto_extra_items
-    ADD COLUMN accion_codigo VARCHAR(40) NULL,
-    ADD COLUMN proveedor_seleccionado_id BIGINT UNSIGNED NULL,
-    ADD COLUMN proveedor_seleccionado_nombre VARCHAR(150) NULL,
-    ADD COLUMN importe_cotizacion_seleccionada DECIMAL(14,2) NULL,
+    ADD COLUMN accion_codigo VARCHAR(40) NULL;
+ALTER TABLE presupuesto_extra_items
+    ADD COLUMN proveedor_seleccionado_id BIGINT UNSIGNED NULL;
+ALTER TABLE presupuesto_extra_items
+    ADD COLUMN proveedor_seleccionado_nombre VARCHAR(150) NULL;
+ALTER TABLE presupuesto_extra_items
+    ADD COLUMN importe_cotizacion_seleccionada DECIMAL(14,2) NULL;
+ALTER TABLE presupuesto_extra_items
     ADD CONSTRAINT fk_presupuesto_extra_items_proveedor_seleccionado
-        FOREIGN KEY (proveedor_seleccionado_id) REFERENCES proveedores (id),
+        FOREIGN KEY (proveedor_seleccionado_id) REFERENCES proveedores (id);
+ALTER TABLE presupuesto_extra_items
     ADD CONSTRAINT ck_presupuesto_extra_items_cotizacion_seleccionada
         CHECK (importe_cotizacion_seleccionada IS NULL OR importe_cotizacion_seleccionada >= 0);
 

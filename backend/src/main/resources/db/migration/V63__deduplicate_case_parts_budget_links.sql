@@ -19,12 +19,12 @@ FROM (
            ROW_NUMBER() OVER (
                PARTITION BY rc.caso_id, rc.presupuesto_item_id
                ORDER BY
-                   ((rc.proveedor_id IS NOT NULL) + (rc.proveedor_final IS NOT NULL) +
-                    (rc.autorizado_codigo IS NOT NULL) + (rc.compra_por_codigo IS NOT NULL) +
-                    (rc.pago_estado_codigo IS NOT NULL) + (rc.precio_presupuestado IS NOT NULL) +
-                    (rc.precio_final IS NOT NULL) + (rc.fecha_recibido IS NOT NULL) +
-                    (COALESCE(rc.usado, 0) <> 0) + (COALESCE(rc.devuelto, 0) <> 0) +
-                    (rc.numero_inventario IS NOT NULL) + (rc.codigo_pieza IS NOT NULL)) DESC,
+                   ((CASE WHEN rc.proveedor_id IS NOT NULL THEN 1 ELSE 0 END) + (CASE WHEN rc.proveedor_final IS NOT NULL THEN 1 ELSE 0 END) +
+                    (CASE WHEN rc.autorizado_codigo IS NOT NULL THEN 1 ELSE 0 END) + (CASE WHEN rc.compra_por_codigo IS NOT NULL THEN 1 ELSE 0 END) +
+                    (CASE WHEN rc.pago_estado_codigo IS NOT NULL THEN 1 ELSE 0 END) + (CASE WHEN rc.precio_presupuestado IS NOT NULL THEN 1 ELSE 0 END) +
+                    (CASE WHEN rc.precio_final IS NOT NULL THEN 1 ELSE 0 END) + (CASE WHEN rc.fecha_recibido IS NOT NULL THEN 1 ELSE 0 END) +
+                    (CASE WHEN COALESCE(rc.usado, 0) <> 0 THEN 1 ELSE 0 END) + (CASE WHEN COALESCE(rc.devuelto, 0) <> 0 THEN 1 ELSE 0 END) +
+                    (CASE WHEN rc.numero_inventario IS NOT NULL THEN 1 ELSE 0 END) + (CASE WHEN rc.codigo_pieza IS NOT NULL THEN 1 ELSE 0 END)) DESC,
                    rc.id ASC
             ) AS ranking
     FROM repuestos_caso rc
@@ -56,13 +56,20 @@ FROM tmp_repuestos_caso_descartados discarded
 JOIN repuestos_caso rc ON rc.id = discarded.id;
 
 -- Cotizaciones are dependent operational data, so retain them by moving them to the winner.
+-- Uses the already-populated permanent audit table as the relocation map so the
+-- statement never touches a temporary table twice (MySQL forbids reopening them).
 UPDATE cotizaciones_repuesto quote_row
-JOIN tmp_repuestos_caso_descartados discarded ON discarded.id = quote_row.repuesto_id
-SET quote_row.repuesto_id = discarded.canonical_repuesto_id;
+SET quote_row.repuesto_id =
+        (SELECT audit.canonical_repuesto_id
+         FROM repuestos_caso_deduplicacion_auditoria audit
+         WHERE audit.discarded_repuesto_id = quote_row.repuesto_id)
+WHERE quote_row.repuesto_id IN (
+        SELECT audit2.discarded_repuesto_id
+        FROM repuestos_caso_deduplicacion_auditoria audit2
+);
 
-DELETE rc
-FROM repuestos_caso rc
-JOIN tmp_repuestos_caso_descartados discarded ON discarded.id = rc.id;
+DELETE FROM repuestos_caso
+WHERE id IN (SELECT discarded.discarded_repuesto_id FROM repuestos_caso_deduplicacion_auditoria discarded);
 
-DROP TEMPORARY TABLE tmp_repuestos_caso_descartados;
-DROP TEMPORARY TABLE tmp_repuestos_caso_canonicos;
+DROP TABLE tmp_repuestos_caso_descartados;
+DROP TABLE tmp_repuestos_caso_canonicos;

@@ -3,9 +3,12 @@ ALTER TABLE presupuesto_trabajos_extras
     ADD COLUMN activo TINYINT(1) NOT NULL DEFAULT 1;
 
 ALTER TABLE repuestos_caso
-    ADD COLUMN source_type ENUM('BUDGET_ITEM', 'ACCESSORY_WORK', 'MANUAL') NULL,
-    ADD COLUMN accessory_work_id BIGINT UNSIGNED NULL,
-    ADD COLUMN non_canonical TINYINT(1) NOT NULL DEFAULT 0,
+    ADD COLUMN source_type ENUM('BUDGET_ITEM', 'ACCESSORY_WORK', 'MANUAL') NULL;
+ALTER TABLE repuestos_caso
+    ADD COLUMN accessory_work_id BIGINT UNSIGNED NULL;
+ALTER TABLE repuestos_caso
+    ADD COLUMN non_canonical TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE repuestos_caso
     ADD COLUMN is_accessory TINYINT(1) NOT NULL DEFAULT 0;
 
 CREATE TABLE repuestos_caso_reconciliation_warnings (
@@ -79,26 +82,27 @@ SELECT rc.id,
                   OR rc.source_comparison_piece_id IS NOT NULL
                   OR EXISTS (SELECT 1 FROM cotizaciones_repuesto quote_row WHERE quote_row.repuesto_id = rc.id)
             THEN 1 ELSE 0 END AS has_activity_or_ambiguous,
-       ((rc.proveedor_id IS NOT NULL) + (rc.proveedor_final IS NOT NULL) +
-        (rc.autorizado_codigo IS NOT NULL) + (rc.compra_por_codigo IS NOT NULL) +
-        (rc.pago_estado_codigo IS NOT NULL) + (rc.precio_presupuestado IS NOT NULL) +
-        (rc.precio_final IS NOT NULL) + (rc.fecha_recibido IS NOT NULL) +
-        (COALESCE(rc.usado, 0) <> 0) + (COALESCE(rc.devuelto, 0) <> 0) +
-        (rc.numero_inventario IS NOT NULL) + (rc.codigo_pieza IS NOT NULL)) AS completeness
+        ((CASE WHEN rc.proveedor_id IS NOT NULL THEN 1 ELSE 0 END) + (CASE WHEN rc.proveedor_final IS NOT NULL THEN 1 ELSE 0 END) +
+         (CASE WHEN rc.autorizado_codigo IS NOT NULL THEN 1 ELSE 0 END) + (CASE WHEN rc.compra_por_codigo IS NOT NULL THEN 1 ELSE 0 END) +
+         (CASE WHEN rc.pago_estado_codigo IS NOT NULL THEN 1 ELSE 0 END) + (CASE WHEN rc.precio_presupuestado IS NOT NULL THEN 1 ELSE 0 END) +
+         (CASE WHEN rc.precio_final IS NOT NULL THEN 1 ELSE 0 END) + (CASE WHEN rc.fecha_recibido IS NOT NULL THEN 1 ELSE 0 END) +
+         (CASE WHEN COALESCE(rc.usado, 0) <> 0 THEN 1 ELSE 0 END) + (CASE WHEN COALESCE(rc.devuelto, 0) <> 0 THEN 1 ELSE 0 END) +
+         (CASE WHEN rc.numero_inventario IS NOT NULL THEN 1 ELSE 0 END) + (CASE WHEN rc.codigo_pieza IS NOT NULL THEN 1 ELSE 0 END)) AS completeness
 FROM repuestos_caso rc
 JOIN tmp_rc_duplicate_groups duplicate_group
   ON duplicate_group.caso_id = rc.caso_id
  AND duplicate_group.source_id = rc.presupuesto_item_id;
 
+CREATE TEMPORARY TABLE tmp_rc_ambiguous_groups AS
+SELECT caso_id, source_id
+FROM tmp_rc_duplicate_rows
+GROUP BY caso_id, source_id
+HAVING MAX(has_activity_or_ambiguous) = 1;
+
 CREATE TEMPORARY TABLE tmp_rc_ambiguous_duplicate_rows AS
 SELECT duplicate_row.*
 FROM tmp_rc_duplicate_rows duplicate_row
-JOIN (
-    SELECT caso_id, source_id
-    FROM tmp_rc_duplicate_rows
-    GROUP BY caso_id, source_id
-    HAVING MAX(has_activity_or_ambiguous) = 1
-) ambiguous_group
+JOIN tmp_rc_ambiguous_groups ambiguous_group
   ON ambiguous_group.caso_id = duplicate_row.caso_id
  AND ambiguous_group.source_id = duplicate_row.source_id;
 
@@ -115,8 +119,8 @@ FROM tmp_rc_ambiguous_duplicate_rows duplicate_row
 JOIN repuestos_caso rc ON rc.id = duplicate_row.id;
 
 UPDATE repuestos_caso rc
-JOIN tmp_rc_ambiguous_duplicate_rows duplicate_row ON duplicate_row.id = rc.id
-SET rc.non_canonical = 1;
+SET rc.non_canonical = 1
+WHERE rc.id IN (SELECT id FROM tmp_rc_ambiguous_duplicate_rows);
 
 INSERT INTO repuestos_caso_reconciliation_warnings (caso_id, repuesto_id, source_type, source_id, reason)
 SELECT duplicate_row.caso_id, duplicate_row.id, 'BUDGET_ITEM', duplicate_row.source_id,
@@ -136,18 +140,15 @@ FROM (
            ROW_NUMBER() OVER (
                PARTITION BY duplicate_row.caso_id, duplicate_row.source_id
                ORDER BY duplicate_row.completeness DESC, duplicate_row.id ASC
-           ) AS row_number
+           ) AS rn
     FROM tmp_rc_duplicate_rows duplicate_row
     LEFT JOIN tmp_rc_ambiguous_duplicate_rows ambiguous_row ON ambiguous_row.id = duplicate_row.id
     WHERE ambiguous_row.id IS NULL
 ) ranked
-WHERE ranked.row_number > 1;
+WHERE ranked.rn > 1;
 
--- Quotes are moved before deleting an activity-free duplicate; no dependent quote/history is lost.
-UPDATE cotizaciones_repuesto quote_row
-JOIN tmp_rc_clean_duplicate_losers loser ON loser.id = quote_row.repuesto_id
-SET quote_row.repuesto_id = loser.canonical_repuesto_id;
-
+-- The merged-rows audit is recorded first so it can serve as the permanent
+-- relocation map below; no statement here touches a temporary table twice.
 INSERT INTO repuestos_caso_canonical_backfill_audit (
     caso_id, source_type, source_id, canonical_repuesto_id, affected_repuesto_id, action, affected_row
 )
@@ -160,23 +161,42 @@ SELECT loser.caso_id, 'BUDGET_ITEM', loser.source_id, loser.canonical_repuesto_i
 FROM tmp_rc_clean_duplicate_losers loser
 JOIN repuestos_caso rc ON rc.id = loser.id;
 
-DELETE rc
-FROM repuestos_caso rc
-JOIN tmp_rc_clean_duplicate_losers loser ON loser.id = rc.id;
+-- Quotes are moved before deleting an activity-free duplicate; no dependent quote/history is lost.
+UPDATE cotizaciones_repuesto quote_row
+SET quote_row.repuesto_id =
+        (SELECT audit.canonical_repuesto_id
+         FROM repuestos_caso_canonical_backfill_audit audit
+         WHERE audit.action = 'MERGED_CLEAN_DUPLICATE'
+           AND audit.affected_repuesto_id = quote_row.repuesto_id)
+WHERE quote_row.repuesto_id IN (
+        SELECT audit2.affected_repuesto_id
+        FROM repuestos_caso_canonical_backfill_audit audit2
+        WHERE audit2.action = 'MERGED_CLEAN_DUPLICATE'
+);
 
-DROP TEMPORARY TABLE tmp_rc_clean_duplicate_losers;
-DROP TEMPORARY TABLE tmp_rc_ambiguous_duplicate_rows;
-DROP TEMPORARY TABLE tmp_rc_duplicate_rows;
-DROP TEMPORARY TABLE tmp_rc_duplicate_groups;
+DELETE FROM repuestos_caso
+WHERE id IN (
+    SELECT merged.affected_repuesto_id
+    FROM repuestos_caso_canonical_backfill_audit merged
+    WHERE merged.action = 'MERGED_CLEAN_DUPLICATE'
+);
+
+DROP TABLE tmp_rc_clean_duplicate_losers;
+DROP TABLE tmp_rc_ambiguous_groups;
+DROP TABLE tmp_rc_ambiguous_duplicate_rows;
+DROP TABLE tmp_rc_duplicate_rows;
+DROP TABLE tmp_rc_duplicate_groups;
 
 -- Phase 3: all existing rows now have a valid source shape, so constraints are safe to enforce.
 ALTER TABLE repuestos_caso
-    MODIFY COLUMN source_type ENUM('BUDGET_ITEM', 'ACCESSORY_WORK', 'MANUAL') NOT NULL,
-    ADD KEY idx_repuestos_caso_accessory_work (accessory_work_id),
-    ADD CONSTRAINT fk_repuestos_caso_accessory_work FOREIGN KEY (accessory_work_id) REFERENCES presupuesto_trabajos_extras (id),
+    MODIFY COLUMN source_type ENUM('BUDGET_ITEM', 'ACCESSORY_WORK', 'MANUAL') NOT NULL;
+ALTER TABLE repuestos_caso
+    ADD CONSTRAINT fk_repuestos_caso_accessory_work FOREIGN KEY (accessory_work_id) REFERENCES presupuesto_trabajos_extras (id);
+CREATE INDEX idx_repuestos_caso_accessory_work ON repuestos_caso (accessory_work_id);
+CREATE UNIQUE INDEX uq_repuestos_caso_accessory_work ON repuestos_caso (caso_id, accessory_work_id);
+ALTER TABLE repuestos_caso
     ADD CONSTRAINT ck_repuestos_caso_source CHECK (
         (source_type = 'BUDGET_ITEM' AND presupuesto_item_id IS NOT NULL AND accessory_work_id IS NULL)
         OR (source_type = 'ACCESSORY_WORK' AND presupuesto_item_id IS NULL AND accessory_work_id IS NOT NULL)
         OR (source_type = 'MANUAL' AND presupuesto_item_id IS NULL AND accessory_work_id IS NULL)
-    ),
-    ADD UNIQUE KEY uq_repuestos_caso_accessory_work (caso_id, accessory_work_id);
+    );

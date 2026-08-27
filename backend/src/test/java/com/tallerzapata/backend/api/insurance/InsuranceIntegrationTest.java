@@ -572,7 +572,7 @@ class InsuranceIntegrationTest {
     void shouldPersistProcessingPartsAuthorizationWithoutChangingIndividualParts() throws Exception {
         jdbcTemplate.update("INSERT INTO presupuestos (id, caso_id, organizacion_id, sucursal_id, fecha_presupuesto, informe_estado_codigo, version_actual) VALUES (?, ?, ?, ?, ?, ?, ?)", 500L, 100L, 1L, 1L, LocalDate.of(2026, 1, 1), "PENDIENTE", 1);
         jdbcTemplate.update("INSERT INTO presupuesto_items (id, presupuesto_id, orden_visual, pieza_afectada, requiere_reemplazo, valor_repuesto, importe_mano_obra, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 501L, 500L, 1, "Paragolpes", true, BigDecimal.ZERO, BigDecimal.ZERO, true);
-        jdbcTemplate.update("INSERT INTO repuestos_caso (id, caso_id, presupuesto_item_id, descripcion, autorizado_codigo, estado_codigo, usado, devuelto) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 502L, 100L, 501L, "Paragolpes", "AUTORIZADO", "PEDIDO", false, false);
+        jdbcTemplate.update("INSERT INTO repuestos_caso (id, caso_id, presupuesto_item_id, descripcion, autorizado_codigo, estado_codigo, usado, devuelto, source_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'BUDGET_ITEM')", 502L, 100L, 501L, "Paragolpes", "AUTORIZADO", "PEDIDO", false, false);
 
         mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
                         .header("X-User-Id", "3")

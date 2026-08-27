@@ -68,13 +68,28 @@ public class TestDatabaseCleaner {
             // Presupuestos y repuestos
             "presupuesto_extra_eventos",
             "presupuesto_extra_items",
+            "presupuesto_extra_version_confirmaciones",
             "presupuesto_extra_versiones",
             "presupuestos_extra",
             "secuencias_presupuesto_extra",
             "presupuesto_items",
             "presupuestos",
+            "presupuesto_trabajos_extras",
             "cotizaciones_repuesto",
+            "repuestos_caso_reconciliation_warnings",
+            "repuestos_caso_canonical_backfill_audit",
+            "repuestos_caso_deduplicacion_auditoria",
             "repuestos_caso",
+
+            // Comparaciones de presupuesto / extras
+            "comparacion_presupuesto_extra_cotizaciones",
+            "comparacion_presupuesto_extra_piezas",
+            "comparacion_precio",
+            "comparacion_proveedor",
+            "comparacion_oferta",
+            "comparacion_pieza",
+            "comparacion_presupuesto_snapshot",
+            "proveedores",
 
             // Caso
             "todo_riesgo_effective_state_history",

@@ -413,6 +413,10 @@ public class CaseVisibleStateResolver {
         }
 
         BigDecimal expectedTotal = budget.getTotalQuoted() == null ? BigDecimal.ZERO : budget.getTotalQuoted();
+        // Sin monto citado positivo no existe deuda que pagar: una carpeta nueva nunca nace pagada.
+        if (expectedTotal.signum() <= 0) {
+            return false;
+        }
         BigDecimal customerNet = financialMovementRepository.findByCaseId(caseId, FINANCE_SORT).stream()
                 .filter(movement -> "CLIENTE".equals(normalizeCode(movement.getFlowOriginCode())))
                 .map(movement -> {

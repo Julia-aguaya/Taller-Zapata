@@ -874,7 +874,7 @@ class CaseReadinessIntegrationTest {
     private void seedPendingTaskAndPart(Long caseId) {
         jdbcTemplate.update("INSERT INTO tareas (public_id, caso_id, organizacion_id, sucursal_id, modulo_origen_codigo, titulo, prioridad_codigo, estado_codigo, created_by, resuelta) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 "00000000-0000-0000-0000-000000009999", caseId, 1L, 1L, "TRAMITE", "Pendiente de seguimiento", "MEDIA", "PENDIENTE", 1L, false);
-        jdbcTemplate.update("INSERT INTO repuestos_caso (caso_id, descripcion, estado_codigo, usado, devuelto) VALUES (?, ?, ?, ?, ?)",
+        jdbcTemplate.update("INSERT INTO repuestos_caso (caso_id, descripcion, estado_codigo, usado, devuelto, source_type) VALUES (?, ?, ?, ?, ?, 'MANUAL')",
                 caseId, "Optica delantera", "PENDIENTE", false, false);
     }
 
