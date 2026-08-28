@@ -317,20 +317,27 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.queryByLabelText('Monto depositado')).toBeNull();
   });
 
-  it('uses the CLEAS summary and registers an eligible company payment with its selected invoice', async () => {
+  it('registers a favorable CLEAS company payment with proof and catalog retentions', async () => {
     useQueryData = {
-      [JSON.stringify(['cases', '42', 'cleas', 'summary'])]: { caseId: 42, companyId: 7, agreedAmount: 100000, paidAmount: 25000, pendingAmount: 75000 },
+      [JSON.stringify(['cases', '42', 'cleas', 'summary'])]: { caseId: 42, companyId: 7, agreedAmount: 100000, paidAmount: 25000, pendingAmount: 75000, paidGrossAmount: 25000, pendingGrossAmount: 75000 },
       [JSON.stringify(['cases', '42', 'receipts'])]: [{ id: 44, receiptTypeCode: 'FACTURA', receiptNumber: '0001-44', receiverBusinessName: 'Aseguradora SA', total: 100000 }],
+      [JSON.stringify(['cases', '42', 'documents'])]: [{ documentId: 88, categoryId: 9, fileName: 'transferencia.pdf' }],
+      [JSON.stringify(['documents', 'catalogs'])]: { categories: [{ id: 9, code: 'COMPROBANTE_PAGO_CLEAS', name: 'Comprobante de pago CLEAS' }] },
+      [JSON.stringify(['finance', 'catalogs'])]: { retentionTypeCodes: [{ code: 'IVA', name: 'IVA' }, { code: 'IIBB', name: 'Ingresos Brutos' }] },
     };
     render(<CleasPaymentsHarness {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }} />);
 
     expect(screen.getByText('Pago de compañía CLEAS')).toBeInTheDocument();
     const companyPanel = screen.getByText('Pago de compañía CLEAS').closest('.border');
     expect(within(companyPanel).getByText('Acordado').parentElement).toHaveTextContent('100.000');
-    expect(within(companyPanel).getByText('Pagado').parentElement).toHaveTextContent('25.000');
-    expect(within(companyPanel).getByText('Pendiente').parentElement).toHaveTextContent('75.000');
-    fireEvent.change(within(companyPanel).getByLabelText('Monto de compañía'), { target: { value: '75000' } });
+    expect(within(companyPanel).getByText('Bruto cancelado').parentElement).toHaveTextContent('25.000');
+    expect(within(companyPanel).getByText('Saldo bruto').parentElement).toHaveTextContent('75.000');
+    fireEvent.change(within(companyPanel).getByLabelText('Bruto que cancela'), { target: { value: '75000' } });
     fireEvent.change(within(companyPanel).getByLabelText('Factura asociada (opcional)'), { target: { value: '44' } });
+    fireEvent.change(within(companyPanel).getByLabelText('Comprobante existente'), { target: { value: '88' } });
+    fireEvent.click(within(companyPanel).getByRole('button', { name: 'Agregar retención' }));
+    fireEvent.change(within(companyPanel).getByLabelText('Monto retención 1'), { target: { value: '1000' } });
+    expect(within(companyPanel).getByLabelText('Neto depositado')).toHaveValue('$ 74.000');
     fireEvent.change(within(companyPanel).getByLabelText('Referencia externa'), { target: { value: 'CLEAS-OP-1' } });
     fireEvent.change(within(companyPanel).getByLabelText('Notas'), { target: { value: 'Transferencia recibida' } });
     fireEvent.click(within(companyPanel).getByRole('button', { name: /^Registrar pago de compañía$/i }));
@@ -339,12 +346,34 @@ describe('PaymentsEditorPanel', () => {
       amount: 75000,
       paymentMethodCode: 'TRANSFERENCIA',
       receiptId: 44,
+      documentId: 88,
+      retentions: [{ retentionTypeCode: 'IVA', amount: 1000, detail: null }],
       externalReference: 'CLEAS-OP-1',
       reason: 'Transferencia recibida',
     })));
     expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '42', 'cleas', 'summary'] });
     expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '42', 'financial-movements'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '42', 'documents'] });
     expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '42', 'workspace'] });
+  });
+
+  it('uploads the payment proof before posting the CLEAS payment', async () => {
+    mockRequestJson.mockResolvedValueOnce({ id: 99 });
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'cleas', 'summary'])]: { caseId: 42, companyId: 7, agreedAmount: 100000, paidAmount: 0, pendingAmount: 100000 },
+      [JSON.stringify(['documents', 'catalogs'])]: { categories: [{ id: 9, code: 'COMPROBANTE_PAGO_CLEAS', name: 'Comprobante de pago CLEAS' }] },
+      [JSON.stringify(['finance', 'catalogs'])]: { retentionTypeCodes: [{ code: 'IVA', name: 'IVA' }] },
+    };
+    render(<CleasPaymentsHarness {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }} />);
+
+    const companyPanel = screen.getByText('Pago de compañía CLEAS').closest('.border');
+    fireEvent.change(within(companyPanel).getByLabelText('Bruto que cancela'), { target: { value: '100000' } });
+    fireEvent.change(within(companyPanel).getByLabelText('O subir comprobante CLEAS'), { target: { files: [new File(['proof'], 'pago.pdf', { type: 'application/pdf' })] } });
+    fireEvent.click(within(companyPanel).getByRole('button', { name: /^Registrar pago de compañía$/i }));
+
+    await waitFor(() => expect(mockRequestJson).toHaveBeenCalledWith('/documents', expect.objectContaining({ method: 'POST', body: expect.any(FormData) })));
+    await waitFor(() => expect(mockRegisterCleasCompanyPayment).toHaveBeenCalledWith(42, expect.objectContaining({ documentId: 99, amount: 100000, retentions: [] })));
+    expect(mockRequestJson.mock.invocationCallOrder.at(-1)).toBeLessThan(mockRegisterCleasCompanyPayment.mock.invocationCallOrder.at(-1));
   });
 
   it('shows the backend eligibility block and does not render the CLEAS company payment form', () => {

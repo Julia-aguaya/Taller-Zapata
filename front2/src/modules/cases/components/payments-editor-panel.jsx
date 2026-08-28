@@ -574,22 +574,61 @@ const CleasCompanyPaymentPanel = ({ caseId, receipts, onSaved }) => {
     queryKey: ['cases', String(caseId), 'cleas', 'summary'],
     queryFn: () => getCleasCompanyPaymentSummary(caseId),
   });
+  const documentsQuery = useQuery({
+    queryKey: ['cases', String(caseId), 'documents'],
+    queryFn: () => requestJson(`/cases/${caseId}/documents`),
+  });
+  const documentCategoriesQuery = useQuery({
+    queryKey: ['documents', 'catalogs'],
+    queryFn: () => requestJson('/documents/catalogs'),
+  });
+  const financeCatalogsQuery = useQuery({ queryKey: ['finance', 'catalogs'], queryFn: getFinanceCatalogs });
   const [form, setForm] = useState({
     amount: '',
     movementAt: new Date().toISOString().slice(0, 16),
     paymentMethodCode: 'TRANSFERENCIA',
     receiptId: '',
+    documentId: '',
+    proofFile: null,
+    retentions: [],
     externalReference: '',
     reason: '',
   });
   const paymentMutation = useMutation({
-    mutationFn: (payload) => registerCleasCompanyPayment(caseId, payload),
+    mutationFn: async () => {
+      let documentId = form.documentId ? Number(form.documentId) : null;
+      if (form.proofFile) {
+        const paymentProofCategory = (documentCategoriesQuery.data?.categories ?? []).find((category) => category.code === 'COMPROBANTE_PAGO_CLEAS');
+        if (!paymentProofCategory) throw new Error('No está disponible la categoría Comprobante de pago CLEAS.');
+        const upload = new FormData();
+        upload.append('file', form.proofFile);
+        upload.append('categoryId', String(paymentProofCategory.id));
+        upload.append('originCode', 'CLEAS');
+        const document = await requestJson('/documents', { method: 'POST', body: upload });
+        documentId = document.id;
+      }
+      if (!documentId) throw new Error('Seleccioná o subí el comprobante de pago CLEAS.');
+      return registerCleasCompanyPayment(caseId, {
+        amount: toAmount(form.amount),
+        movementAt: form.movementAt,
+        paymentMethodCode: form.paymentMethodCode,
+        paymentMethodDetail: null,
+        receiptId: form.receiptId ? Number(form.receiptId) : null,
+        documentId,
+        retentions: form.retentions
+          .filter((retention) => retention.retentionTypeCode && toAmount(retention.amount) > 0)
+          .map((retention) => ({ retentionTypeCode: retention.retentionTypeCode, amount: toAmount(retention.amount), detail: retention.detail.trim() || null })),
+        externalReference: form.externalReference || null,
+        reason: form.reason || null,
+      });
+    },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'summary'] });
       await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] });
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'documents'] });
       await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
       await onSaved?.();
-      setForm({ amount: '', movementAt: new Date().toISOString().slice(0, 16), paymentMethodCode: 'TRANSFERENCIA', receiptId: '', externalReference: '', reason: '' });
+      setForm({ amount: '', movementAt: new Date().toISOString().slice(0, 16), paymentMethodCode: 'TRANSFERENCIA', receiptId: '', documentId: '', proofFile: null, retentions: [], externalReference: '', reason: '' });
       toast.success('Pago CLEAS de la compañía registrado.');
     },
     onError: (error) => toast.error(error.message || 'No pude registrar el pago de la compañía.'),
@@ -602,29 +641,56 @@ const CleasCompanyPaymentPanel = ({ caseId, receipts, onSaved }) => {
 
   const summary = summaryQuery.data;
   if (!summary) return null;
-  const pendingAmount = toAmount(summary.pendingAmount);
-  const amount = toAmount(form.amount);
-  const canSubmit = amount > 0 && amount <= pendingAmount && !paymentMutation.isPending;
+  const pendingGrossAmount = toAmount(summary.pendingGrossAmount ?? summary.pendingAmount);
+  const grossAmount = toAmount(form.amount);
+  const retentionsAmount = form.retentions.reduce((total, retention) => total + toAmount(retention.amount), 0);
+  const netAmount = Math.max(0, grossAmount - retentionsAmount);
+  const paymentProofCategory = (documentCategoriesQuery.data?.categories ?? []).find((category) => category.code === 'COMPROBANTE_PAGO_CLEAS');
+  const paymentProofs = (documentsQuery.data ?? []).filter((document) => String(document.categoryId) === String(paymentProofCategory?.id));
+  const retentionTypes = financeCatalogsQuery.data?.retentionTypeCodes ?? [];
+  const canSubmit = grossAmount > 0 && grossAmount <= pendingGrossAmount && retentionsAmount <= grossAmount && Boolean(form.documentId || form.proofFile) && !paymentMutation.isPending;
+
+  const updateRetention = (index, field, value) => setForm((current) => ({
+    ...current,
+    retentions: current.retentions.map((retention, retentionIndex) => retentionIndex === index ? { ...retention, [field]: value } : retention),
+  }));
 
   return (
     <Card className="rounded-3xl border-border/70 p-5">
       <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Building2 className="h-5 w-5" /></div>
       <h4 className="text-lg font-semibold">Pago de compañía CLEAS</h4>
-      <div className="mt-4 grid gap-3 md:grid-cols-3">
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
         <MiniCard label="Acordado" value={formatCurrency(summary.agreedAmount)} highlight />
-        <MiniCard label="Pagado" value={formatCurrency(summary.paidAmount)} />
-        <MiniCard label="Pendiente" value={formatCurrency(summary.pendingAmount)} highlight={pendingAmount > 0} />
+        <MiniCard label="Bruto cancelado" value={formatCurrency(summary.paidGrossAmount ?? summary.paidAmount)} />
+        <MiniCard label="Saldo bruto" value={formatCurrency(pendingGrossAmount)} highlight={pendingGrossAmount > 0} />
+        <MiniCard label="Retenciones de este pago" value={formatCurrency(retentionsAmount)} />
       </div>
-      {pendingAmount > 0 ? (
+      {pendingGrossAmount > 0 ? (
+        <>
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Field label="Monto de compañía"><Input type="number" min="0" max={pendingAmount} step="0.01" value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))} /></Field>
-           <Field label="Fecha y hora del pago"><Input type="datetime-local" value={form.movementAt} onChange={(event) => setForm((current) => ({ ...current, movementAt: event.target.value }))} /></Field>
-           <Field label="Medio de pago"><Select value={form.paymentMethodCode} onChange={(event) => setForm((current) => ({ ...current, paymentMethodCode: event.target.value }))} options={PAYMENT_METHODS} /></Field>
-           <Field label="Factura asociada (opcional)"><Select value={form.receiptId} onChange={(event) => setForm((current) => ({ ...current, receiptId: event.target.value }))} options={[{ value: '', label: 'Sin factura asociada' }, ...receipts.filter((receipt) => receipt.receiptTypeCode === 'FACTURA').map((receipt) => ({ value: String(receipt.id), label: `${receipt.receiptNumber} - ${formatCurrency(receipt.total)}` }))]} /></Field>
-           <Field label="Referencia externa"><Input value={form.externalReference} onChange={(event) => setForm((current) => ({ ...current, externalReference: event.target.value }))} /></Field>
-           <Field label="Notas"><Textarea rows={3} value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} /></Field>
-           <div className="flex items-end"><Button className="w-full" disabled={!canSubmit} onClick={() => paymentMutation.mutate({ amount, movementAt: form.movementAt, paymentMethodCode: form.paymentMethodCode, paymentMethodDetail: null, receiptId: form.receiptId ? Number(form.receiptId) : null, externalReference: form.externalReference || null, reason: form.reason || null })}><Save className="mr-1.5 h-4 w-4" />Registrar pago de compañía</Button></div>
+          <Field label="Bruto que cancela"><Input type="number" min="0" max={pendingGrossAmount} step="0.01" value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))} /></Field>
+          <Field label="Neto depositado"><Input value={formatCurrency(netAmount)} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
+          <Field label="Fecha y hora del pago"><Input type="datetime-local" value={form.movementAt} onChange={(event) => setForm((current) => ({ ...current, movementAt: event.target.value }))} /></Field>
+          <Field label="Medio de pago"><Select value={form.paymentMethodCode} onChange={(event) => setForm((current) => ({ ...current, paymentMethodCode: event.target.value }))} options={PAYMENT_METHODS} /></Field>
+          <Field label="Factura asociada (opcional)"><Select value={form.receiptId} onChange={(event) => setForm((current) => ({ ...current, receiptId: event.target.value }))} options={[{ value: '', label: 'Sin factura asociada' }, ...receipts.filter((receipt) => receipt.receiptTypeCode === 'FACTURA').map((receipt) => ({ value: String(receipt.id), label: `${receipt.receiptNumber} - ${formatCurrency(receipt.total)}` }))]} /></Field>
+          <Field label="Comprobante existente"><Select value={form.documentId} onChange={(event) => setForm((current) => ({ ...current, documentId: event.target.value, proofFile: null }))} options={[{ value: '', label: 'Seleccionar comprobante...' }, ...paymentProofs.map((document) => ({ value: String(document.documentId), label: document.fileName || `Documento #${document.documentId}` }))]} /></Field>
+          <Field label="O subir comprobante CLEAS"><Input type="file" onChange={(event) => setForm((current) => ({ ...current, proofFile: event.target.files?.[0] ?? null, documentId: '' }))} /></Field>
+          <Field label="Referencia externa"><Input value={form.externalReference} onChange={(event) => setForm((current) => ({ ...current, externalReference: event.target.value }))} /></Field>
+          <Field label="Notas"><Textarea rows={3} value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} /></Field>
         </div>
+        <div className="mt-4 rounded-2xl border border-border/60 p-4">
+          <div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold">Retenciones</p><Button type="button" size="sm" variant="outline" onClick={() => setForm((current) => ({ ...current, retentions: [...current.retentions, { retentionTypeCode: retentionTypes[0]?.code ?? '', amount: '', detail: '' }] }))} disabled={!retentionTypes.length}>Agregar retención</Button></div>
+          {form.retentions.map((retention, index) => <div key={index} className="mt-3 grid gap-3 md:grid-cols-[1fr_150px_1fr_auto]">
+            <Select aria-label={`Tipo de retención ${index + 1}`} value={retention.retentionTypeCode} onChange={(event) => updateRetention(index, 'retentionTypeCode', event.target.value)} options={[{ value: '', label: 'Tipo de retención...' }, ...retentionTypes.map((type) => ({ value: type.code, label: type.name || type.code }))]} />
+            <Input aria-label={`Monto retención ${index + 1}`} type="number" min="0" step="0.01" value={retention.amount} onChange={(event) => updateRetention(index, 'amount', event.target.value)} />
+            <Input aria-label={`Detalle retención ${index + 1}`} value={retention.detail} onChange={(event) => updateRetention(index, 'detail', event.target.value)} placeholder="Detalle opcional" />
+            <Button type="button" variant="ghost" onClick={() => setForm((current) => ({ ...current, retentions: current.retentions.filter((_, retentionIndex) => retentionIndex !== index) }))}>Quitar</Button>
+          </div>)}
+          {!retentionTypes.length ? <p className="mt-3 text-xs text-muted-foreground">No hay tipos de retención activos disponibles.</p> : null}
+          {retentionsAmount > grossAmount ? <p role="alert" className="mt-3 text-xs text-destructive">Las retenciones no pueden superar el bruto que cancela.</p> : null}
+        </div>
+        <div className="mt-4 flex justify-end"><Button disabled={!canSubmit} onClick={() => paymentMutation.mutate()}><Save className="mr-1.5 h-4 w-4" />Registrar pago de compañía</Button></div>
+        </>
       ) : <p className="mt-4 text-sm text-muted-foreground">La compañía no tiene saldo pendiente.</p>}
     </Card>
   );
