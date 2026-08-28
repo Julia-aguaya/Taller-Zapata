@@ -9,6 +9,9 @@ import com.tallerzapata.backend.api.insurance.InsuranceProcessingResponse;
 import com.tallerzapata.backend.application.cleas.CleasManagementService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -74,6 +77,17 @@ public class CleasManagementController {
     @PreAuthorize("hasAuthority('finanza.crear')")
     @PostMapping("/company-payments")
     public CleasCompanyPaymentResponse registerCompanyPayment(@PathVariable Long caseId, @Valid @RequestBody CleasCompanyPaymentRequest request, HttpServletRequest httpRequest) { return service.registerCompanyPayment(caseId, request, httpRequest); }
+
+    @PreAuthorize("hasAuthority('finanza.crear')")
+    @PostMapping("/company-payments/{movementId}/annul")
+    public CleasCompanyPaymentSummaryResponse annulCompanyPayment(@PathVariable Long caseId, @PathVariable Long movementId, @RequestBody(required = false) CleasCompanyPaymentAnnulmentRequest request, HttpServletRequest httpRequest) { return service.annulCompanyPayment(caseId, movementId, request, httpRequest); }
+
+    @PreAuthorize("hasAuthority('finanza.ver')")
+    @GetMapping("/liquidation-pdf")
+    public ResponseEntity<byte[]> liquidationPdf(@PathVariable Long caseId) {
+        byte[] pdf = service.liquidationPdf(caseId);
+        return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=liquidacion-cleas-" + caseId + ".pdf").contentType(MediaType.APPLICATION_PDF).body(pdf);
+    }
 
     @PreAuthorize("hasAuthority('documento.ver')")
     @GetMapping("/orders")

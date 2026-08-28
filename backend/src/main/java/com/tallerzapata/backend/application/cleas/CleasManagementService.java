@@ -4,6 +4,7 @@ import com.tallerzapata.backend.api.casefile.CaseIncidentResponse;
 import com.tallerzapata.backend.api.cleas.CleasIncidentResponse;
 import com.tallerzapata.backend.api.cleas.CleasIncidentUpsertRequest;
 import com.tallerzapata.backend.api.cleas.CleasClosureResponse;
+import com.tallerzapata.backend.api.cleas.CleasCompanyPaymentAnnulmentRequest;
 import com.tallerzapata.backend.api.cleas.CleasCompanyPaymentRequest;
 import com.tallerzapata.backend.api.cleas.CleasCompanyPaymentResponse;
 import com.tallerzapata.backend.api.cleas.CleasCompanyPaymentSummaryResponse;
@@ -79,6 +80,8 @@ public class CleasManagementService {
     private final CaseAuditService caseAuditService;
     private final CaseCleasRepository caseCleasRepository;
     private final CleasClosurePolicy cleasClosurePolicy;
+    private final CleasSettlementPolicy cleasSettlementPolicy;
+    private final CleasLiquidationPdfService cleasLiquidationPdfService;
     private final CaseInsuranceRepository caseInsuranceRepository;
     private final InsuranceProcessingRepository insuranceProcessingRepository;
     private final FinancialMovementRepository financialMovementRepository;
@@ -87,7 +90,7 @@ public class CleasManagementService {
     private final FinancialRetentionTypeRepository financialRetentionTypeRepository;
     private final IssuedReceiptRepository issuedReceiptRepository;
 
-    public CleasManagementService(InsuranceService insuranceService, CaseManagementService caseManagementService, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CaseVehicleRepository caseVehicleRepository, VehicleRepository vehicleRepository, DocumentRepository documentRepository, DocumentCategoryRepository documentCategoryRepository, DocumentRelationRepository documentRelationRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, CaseCleasRepository caseCleasRepository, CleasClosurePolicy cleasClosurePolicy, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, FinancialMovementRepository financialMovementRepository, FinancialMovementRetentionRepository financialMovementRetentionRepository, FinancialPaymentMethodRepository financialPaymentMethodRepository, FinancialRetentionTypeRepository financialRetentionTypeRepository, IssuedReceiptRepository issuedReceiptRepository) {
+    public CleasManagementService(InsuranceService insuranceService, CaseManagementService caseManagementService, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CaseVehicleRepository caseVehicleRepository, VehicleRepository vehicleRepository, DocumentRepository documentRepository, DocumentCategoryRepository documentCategoryRepository, DocumentRelationRepository documentRelationRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, CaseCleasRepository caseCleasRepository, CleasClosurePolicy cleasClosurePolicy, CleasSettlementPolicy cleasSettlementPolicy, CleasLiquidationPdfService cleasLiquidationPdfService, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, FinancialMovementRepository financialMovementRepository, FinancialMovementRetentionRepository financialMovementRetentionRepository, FinancialPaymentMethodRepository financialPaymentMethodRepository, FinancialRetentionTypeRepository financialRetentionTypeRepository, IssuedReceiptRepository issuedReceiptRepository) {
         this.insuranceService = insuranceService;
         this.caseManagementService = caseManagementService;
         this.caseRepository = caseRepository;
@@ -102,6 +105,8 @@ public class CleasManagementService {
         this.caseAuditService = caseAuditService;
         this.caseCleasRepository = caseCleasRepository;
         this.cleasClosurePolicy = cleasClosurePolicy;
+        this.cleasSettlementPolicy = cleasSettlementPolicy;
+        this.cleasLiquidationPdfService = cleasLiquidationPdfService;
         this.caseInsuranceRepository = caseInsuranceRepository;
         this.insuranceProcessingRepository = insuranceProcessingRepository;
         this.financialMovementRepository = financialMovementRepository;
@@ -281,6 +286,61 @@ public class CleasManagementService {
         return new CleasCompanyPaymentResponse(movement.getId(), movement.getPublicId(), grossAmount, movement.getMovementAt(), movement.getPaymentMethodCode(), movement.getPaymentMethodDetail(), movement.getReceiptId(), movement.getExternalReference(), movement.getReason(), grossAmount, retentionsAmount, netAmount, document.getId(), retentionResponses);
     }
 
+    @Transactional
+    public CleasCompanyPaymentSummaryResponse annulCompanyPayment(Long caseId, Long movementId, CleasCompanyPaymentAnnulmentRequest request, HttpServletRequest httpRequest) {
+        CaseEntity caseEntity = requireEditableCleasCase(caseId);
+        AuthenticatedUser currentUser = requireAccess(caseEntity, "finanza.crear");
+
+        FinancialMovementEntity original = financialMovementRepository.findById(movementId)
+                .filter(movement -> caseId.equals(movement.getCaseId()))
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el movimiento " + movementId + " del caso CLEAS"));
+
+        if (!"INGRESO".equals(normalizeCode(original.getMovementTypeCode()))
+                || !"ASEGURADORA".equals(normalizeCode(original.getFlowOriginCode()))
+                || !COMPANY_PAYMENT_CANCELLATION_TYPE.equals(normalizeCode(original.getCancellationTypeCode()))) {
+            throw new ConflictException("Solo puede anularse un pago de compania CLEAS");
+        }
+
+        boolean alreadyAnnulled = financialMovementRepository.findByCaseId(caseId, Sort.unsorted()).stream()
+                .anyMatch(movement -> original.getPublicId() != null && original.getPublicId().equals(movement.getExternalReference()));
+        if (alreadyAnnulled) throw new ConflictException("El pago de compania ya fue anulado");
+
+        BigDecimal grossAmount = money(original.getGrossAmount());
+        BigDecimal netAmount = money(original.getNetAmount());
+
+        FinancialMovementEntity reversal = new FinancialMovementEntity();
+        reversal.setCaseId(caseId);
+        reversal.setMovementTypeCode("EGRESO");
+        reversal.setFlowOriginCode("ASEGURADORA");
+        reversal.setCounterpartyTypeCode("COMPANIA");
+        reversal.setCounterpartyCompanyId(original.getCounterpartyCompanyId());
+        reversal.setMovementAt(LocalDateTime.now());
+        reversal.setGrossAmount(grossAmount);
+        reversal.setNetAmount(netAmount);
+        reversal.setPaymentMethodCode(original.getPaymentMethodCode());
+        reversal.setPaymentMethodDetail(original.getPaymentMethodDetail());
+        reversal.setCancellationTypeCode(COMPANY_PAYMENT_CANCELLATION_TYPE);
+        reversal.setAdvancePayment(false);
+        reversal.setBonification(false);
+        reversal.setExternalReference(original.getPublicId());
+        String reason = request == null ? null : request.reason();
+        reversal.setReason(blankToNull(reason) == null ? "Anulacion de pago CLEAS de compania" : blankToNull(reason));
+        reversal.setRegisteredBy(currentUser.id());
+        reversal = financialMovementRepository.saveAndFlush(reversal);
+
+        caseAuditService.register(currentUser.id(), caseId, "movimientos_financieros", reversal.getId(), "anular_pago_compania_cleas", null,
+                caseAuditService.toJson(Map.of("movementId", movementId, "reversalMovementId", reversal.getId(), "grossAmount", grossAmount, "netAmount", netAmount)), caseAuditService.toJson(Map.of("domain", CLEAS_MODULE)), httpRequest);
+
+        return companyPaymentSummary(caseEntity);
+    }
+
+    @Transactional(readOnly = true)
+    public byte[] liquidationPdf(Long caseId) {
+        CaseEntity caseEntity = requireCleasCase(caseId);
+        requireAccess(caseEntity, "finanza.ver");
+        return cleasLiquidationPdfService.generate(caseId);
+    }
+
     private void updateThirdPartyVehicle(Long caseId, Long vehicleId) {
         List<CaseVehicleEntity> relations = caseVehicleRepository.findByCaseIdAndVehicleRoleCodeOrderByIdAsc(caseId, THIRD_PARTY_ROLE);
         if (vehicleId == null) {
@@ -334,23 +394,31 @@ public class CleasManagementService {
 
     private CleasCompanyPaymentSummaryResponse companyPaymentSummary(CaseEntity caseEntity) {
         var cleas = caseCleasRepository.findByCaseId(caseEntity.getId()).orElseThrow(() -> new ConflictException("El caso no tiene definicion CLEAS"));
-        if (!"DANIO_TOTAL".equals(cleas.getScopeCode()) || !"A_FAVOR".equals(cleas.getOpinionCode())) throw new ConflictException("El pago de compania solo aplica a CLEAS DANIO_TOTAL con dictamen A_FAVOR");
+        if (!"A_FAVOR".equals(cleas.getOpinionCode())) throw new ConflictException("El pago de compania solo aplica a CLEAS con dictamen A_FAVOR");
         Long companyId = caseInsuranceRepository.findByCaseId(caseEntity.getId()).map(value -> value.getInsuranceCompanyId())
                 .orElseThrow(() -> new ConflictException("El caso no tiene compania aseguradora configurada"));
         BigDecimal agreedAmount = insuranceProcessingRepository.findByCaseId(caseEntity.getId()).map(value -> money(value.getAgreedAmount())).orElse(BigDecimal.ZERO);
         if (agreedAmount.signum() <= 0) throw new ConflictException("No hay un monto acordado de la compania para registrar el pago");
-        BigDecimal paidAmount = financialMovementRepository.findByCaseId(caseEntity.getId(), Sort.unsorted()).stream()
+        BigDecimal target = cleasSettlementPolicy.settle(cleas, agreedAmount).amountToBillCompany();
+        List<FinancialMovementEntity> companyPayments = financialMovementRepository.findByCaseId(caseEntity.getId(), Sort.unsorted()).stream()
                 .filter(movement -> "ASEGURADORA".equals(normalizeCode(movement.getFlowOriginCode()))
                         && COMPANY_PAYMENT_CANCELLATION_TYPE.equals(normalizeCode(movement.getCancellationTypeCode()))
                         && companyId.equals(movement.getCounterpartyCompanyId()))
-                .map(this::signedGrossAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal pendingAmount = agreedAmount.subtract(paidAmount).max(BigDecimal.ZERO);
-        return new CleasCompanyPaymentSummaryResponse(caseEntity.getId(), companyId, agreedAmount, paidAmount, pendingAmount, paidAmount, pendingAmount);
+                .toList();
+        BigDecimal paidNet = companyPayments.stream().map(this::signedNetAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal paidGross = companyPayments.stream().map(this::signedGrossAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal pendingNet = target.subtract(paidNet).max(BigDecimal.ZERO);
+        BigDecimal pendingGross = target.subtract(paidGross).max(BigDecimal.ZERO);
+        return new CleasCompanyPaymentSummaryResponse(caseEntity.getId(), companyId, target, paidNet, pendingNet, paidGross, pendingGross);
     }
 
     private BigDecimal signedGrossAmount(FinancialMovementEntity movement) {
         BigDecimal amount = money(movement.getGrossAmount());
+        return "INGRESO".equals(normalizeCode(movement.getMovementTypeCode())) || ("AJUSTE".equals(normalizeCode(movement.getMovementTypeCode())) && amount.signum() >= 0) ? amount : amount.negate();
+    }
+
+    private BigDecimal signedNetAmount(FinancialMovementEntity movement) {
+        BigDecimal amount = money(movement.getNetAmount());
         return "INGRESO".equals(normalizeCode(movement.getMovementTypeCode())) || ("AJUSTE".equals(normalizeCode(movement.getMovementTypeCode())) && amount.signum() >= 0) ? amount : amount.negate();
     }
 

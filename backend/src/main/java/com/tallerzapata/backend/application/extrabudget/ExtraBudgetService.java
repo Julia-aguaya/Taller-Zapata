@@ -658,8 +658,8 @@ public class ExtraBudgetService {
     private CaseEntity requireCaseForUpdate(Long caseId) { return cases.findByIdForUpdate(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId)); }
     private void requireExtraBudgetSupported(CaseEntity caseEntity) {
         String caseType = caseTypes.findById(caseEntity.getCaseTypeId()).map(CaseTypeEntity::getCode).orElse(null);
-        if (!"TODO_RIESGO".equals(caseType) && !"GRANIZO".equals(caseType))
-            throw new ConflictException("Los presupuestos extra sólo aplican a casos TODO_RIESGO o GRANIZO");
+        if (!"TODO_RIESGO".equals(caseType) && !"GRANIZO".equals(caseType) && !"CLEAS".equals(caseType))
+            throw new ConflictException("Los presupuestos extra sólo aplican a casos TODO_RIESGO, GRANIZO o CLEAS");
     }
     private BigDecimal paid(ExtraBudgetEntity header) { return moneyOrZero(applications.sumAppliedAmountByExtraBudgetId(header.getId())); }
     private BigDecimal balance(ExtraBudgetEntity header) { return money(header.getAcceptedDebtAmount().subtract(paid(header)).max(BigDecimal.ZERO)); }
