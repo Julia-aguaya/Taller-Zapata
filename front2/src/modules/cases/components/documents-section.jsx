@@ -8,6 +8,7 @@ import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Dialog } from '@/shared/ui/dialog';
 import { Textarea } from '@/shared/ui/textarea';
+import { createCleasOrder } from '@/modules/cases/api/cleas-api';
 
 const DATE_FMT = new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 const currentLocalDate = () => {
@@ -16,7 +17,7 @@ const currentLocalDate = () => {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 };
 
-export const DocumentsSection = ({ caseId }) => {
+export const DocumentsSection = ({ caseId, cleasOrderPicker = false }) => {
   const queryClient = useQueryClient();
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
@@ -51,6 +52,15 @@ export const DocumentsSection = ({ caseId }) => {
     mutationFn: (docId) => requestJson(`/documents/${docId}`, { method: 'DELETE' }),
     onSuccess: async () => { await invalidateCaseViews(); setDocumentToDelete(null); toast.success('Documento eliminado.'); },
     onError: (e) => toast.error(e.message),
+  });
+
+  const linkCleasOrderMutation = useMutation({
+    mutationFn: (documentId) => createCleasOrder(caseId, { documentId, principal: false, visibleToCustomer: false, visualOrder: 0 }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'orders'] });
+      toast.success('Orden CLEAS vinculada.');
+    },
+    onError: (error) => toast.error(error.message || 'No se pudo vincular la orden CLEAS.'),
   });
 
   const uploadMutation = useMutation({
@@ -193,9 +203,10 @@ export const DocumentsSection = ({ caseId }) => {
                   <td className="px-2 py-2.5 font-medium">{doc.fileName ?? doc.storageKey ?? '—'}</td>
                   <td className="px-2 py-2.5 text-muted-foreground">{doc.createdAt ? new Date(doc.createdAt).toLocaleDateString('es-AR') : '—'}</td>
                   <td className="px-2 py-2.5 text-muted-foreground max-w-[200px] truncate">{doc.observations ?? '—'}</td>
-                  <td className="px-2 py-2.5">
-                    <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => handleView(doc)}><Eye className="mr-1.5 h-3.5 w-3.5" />Visualizar</Button>
+                   <td className="px-2 py-2.5">
+                     <div className="flex gap-1">
+                       {cleasOrderPicker && categories.find((category) => category.id === doc.categoryId)?.code === 'ORDEN_CLEAS' ? <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => linkCleasOrderMutation.mutate(doc.documentId)} disabled={linkCleasOrderMutation.isPending}><Plus className="mr-1.5 h-3.5 w-3.5" />Vincular orden</Button> : null}
+                       <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => handleView(doc)}><Eye className="mr-1.5 h-3.5 w-3.5" />Visualizar</Button>
                       <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => handleDownload(doc)}><Download className="mr-1.5 h-3.5 w-3.5" />Descargar</Button>
                        <Button variant="ghost" size="sm" className="h-8 px-2 text-destructive" onClick={() => setDocumentToDelete(doc)} disabled={deleteMutation.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Eliminar</Button>
                     </div>

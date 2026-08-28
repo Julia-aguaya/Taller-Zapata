@@ -50,6 +50,7 @@ describe('getCleasTabs', () => {
     expect(tabs.map((tab) => tab.tabCode)).toEqual(CLEAS_TAB_CODES);
     expect(tabs[4]).toBe(suppliedTab);
     expect(tabs[0]).toEqual({ tabCode: 'FICHA_TECNICA', allowed: true, completed: false, blockingReasons: [], warningReasons: [] });
+    expect(tabs[2]).toEqual({ tabCode: 'PRESUPUESTO', allowed: false, completed: false, blockingReasons: ['No se pudo verificar si esta etapa está habilitada.'], warningReasons: [] });
   });
 });
 

@@ -591,6 +591,13 @@ class InsuranceIntegrationTest {
         assertThat(jdbcTemplate.queryForObject("SELECT antes_json FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'patch_tramitacion_seguro'", String.class, 100L)).contains("\"partsAuthorizationCode\":null");
         assertThat(jdbcTemplate.queryForObject("SELECT despues_json FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'patch_tramitacion_seguro'", String.class, 100L)).contains("\"partsAuthorizationCode\":\"PARCIAL\"");
 
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"partsAuthorizationCode\":\"PENDIENTE\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.partsAuthorizationCode").doesNotExist());
+
         jdbcTemplate.update("UPDATE presupuesto_items SET requiere_reemplazo = false WHERE presupuesto_id = ?", 500L);
         mockMvc.perform(get("/api/v1/cases/100/insurance-processing").header("X-User-Id", "3"))
                 .andExpect(status().isOk())

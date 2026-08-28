@@ -6,6 +6,7 @@ import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.ParticularCaseClosureService;
 import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
+import com.tallerzapata.backend.application.cleas.CleasDownstreamGate;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
@@ -66,9 +67,10 @@ public class BudgetService {
     private final BudgetComparisonService budgetComparisonService;
     private final CanonicalPartReconciliationService canonicalPartReconciliationService;
     private final CasePartReconciliationWarningRepository warningRepository;
+    private final CleasDownstreamGate cleasDownstreamGate;
 
     public BudgetService(BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, BudgetAccessoryWorkRepository budgetAccessoryWorkRepository, CasePartRepository casePartRepository, CaseRepository caseRepository, BudgetReportStatusRepository budgetReportStatusRepository, BudgetTaskRepository budgetTaskRepository, DamageLevelRepository damageLevelRepository, PartDecisionRepository partDecisionRepository, BudgetActionRepository budgetActionRepository, PartStatusRepository partStatusRepository, PartPurchaserRepository partPurchaserRepository, PartPaymentStatusRepository partPaymentStatusRepository, InsurancePartsAuthorizationRepository insurancePartsAuthorizationRepository, PersonRepository personRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService,             BudgetPdfService budgetPdfService, ParticularCaseClosureService particularCaseClosureService,
-            OrganizationRepository organizationRepository, BranchRepository branchRepository, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, ProviderRepository providerRepository, BudgetComparisonService budgetComparisonService, CanonicalPartReconciliationService canonicalPartReconciliationService, CasePartReconciliationWarningRepository warningRepository) {
+            OrganizationRepository organizationRepository, BranchRepository branchRepository, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, ProviderRepository providerRepository, BudgetComparisonService budgetComparisonService, CanonicalPartReconciliationService canonicalPartReconciliationService, CasePartReconciliationWarningRepository warningRepository, CleasDownstreamGate cleasDownstreamGate) {
         this.budgetRepository = budgetRepository;
         this.budgetItemRepository = budgetItemRepository;
         this.budgetAccessoryWorkRepository = budgetAccessoryWorkRepository;
@@ -97,6 +99,7 @@ public class BudgetService {
         this.budgetComparisonService = budgetComparisonService;
         this.canonicalPartReconciliationService = canonicalPartReconciliationService;
         this.warningRepository = warningRepository;
+        this.cleasDownstreamGate = cleasDownstreamGate;
     }
 
     @Transactional(readOnly = true)
@@ -513,7 +516,11 @@ public class BudgetService {
     }
 
     private CaseEntity requireCase(Long caseId) { return caseRepository.findById(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId)); }
-    private CaseEntity requireCaseForUpdate(Long caseId) { return caseRepository.findByIdForUpdate(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId)); }
+    private CaseEntity requireCaseForUpdate(Long caseId) {
+        CaseEntity caseEntity = caseRepository.findByIdForUpdate(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
+        cleasDownstreamGate.requireAllowed(caseEntity);
+        return caseEntity;
+    }
 
     private BudgetResponse toBudgetResponse(BudgetEntity e, List<BudgetItemResponse> items) {
         List<BudgetAccessoryWorkResponse> accessoryWorks = budgetAccessoryWorkRepository.findByBudgetIdOrderByIdAsc(e.getId()).stream().map(work -> new BudgetAccessoryWorkResponse(work.getId(), work.getAffectedPiece(), work.getActionCode(), work.getDamageLevelCode(), work.getReplacementAmount(), work.getActive())).toList();

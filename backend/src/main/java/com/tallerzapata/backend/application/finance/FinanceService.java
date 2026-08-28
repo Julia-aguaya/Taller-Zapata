@@ -4,6 +4,7 @@ import com.tallerzapata.backend.api.finance.*;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.InsuranceRepairCasePolicy;
 import com.tallerzapata.backend.application.casefile.ParticularCaseClosureService;
+import com.tallerzapata.backend.application.cleas.CleasDownstreamGate;
 import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.common.ConflictException;
@@ -81,8 +82,9 @@ public class FinanceService {
     private final ParticularCaseClosureService particularCaseClosureService;
     private final ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
     private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
+    private final CleasDownstreamGate cleasDownstreamGate;
 
-    public FinanceService(FinancialMovementRepository movementRepository, FinancialMovementRetentionRepository retentionRepository, FinancialMovementApplicationRepository applicationRepository, IssuedReceiptRepository receiptRepository, ExtraBudgetRepository extraBudgetRepository, ExtraBudgetPaymentApplicationRepository extraBudgetPaymentApplications, CaseFranchiseRepository caseFranchiseRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, BudgetRepository budgetRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, PersonRepository personRepository, UserRepository userRepository, DocumentRepository documentRepository, FinancialMovementTypeRepository movementTypeRepository, FinancialFlowOriginRepository flowOriginRepository, FinancialCounterpartyTypeRepository counterpartyTypeRepository, FinancialPaymentMethodRepository paymentMethodRepository, FinancialCancellationTypeRepository cancellationTypeRepository, FinancialRetentionTypeRepository retentionTypeRepository, FinancialApplicationConceptRepository applicationConceptRepository, IssuedReceiptTypeRepository issuedReceiptTypeRepository, InsuranceCompanyRepository companyRepository, OrganizationRepository organizationRepository, BranchRepository branchRepository, ReceiptPdfService receiptPdfService, ClientPaymentPdfService clientPaymentPdfService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, ParticularCaseClosureService particularCaseClosureService, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator) {
+    public FinanceService(FinancialMovementRepository movementRepository, FinancialMovementRetentionRepository retentionRepository, FinancialMovementApplicationRepository applicationRepository, IssuedReceiptRepository receiptRepository, ExtraBudgetRepository extraBudgetRepository, ExtraBudgetPaymentApplicationRepository extraBudgetPaymentApplications, CaseFranchiseRepository caseFranchiseRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, BudgetRepository budgetRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, PersonRepository personRepository, UserRepository userRepository, DocumentRepository documentRepository, FinancialMovementTypeRepository movementTypeRepository, FinancialFlowOriginRepository flowOriginRepository, FinancialCounterpartyTypeRepository counterpartyTypeRepository, FinancialPaymentMethodRepository paymentMethodRepository, FinancialCancellationTypeRepository cancellationTypeRepository, FinancialRetentionTypeRepository retentionTypeRepository, FinancialApplicationConceptRepository applicationConceptRepository, IssuedReceiptTypeRepository issuedReceiptTypeRepository, InsuranceCompanyRepository companyRepository, OrganizationRepository organizationRepository, BranchRepository branchRepository, ReceiptPdfService receiptPdfService, ClientPaymentPdfService clientPaymentPdfService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, ParticularCaseClosureService particularCaseClosureService, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasDownstreamGate cleasDownstreamGate) {
         this.movementRepository = movementRepository;
         this.retentionRepository = retentionRepository;
         this.applicationRepository = applicationRepository;
@@ -117,6 +119,7 @@ public class FinanceService {
         this.particularCaseClosureService = particularCaseClosureService;
         this.particularEffectiveStateRecalculator = particularEffectiveStateRecalculator;
         this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
+        this.cleasDownstreamGate = cleasDownstreamGate;
     }
 
     @Transactional(readOnly = true)
@@ -132,6 +135,7 @@ public class FinanceService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "finanza.crear");
+        cleasDownstreamGate.requireAllowed(caseEntity);
         validateMovementRequest(request);
         requireFranchiseMovementAllowed(caseEntity, request);
         requireCompanyPaymentAllowed(caseEntity, request);
@@ -186,6 +190,7 @@ public class FinanceService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "finanza.crear");
+        cleasDownstreamGate.requireAllowed(caseEntity);
         validateReceiptRequest(caseEntity, request);
         if (request.fiscalTypeCode() != null && receiptRepository.existsByFiscalTypeCodeAndSalePointAndFiscalNumber(normalizeFiscalType(request.fiscalTypeCode()), normalizeSalePoint(request.salePoint()), normalizeFiscalNumber(request.fiscalNumber()))) throw new ConflictException("Ya existe un comprobante con ese tipo fiscal, punto de venta y número");
         if (request.fiscalTypeCode() == null && receiptRepository.existsByReceiptTypeCodeAndReceiptNumber(normalizeCode(request.receiptTypeCode()), request.receiptNumber().trim())) throw new ConflictException("Ya existe un comprobante con ese tipo y número");
@@ -331,6 +336,7 @@ public class FinanceService {
         FinancialMovementEntity movement = movementRepository.findById(movementId).orElseThrow(() -> new ResourceNotFoundException("No existe el movimiento " + movementId));
         CaseEntity caseEntity = requireCase(movement.getCaseId());
         accessControlService.requireCaseAccess(currentUser, caseEntity, "finanza.crear");
+        cleasDownstreamGate.requireAllowed(caseEntity);
         for (FinancialMovementRetentionRequest request : requests) {
             if (!retentionTypeRepository.existsByCodeAndActiveTrue(normalizeCode(request.retentionTypeCode()))) throw new ConflictException("retentionTypeCode no permitido: " + request.retentionTypeCode());
         }
@@ -353,6 +359,7 @@ public class FinanceService {
         FinancialMovementEntity movement = movementRepository.findById(movementId).orElseThrow(() -> new ResourceNotFoundException("No existe el movimiento " + movementId));
         CaseEntity caseEntity = requireCase(movement.getCaseId());
         accessControlService.requireCaseAccess(currentUser, caseEntity, "finanza.crear");
+        cleasDownstreamGate.requireAllowed(caseEntity);
         for (FinancialMovementApplicationRequest request : requests) {
             if (!applicationConceptRepository.existsByCodeAndActiveTrue(normalizeCode(request.conceptCode()))) throw new ConflictException("conceptCode no permitido: " + request.conceptCode());
             if (!SUPPORTED_APPLICATION_ENTITY_TYPES.contains(normalizeCode(request.entityType()))) throw new ConflictException("entityType no soportado para finanzas: " + request.entityType());

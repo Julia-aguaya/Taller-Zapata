@@ -73,9 +73,9 @@ describe('NewCasePage canonical referenciador validation', () => {
     expect(requiresReferenciador('NO', null)).toBe(false);
   });
 
-  it('accepts a full name so a new referenciador can be created on submission', () => {
+  it('accepts a name so a new referenciador can be created on submission', () => {
     expect(hasReferenciadorName('Ana Referidora')).toBe(true);
-    expect(hasReferenciadorName('Ana')).toBe(false);
+    expect(hasReferenciadorName('Ana')).toBe(true);
     expect(hasReferenciadorName('   ')).toBe(false);
   });
 

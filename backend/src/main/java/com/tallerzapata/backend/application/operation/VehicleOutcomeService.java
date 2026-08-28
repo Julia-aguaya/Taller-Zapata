@@ -6,6 +6,7 @@ import com.tallerzapata.backend.api.operation.VehicleOutcomeUpdateRequest;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.ParticularCaseClosureService;
 import com.tallerzapata.backend.application.casefile.CaseWorkflowService;
+import com.tallerzapata.backend.application.cleas.CleasDownstreamGate;
 import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.common.ConflictException;
@@ -50,6 +51,7 @@ public class VehicleOutcomeService {
     private final ParticularCaseClosureService particularCaseClosureService;
     private final ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
     private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
+    private final CleasDownstreamGate cleasDownstreamGate;
 
     public VehicleOutcomeService(
             VehicleOutcomeRepository vehicleOutcomeRepository,
@@ -63,7 +65,7 @@ public class VehicleOutcomeService {
             CaseAuditService caseAuditService,
             CaseWorkflowService caseWorkflowService,
             RepairAppointmentService repairAppointmentService,
-                ParticularCaseClosureService particularCaseClosureService, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator
+                ParticularCaseClosureService particularCaseClosureService, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasDownstreamGate cleasDownstreamGate
     ) {
         this.vehicleOutcomeRepository = vehicleOutcomeRepository;
         this.vehicleIntakeRepository = vehicleIntakeRepository;
@@ -79,6 +81,7 @@ public class VehicleOutcomeService {
         this.particularCaseClosureService = particularCaseClosureService;
         this.particularEffectiveStateRecalculator = particularEffectiveStateRecalculator;
         this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
+        this.cleasDownstreamGate = cleasDownstreamGate;
     }
 
     @Transactional(readOnly = true)
@@ -97,6 +100,7 @@ public class VehicleOutcomeService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
         caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "egreso.crear");
+        cleasDownstreamGate.requireAllowed(caseEntity);
 
         VehicleIntakeEntity intake = vehicleIntakeRepository.findById(request.intakeId())
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el ingreso " + request.intakeId()));
@@ -169,6 +173,7 @@ public class VehicleOutcomeService {
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el egreso " + outcomeId));
         CaseEntity caseEntity = requireCase(entity.getCaseId());
         caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "egreso.crear");
+        cleasDownstreamGate.requireAllowed(caseEntity);
 
         requireActiveUser(request.deliveredByUserId(), "No existe el usuario que entrega ");
         requirePersonIfPresent(request.receivedByPersonId(), "No existe la persona que recibe ");

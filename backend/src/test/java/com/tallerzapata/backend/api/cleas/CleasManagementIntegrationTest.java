@@ -145,6 +145,50 @@ class CleasManagementIntegrationTest {
     }
 
     @Test
+    void shouldBlockCleasDownstreamReadinessUntilItsDefinitionExists() throws Exception {
+        mockMvc.perform(get("/api/v1/cases/100/readiness").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[2].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[3].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[4].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("No se puede avanzar hasta recibir el dictamen."));
+    }
+
+    @Test
+    void shouldRejectGenericBudgetWritesBeforeTheCleasDefinitionAllowsDownstreamWork() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/budget").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"budgetDate\":\"2026-08-01\",\"reportStatusCode\":\"BORRADOR\",\"laborWithoutVat\":0,\"vatRate\":21,\"partsTotal\":0}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("No se puede avanzar hasta recibir el dictamen."));
+    }
+
+    @Test
+    void shouldKeepAccessoryWorksOutOfTheCleasAgreementCalculation() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scopeCode\":\"DANIO_TOTAL\",\"opinionCode\":\"A_FAVOR\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/v1/cases/100/budget").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"budgetDate\":\"2026-08-01\",\"reportStatusCode\":\"BORRADOR\",\"laborWithoutVat\":0,\"vatRate\":21,\"partsTotal\":0,\"accessoryWorks\":[{\"affectedPiece\":\"Moldura lateral\",\"actionCode\":\"REEMPLAZAR_Y_PINTAR\",\"damageLevelCode\":\"LEVE\",\"replacementAmount\":30000}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalQuoted").value(0));
+
+        mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"agreedAmount\":100000}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.includesParts").value(false));
+
+        mockMvc.perform(put("/api/v1/cases/100/cleas/insurance").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"insuranceCompanyId\":1}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100/cleas/summary").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.agreedAmount").value(100000))
+                .andExpect(jsonPath("$.amountToBillCompany").value(100000));
+    }
+
+    @Test
     void shouldKeepSharedFaultCleasOpenRegardlessOfScope() throws Exception {
         mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scopeCode\":\"DANIO_TOTAL\",\"opinionCode\":\"CULPA_COMPARTIDA\"}"))

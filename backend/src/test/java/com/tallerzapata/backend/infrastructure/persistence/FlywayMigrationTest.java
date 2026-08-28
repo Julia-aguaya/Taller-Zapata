@@ -36,6 +36,13 @@ class FlywayMigrationTest {
     }
 
     @Test
+    void legacyIssuedReceiptsKeepTheirOwnDatabaseIdentityAfterFiscalIdentitySplit() {
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'COMPROBANTES_EMITIDOS' AND COLUMN_NAME = 'NUMERO_COMPROBANTE_LEGACY' AND IS_GENERATED = 'ALWAYS'", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_NAME = 'COMPROBANTES_EMITIDOS' AND INDEX_NAME = 'uq_comprobantes_emitidos_identidad_legacy' AND NON_UNIQUE = 0", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM flyway_schema_history WHERE version = '87' AND success = 1", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
     void providerMigrationAddsNullableReferencesWithoutBackfill() {
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'PROVEEDORES' AND COLUMN_NAME = 'PUBLIC_ID' AND DATA_TYPE = 'CHARACTER' AND CHARACTER_MAXIMUM_LENGTH = 36 AND IS_NULLABLE = 'NO'", Integer.class)).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME IN ('REPUESTOS_CASO', 'COTIZACIONES_REPUESTO', 'PRESUPUESTOS', 'CASO_TRAMITACION_SEGURO') AND COLUMN_NAME = 'PROVEEDOR_ID' AND IS_NULLABLE = 'YES'", Integer.class)).isEqualTo(4);

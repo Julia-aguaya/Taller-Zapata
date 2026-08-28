@@ -5,6 +5,7 @@ import com.tallerzapata.backend.api.operation.RepairAppointmentResponse;
 import com.tallerzapata.backend.api.operation.RepairAppointmentUpdateRequest;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.CaseWorkflowService;
+import com.tallerzapata.backend.application.cleas.CleasDownstreamGate;
 import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.common.ConflictException;
@@ -59,6 +60,7 @@ public class RepairAppointmentService {
     private final InsuranceProcessingRepository insuranceProcessingRepository;
     private final CaseTypeRepository caseTypeRepository;
     private final CasePartRepository casePartRepository;
+    private final CleasDownstreamGate cleasDownstreamGate;
 
     public RepairAppointmentService(
             RepairAppointmentRepository repairAppointmentRepository,
@@ -75,7 +77,8 @@ public class RepairAppointmentService {
             TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator,
             InsuranceProcessingRepository insuranceProcessingRepository,
             CaseTypeRepository caseTypeRepository,
-            CasePartRepository casePartRepository
+            CasePartRepository casePartRepository,
+            CleasDownstreamGate cleasDownstreamGate
     ) {
         this.repairAppointmentRepository = repairAppointmentRepository;
         this.repairAppointmentStatusRepository = repairAppointmentStatusRepository;
@@ -92,6 +95,7 @@ public class RepairAppointmentService {
         this.insuranceProcessingRepository = insuranceProcessingRepository;
         this.caseTypeRepository = caseTypeRepository;
         this.casePartRepository = casePartRepository;
+        this.cleasDownstreamGate = cleasDownstreamGate;
     }
 
     @Transactional(readOnly = true)
@@ -113,6 +117,7 @@ public class RepairAppointmentService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
         caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "turno.crear");
+        cleasDownstreamGate.requireAllowed(caseEntity);
 
         // Para tramites con seguro: validar que la cotizacion este acordada
         CaseTypeEntity caseType = caseTypeRepository.findById(caseEntity.getCaseTypeId()).orElse(null);
@@ -191,6 +196,7 @@ public class RepairAppointmentService {
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el turno " + appointmentId));
         CaseEntity caseEntity = requireCase(entity.getCaseId());
         caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "turno.editar");
+        cleasDownstreamGate.requireAllowed(caseEntity);
 
         String statusCode = normalizeStatusCode(request.statusCode());
         requireActiveUser(request.userId());

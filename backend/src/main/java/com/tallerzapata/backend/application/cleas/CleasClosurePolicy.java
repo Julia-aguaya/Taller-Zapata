@@ -10,7 +10,7 @@ public class CleasClosurePolicy {
     public static final String ADVERSE_TOTAL_BLOCK = "Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra.";
 
     public boolean blocksDownstream(CaseCleasEntity definition) {
-        if (definition == null) return false;
+        if (definition == null) return true;
         if ("PENDIENTE".equals(definition.getOpinionCode())) return true;
         return "DANIO_TOTAL".equals(definition.getScopeCode()) && "EN_CONTRA".equals(definition.getOpinionCode());
     }

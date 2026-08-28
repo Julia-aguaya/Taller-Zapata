@@ -17,9 +17,9 @@ export const CLEAS_TAB_CODES = ['FICHA_TECNICA', 'GESTION_TRAMITE', 'PRESUPUESTO
 
 const createDefaultCleasTab = (tabCode) => ({
   tabCode,
-  allowed: true,
+  allowed: tabCode === 'FICHA_TECNICA' || tabCode === 'GESTION_TRAMITE',
   completed: false,
-  blockingReasons: [],
+  blockingReasons: tabCode === 'FICHA_TECNICA' || tabCode === 'GESTION_TRAMITE' ? [] : ['No se pudo verificar si esta etapa está habilitada.'],
   warningReasons: [],
 });
 

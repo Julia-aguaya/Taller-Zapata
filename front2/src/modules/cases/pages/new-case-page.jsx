@@ -42,7 +42,7 @@ const createInitialState = () => ({
 });
 
 export const requiresReferenciador = (referenced, referenciadorId) => referenced === 'SI' && !referenciadorId;
-export const hasReferenciadorName = (value) => value.trim().split(/\s+/).length >= 2;
+export const hasReferenciadorName = (value) => Boolean(value.trim());
 
 export const NewCasePage = () => {
   const [createdCase, setCreatedCase] = useState(null);
@@ -54,6 +54,7 @@ export const NewCasePage = () => {
   const [personSearch, setPersonSearch] = useState('');
   const [vehicleSearch, setVehicleSearch] = useState('');
   const [referenciadorSearch, setReferenciadorSearch] = useState('');
+  const [newReferenciadorPhone, setNewReferenciadorPhone] = useState('');
   const [selectedReferenciadorId, setSelectedReferenciadorId] = useState(null);
   const [errors, setErrors] = useState({});
   const [form, setForm] = useState(createInitialState());
@@ -170,7 +171,7 @@ export const NewCasePage = () => {
       const newReferenciador = form.referenced === 'SI' && !referenciadorId
         ? (() => {
         const [nombre, ...apellido] = referenciadorSearch.trim().split(/\s+/);
-          return { nombre, apellido: apellido.join(' '), telefono: '' };
+          return { nombre, apellido: apellido.join(' '), telefono: newReferenciadorPhone.trim() };
         })()
         : null;
 
@@ -296,7 +297,7 @@ export const NewCasePage = () => {
       if (!form.vehicle.modelText?.trim()) fieldErrors.vehicleModelo = 'El modelo es obligatorio';
       if (!form.vehicle.plate?.trim()) fieldErrors.vehiclePatente = 'El dominio es obligatorio';
     }
-    if (requiresReferenciador(form.referenced, selectedReferenciadorId) && !hasReferenciadorName(referenciadorSearch)) fieldErrors.referenciador = 'Ingresá nombre y apellido del referenciador';
+    if (requiresReferenciador(form.referenced, selectedReferenciadorId) && !hasReferenciadorName(referenciadorSearch)) fieldErrors.referenciador = 'Ingresá el nombre del referenciador';
     if (Object.keys(fieldErrors).length > 0) {
       setErrors(fieldErrors);
       toast.error('Completá los campos obligatorios antes de crear la carpeta.');
@@ -335,7 +336,7 @@ export const NewCasePage = () => {
       if (!form.vehicle.modelText?.trim()) reasons.push('Falta el modelo del vehículo');
       if (!form.vehicle.plate?.trim()) reasons.push('Falta el dominio del vehículo');
     }
-    if (requiresReferenciador(form.referenced, selectedReferenciadorId) && !hasReferenciadorName(referenciadorSearch)) reasons.push('Falta seleccionar o ingresar nombre y apellido del referenciador');
+    if (requiresReferenciador(form.referenced, selectedReferenciadorId) && !hasReferenciadorName(referenciadorSearch)) reasons.push('Falta seleccionar o ingresar el nombre del referenciador');
     return reasons;
   }, [form, selectedPersonId, selectedVehicleId, showOrgSelector, resolvedScope]);
 
@@ -428,7 +429,7 @@ export const NewCasePage = () => {
                         ))}
                       </div>
                     ) : referenciadorSearch.length >= 2 && !referenciadorQuery.isFetching ? (
-                      <p className="mt-1 text-xs text-muted-foreground">Sin resultados. Escribí el nombre completo para crear uno nuevo.</p>
+                      <div className="mt-2 space-y-2 rounded-xl border border-dashed p-3"><p className="text-xs text-muted-foreground">Sin resultados. Se creará “{referenciadorSearch}” junto con la carpeta.</p><Input value={newReferenciadorPhone} onChange={(event) => setNewReferenciadorPhone(event.target.value)} placeholder="Teléfono (opcional)" /></div>
                     ) : null}
                   </div>
                 )}

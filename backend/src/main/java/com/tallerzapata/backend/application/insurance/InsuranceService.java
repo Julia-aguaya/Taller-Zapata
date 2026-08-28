@@ -659,6 +659,7 @@ public class InsuranceService {
     private String partsAuthorizationCodeValue(JsonNode node) {
         if (node.isNull()) return null;
         String code = normalizeCode(node.asText());
+        if ("PENDIENTE".equals(code)) return null;
         if (!Set.of("TOTAL", "PARCIAL", "RECHAZADO").contains(code) || !partsAuthorizationRepository.existsByCodeAndActiveTrue(code)) {
             throw new ConflictException("partsAuthorizationCode no permitido: " + node.asText());
         }

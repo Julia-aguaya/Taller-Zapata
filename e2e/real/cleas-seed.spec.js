@@ -102,4 +102,45 @@ test.describe('CLEAS E2E seed', () => {
     await expect(page.getByRole('button', { name: /Trámite:/ })).toBeDisabled();
     await expect(page.getByRole('button', { name: /Reparación:/ })).toBeDisabled();
   });
+
+  test('crea el flujo CLEAS completo desde definición hasta liquidación', { tag: ['@e2e', '@cleas', '@critical'] }, async ({ page }) => {
+    await login(page);
+    await page.goto('/cases/9505');
+    await page.getByRole('tab', { name: 'Gestión del Trámite' }).click();
+
+    const definition = page.getByText('Definición del CLEAS').locator('..').locator('..').locator('..');
+    await definition.getByLabel('CLEAS sobre').selectOption('DANIO_TOTAL');
+    await definition.getByLabel('Dictamen').selectOption('A_FAVOR');
+    await definition.getByRole('button', { name: 'Guardar' }).click();
+    await expect(page.getByText('Definición CLEAS guardada.')).toBeVisible();
+
+    const procedure = page.getByText('Tramitación').locator('..').locator('..').locator('..');
+    await procedure.getByLabel('Fecha presentado').fill('2026-08-28');
+    await procedure.getByLabel('Monto de cotización acordada').fill('100000');
+    await procedure.getByRole('button', { name: 'Guardar' }).click();
+    await expect(page.getByText('Tramitación CLEAS guardada.')).toBeVisible();
+
+    await page.getByRole('tab', { name: 'Presupuesto' }).click();
+    await page.getByPlaceholder('Ej: Guardabarros del. der.').fill('Paragolpes delantero');
+    await page.locator('tbody input[type="number"]').first().fill('100000');
+    await page.getByRole('button', { name: 'Generar presupuesto' }).click();
+    await expect(page.getByText('Presupuesto generado y comparación creada.')).toBeVisible();
+
+    await openPayments(page, 9505);
+    const invoicePanel = page.getByTestId('cleas-invoice-panel');
+    await invoicePanel.getByLabel('Número fiscal').fill('00950005');
+    await invoicePanel.getByLabel('Razón social').fill('Aseguradora E2E S.A.');
+    await invoicePanel.getByRole('button', { name: 'Registrar factura' }).click();
+    await expect(page.getByText('Factura CLEAS registrada.')).toBeVisible();
+
+    const paymentPanel = page.getByTestId('cleas-company-payment-panel');
+    await paymentPanel.getByLabel('Bruto que cancela').fill('100000');
+    await paymentPanel.getByLabel('O subir comprobante CLEAS').setInputFiles({ name: 'pago-9505.txt', mimeType: 'text/plain', buffer: Buffer.from('comprobante E2E flujo completo') });
+    await paymentPanel.getByTestId('cleas-company-payment-submit').click();
+    await expect(page.getByText('Pago CLEAS de la compañía registrado.')).toBeVisible();
+
+    const pdfResponse = page.waitForResponse((response) => response.url().includes('/cases/9505/cleas/liquidation-pdf'));
+    await paymentPanel.getByTestId('cleas-liquidation-pdf').click();
+    expect((await pdfResponse).headers()['content-type']).toContain('application/pdf');
+  });
 });

@@ -173,8 +173,11 @@ public class CleasManagementService {
         if (!documentCategoryRepository.findById(document.getCategoryId()).filter(category -> "ORDEN_CLEAS".equals(category.getCode()) && CLEAS_MODULE.equals(category.getModuleCode()) && Boolean.TRUE.equals(category.getActive())).isPresent()) {
             throw new ConflictException("El documento debe usar la categoria ORDEN_CLEAS");
         }
-        if (documentRelationRepository.existsByDocumentIdAndEntityTypeAndEntityId(document.getId(), "CASO", caseId)) throw new ConflictException("El documento ya esta relacionado con este caso");
-        DocumentRelationEntity relation = new DocumentRelationEntity();
+        DocumentRelationEntity relation = documentRelationRepository.findByDocumentIdOrderByVisualOrderAscIdAsc(document.getId()).stream()
+                .filter(existing -> caseId.equals(existing.getCaseId()) && "CASO".equals(existing.getEntityType()) && caseId.equals(existing.getEntityId()))
+                .findFirst()
+                .orElseGet(DocumentRelationEntity::new);
+        if (CLEAS_MODULE.equals(relation.getModuleCode())) throw new ConflictException("El documento ya esta relacionado como orden CLEAS");
         relation.setDocumentId(document.getId());
         relation.setCaseId(caseId);
         relation.setEntityType("CASO");

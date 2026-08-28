@@ -19,6 +19,7 @@ export const CleasProcedureSection = ({ caseId, cleasOver, opinion, cleasAgreedA
   const [form, setForm] = useState(emptyProcessing);
   const [orderDocumentId, setOrderDocumentId] = useState('');
   const processingQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'processing'], queryFn: () => getCleasProcessing(caseId) });
+  const definitionQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'definition'], queryFn: () => requestJson(`/cases/${caseId}/cleas/definition`) });
   const ordersQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'orders'], queryFn: () => listCleasOrders(caseId) });
   const catalogsQuery = useQuery({ queryKey: ['insurance', 'catalogs'], queryFn: () => requestJson('/insurance/catalogs') });
 
@@ -28,18 +29,31 @@ export const CleasProcedureSection = ({ caseId, cleasOver, opinion, cleasAgreedA
     setCleasAgreedAmount?.(processingQuery.data.agreedAmount == null ? '' : String(processingQuery.data.agreedAmount));
   }, [processingQuery.data]);
 
-  const invalidateProcessing = () => Promise.all([queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'processing'] }), queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }), queryClient.invalidateQueries({ queryKey: ['cases'] })]);
+  const invalidateProcessing = () => Promise.all([queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'processing'] }), queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'definition'] }), queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }), queryClient.invalidateQueries({ queryKey: ['cases'] })]);
   const processingMutation = useMutation({
     mutationFn: () => {
       const payload = { expectedVersion: processingQuery.data?.version ?? 0 };
       processingFields.forEach((field) => { const value = field === 'agreedAmount' ? toNumberOrNull(form[field]) : (form[field] === '' ? null : form[field]); if (value !== (processingQuery.data?.[field] ?? null)) payload[field] = value; });
       const saveProcessing = Object.keys(payload).length === 1 ? Promise.resolve(processingQuery.data) : saveCleasProcessing(caseId, payload);
-      return Promise.all([saveProcessing, saveCleasDefinition(caseId, { scopeCode: cleasOver === 'franchise' ? 'FRANQUICIA' : 'DANIO_TOTAL', opinionCode: ({ pending: 'PENDIENTE', favorable: 'A_FAVOR', unfavorable: 'EN_CONTRA', shared: 'CULPA_COMPARTIDA' })[opinion], franchiseAmount: toNumberOrNull(cleasFranchiseDistribution.franchiseAmount), customerChargeAmount: isUnfavorableFranchise ? agreedAmount - amountToBill : null, customerPaymentStatusCode: cleasFranchiseDistribution.companyPaymentStatus || null, customerPaymentDate: cleasFranchiseDistribution.companyPaymentDate || null, companyFranchisePaymentAmount: isUnfavorableFranchise ? toNumberOrNull(cleasFranchiseDistribution.companyRequiredAmount) : null, companyFranchisePaymentStatusCode: cleasFranchiseDistribution.companyPaymentStatus || null, companyFranchisePaymentDate: cleasFranchiseDistribution.companyPaymentDate || null })]);
+      const currentDefinition = definitionQuery.data;
+      if (cleasOver !== 'franchise' || !currentDefinition) return saveProcessing;
+      const nextDefinition = {
+        ...currentDefinition,
+        franchiseAmount: toNumberOrNull(cleasFranchiseDistribution.franchiseAmount),
+        customerChargeAmount: isUnfavorableFranchise ? agreedAmount - amountToBill : null,
+        customerPaymentStatusCode: cleasFranchiseDistribution.companyPaymentStatus || null,
+        customerPaymentDate: cleasFranchiseDistribution.companyPaymentDate || null,
+        companyFranchisePaymentAmount: isUnfavorableFranchise ? toNumberOrNull(cleasFranchiseDistribution.companyRequiredAmount) : null,
+        companyFranchisePaymentStatusCode: cleasFranchiseDistribution.companyPaymentStatus || null,
+        companyFranchisePaymentDate: cleasFranchiseDistribution.companyPaymentDate || null,
+      };
+      const definitionChanged = Object.keys(nextDefinition).some((field) => String(nextDefinition[field] ?? '') !== String(currentDefinition[field] ?? ''));
+      return definitionChanged ? Promise.all([saveProcessing, saveCleasDefinition(caseId, nextDefinition)]) : saveProcessing;
     },
     onSuccess: async () => { await invalidateProcessing(); toast.success('Tramitación CLEAS guardada.'); },
     onError: (error) => toast.error(error.message || 'No se pudo guardar la tramitación CLEAS.'),
   });
-  const createOrderMutation = useMutation({ mutationFn: () => { if (!orderDocumentId) throw new Error('Ingresá el ID del documento ORDEN_CLEAS.'); return createCleasOrder(caseId, { documentId: Number(orderDocumentId), principal: false, visibleToCustomer: false, visualOrder: (ordersQuery.data ?? []).length }); }, onSuccess: async () => { setOrderDocumentId(''); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'orders'] }); toast.success('Orden CLEAS vinculada.'); }, onError: (error) => toast.error(error.message || 'No se pudo vincular la orden.') });
+  const createOrderMutation = useMutation({ mutationFn: () => { if (!orderDocumentId) throw new Error('Elegí una orden desde Documentación.'); return createCleasOrder(caseId, { documentId: Number(orderDocumentId), principal: false, visibleToCustomer: false, visualOrder: (ordersQuery.data ?? []).length }); }, onSuccess: async () => { setOrderDocumentId(''); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'orders'] }); toast.success('Orden CLEAS vinculada.'); }, onError: (error) => toast.error(error.message || 'No se pudo vincular la orden.') });
   const deleteOrderMutation = useMutation({ mutationFn: (relationId) => deleteCleasOrder(caseId, relationId), onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'orders'] }); toast.success('Orden CLEAS desvinculada.'); }, onError: (error) => toast.error(error.message || 'No se pudo desvincular la orden.') });
   const agreedAmount = Number(cleasAgreedAmount || form.agreedAmount) || 0;
   const isUnfavorableFranchise = cleasOver === 'franchise' && opinion === 'unfavorable';
