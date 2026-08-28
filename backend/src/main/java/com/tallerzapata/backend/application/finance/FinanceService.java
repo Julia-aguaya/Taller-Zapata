@@ -187,6 +187,7 @@ public class FinanceService {
         CaseEntity caseEntity = requireCase(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "finanza.crear");
         validateReceiptRequest(request);
+        if (receiptRepository.existsByReceiptTypeCodeAndReceiptNumber(normalizeCode(request.receiptTypeCode()), request.receiptNumber().trim())) throw new ConflictException("Ya existe un comprobante con ese tipo y número");
 
         IssuedReceiptEntity entity = new IssuedReceiptEntity();
         entity.setCaseId(caseId);

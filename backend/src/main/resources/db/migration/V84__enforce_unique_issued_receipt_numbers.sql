@@ -1,0 +1,1 @@
+ALTER TABLE comprobantes_emitidos ADD CONSTRAINT uq_comprobantes_emitidos_tipo_numero UNIQUE (tipo_comprobante_codigo, numero_comprobante);

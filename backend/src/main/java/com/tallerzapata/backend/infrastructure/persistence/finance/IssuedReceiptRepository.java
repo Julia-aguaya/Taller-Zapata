@@ -10,4 +10,5 @@ public interface IssuedReceiptRepository extends JpaRepository<IssuedReceiptEnti
     List<IssuedReceiptEntity> findByCaseId(Long caseId, Sort sort);
     Optional<IssuedReceiptEntity> findByIdAndCaseId(Long id, Long caseId);
     List<IssuedReceiptEntity> findByOriginalReceiptId(Long originalReceiptId);
+    boolean existsByReceiptTypeCodeAndReceiptNumber(String receiptTypeCode, String receiptNumber);
 }
