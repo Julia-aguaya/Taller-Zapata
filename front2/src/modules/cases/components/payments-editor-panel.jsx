@@ -65,6 +65,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [localClientPaymentRequest, setLocalClientPaymentRequest] = useState(null);
   const [cancelMovement, setCancelMovement] = useState(null);
+  const [franchiseCompanyPayment, setFranchiseCompanyPayment] = useState({ statusCode: 'COBRADO', paymentDate: new Date().toISOString().slice(0, 10) });
   const paymentDocumentInputRef = useRef(null);
   const companyPaymentSubmittingRef = useRef(false);
   const clientPaymentSubmittingRef = useRef(false);
@@ -86,6 +87,11 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const blockCleasPayments = Boolean(cleasWorkflowGuard) || isClosedCleas;
   const isUnfavorableFranchise = isCleas && cleasOver === 'franchise' && cleasOpinion === 'unfavorable';
   const franchiseSummaryQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'franchise-summary'], queryFn: () => getCleasFranchisePaymentSummary(caseId), enabled: isUnfavorableFranchise });
+  const franchiseCompanyPaymentMutation = useMutation({
+    mutationFn: () => registerCleasCompanyFranchisePayment(caseId, franchiseCompanyPayment),
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'franchise-summary'] }); toast.success('Pago del cliente a la compañía actualizado.'); },
+    onError: (error) => toast.error(error.message || 'No pude actualizar el pago a la compañía.'),
+  });
   const cleasNumberDisplay = nroCleas?.trim() ? nroCleas : 'Sin número de CLEAS cargado';
   const franchiseAmount = toAmount(cleasFranchiseDistribution?.franchiseAmount);
   const companyRequiredAmount = toAmount(cleasFranchiseDistribution?.companyRequiredAmount);
@@ -324,7 +330,9 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-3">
               {franchiseClientAmount > 0 ? <Button type="button" onClick={() => setLocalClientPaymentRequest({ concept: 'FRANQUICIA', amount: String(franchiseClientAmount) })}>+ Registrar pago al taller</Button> : null}
-              <Button type="button" variant="outline" onClick={() => registerCleasCompanyFranchisePayment(caseId, { statusCode: 'COBRADO', paymentDate: new Date().toISOString().slice(0, 10) }).then(() => queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'franchise-summary'] }))}>Confirmar pago cliente → Cía.</Button>
+              <Select aria-label="Estado pago a compañía" value={franchiseCompanyPayment.statusCode} onChange={(event) => setFranchiseCompanyPayment((current) => ({ ...current, statusCode: event.target.value }))} options={[{ value: 'PENDIENTE', label: 'Pendiente' }, { value: 'COBRADO', label: 'Cobrado' }, { value: 'NO_APLICA', label: 'No aplica' }]} />
+              <Input aria-label="Fecha pago a compañía" type="date" value={franchiseCompanyPayment.paymentDate} onChange={(event) => setFranchiseCompanyPayment((current) => ({ ...current, paymentDate: event.target.value }))} />
+              <Button type="button" variant="outline" disabled={franchiseCompanyPaymentMutation.isPending} onClick={() => franchiseCompanyPaymentMutation.mutate()}>Guardar pago cliente → Cía.</Button>
             </div>
          </Card>
        ) : null}

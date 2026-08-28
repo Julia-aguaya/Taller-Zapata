@@ -438,6 +438,8 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.getByRole('heading', { name: 'Registrar pago' })).toBeTruthy();
     expect(screen.getByLabelText('Monto')).toHaveValue(500000);
     expect(screen.getByLabelText('Cancela saldo')).toHaveValue('FRANQUICIA');
+    expect(screen.getByLabelText('Estado pago a compañía')).toHaveValue('COBRADO');
+    expect(screen.getByLabelText('Fecha pago a compañía')).toHaveValue(new Date().toISOString().slice(0, 10));
   });
 
   it('shows CLEAS payment draft fields and only reveals retentions when selected', () => {
