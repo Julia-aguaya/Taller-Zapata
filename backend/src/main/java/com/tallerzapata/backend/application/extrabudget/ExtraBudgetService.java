@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.application.extrabudget;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.tallerzapata.backend.api.extrabudget.ExtraBudgetDraftRequest;
 import com.tallerzapata.backend.api.extrabudget.ExtraBudgetActivationRequest;
@@ -183,6 +184,8 @@ public class ExtraBudgetService {
                 header.setActive(true);
                 if (!hasSubstantiveData(header)) createEmptyCanonicalItem(currentVersion(header));
                 record(header, currentVersion(header), "ACTIVAR", user.id(), null);
+            } else if (!request.active()) {
+                throw new ConflictException("El presupuesto extra ya está desactivado");
             }
         }
         budgets.saveAndFlush(header);
@@ -263,7 +266,7 @@ public class ExtraBudgetService {
         ExtraBudgetVersionEntity revision = newVersion(header, header.getCurrentVersion() + 1);
         revision = versions.saveAndFlush(revision);
         List<ExtraBudgetItemRequest> copied = items.findByExtraBudgetVersionIdOrderByVisualOrderAsc(previous.getId()).stream()
-                .map(item -> new ExtraBudgetItemRequest(item.getVisualOrder(), item.getDescription(), item.getQuantity(), item.getPartUnitAmount(), item.getLaborUnitAmount(), null, null)).toList();
+                .map(item -> new ExtraBudgetItemRequest(item.getVisualOrder(), item.getDescription(), item.getQuantity(), item.getPartUnitAmount(), item.getLaborUnitAmount(), null, null, item.getAffectedPiece(), item.getTaskCode(), item.getActionCode(), item.getDamageLevelCode(), item.getPartsAmount(), item.getActive())).toList();
         replaceManualItems(revision, copied);
         revision.setGeneralLaborAmount(previous.getGeneralLaborAmount());
         revision.setGeneralLaborVatApplies(previous.getGeneralLaborVatApplies());
@@ -360,7 +363,11 @@ public class ExtraBudgetService {
                 .orElseThrow(() -> new ResourceNotFoundException("No existe la versión extra solicitada"));
         if (version.getPdfSnapshotJson() == null) throw new ConflictException("La versión todavía no tiene un documento extra congelado");
         try {
-            return pdf.generate(objectMapper.readValue(version.getPdfSnapshotJson(), ExtraBudgetPdfService.Snapshot.class));
+            JsonNode node = objectMapper.readTree(version.getPdfSnapshotJson());
+            while (node.isTextual()) {
+                node = objectMapper.readTree(node.asText());
+            }
+            return pdf.generate(objectMapper.readValue(objectMapper.writeValueAsString(node), ExtraBudgetPdfService.Snapshot.class));
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("No se pudo leer el documento extra congelado", exception);
         }
