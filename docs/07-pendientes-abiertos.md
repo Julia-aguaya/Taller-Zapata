@@ -13,7 +13,6 @@
 
 - modelo exacto de permisos para abogados multi-taller
 - que validaciones bloquean duro y cuales permiten confirmar
-- formulas finales para escenarios complejos de CLEAS sobre franquicia
 - modelo de notificaciones a administrador y usuarios
 
 ## Riesgos de implementacion

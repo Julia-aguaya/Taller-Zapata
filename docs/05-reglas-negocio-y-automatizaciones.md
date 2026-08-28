@@ -30,6 +30,15 @@ Deben mostrarse solo cuando corresponda, por ejemplo:
 - sus pagos y anulaciones no modifican franquicia, saldo de franquicia, monto facturable ni saldo de la compañía;
 - el presupuesto accesorio sólo habilita su propio pago tras aceptación del cliente y conserva su propia trazabilidad documental y PDF.
 
+## CLEAS
+
+- el alcance `DANIO_TOTAL` se factura íntegramente a la compañía cuando el dictamen es `A_FAVOR` o `CULPA_COMPARTIDA`; el dictamen permanece visible y auditable;
+- `DANIO_TOTAL` con dictamen `EN_CONTRA` no permite continuar, facturar, cobrar ni generar liquidación; el caso se cierra;
+- `FRANQUICIA` con dictamen `A_FAVOR` factura a la compañía el total acordado y no genera cargo al cliente;
+- `FRANQUICIA` con dictamen `EN_CONTRA` calcula el cargo del cliente como `franquicia - importe exigido por la compañía`, limitado al total de la reparación; la compañía recibe el remanente;
+- las notas de crédito sólo se aplican a facturas del mismo caso, nunca superan su saldo y conservan tipo fiscal y punto de venta de la factura original;
+- el pago cliente → compañía puede documentarse de forma opcional y su evidencia queda vinculada y auditada en el caso CLEAS.
+
 ## Automatizaciones requeridas
 
 - calculo de prescripcion
