@@ -340,7 +340,7 @@ public class CleasManagementService {
 
     @Transactional(readOnly = true)
     public byte[] liquidationPdf(Long caseId) {
-        CaseEntity caseEntity = requireCleasCase(caseId);
+        CaseEntity caseEntity = requireEditableCleasCase(caseId);
         requireAccess(caseEntity, "finanza.ver");
         return cleasLiquidationPdfService.generate(caseId);
     }
