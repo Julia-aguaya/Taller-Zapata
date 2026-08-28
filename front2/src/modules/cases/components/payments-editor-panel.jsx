@@ -735,6 +735,7 @@ const CleasInvoicePanel = ({ caseId, onSaved }) => {
   const summaryQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'summary'], queryFn: () => getCleasCompanyPaymentSummary(caseId) });
   const receiptsQuery = useQuery({ queryKey: ['cases', String(caseId), 'receipts'], queryFn: () => listReceipts(caseId) });
   const [form, setForm] = useState({ receiptNumber: '', receiverBusinessName: '', issuedDate: new Date().toISOString().slice(0, 10) });
+  const [creditForm, setCreditForm] = useState({ originalReceiptId: '', receiptNumber: '', issuedDate: new Date().toISOString().slice(0, 10), amount: '' });
   const invoiceMutation = useMutation({
     mutationFn: () => createReceipt(caseId, {
       receiptTypeCode: 'FACTURA', receiptNumber: form.receiptNumber.trim(), receiverBusinessName: form.receiverBusinessName.trim(), issuedDate: form.issuedDate,
@@ -756,6 +757,12 @@ const CleasInvoicePanel = ({ caseId, onSaved }) => {
 
   const agreedAmount = toAmount(summaryQuery.data.agreedAmount);
   const invoices = (receiptsQuery.data ?? []).filter((receipt) => receipt.receiptTypeCode === 'FACTURA');
+  const selectedInvoice = invoices.find((invoice) => String(invoice.id) === creditForm.originalReceiptId);
+  const creditMutation = useMutation({
+    mutationFn: () => createReceipt(caseId, { receiptTypeCode: 'NOTA_CREDITO', receiptNumber: creditForm.receiptNumber.trim(), receiverBusinessName: selectedInvoice.receiverBusinessName, issuedDate: creditForm.issuedDate, taxableNet: toAmount(creditForm.amount), vatAmount: 0, total: toAmount(creditForm.amount), comprobanteFiscal: null, notes: null, originalReceiptId: selectedInvoice.id }),
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'receipts'] }); setCreditForm({ originalReceiptId: '', receiptNumber: '', issuedDate: new Date().toISOString().slice(0, 10), amount: '' }); toast.success('Nota de crédito registrada.'); },
+    onError: (error) => toast.error(error.message || 'No pude registrar la nota de crédito.'),
+  });
   const canSubmit = agreedAmount > 0 && Boolean(form.receiptNumber.trim()) && Boolean(form.receiverBusinessName.trim()) && Boolean(form.issuedDate) && !invoiceMutation.isPending;
 
   return (
@@ -768,6 +775,7 @@ const CleasInvoicePanel = ({ caseId, onSaved }) => {
       <Field label="Fecha de emisión"><Input type="date" value={form.issuedDate} onChange={(event) => setForm((current) => ({ ...current, issuedDate: event.target.value }))} /></Field>
     </div>
     <div className="mt-5"><Button type="button" disabled={!canSubmit} onClick={() => invoiceMutation.mutate()}>+ Registrar factura</Button></div>
+    {invoices.length > 0 ? <div className="mt-5 rounded-2xl border border-border/60 p-4"><p className="text-sm font-semibold">Nota de crédito parcial</p><div className="mt-3 grid gap-3 md:grid-cols-4"><Select aria-label="Factura a acreditar" value={creditForm.originalReceiptId} onChange={(event) => setCreditForm((current) => ({ ...current, originalReceiptId: event.target.value }))} options={[{ value: '', label: 'Seleccionar factura...' }, ...invoices.map((invoice) => ({ value: String(invoice.id), label: `${invoice.receiptNumber} - ${formatCurrency(invoice.total)}` }))]} /><Input aria-label="N.º de nota de crédito" value={creditForm.receiptNumber} onChange={(event) => setCreditForm((current) => ({ ...current, receiptNumber: event.target.value }))} /><Input aria-label="Monto nota de crédito" type="number" min="0" step="0.01" value={creditForm.amount} onChange={(event) => setCreditForm((current) => ({ ...current, amount: event.target.value }))} /><Input aria-label="Fecha nota de crédito" type="date" value={creditForm.issuedDate} onChange={(event) => setCreditForm((current) => ({ ...current, issuedDate: event.target.value }))} /></div><div className="mt-3"><Button type="button" variant="outline" disabled={!selectedInvoice || !creditForm.receiptNumber.trim() || toAmount(creditForm.amount) <= 0 || creditMutation.isPending} onClick={() => creditMutation.mutate()}>Registrar nota de crédito</Button></div></div> : null}
     <div className="mt-5">
       <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Facturas del caso</p>
       {invoices.length === 0 ? <p className="text-sm text-muted-foreground">Sin facturas registradas.</p> : <ul className="space-y-2">{invoices.map((invoice) => <li key={invoice.id} className="flex flex-wrap justify-between gap-2 rounded-2xl border border-border/60 px-4 py-3 text-sm"><span>{invoice.receiptNumber} - {invoice.receiverBusinessName}</span><strong>{formatCurrency(invoice.total)}</strong></li>)}</ul>}

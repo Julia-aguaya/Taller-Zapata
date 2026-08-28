@@ -9,4 +9,5 @@ import java.util.Optional;
 public interface IssuedReceiptRepository extends JpaRepository<IssuedReceiptEntity, Long> {
     List<IssuedReceiptEntity> findByCaseId(Long caseId, Sort sort);
     Optional<IssuedReceiptEntity> findByIdAndCaseId(Long id, Long caseId);
+    List<IssuedReceiptEntity> findByOriginalReceiptId(Long originalReceiptId);
 }

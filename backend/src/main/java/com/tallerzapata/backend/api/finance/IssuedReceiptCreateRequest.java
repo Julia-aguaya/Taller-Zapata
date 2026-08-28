@@ -19,6 +19,7 @@ public record IssuedReceiptCreateRequest(
         String comprobanteFiscal,
         LocalDateTime signedAt,
         String notes,
-        Long documentId
+        Long documentId,
+        Long originalReceiptId
 ) {
 }

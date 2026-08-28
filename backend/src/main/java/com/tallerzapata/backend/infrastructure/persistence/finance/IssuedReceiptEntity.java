@@ -45,6 +45,8 @@ public class IssuedReceiptEntity {
     private String comprobanteFiscal;
     @Column(name = "documento_id")
     private Long documentId;
+    @Column(name = "comprobante_origen_id")
+    private Long originalReceiptId;
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
     @Column(name = "updated_at", insertable = false, updatable = false)
@@ -77,6 +79,8 @@ public class IssuedReceiptEntity {
     public void setComprobanteFiscal(String comprobanteFiscal) { this.comprobanteFiscal = comprobanteFiscal; }
     public Long getDocumentId() { return documentId; }
     public void setDocumentId(Long documentId) { this.documentId = documentId; }
+    public Long getOriginalReceiptId() { return originalReceiptId; }
+    public void setOriginalReceiptId(Long originalReceiptId) { this.originalReceiptId = originalReceiptId; }
     public LocalDateTime getCreatedAt() { return createdAt; }
     public LocalDateTime getUpdatedAt() { return updatedAt; }
 }

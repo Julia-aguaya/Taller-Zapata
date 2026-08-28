@@ -55,13 +55,13 @@ class FinanceIntegrationTest {
                 new BigDecimal("900.00"),
                 "TRANSFERENCIA",
                 "Alias taller",
-                "FRANQUICIA",
+                "PRESUPUESTO",
                 false,
                 false,
                 "Pago parcial",
                 "TX-001",
                 List.of(new FinancialMovementRetentionRequest("IIBB", new BigDecimal("100.00"), "Retencion provincial")),
-                List.of(new FinancialMovementApplicationRequest("FRANQUICIA", "CASO", 100L, new BigDecimal("900.00")))
+                List.of()
         );
 
         mockMvc.perform(post("/api/v1/cases/100/financial-movements")
@@ -208,6 +208,8 @@ class FinanceIntegrationTest {
     void shouldRejectInvalidTodoRiesgoFranchiseAndRestoreOnlyFranchiseWhenAnnulled() throws Exception {
         Long caseId = createTodoRiesgoCase();
         jdbcTemplate.update("INSERT INTO caso_franquicia (caso_id, estado_franquicia_codigo, monto_franquicia, tipo_recupero_codigo) VALUES (?, ?, ?, ?)", caseId, "SIN_DEFINIR", new BigDecimal("100.00"), "TERCERO");
+        jdbcTemplate.update("INSERT INTO caso_seguro (caso_id, compania_seguro_id) VALUES (?, ?)", caseId, 1L);
+        jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_cotizacion, monto_acordado, monto_facturar_compania) VALUES (?, ?, ?, ?)", caseId, LocalDate.of(2026, 5, 11), new BigDecimal("100.00"), new BigDecimal("100.00"));
 
         postFranchiseMovement(caseId, "INGRESO", "101.00").andExpect(status().isConflict())
                 .andExpect(jsonPath("$.message").value("El pago no puede superar la franquicia pendiente"));
@@ -254,6 +256,7 @@ class FinanceIntegrationTest {
                 null,
                 null,
                 "Factura inicial",
+                null,
                 null
         );
 
@@ -269,6 +272,20 @@ class FinanceIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.movementTypeCodes.length()").isNumber())
                 .andExpect(jsonPath("$.receiptTypeCodes.length()").isNumber());
+    }
+
+    @Test
+    void shouldCreatePartialCreditNoteWithoutExceedingItsOriginalInvoice() throws Exception {
+        String invoice = mockMvc.perform(post("/api/v1/cases/100/receipts").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"receiptTypeCode\":\"FACTURA\",\"receiptNumber\":\"A-1\",\"receiverBusinessName\":\"Aseguradora SA\",\"issuedDate\":\"2026-05-11\",\"taxableNet\":1000,\"vatAmount\":0,\"total\":1000}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long invoiceId = objectMapper.readTree(invoice).get("id").asLong();
+        mockMvc.perform(post("/api/v1/cases/100/receipts").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"receiptTypeCode\":\"NOTA_CREDITO\",\"receiptNumber\":\"NC-1\",\"receiverBusinessName\":\"Aseguradora SA\",\"issuedDate\":\"2026-05-12\",\"taxableNet\":400,\"vatAmount\":0,\"total\":400,\"originalReceiptId\":" + invoiceId + "}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.originalReceiptId").value(invoiceId));
+        mockMvc.perform(post("/api/v1/cases/100/receipts").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"receiptTypeCode\":\"NOTA_CREDITO\",\"receiptNumber\":\"NC-2\",\"receiverBusinessName\":\"Aseguradora SA\",\"issuedDate\":\"2026-05-12\",\"taxableNet\":700,\"vatAmount\":0,\"total\":700,\"originalReceiptId\":" + invoiceId + "}"))
+                .andExpect(status().isConflict());
     }
 
     @Test

@@ -201,6 +201,7 @@ public class FinanceService {
         entity.setNotes(blankToNull(request.notes()));
         entity.setComprobanteFiscal(blankToNull(request.comprobanteFiscal()));
         entity.setDocumentId(request.documentId());
+        entity.setOriginalReceiptId(request.originalReceiptId());
         entity = receiptRepository.save(entity);
 
         caseAuditService.register(currentUser.id(), caseId, "comprobantes_emitidos", entity.getId(), "crear_comprobante_emitido", null, caseAuditService.toJson(Map.of("receiptTypeCode", entity.getReceiptTypeCode(), "total", entity.getTotal())), caseAuditService.toJson(Map.of("domain", "finanzas")), httpRequest);
@@ -414,6 +415,13 @@ public class FinanceService {
         if (!issuedReceiptTypeRepository.existsByCodeAndActiveTrue(normalizeCode(request.receiptTypeCode()))) throw new ConflictException("receiptTypeCode no permitido: " + request.receiptTypeCode());
         if (request.documentId() != null && documentRepository.findByIdAndActiveTrue(request.documentId()).isEmpty()) throw new ResourceNotFoundException("No existe el documento " + request.documentId());
         if (scale(request.taxableNet()).add(scale(request.vatAmount())).compareTo(scale(request.total())) != 0) throw new ConflictException("total debe ser igual a taxableNet + vatAmount");
+        if ("NOTA_CREDITO".equals(normalizeCode(request.receiptTypeCode()))) {
+            if (request.originalReceiptId() == null) throw new ConflictException("La nota de crédito debe indicar una factura original");
+            IssuedReceiptEntity original = receiptRepository.findById(request.originalReceiptId()).orElseThrow(() -> new ConflictException("La nota de crédito debe indicar una factura original"));
+            if (!"FACTURA".equals(original.getReceiptTypeCode())) throw new ConflictException("La nota de crédito solo puede aplicarse a una factura");
+            BigDecimal credited = receiptRepository.findByOriginalReceiptId(original.getId()).stream().map(item -> scale(item.getTotal())).reduce(BigDecimal.ZERO, BigDecimal::add);
+            if (credited.add(scale(request.total())).compareTo(scale(original.getTotal())) > 0) throw new ConflictException("La nota de crédito supera el saldo de la factura original");
+        } else if (request.originalReceiptId() != null) throw new ConflictException("Solo una nota de crédito puede vincular una factura original");
     }
 
     private void saveRetentions(Long movementId, List<FinancialMovementRetentionRequest> requests) {
@@ -577,7 +585,7 @@ public class FinanceService {
     }
 
     private IssuedReceiptResponse toReceiptResponse(IssuedReceiptEntity entity) {
-        return new IssuedReceiptResponse(entity.getId(), entity.getPublicId(), entity.getCaseId(), entity.getReceiptTypeCode(), entity.getReceiptNumber(), entity.getReceiverBusinessName(), entity.getIssuedDate(), entity.getTaxableNet(), entity.getVatAmount(), entity.getTotal(), entity.getComprobanteFiscal(), entity.getSignedAt(), entity.getNotes(), entity.getDocumentId(), entity.getCreatedAt(), entity.getUpdatedAt());
+        return new IssuedReceiptResponse(entity.getId(), entity.getPublicId(), entity.getCaseId(), entity.getReceiptTypeCode(), entity.getReceiptNumber(), entity.getReceiverBusinessName(), entity.getIssuedDate(), entity.getTaxableNet(), entity.getVatAmount(), entity.getTotal(), entity.getComprobanteFiscal(), entity.getSignedAt(), entity.getNotes(), entity.getDocumentId(), entity.getOriginalReceiptId(), entity.getCreatedAt(), entity.getUpdatedAt());
     }
 
     private Map<String, Object> movementSnapshot(FinancialMovementEntity entity) {

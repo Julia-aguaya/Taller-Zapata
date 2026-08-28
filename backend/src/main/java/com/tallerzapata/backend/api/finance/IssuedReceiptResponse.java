@@ -19,6 +19,7 @@ public record IssuedReceiptResponse(
         LocalDateTime signedAt,
         String notes,
         Long documentId,
+        Long originalReceiptId,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
