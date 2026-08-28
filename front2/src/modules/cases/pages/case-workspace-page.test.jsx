@@ -343,37 +343,31 @@ describe('CaseWorkspacePage UI', () => {
     await renderPage(workspace);
 
     await user.click(screen.getByRole('tab', { name: /gestión del trámite/i }));
-    await user.type(screen.getByLabelText('Cía. aseguradora del cliente'), 'Aseguradora Uno');
     await user.type(screen.getByLabelText('N.º de siniestro'), 'SIN-99');
     await user.click(screen.getByRole('tab', { name: /pagos/i }));
 
-    expect(screen.getByLabelText('Factura CLEAS')).toHaveValue('Aseguradora Uno');
+    expect(screen.getByLabelText('Factura CLEAS')).toHaveValue('');
     expect(screen.getByLabelText('Siniestro CLEAS')).toHaveValue('SIN-99');
   });
 
-  it.each([
-    ['pending', 'No se puede avanzar hasta recibir el dictamen.'],
-    ['unfavorable', 'Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra.'],
-  ])('bloquea inmediatamente las etapas posteriores para dictamen %s', async (opinion, message) => {
+  it('muestra los bloqueos downstream que entrega readiness para dictamen pendiente', async () => {
     const user = userEvent.setup();
     await renderPage({
       ...baseWorkspace,
       caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'CLEAS' },
       readiness: { ...baseWorkspace.readiness, caseTypeCode: 'CLEAS', tabs: [
         { tabCode: 'GESTION_TRAMITE', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
-        { tabCode: 'PRESUPUESTO', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
-        { tabCode: 'GESTION_REPARACION', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
-        { tabCode: 'PAGOS', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+        { tabCode: 'PRESUPUESTO', allowed: false, completed: false, blockingReasons: ['No se puede avanzar hasta recibir el dictamen.'], warningReasons: [] },
+        { tabCode: 'GESTION_REPARACION', allowed: false, completed: false, blockingReasons: ['No se puede avanzar hasta recibir el dictamen.'], warningReasons: [] },
+        { tabCode: 'PAGOS', allowed: false, completed: false, blockingReasons: ['No se puede avanzar hasta recibir el dictamen.'], warningReasons: [] },
       ] },
     });
 
-    await user.click(screen.getByRole('tab', { name: /gestión del trámite/i }));
-    await user.selectOptions(screen.getAllByLabelText('Dictamen')[0], opinion);
     for (const name of [/presupuesto/i, /gestión reparación/i, /pagos/i]) {
       const tab = screen.getByRole('tab', { name });
       expect(tab).toHaveAttribute('aria-disabled', 'true');
       await user.click(tab);
-      expect(screen.getByText(message)).toBeInTheDocument();
+      expect(screen.getAllByText('No se puede avanzar hasta recibir el dictamen.').length).toBeGreaterThan(0);
     }
   });
 
@@ -390,8 +384,8 @@ describe('CaseWorkspacePage UI', () => {
     const rendered = await renderPage(workspace);
 
     await user.click(screen.getByRole('tab', { name: /gestión del trámite/i }));
-    await user.selectOptions(screen.getByLabelText('CLEAS sobre'), 'franchise');
-    await user.selectOptions(screen.getAllByLabelText('Dictamen')[0], 'unfavorable');
+    await user.selectOptions(screen.getByLabelText('CLEAS sobre'), 'FRANQUICIA');
+    await user.selectOptions(screen.getAllByLabelText('Dictamen')[0], 'EN_CONTRA');
     await user.type(screen.getByLabelText('Monto de franquicia'), '1000000');
     await user.selectOptions(screen.getByLabelText('¿La Cía. exige pago de franquicia?'), 'PARCIAL');
     await user.type(screen.getByLabelText('Monto que la Cía. exige al cliente'), '500000');
@@ -416,8 +410,8 @@ describe('CaseWorkspacePage UI', () => {
     await renderPage(workspace);
 
     fireEvent.click(screen.getByRole('tab', { name: /gestión del trámite/i }));
-    fireEvent.change(screen.getByLabelText('CLEAS sobre'), { target: { value: 'franchise' } });
-    fireEvent.change(screen.getAllByLabelText('Dictamen')[0], { target: { value: 'unfavorable' } });
+    fireEvent.change(screen.getByLabelText('CLEAS sobre'), { target: { value: 'FRANQUICIA' } });
+    fireEvent.change(screen.getAllByLabelText('Dictamen')[0], { target: { value: 'EN_CONTRA' } });
     fireEvent.change(screen.getByLabelText('Monto de franquicia'), { target: { value: '1000000' } });
     fireEvent.change(screen.getByLabelText('¿La Cía. exige pago de franquicia?'), { target: { value: 'TOTAL' } });
     fireEvent.change(screen.getByLabelText('Monto de franquicia'), { target: { value: '1200000' } });
@@ -470,25 +464,22 @@ describe('CaseWorkspacePage UI', () => {
     expect(screen.getByTestId('cleas-payments-ui')).toHaveTextContent('{"invoiceAcknowledged":false,"hasRetentions":"NO","paymentDocumentName":""}');
   });
 
-  it('confirma el cierre visual CLEAS, bloquea etapas posteriores y mantiene gestión de solo lectura', async () => {
+  it('hidrata el cierre persistido y los bloqueos adversos desde el workspace', async () => {
     const user = userEvent.setup();
     const workspace = {
       ...baseWorkspace,
-      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'CLEAS' },
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'CLEAS', closedAt: '2026-08-27T12:00:00Z' },
       readiness: { ...baseWorkspace.readiness, caseTypeCode: 'CLEAS', tabs: [
         { tabCode: 'FICHA_TECNICA', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
         { tabCode: 'GESTION_TRAMITE', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+        { tabCode: 'PRESUPUESTO', allowed: false, completed: false, blockingReasons: ['Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra.'], warningReasons: [] },
+        { tabCode: 'GESTION_REPARACION', allowed: false, completed: false, blockingReasons: ['Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra.'], warningReasons: [] },
+        { tabCode: 'PAGOS', allowed: false, completed: false, blockingReasons: ['Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra.'], warningReasons: [] },
       ] },
     };
     await renderPage(workspace);
 
     await user.click(screen.getByRole('tab', { name: /gestión del trámite/i }));
-    await user.selectOptions(screen.getAllByLabelText('Dictamen')[0], 'unfavorable');
-    expect(screen.getByRole('alert')).toHaveTextContent('Dictamen en contra');
-    await user.click(screen.getByRole('button', { name: 'Cerrar caso' }));
-    expect(screen.getByRole('heading', { name: '¿Cerrar caso CLEAS?' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Confirmar cierre' }));
-
     expect(screen.getAllByText('Caso cerrado').length).toBeGreaterThan(0);
     expect(screen.getByRole('alert')).toHaveTextContent('Cerrado por dictamen CLEAS en contra');
     expect(screen.getByLabelText('CLEAS sobre')).toBeDisabled();
@@ -504,7 +495,7 @@ describe('CaseWorkspacePage UI', () => {
     expect(mockOverrideVisibleState).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('tab', { name: /pagos/i }));
-    expect(screen.getByText('Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra.')).toBeInTheDocument();
+    expect(screen.getAllByText('Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra.').length).toBeGreaterThan(0);
     expect(screen.getByRole('tab', { name: /pagos/i })).toHaveAttribute('aria-disabled', 'true');
   });
 
@@ -520,34 +511,32 @@ describe('CaseWorkspacePage UI', () => {
     });
 
     await user.click(screen.getByRole('tab', { name: /gestión del trámite/i }));
-    await user.selectOptions(screen.getByLabelText('CLEAS sobre'), 'franchise');
-    await user.selectOptions(screen.getAllByLabelText('Dictamen')[0], 'unfavorable');
+    await user.selectOptions(screen.getByLabelText('CLEAS sobre'), 'FRANQUICIA');
+    await user.selectOptions(screen.getAllByLabelText('Dictamen')[0], 'EN_CONTRA');
     expect(screen.queryByRole('button', { name: 'Cerrar caso' })).toBeNull();
     await user.click(screen.getByRole('tab', { name: /pagos/i }));
     expect(screen.getByRole('tab', { name: /pagos/i })).toHaveAttribute('aria-disabled', 'false');
     expect(screen.queryByText('Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra.')).toBeNull();
   });
 
-  it('does not close a CLEAS case when the closure confirmation is cancelled and resets closure on case change', async () => {
+  it('confirma el cierre mediante el endpoint backend, sin simular estado local', async () => {
     const user = userEvent.setup();
     const workspace = {
       ...baseWorkspace,
       caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'CLEAS' },
       readiness: { ...baseWorkspace.readiness, caseTypeCode: 'CLEAS', tabs: [{ tabCode: 'GESTION_TRAMITE', allowed: true, completed: false, blockingReasons: [], warningReasons: [] }] },
     };
-    const rendered = await renderPage(workspace);
+    await renderPage(workspace);
     await user.click(screen.getByRole('tab', { name: /gestión del trámite/i }));
-    await user.selectOptions(screen.getAllByLabelText('Dictamen')[0], 'unfavorable');
+    await user.selectOptions(screen.getAllByLabelText('Dictamen')[0], 'EN_CONTRA');
     await user.click(screen.getByRole('button', { name: 'Cerrar caso' }));
     await user.click(screen.getByRole('button', { name: 'Cancelar' }));
-    expect(screen.queryByText('Caso cerrado')).toBeNull();
+    expect(mockRequestJson).not.toHaveBeenCalledWith('/cases/1/cleas/close', { method: 'POST' });
 
     await user.click(screen.getByRole('button', { name: 'Cerrar caso' }));
     await user.click(screen.getByRole('button', { name: 'Confirmar cierre' }));
-    expect(screen.getByText('Cerrado por dictamen CLEAS en contra', { exact: false })).toBeInTheDocument();
-    currentCaseId = '2';
-    rendered.rerender(<CaseWorkspacePage />);
-    await waitFor(() => expect(screen.queryByText('Caso cerrado')).toBeNull());
+    expect(mockRequestJson).toHaveBeenCalledWith('/cases/1/cleas/close', { method: 'POST' });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '1', 'workspace'] });
   });
 
   it('muestra saldo pendiente de presupuesto y no saldo $0 como pago completo', async () => {

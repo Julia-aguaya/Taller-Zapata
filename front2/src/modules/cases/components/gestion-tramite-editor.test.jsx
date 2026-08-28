@@ -104,8 +104,8 @@ describe('GestionTramiteEditor', () => {
   it('calculates the unfavorable franchise distribution and preserves signed negative results', () => {
     mount({ caseTypeCode: 'CLEAS' });
 
-    fireEvent.change(screen.getByLabelText('CLEAS sobre'), { target: { value: 'franchise' } });
-    fireEvent.change(screen.getAllByLabelText('Dictamen')[0], { target: { value: 'unfavorable' } });
+    fireEvent.change(screen.getByLabelText('CLEAS sobre'), { target: { value: 'FRANQUICIA' } });
+    fireEvent.change(screen.getAllByLabelText('Dictamen')[0], { target: { value: 'EN_CONTRA' } });
     fireEvent.change(screen.getByLabelText('Monto de cotización acordada'), { target: { value: '2000000' } });
     fireEvent.change(screen.getByLabelText('Monto de franquicia'), { target: { value: '1000000' } });
     fireEvent.change(screen.getByLabelText('¿La Cía. exige pago de franquicia?'), { target: { value: 'PARCIAL' } });
@@ -123,8 +123,8 @@ describe('GestionTramiteEditor', () => {
 
   it('forces a zero company requirement when the company does not require franchise payment', () => {
     mount({ caseTypeCode: 'CLEAS' });
-    fireEvent.change(screen.getByLabelText('CLEAS sobre'), { target: { value: 'franchise' } });
-    fireEvent.change(screen.getAllByLabelText('Dictamen')[0], { target: { value: 'unfavorable' } });
+    fireEvent.change(screen.getByLabelText('CLEAS sobre'), { target: { value: 'FRANQUICIA' } });
+    fireEvent.change(screen.getAllByLabelText('Dictamen')[0], { target: { value: 'EN_CONTRA' } });
     fireEvent.change(screen.getByLabelText('Monto que la Cía. exige al cliente'), { target: { value: '900' } });
     fireEvent.change(screen.getByLabelText('¿La Cía. exige pago de franquicia?'), { target: { value: 'NO' } });
 
@@ -134,8 +134,8 @@ describe('GestionTramiteEditor', () => {
 
   it('keeps the total company requirement synchronized when the franchise amount changes', () => {
     mount({ caseTypeCode: 'CLEAS' });
-    fireEvent.change(screen.getByLabelText('CLEAS sobre'), { target: { value: 'franchise' } });
-    fireEvent.change(screen.getAllByLabelText('Dictamen')[0], { target: { value: 'unfavorable' } });
+    fireEvent.change(screen.getByLabelText('CLEAS sobre'), { target: { value: 'FRANQUICIA' } });
+    fireEvent.change(screen.getAllByLabelText('Dictamen')[0], { target: { value: 'EN_CONTRA' } });
     fireEvent.change(screen.getByLabelText('Monto de cotización acordada'), { target: { value: '2000000' } });
     fireEvent.change(screen.getByLabelText('Monto de franquicia'), { target: { value: '1000000' } });
     fireEvent.change(screen.getByLabelText('¿La Cía. exige pago de franquicia?'), { target: { value: 'TOTAL' } });
@@ -162,7 +162,7 @@ describe('GestionTramiteEditor', () => {
   it('keeps a favorable franchise CLEAS billable in full without customer charge or closure', () => {
     mount({ caseTypeCode: 'CLEAS' });
 
-    fireEvent.change(screen.getByLabelText('CLEAS sobre'), { target: { value: 'franchise' } });
+    fireEvent.change(screen.getByLabelText('CLEAS sobre'), { target: { value: 'FRANQUICIA' } });
     fireEvent.change(screen.getByLabelText('Monto de cotización acordada'), { target: { value: '125000' } });
     fireEvent.change(screen.getByLabelText('Monto de franquicia'), { target: { value: '80000' } });
 
@@ -179,11 +179,12 @@ describe('GestionTramiteEditor', () => {
   it('shows the adverse-total closure alert and request action without franchise amounts', () => {
     mount({ caseTypeCode: 'CLEAS' });
 
-    fireEvent.change(screen.getAllByLabelText('Dictamen')[0], { target: { value: 'unfavorable' } });
+    fireEvent.change(screen.getAllByLabelText('Dictamen')[0], { target: { value: 'EN_CONTRA' } });
 
     expect(screen.getByRole('alert')).toHaveTextContent('Dictamen en contra');
     expect(screen.getByRole('alert')).toHaveTextContent('El trámite CLEAS no puede continuar. El caso debe cerrarse; el cliente deberá reparar el vehículo por su cuenta o iniciar acciones judiciales.');
     expect(screen.getByRole('button', { name: 'Cerrar caso' })).toBeEnabled();
+    expect(screen.queryByText('Tramitación')).toBeNull();
     expect(screen.queryByLabelText('A facturar Cía.')).toBeNull();
     expect(screen.queryByText('Distribución de la franquicia')).toBeNull();
   });

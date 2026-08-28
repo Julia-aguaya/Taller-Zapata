@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Clock, Hammer, Lock, ReceiptText, Save, ShieldCheck, User, Wrench } from 'lucide-react';
 import { toast } from 'sonner';
 import { getCaseWorkspace, overrideVisibleState, searchReferenciadores, createReferenciador } from '@/modules/cases/api/cases-api';
+import { closeCleasCase } from '@/modules/cases/api/cleas-api';
 import { Card } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
@@ -163,7 +164,6 @@ export const CaseWorkspacePage = () => {
   const [cleasFranchiseDistribution, setCleasFranchiseDistribution] = useState(createCleasFranchiseDistribution);
   const [cleasOver, setCleasOver] = useState('damage');
   const [cleasOpinion, setCleasOpinion] = useState('favorable');
-  const [cleasClosedAt, setCleasClosedAt] = useState(null);
   const [showCleasClosureDialog, setShowCleasClosureDialog] = useState(false);
   const [clientPaymentRequest, setClientPaymentRequest] = useState(null);
 
@@ -175,7 +175,6 @@ export const CaseWorkspacePage = () => {
     setCleasFranchiseDistribution(createCleasFranchiseDistribution());
     setCleasOver('damage');
     setCleasOpinion('favorable');
-    setCleasClosedAt(null);
     setShowCleasClosureDialog(false);
   }, [caseId]);
 
@@ -188,6 +187,17 @@ export const CaseWorkspacePage = () => {
     mutationFn: ({ domain, stateCode }) => overrideVisibleState(caseId, domain, stateCode, overrideReason),
     onSuccess: async (_, { stateCode }) => { await refreshCaseProjection(); setOverrideModal(null); setOverrideReason(''); toast.success(stateCode ? 'Estado actualizado.' : 'Seguimiento automático restablecido.'); },
     onError: (e) => toast.error(e.message || 'No se pudo cambiar el estado.'),
+  });
+
+  const cleasClosureMutation = useMutation({
+    mutationFn: () => closeCleasCase(caseId),
+    onSuccess: async () => {
+      await refreshCaseProjection();
+      await queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] });
+      setShowCleasClosureDialog(false);
+      toast.success('Caso CLEAS cerrado por dictamen en contra.');
+    },
+    onError: (error) => toast.error(error.message || 'No se pudo cerrar el caso CLEAS.'),
   });
 
   const workspaceQuery = useQuery({
@@ -221,19 +231,11 @@ export const CaseWorkspacePage = () => {
     });
   };
   const isCleasAdverseTotal = caseDetail.caseTypeCode === 'CLEAS' && cleasOver === 'damage' && cleasOpinion === 'unfavorable';
-  const isCleasWorkflowGuard = caseDetail.caseTypeCode === 'CLEAS' && cleasOver === 'damage' && ['pending', 'unfavorable'].includes(cleasOpinion);
-  const isCleasClosed = isCleasAdverseTotal && Boolean(cleasClosedAt);
+  const isCleasClosed = caseDetail.caseTypeCode === 'CLEAS' && Boolean(caseDetail.closedAt);
   const isInsuranceRepair = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail.caseTypeCode);
   const canOverrideVisibleState = !isInsuranceRepair && !isCleasClosed;
-  const isCleasClosureBlockedTab = (tabCode) => isCleasWorkflowGuard && ['PRESUPUESTO', 'GESTION_REPARACION', 'PAGOS'].includes(tabCode);
-  const handleCleasOverChange = (value) => {
-    setCleasOver(value);
-    if (value !== 'damage' || cleasOpinion !== 'unfavorable') setCleasClosedAt(null);
-  };
-  const handleCleasOpinionChange = (value) => {
-    setCleasOpinion(value);
-    if (cleasOver !== 'damage' || value !== 'unfavorable') setCleasClosedAt(null);
-  };
+  const handleCleasOverChange = (value) => setCleasOver(value);
+  const handleCleasOpinionChange = (value) => setCleasOpinion(value);
   const overrideOptions = caseDetail.caseTypeCode === 'PARTICULAR'
     ? PARTICULAR_OVERRIDE_OPTIONS
     : isInsuranceRepair ? TODO_RIESGO_OVERRIDE_OPTIONS : DEFAULT_OVERRIDE_OPTIONS;
@@ -314,7 +316,7 @@ export const CaseWorkspacePage = () => {
             {effectiveTabs.map((tab) => {
               const Icon = getTabIcon(tab.tabCode);
               const active = selectedTab === tab.tabCode;
-               const isBlocked = !tab.allowed || isCleasClosureBlockedTab(tab.tabCode);
+               const isBlocked = !tab.allowed;
               return (
                 <button
                   key={tab.tabCode}
@@ -322,12 +324,8 @@ export const CaseWorkspacePage = () => {
                   role="tab"
                   aria-selected={active}
                   aria-disabled={isBlocked}
-                   onClick={() => {
-                     if (isCleasClosureBlockedTab(tab.tabCode)) {
-                       setSelectedTab(tab.tabCode);
-                       return;
-                     }
-                     if (isBlocked) {
+                    onClick={() => {
+                      if (isBlocked) {
                       setSelectedReadinessTab(tab);
                       return;
                     }
@@ -369,9 +367,7 @@ export const CaseWorkspacePage = () => {
         ) : null}
 
         <div className="mt-5">
-          {isCleasClosureBlockedTab(selectedTab) ? (
-            <EmptyState description={cleasOpinion === 'pending' ? 'No se puede avanzar hasta recibir el dictamen.' : 'Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra.'} />
-          ) : selectedTab === 'DETALLES' ? (
+          {selectedTab === 'DETALLES' ? (
             <CaseDetailsPanel
               caseDetail={caseDetail}
               budget={budget}
@@ -406,13 +402,13 @@ export const CaseWorkspacePage = () => {
           ) : currentTab?.tabCode === 'GESTION_TRAMITE' ? (
             caseDetail.caseTypeCode === 'RECUPERO_FRANQUICIA'
               ? <FranchiseRecoveryEditor caseId={caseId} caseDetail={caseDetail} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
-              : <GestionTramiteEditor caseId={caseId} caseDetail={caseDetail} budget={budget} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, setNroCleas, cleasInsurance, onCleasInsuranceChange: setCleasInsurance, cleasAgreedAmount, setCleasAgreedAmount, cleasFranchiseDistribution, onCleasFranchiseDistributionChange: handleCleasFranchiseDistributionChange, cleasOver, cleasOpinion, onCleasOverChange: handleCleasOverChange, onCleasOpinionChange: handleCleasOpinionChange, cleasClosedAt, onRequestCleasClosure: () => setShowCleasClosureDialog(true) } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
+               : <GestionTramiteEditor caseId={caseId} caseDetail={caseDetail} budget={budget} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, setNroCleas, cleasInsurance, onCleasInsuranceChange: setCleasInsurance, cleasAgreedAmount, setCleasAgreedAmount, cleasFranchiseDistribution, onCleasFranchiseDistributionChange: handleCleasFranchiseDistributionChange, cleasOver, cleasOpinion, onCleasOverChange: handleCleasOverChange, onCleasOpinionChange: handleCleasOpinionChange, cleasClosedAt: caseDetail.closedAt, onRequestCleasClosure: () => setShowCleasClosureDialog(true) } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'GESTION_REPARACION' ? (
             <RepairEditorPanel caseId={caseId} caseDetail={caseDetail} latestAppointment={latestAppointment} latestIntake={latestIntake} latestOutcome={latestOutcome} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'PAGOS' ? (
             caseDetail.caseTypeCode === 'RECUPERO_FRANQUICIA'
               ? <FranchiseRecoveryPaymentsEditor caseId={caseId} caseDetail={caseDetail} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
-               : <div className="space-y-5"><PaymentsEditorPanel caseId={caseId} caseDetail={caseDetail} budget={budget} particularFinanceSummary={particularFinanceSummary} clientPaymentRequest={clientPaymentRequest} onClientPaymentRequestHandled={() => setClientPaymentRequest(null)} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, cleasInsurance, onCleasInsuranceChange: setCleasInsurance, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange: setCleasPaymentsUi, cleasOver, cleasOpinion, cleasClosedAt, cleasWorkflowGuard: isCleasWorkflowGuard } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />{caseDetail.caseTypeCode !== 'PARTICULAR' ? <ExtraBudgetPaymentsPanel caseId={caseId} caseTypeCode={caseDetail.caseTypeCode} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} onRegisterClientPayment={setClientPaymentRequest} /> : null}</div>
+               : <div className="space-y-5"><PaymentsEditorPanel caseId={caseId} caseDetail={caseDetail} budget={budget} particularFinanceSummary={particularFinanceSummary} clientPaymentRequest={clientPaymentRequest} onClientPaymentRequestHandled={() => setClientPaymentRequest(null)} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, cleasInsurance, onCleasInsuranceChange: setCleasInsurance, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange: setCleasPaymentsUi, cleasOver, cleasOpinion, cleasClosedAt: caseDetail.closedAt } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />{caseDetail.caseTypeCode !== 'PARTICULAR' ? <ExtraBudgetPaymentsPanel caseId={caseId} caseTypeCode={caseDetail.caseTypeCode} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} onRegisterClientPayment={setClientPaymentRequest} /> : null}</div>
           ) : null}
         </div>
       </Card>
@@ -455,11 +451,11 @@ export const CaseWorkspacePage = () => {
         open={showCleasClosureDialog}
         onClose={() => setShowCleasClosureDialog(false)}
         title="¿Cerrar caso CLEAS?"
-        description="Esta acción indica que el dictamen fue en contra y que el trámite no continuará. Por ahora es solo una simulación visual y no modificará datos reales."
+        description="Esta acción cierra la carpeta de forma permanente. Solo aplica a CLEAS sobre daño total con dictamen en contra ya guardado."
       >
         <div className="flex gap-3">
           <Button variant="outline" className="flex-1" onClick={() => setShowCleasClosureDialog(false)}>Cancelar</Button>
-          <Button variant="destructive" className="flex-1" onClick={() => { if (isCleasAdverseTotal) setCleasClosedAt(new Date().toISOString()); setShowCleasClosureDialog(false); }}>Confirmar cierre</Button>
+          <Button variant="destructive" className="flex-1" onClick={() => cleasClosureMutation.mutate()} disabled={!isCleasAdverseTotal || cleasClosureMutation.isPending}>Confirmar cierre</Button>
         </div>
       </Dialog>
 
