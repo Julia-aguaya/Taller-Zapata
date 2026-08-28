@@ -127,9 +127,9 @@ class CleasManagementIntegrationTest {
     }
 
     @Test
-    void shouldBlockCleasDownstreamReadinessWhileOpinionIsPending() throws Exception {
+    void shouldBlockCleasDownstreamReadinessWhileOpinionIsPendingRegardlessOfScope() throws Exception {
         mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"scopeCode\":\"DANIO_TOTAL\",\"opinionCode\":\"PENDIENTE\"}"))
+                        .content("{\"scopeCode\":\"FRANQUICIA\",\"opinionCode\":\"PENDIENTE\"}"))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/cases/100/readiness").header("X-User-Id", "3"))
@@ -138,6 +138,19 @@ class CleasManagementIntegrationTest {
                 .andExpect(jsonPath("$.tabs[3].allowed").value(false))
                 .andExpect(jsonPath("$.tabs[4].allowed").value(false))
                 .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("No se puede avanzar hasta recibir el dictamen."));
+    }
+
+    @Test
+    void shouldKeepSharedFaultCleasOpenRegardlessOfScope() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scopeCode\":\"DANIO_TOTAL\",\"opinionCode\":\"CULPA_COMPARTIDA\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100/readiness").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[2].allowed").value(true))
+                .andExpect(jsonPath("$.tabs[3].allowed").value(true))
+                .andExpect(jsonPath("$.tabs[4].allowed").value(true));
     }
 
     @Test
