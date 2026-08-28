@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ban, Building2, CheckCircle, FileDown, Receipt, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { createFinancialMovement, createReceipt, getClientPaymentPdfUrl, getFinanceCatalogs, getReceiptPdfUrl, listFinancialMovements, listReceipts } from '@/modules/cases/api/finance-api';
-import { annulCleasCompanyPayment, downloadCleasLiquidationPdf, getCleasCompanyPaymentSummary, getCleasFranchisePaymentSummary, registerCleasCompanyFranchisePayment, registerCleasCompanyPayment, registerCleasCustomerFranchisePayment } from '@/modules/cases/api/cleas-api';
+import { annulCleasCompanyPayment, annulCleasCustomerFranchisePayment, downloadCleasLiquidationPdf, getCleasCompanyPaymentSummary, getCleasFranchisePaymentSummary, registerCleasCompanyFranchisePayment, registerCleasCompanyPayment, registerCleasCustomerFranchisePayment } from '@/modules/cases/api/cleas-api';
 import { extraBudgetQueryKey, registerExtraBudgetPayment } from '@/modules/cases/api/extra-budget-api';
 import { requestJson } from '@/shared/api/http-client';
 import { readStoredAuth } from '@/shared/auth/session-storage';
@@ -553,6 +553,9 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
             if (isCleas && m.flowOriginCode === 'ASEGURADORA' && m.cancellationTypeCode === 'COMPANIA') {
               await annulCleasCompanyPayment(caseId, m.id);
               await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'summary'] });
+            } else if (isUnfavorableFranchise && m.flowOriginCode === 'CLIENTE' && m.cancellationTypeCode === 'FRANQUICIA') {
+              await annulCleasCustomerFranchisePayment(caseId, m.id);
+              await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'franchise-summary'] });
             } else {
               await createFinancialMovement(caseId, {
                 movementTypeCode: 'EGRESO', flowOriginCode: m.flowOriginCode || 'CLIENTE',

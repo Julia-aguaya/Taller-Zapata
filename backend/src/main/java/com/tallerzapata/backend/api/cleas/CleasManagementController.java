@@ -98,6 +98,10 @@ public class CleasManagementController {
     public CleasFranchisePaymentSummaryResponse registerCustomerFranchisePayment(@PathVariable Long caseId, @Valid @RequestBody CleasCustomerFranchisePaymentRequest request, HttpServletRequest httpRequest) { return service.registerCustomerFranchisePayment(caseId, request, httpRequest); }
 
     @PreAuthorize("hasAuthority('finanza.crear')")
+    @PostMapping("/customer-franchise-payments/{movementId}/annul")
+    public CleasFranchisePaymentSummaryResponse annulCustomerFranchisePayment(@PathVariable Long caseId, @PathVariable Long movementId, @RequestBody(required = false) CleasCompanyPaymentAnnulmentRequest request, HttpServletRequest httpRequest) { return service.annulCustomerFranchisePayment(caseId, movementId, request, httpRequest); }
+
+    @PreAuthorize("hasAuthority('finanza.crear')")
     @PostMapping("/franchise-company-payment")
     public CleasFranchisePaymentSummaryResponse registerCompanyFranchisePayment(@PathVariable Long caseId, @Valid @RequestBody CleasCompanyFranchisePaymentRequest request, HttpServletRequest httpRequest) { return service.registerCompanyFranchisePayment(caseId, request, httpRequest); }
 

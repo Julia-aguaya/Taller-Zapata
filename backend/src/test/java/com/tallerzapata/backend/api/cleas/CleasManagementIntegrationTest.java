@@ -360,9 +360,18 @@ class CleasManagementIntegrationTest {
 
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ? AND origen_flujo_codigo = 'CLIENTE' AND cancela_tipo_codigo = 'FRANQUICIA'", Integer.class, 100L)).isEqualTo(1);
 
+        Long movementId = jdbcTemplate.queryForObject("SELECT id FROM movimientos_financieros WHERE caso_id = ? AND tipo_movimiento_codigo = 'INGRESO' AND origen_flujo_codigo = 'CLIENTE' AND cancela_tipo_codigo = 'FRANQUICIA'", Long.class, 100L);
+        mockMvc.perform(post("/api/v1/cases/100/cleas/customer-franchise-payments/" + movementId + "/annul").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"Pago duplicado\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.customerPaidAmount").value(0))
+                .andExpect(jsonPath("$.customerPendingAmount").value(500));
+        assertThat(jdbcTemplate.queryForObject("SELECT estado_pago_cliente_codigo FROM caso_cleas WHERE caso_id = 100", String.class)).isEqualTo("PENDIENTE");
+
         mockMvc.perform(post("/api/v1/cases/100/cleas/customer-franchise-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"amount\":100,\"paymentMethodCode\":\"EFECTIVO\"}"))
-                .andExpect(status().isConflict());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.customerPendingAmount").value(400));
     }
 
     @Test

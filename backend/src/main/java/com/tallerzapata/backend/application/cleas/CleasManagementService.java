@@ -399,6 +399,24 @@ public class CleasManagementService {
     }
 
     @Transactional
+    public CleasFranchisePaymentSummaryResponse annulCustomerFranchisePayment(Long caseId, Long movementId, CleasCompanyPaymentAnnulmentRequest request, HttpServletRequest httpRequest) {
+        CaseEntity caseEntity = requireEditableCleasCase(caseId);
+        AuthenticatedUser currentUser = requireAccess(caseEntity, "finanza.crear");
+        var cleas = caseCleasRepository.findByCaseId(caseId).orElseThrow(() -> new ConflictException("El caso no tiene definicion CLEAS"));
+        FinancialMovementEntity original = financialMovementRepository.findById(movementId).filter(item -> caseId.equals(item.getCaseId())).orElseThrow(() -> new ResourceNotFoundException("No existe el pago de franquicia " + movementId));
+        if (!"INGRESO".equals(normalizeCode(original.getMovementTypeCode())) || !"CLIENTE".equals(normalizeCode(original.getFlowOriginCode())) || !"FRANQUICIA".equals(normalizeCode(original.getCancellationTypeCode()))) throw new ConflictException("Solo puede anularse un pago de franquicia del cliente");
+        boolean alreadyAnnulled = financialMovementRepository.findByCaseId(caseId, Sort.unsorted()).stream().anyMatch(item -> original.getPublicId() != null && original.getPublicId().equals(item.getExternalReference()));
+        if (alreadyAnnulled) throw new ConflictException("El pago de franquicia ya fue anulado");
+        FinancialMovementEntity reversal = new FinancialMovementEntity();
+        reversal.setCaseId(caseId); reversal.setMovementTypeCode("EGRESO"); reversal.setFlowOriginCode("CLIENTE"); reversal.setCounterpartyTypeCode("PERSONA"); reversal.setCounterpartyPersonId(original.getCounterpartyPersonId()); reversal.setMovementAt(LocalDateTime.now()); reversal.setGrossAmount(money(original.getGrossAmount())); reversal.setNetAmount(money(original.getNetAmount())); reversal.setPaymentMethodCode(original.getPaymentMethodCode()); reversal.setCancellationTypeCode("FRANQUICIA"); reversal.setAdvancePayment(false); reversal.setBonification(false); reversal.setExternalReference(original.getPublicId()); reversal.setReason(request == null || blankToNull(request.reason()) == null ? "Anulacion de pago de franquicia CLEAS" : blankToNull(request.reason())); reversal.setRegisteredBy(currentUser.id()); financialMovementRepository.saveAndFlush(reversal);
+        CleasFranchisePaymentSummaryResponse updated = franchiseSummary(caseEntity);
+        cleas.setCustomerPaymentStatusCode(updated.customerPendingAmount().signum() <= 0 ? "COBRADO" : "PENDIENTE");
+        caseCleasRepository.save(cleas);
+        caseAuditService.register(currentUser.id(), caseId, "movimientos_financieros", movementId, "anular_pago_franquicia_cleas", null, caseAuditService.toJson(Map.of("movementId", movementId)), caseAuditService.toJson(Map.of("domain", CLEAS_MODULE)), httpRequest);
+        return updated;
+    }
+
+    @Transactional
     public CleasFranchisePaymentSummaryResponse registerCompanyFranchisePayment(Long caseId, CleasCompanyFranchisePaymentRequest request, HttpServletRequest httpRequest) {
         CaseEntity caseEntity = requireEditableCleasCase(caseId);
         AuthenticatedUser currentUser = requireAccess(caseEntity, "finanza.crear");

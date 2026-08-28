@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { requestBlob, requestJson } from '@/shared/api/http-client';
-import { annulCleasCompanyPayment, closeCleasCase, createCleasOrder, deleteCleasOrder, downloadCleasLiquidationPdf, getCleasCompanyPaymentSummary, getCleasDefinition, getCleasIncident, getCleasInsurance, getCleasProcessing, listCleasOrders, registerCleasCompanyPayment, saveCleasDefinition, saveCleasIncident, saveCleasInsurance, saveCleasProcessing } from './cleas-api';
+import { annulCleasCompanyPayment, annulCleasCustomerFranchisePayment, closeCleasCase, createCleasOrder, deleteCleasOrder, downloadCleasLiquidationPdf, getCleasCompanyPaymentSummary, getCleasDefinition, getCleasIncident, getCleasInsurance, getCleasProcessing, listCleasOrders, registerCleasCompanyPayment, saveCleasDefinition, saveCleasIncident, saveCleasInsurance, saveCleasProcessing } from './cleas-api';
 
 vi.mock('@/shared/api/http-client', () => ({ requestJson: vi.fn(), requestBlob: vi.fn() }));
 
@@ -30,9 +30,11 @@ describe('cleas-api', () => {
 
   it('annuls a company payment and downloads the liquidation PDF', () => {
     annulCleasCompanyPayment(42, 99, { reason: 'Error de registro' });
+    annulCleasCustomerFranchisePayment(42, 100, { reason: 'Duplicado' });
     downloadCleasLiquidationPdf(42);
 
     expect(requestJson).toHaveBeenCalledWith('/cases/42/cleas/company-payments/99/annul', { method: 'POST', body: JSON.stringify({ reason: 'Error de registro' }) });
+    expect(requestJson).toHaveBeenCalledWith('/cases/42/cleas/customer-franchise-payments/100/annul', { method: 'POST', body: JSON.stringify({ reason: 'Duplicado' }) });
     expect(requestBlob).toHaveBeenCalledWith('/cases/42/cleas/liquidation-pdf');
   });
 });
