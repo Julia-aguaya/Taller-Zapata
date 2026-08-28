@@ -136,4 +136,64 @@ class CleasManagementIntegrationTest {
                 .andExpect(jsonPath("$.tabs[4].allowed").value(false))
                 .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("No se puede avanzar hasta recibir el dictamen."));
     }
+
+    @Test
+    void shouldRegisterCompanyPaymentsAgainstTheCleasAgreementAndCalculateTheSummaryOnTheBackend() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scopeCode\":\"DANIO_TOTAL\",\"opinionCode\":\"A_FAVOR\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/cases/100/cleas/insurance").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"insuranceCompanyId\":1}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-08-02\",\"agreedAmount\":1000}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100/cleas/summary").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.agreedAmount").value(1000))
+                .andExpect(jsonPath("$.paidAmount").value(0))
+                .andExpect(jsonPath("$.pendingAmount").value(1000));
+
+        mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":400,\"movementAt\":\"2026-08-03T10:30:00\",\"paymentMethodCode\":\"TRANSFERENCIA\",\"externalReference\":\"CLEAS-400\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.amount").value(400))
+                .andExpect(jsonPath("$.reason").value("Pago CLEAS de compania"));
+
+        mockMvc.perform(get("/api/v1/cases/100/cleas/summary").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.paidAmount").value(400))
+                .andExpect(jsonPath("$.pendingAmount").value(600));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ? AND tipo_movimiento_codigo = 'INGRESO' AND origen_flujo_codigo = 'ASEGURADORA' AND contraparte_tipo_codigo = 'COMPANIA' AND cancela_tipo_codigo = 'COMPANIA'", Integer.class, 100L)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'registrar_pago_compania_cleas'", Integer.class, 100L)).isEqualTo(1);
+    }
+
+    @Test
+    void shouldRejectCompanyPaymentsOutsideTheCleasEligibilityAndBalanceRules() throws Exception {
+        mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":100,\"paymentMethodCode\":\"TRANSFERENCIA\"}"))
+                .andExpect(status().isConflict());
+
+        mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scopeCode\":\"DANIO_TOTAL\",\"opinionCode\":\"A_FAVOR\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/cases/100/cleas/insurance").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"insuranceCompanyId\":1}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-08-02\",\"agreedAmount\":100}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":101,\"paymentMethodCode\":\"TRANSFERENCIA\"}"))
+                .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":0,\"paymentMethodCode\":\"TRANSFERENCIA\"}"))
+                .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":100,\"paymentMethodCode\":\"INACTIVO\"}"))
+                .andExpect(status().isConflict());
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ?", Integer.class, 100L)).isZero();
+    }
 }

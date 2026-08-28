@@ -67,6 +67,14 @@ public class CleasManagementController {
     @PostMapping("/close")
     public CleasClosureResponse close(@PathVariable Long caseId, HttpServletRequest httpRequest) { return service.close(caseId, httpRequest); }
 
+    @PreAuthorize("hasAuthority('finanza.ver')")
+    @GetMapping("/summary")
+    public CleasCompanyPaymentSummaryResponse summary(@PathVariable Long caseId) { return service.companyPaymentSummary(caseId); }
+
+    @PreAuthorize("hasAuthority('finanza.crear')")
+    @PostMapping("/company-payments")
+    public CleasCompanyPaymentResponse registerCompanyPayment(@PathVariable Long caseId, @RequestBody CleasCompanyPaymentRequest request, HttpServletRequest httpRequest) { return service.registerCompanyPayment(caseId, request, httpRequest); }
+
     @PreAuthorize("hasAuthority('documento.ver')")
     @GetMapping("/orders")
     public List<CleasOrderResponse> listOrders(@PathVariable Long caseId) { return service.listOrders(caseId); }
