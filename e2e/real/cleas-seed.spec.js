@@ -16,6 +16,13 @@ async function login(page) {
 }
 
 test.describe('CLEAS E2E seed', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  async function openPayments(page, caseId) {
+    await page.goto(`/cases/${caseId}`);
+    await page.getByRole('tab', { name: 'Pagos' }).click();
+  }
+
   for (const cleasCase of CLEAS_CASES) {
     test(`muestra ${cleasCase.folderCode} con su definición persistida`, { tag: ['@e2e', '@cleas'] }, async ({ page }) => {
       await login(page);
@@ -27,4 +34,72 @@ test.describe('CLEAS E2E seed', () => {
       await expect(page.getByText(`Dictamen: ${cleasCase.opinion}`)).toBeVisible();
     });
   }
+
+  test('registra una factura y nota de crédito parcial para daño total favorable', { tag: ['@e2e', '@cleas', '@critical'] }, async ({ page }) => {
+    await login(page);
+    await openPayments(page, 9501);
+
+    const invoicePanel = page.getByTestId('cleas-invoice-panel');
+    await invoicePanel.getByLabel('Número fiscal').fill('00950001');
+    await invoicePanel.getByLabel('Razón social').fill('Aseguradora E2E S.A.');
+    await invoicePanel.getByRole('button', { name: 'Registrar factura' }).click();
+    await expect(page.getByText('Factura CLEAS registrada.')).toBeVisible();
+    await expect(invoicePanel.getByText('0001-00950001')).toBeVisible();
+
+    await invoicePanel.getByLabel('Factura a acreditar').selectOption({ label: /0001-00950001/ });
+    await invoicePanel.getByLabel('Número fiscal nota de crédito').fill('00951001');
+    await invoicePanel.getByLabel('Monto nota de crédito').fill('100000');
+    await invoicePanel.getByRole('button', { name: 'Registrar nota de crédito' }).click();
+    await expect(page.getByText('Nota de crédito registrada.')).toBeVisible();
+    await expect(invoicePanel.getByText('Total acreditado:')).toContainText('100.000');
+  });
+
+  test('registra pago de compañía con comprobante y genera liquidación para franquicia favorable', { tag: ['@e2e', '@cleas', '@critical'] }, async ({ page }) => {
+    await login(page);
+    await openPayments(page, 9503);
+
+    const paymentPanel = page.getByTestId('cleas-company-payment-panel');
+    await expect(page.getByText('Pago de franquicia a cargo del cliente')).toHaveCount(0);
+    await paymentPanel.getByLabel('Bruto que cancela').fill('800000');
+    await paymentPanel.getByLabel('O subir comprobante CLEAS').setInputFiles({ name: 'pago-9503.txt', mimeType: 'text/plain', buffer: Buffer.from('comprobante E2E') });
+    await paymentPanel.getByTestId('cleas-company-payment-submit').click();
+    await expect(page.getByText('Pago CLEAS de la compañía registrado.')).toBeVisible();
+    await expect(paymentPanel.getByText('La compañía no tiene saldo pendiente.')).toBeVisible();
+
+    const pdfResponse = page.waitForResponse((response) => response.url().includes('/cases/9503/cleas/liquidation-pdf'));
+    await paymentPanel.getByTestId('cleas-liquidation-pdf').click();
+    const response = await pdfResponse;
+    expect(response.ok()).toBeTruthy();
+    expect(response.headers()['content-type']).toContain('application/pdf');
+  });
+
+  test('registra y revierte la franquicia cliente para franquicia adversa', { tag: ['@e2e', '@cleas', '@critical'] }, async ({ page }) => {
+    await login(page);
+    await openPayments(page, 9504);
+
+    await page.getByTestId('cleas-customer-franchise-payment').click();
+    const dialog = page.getByRole('dialog', { name: 'Registrar pago' });
+    await dialog.getByLabel('Monto').fill('150000');
+    await dialog.getByRole('button', { name: 'Registrar pago' }).click();
+    await expect(page.getByText('Pago registrado.')).toBeVisible();
+
+    await page.getByLabel('Subir comprobante pago cliente a compañía').setInputFiles({ name: 'pago-cliente-9504.txt', mimeType: 'text/plain', buffer: Buffer.from('comprobante cliente compañía') });
+    await page.getByTestId('cleas-customer-company-payment').click();
+    await expect(page.getByText('Pago del cliente a la compañía actualizado.')).toBeVisible();
+
+    await page.locator('[title="Anular pago"]').click();
+    await page.getByRole('button', { name: 'Anular pago' }).click();
+    await expect(page.getByText('Pago anulado.')).toBeVisible();
+  });
+
+  test('cierra el daño total adverso y bloquea su continuación', { tag: ['@e2e', '@cleas', '@critical'] }, async ({ page }) => {
+    await login(page);
+    await page.goto('/cases/9502');
+    await page.getByRole('tab', { name: 'Gestión del Trámite' }).click();
+    await page.getByRole('button', { name: 'Cerrar caso' }).click();
+    await page.getByRole('button', { name: 'Confirmar cierre' }).click();
+    await expect(page.getByText('Caso cerrado').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /Trámite:/ })).toBeDisabled();
+    await expect(page.getByRole('button', { name: /Reparación:/ })).toBeDisabled();
+  });
 });

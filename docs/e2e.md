@@ -50,6 +50,8 @@ La configuración no inicia servidores ni usa `page.route`: apunta a `front2` en
 
 La semilla usa los códigos introducidos por las migraciones vigentes V80 y deja que Flyway aplique todo el historial. No modifica migraciones ni lógica de negocio.
 
+La suite recorre además los movimientos críticos desde la UI: factura y nota de crédito parcial para daño total favorable, pago de compañía con comprobante y PDF de liquidación para franquicia favorable, pago y reversión de franquicia adversa con evidencia cliente → compañía, y cierre bloqueante para daño total adverso. La ejecución es serial porque esos flujos modifican la semilla.
+
 ## Limpieza
 
 ```powershell

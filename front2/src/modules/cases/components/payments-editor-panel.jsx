@@ -348,12 +348,12 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
               <MiniCard label="Pendiente de franquicia" value={formatCurrency(franchiseClientAmount)} highlight />
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              {franchiseClientAmount > 0 ? <Button type="button" onClick={() => setLocalClientPaymentRequest({ concept: 'FRANQUICIA', amount: String(franchiseClientAmount) })}>+ Registrar pago al taller</Button> : null}
+              {franchiseClientAmount > 0 ? <Button type="button" data-testid="cleas-customer-franchise-payment" onClick={() => setLocalClientPaymentRequest({ concept: 'FRANQUICIA', amount: String(franchiseClientAmount) })}>+ Registrar pago al taller</Button> : null}
                <Select aria-label="Estado pago a compañía" value={franchiseCompanyPayment.statusCode} onChange={(event) => setFranchiseCompanyPayment((current) => ({ ...current, statusCode: event.target.value }))} options={[{ value: 'PENDIENTE', label: 'Pendiente' }, { value: 'COBRADO', label: 'Cobrado' }, { value: 'NO_APLICA', label: 'No aplica' }]} />
                <Input aria-label="Fecha pago a compañía" type="date" value={franchiseCompanyPayment.paymentDate} onChange={(event) => setFranchiseCompanyPayment((current) => ({ ...current, paymentDate: event.target.value }))} />
                <Select aria-label="Comprobante pago cliente a compañía" value={franchiseCompanyPayment.documentId} onChange={(event) => setFranchiseCompanyPayment((current) => ({ ...current, documentId: event.target.value, proofFile: null }))} options={[{ value: '', label: 'Sin comprobante documental' }, ...customerCompanyPaymentProofs.map((document) => ({ value: String(document.documentId), label: document.fileName || `Documento #${document.documentId}` }))]} />
                <Input aria-label="Subir comprobante pago cliente a compañía" type="file" onChange={(event) => setFranchiseCompanyPayment((current) => ({ ...current, proofFile: event.target.files?.[0] ?? null, documentId: '' }))} />
-               <Button type="button" variant="outline" disabled={franchiseCompanyPaymentMutation.isPending} onClick={() => franchiseCompanyPaymentMutation.mutate()}>Guardar pago cliente → Cía.</Button>
+              <Button type="button" data-testid="cleas-customer-company-payment" variant="outline" disabled={franchiseCompanyPaymentMutation.isPending} onClick={() => franchiseCompanyPaymentMutation.mutate()}>Guardar pago cliente → Cía.</Button>
             </div>
          </Card>
        ) : null}
@@ -709,10 +709,10 @@ const CleasCompanyPaymentPanel = ({ caseId, receipts, onSaved }) => {
   }));
 
   return (
-    <Card className="rounded-3xl border-border/70 p-5">
+    <Card data-testid="cleas-company-payment-panel" className="rounded-3xl border-border/70 p-5">
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Building2 className="h-5 w-5" /></div><h4 className="text-lg font-semibold">Pago de compañía CLEAS</h4></div>
-        <Button variant="outline" size="sm" onClick={() => pdfMutation.mutate()} disabled={pdfMutation.isPending}><FileDown className="mr-1.5 h-4 w-4" />Liquidación PDF</Button>
+        <Button data-testid="cleas-liquidation-pdf" variant="outline" size="sm" onClick={() => pdfMutation.mutate()} disabled={pdfMutation.isPending}><FileDown className="mr-1.5 h-4 w-4" />Liquidación PDF</Button>
       </div>
       <div className="mt-4 grid gap-3 md:grid-cols-4">
         <MiniCard label="Acordado" value={formatCurrency(summary.agreedAmount)} highlight />
@@ -744,7 +744,7 @@ const CleasCompanyPaymentPanel = ({ caseId, receipts, onSaved }) => {
           {!retentionTypes.length ? <p className="mt-3 text-xs text-muted-foreground">No hay tipos de retención activos disponibles.</p> : null}
           {retentionsAmount > grossAmount ? <p role="alert" className="mt-3 text-xs text-destructive">Las retenciones no pueden superar el bruto que cancela.</p> : null}
         </div>
-        <div className="mt-4 flex justify-end"><Button disabled={!canSubmit} onClick={() => paymentMutation.mutate()}><Save className="mr-1.5 h-4 w-4" />Registrar pago de compañía</Button></div>
+        <div className="mt-4 flex justify-end"><Button data-testid="cleas-company-payment-submit" disabled={!canSubmit} onClick={() => paymentMutation.mutate()}><Save className="mr-1.5 h-4 w-4" />Registrar pago de compañía</Button></div>
         </>
       ) : <p className="mt-4 text-sm text-muted-foreground">La compañía no tiene saldo pendiente.</p>}
     </Card>
@@ -802,7 +802,7 @@ const CleasInvoicePanel = ({ caseId, onSaved }) => {
   const canSubmit = agreedAmount > 0 && hasValidFiscalIdentity(form) && Boolean(form.receiverBusinessName.trim()) && Boolean(form.issuedDate) && !invoiceMutation.isPending;
 
   return (
-  <Card className="rounded-3xl border-border/70 p-5">
+  <Card data-testid="cleas-invoice-panel" className="rounded-3xl border-border/70 p-5">
     <h4 className="text-lg font-semibold">Facturación</h4>
     <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       <Field label="Monto acordado"><Input value={formatCurrency(agreedAmount)} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
