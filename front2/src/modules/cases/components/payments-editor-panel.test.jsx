@@ -15,6 +15,8 @@ const mockRefetchQueries = vi.fn().mockResolvedValue(undefined);
 const mockGetExtraBudget = vi.fn();
 const mockAnnulExtraBudgetPayment = vi.fn();
 const mockRegisterExtraBudgetPayment = vi.fn().mockResolvedValue({});
+const mockGetCleasCompanyPaymentSummary = vi.fn();
+const mockRegisterCleasCompanyPayment = vi.fn().mockResolvedValue({ id: 12 });
 let useQueryData = {};
 
 vi.mock('@/modules/cases/api/finance-api', () => ({
@@ -26,8 +28,13 @@ vi.mock('@/modules/cases/api/finance-api', () => ({
   getReceiptPdfUrl: (id) => `/api/v1/receipts/${id}/pdf`,
 }));
 
+vi.mock('@/modules/cases/api/cleas-api', () => ({
+  getCleasCompanyPaymentSummary: (...a) => mockGetCleasCompanyPaymentSummary(...a),
+  registerCleasCompanyPayment: (...a) => mockRegisterCleasCompanyPayment(...a),
+}));
+
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: ({ queryKey }) => ({ data: useQueryData[JSON.stringify(queryKey)], isLoading: false }),
+  useQuery: ({ queryKey }) => useQueryData[JSON.stringify(queryKey)]?.__queryResult ?? ({ data: useQueryData[JSON.stringify(queryKey)], isLoading: false, isError: false }),
   useMutation: ({ mutationFn, onSuccess, onError }) => {
     const fn = vi.fn();
     fn.isPending = false;
@@ -85,6 +92,8 @@ const CleasPaymentsHarness = (props) => {
   mockCreateFinancialMovement.mockClear();
   mockCreateReceipt.mockClear();
   mockRequestJson.mockClear();
+  mockRegisterCleasCompanyPayment.mockClear();
+  mockInvalidateQueries.mockClear();
   const props = { ...baseProps, ...overrides };
   return render(props.caseDetail.caseTypeCode === 'CLEAS' ? <CleasPaymentsHarness {...props} /> : <PaymentsEditorPanel {...props} />);
 };
@@ -304,6 +313,46 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.queryByText('Facturación')).toBeNull();
     expect(screen.queryByRole('button', { name: /registrar pago/i })).toBeNull();
     expect(screen.queryByLabelText('Monto depositado')).toBeNull();
+  });
+
+  it('uses the CLEAS summary and registers an eligible company payment through its dedicated endpoint', async () => {
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'cleas', 'summary'])]: { caseId: 42, companyId: 7, agreedAmount: 100000, paidAmount: 25000, pendingAmount: 75000 },
+    };
+    render(<CleasPaymentsHarness {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }} />);
+
+    expect(screen.getByText('Pago de compañía CLEAS')).toBeInTheDocument();
+    const companyPanel = screen.getByText('Pago de compañía CLEAS').closest('.border');
+    expect(within(companyPanel).getByText('Acordado').parentElement).toHaveTextContent('100.000');
+    expect(within(companyPanel).getByText('Pagado').parentElement).toHaveTextContent('25.000');
+    expect(within(companyPanel).getByText('Pendiente').parentElement).toHaveTextContent('75.000');
+    fireEvent.change(within(companyPanel).getByLabelText('Monto de compañía'), { target: { value: '75000' } });
+    fireEvent.change(within(companyPanel).getByLabelText('Referencia externa'), { target: { value: 'CLEAS-OP-1' } });
+    fireEvent.change(within(companyPanel).getByLabelText('Notas'), { target: { value: 'Transferencia recibida' } });
+    fireEvent.click(within(companyPanel).getByRole('button', { name: /^Registrar pago de compañía$/i }));
+
+    await waitFor(() => expect(mockRegisterCleasCompanyPayment).toHaveBeenCalledWith(42, expect.objectContaining({
+      amount: 75000,
+      paymentMethodCode: 'TRANSFERENCIA',
+      externalReference: 'CLEAS-OP-1',
+      reason: 'Transferencia recibida',
+    })));
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '42', 'cleas', 'summary'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '42', 'financial-movements'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '42', 'workspace'] });
+  });
+
+  it('shows the backend eligibility block and does not render the CLEAS company payment form', () => {
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'cleas', 'summary'])]: {
+        __queryResult: { data: undefined, isLoading: false, isError: true, error: new Error('El pago de compania solo aplica a CLEAS DANIO_TOTAL con dictamen A_FAVOR') },
+      },
+    };
+    render(<CleasPaymentsHarness {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }} />);
+
+    expect(screen.getByRole('alert')).toHaveTextContent('El pago de compania solo aplica a CLEAS DANIO_TOTAL con dictamen A_FAVOR');
+    expect(screen.queryByLabelText('Monto de compañía')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Registrar pago de compañía$/i })).toBeNull();
   });
 
   it('keeps billing and payment registration available for non-exact CLEAS with a closure timestamp', () => {

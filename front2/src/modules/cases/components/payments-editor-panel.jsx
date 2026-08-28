@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ban, Building2, CheckCircle, FileDown, Receipt, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { createFinancialMovement, createReceipt, getClientPaymentPdfUrl, getFinanceCatalogs, getReceiptPdfUrl, listFinancialMovements, listReceipts } from '@/modules/cases/api/finance-api';
+import { getCleasCompanyPaymentSummary, registerCleasCompanyPayment } from '@/modules/cases/api/cleas-api';
 import { extraBudgetQueryKey, registerExtraBudgetPayment } from '@/modules/cases/api/extra-budget-api';
 import { requestJson } from '@/shared/api/http-client';
 import { readStoredAuth } from '@/shared/auth/session-storage';
@@ -303,6 +304,8 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
         />
       ) : null}
 
+      {isCleas ? <CleasCompanyPaymentPanel caseId={caseId} onSaved={onSaved} /> : null}
+
       {/* Comprobante + Formulario */}
         {!blockCleasPayments && !isInsurance ? (
          <div className="rounded-3xl border border-border/70 bg-card p-5">
@@ -575,6 +578,66 @@ const MiniCard = ({ label, value, highlight, variant }) => (
     <p className={`mt-1 text-lg font-semibold ${highlight ? 'text-primary' : ''}`}>{value}</p>
   </div>
 );
+
+const CleasCompanyPaymentPanel = ({ caseId, onSaved }) => {
+  const queryClient = useQueryClient();
+  const summaryQuery = useQuery({
+    queryKey: ['cases', String(caseId), 'cleas', 'summary'],
+    queryFn: () => getCleasCompanyPaymentSummary(caseId),
+  });
+  const [form, setForm] = useState({
+    amount: '',
+    movementAt: new Date().toISOString().slice(0, 16),
+    paymentMethodCode: 'TRANSFERENCIA',
+    externalReference: '',
+    reason: '',
+  });
+  const paymentMutation = useMutation({
+    mutationFn: (payload) => registerCleasCompanyPayment(caseId, payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'summary'] });
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] });
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
+      await onSaved?.();
+      setForm({ amount: '', movementAt: new Date().toISOString().slice(0, 16), paymentMethodCode: 'TRANSFERENCIA', externalReference: '', reason: '' });
+      toast.success('Pago CLEAS de la compañía registrado.');
+    },
+    onError: (error) => toast.error(error.message || 'No pude registrar el pago de la compañía.'),
+  });
+
+  if (summaryQuery.isLoading) return null;
+  if (summaryQuery.isError) {
+    return <div role="alert" className="rounded-3xl border border-destructive/30 bg-destructive/5 p-5 text-sm text-destructive">{summaryQuery.error.message}</div>;
+  }
+
+  const summary = summaryQuery.data;
+  if (!summary) return null;
+  const pendingAmount = toAmount(summary.pendingAmount);
+  const amount = toAmount(form.amount);
+  const canSubmit = amount > 0 && amount <= pendingAmount && !paymentMutation.isPending;
+
+  return (
+    <Card className="rounded-3xl border-border/70 p-5">
+      <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Building2 className="h-5 w-5" /></div>
+      <h4 className="text-lg font-semibold">Pago de compañía CLEAS</h4>
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <MiniCard label="Acordado" value={formatCurrency(summary.agreedAmount)} highlight />
+        <MiniCard label="Pagado" value={formatCurrency(summary.paidAmount)} />
+        <MiniCard label="Pendiente" value={formatCurrency(summary.pendingAmount)} highlight={pendingAmount > 0} />
+      </div>
+      {pendingAmount > 0 ? (
+        <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <Field label="Monto de compañía"><Input type="number" min="0" max={pendingAmount} step="0.01" value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))} /></Field>
+          <Field label="Fecha y hora del pago"><Input type="datetime-local" value={form.movementAt} onChange={(event) => setForm((current) => ({ ...current, movementAt: event.target.value }))} /></Field>
+          <Field label="Medio de pago"><Select value={form.paymentMethodCode} onChange={(event) => setForm((current) => ({ ...current, paymentMethodCode: event.target.value }))} options={PAYMENT_METHODS} /></Field>
+          <Field label="Referencia externa"><Input value={form.externalReference} onChange={(event) => setForm((current) => ({ ...current, externalReference: event.target.value }))} /></Field>
+          <Field label="Notas"><Textarea rows={3} value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} /></Field>
+          <div className="flex items-end"><Button className="w-full" disabled={!canSubmit} onClick={() => paymentMutation.mutate({ amount, movementAt: form.movementAt, paymentMethodCode: form.paymentMethodCode, paymentMethodDetail: null, receiptId: null, externalReference: form.externalReference || null, reason: form.reason || null })}><Save className="mr-1.5 h-4 w-4" />Registrar pago de compañía</Button></div>
+        </div>
+      ) : <p className="mt-4 text-sm text-muted-foreground">La compañía no tiene saldo pendiente.</p>}
+    </Card>
+  );
+};
 
 const CleasBillingCard = ({ amountToBill, billing, insurance = {}, cleasNumberDisplay, onChange, onInsuranceChange = () => {}, onAddInvoice, invoiceAcknowledged }) => (
   <Card className="rounded-3xl border-border/70 p-5">

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { requestJson } from '@/shared/api/http-client';
-import { closeCleasCase, createCleasOrder, deleteCleasOrder, getCleasDefinition, getCleasIncident, getCleasInsurance, getCleasProcessing, listCleasOrders, saveCleasDefinition, saveCleasIncident, saveCleasInsurance, saveCleasProcessing } from './cleas-api';
+import { closeCleasCase, createCleasOrder, deleteCleasOrder, getCleasCompanyPaymentSummary, getCleasDefinition, getCleasIncident, getCleasInsurance, getCleasProcessing, listCleasOrders, registerCleasCompanyPayment, saveCleasDefinition, saveCleasIncident, saveCleasInsurance, saveCleasProcessing } from './cleas-api';
 
 vi.mock('@/shared/api/http-client', () => ({ requestJson: vi.fn() }));
 
@@ -10,7 +10,7 @@ describe('cleas-api', () => {
     getCleasInsurance(42); saveCleasInsurance(42, { insuranceCompanyId: 5 });
     getCleasIncident(42); saveCleasIncident(42, { incident: {} });
     getCleasProcessing(42); saveCleasProcessing(42, { expectedVersion: 0 });
-    closeCleasCase(42); listCleasOrders(42); createCleasOrder(42, { documentId: 8 }); deleteCleasOrder(42, 9);
+    closeCleasCase(42); getCleasCompanyPaymentSummary(42); registerCleasCompanyPayment(42, { amount: 1000 }); listCleasOrders(42); createCleasOrder(42, { documentId: 8 }); deleteCleasOrder(42, 9);
 
     expect(requestJson).toHaveBeenNthCalledWith(1, '/cases/42/cleas/definition');
     expect(requestJson).toHaveBeenNthCalledWith(2, '/cases/42/cleas/definition', { method: 'PUT', body: JSON.stringify({ scopeCode: 'DANIO_TOTAL' }) });
@@ -21,8 +21,10 @@ describe('cleas-api', () => {
     expect(requestJson).toHaveBeenNthCalledWith(7, '/cases/42/cleas/processing');
     expect(requestJson).toHaveBeenNthCalledWith(8, '/cases/42/cleas/processing', { method: 'PATCH', body: JSON.stringify({ expectedVersion: 0 }) });
     expect(requestJson).toHaveBeenNthCalledWith(9, '/cases/42/cleas/close', { method: 'POST' });
-    expect(requestJson).toHaveBeenNthCalledWith(10, '/cases/42/cleas/orders');
-    expect(requestJson).toHaveBeenNthCalledWith(11, '/cases/42/cleas/orders', { method: 'POST', body: JSON.stringify({ documentId: 8 }) });
-    expect(requestJson).toHaveBeenNthCalledWith(12, '/cases/42/cleas/orders/9', { method: 'DELETE' });
+    expect(requestJson).toHaveBeenNthCalledWith(10, '/cases/42/cleas/summary');
+    expect(requestJson).toHaveBeenNthCalledWith(11, '/cases/42/cleas/company-payments', { method: 'POST', body: JSON.stringify({ amount: 1000 }) });
+    expect(requestJson).toHaveBeenNthCalledWith(12, '/cases/42/cleas/orders');
+    expect(requestJson).toHaveBeenNthCalledWith(13, '/cases/42/cleas/orders', { method: 'POST', body: JSON.stringify({ documentId: 8 }) });
+    expect(requestJson).toHaveBeenNthCalledWith(14, '/cases/42/cleas/orders/9', { method: 'DELETE' });
   });
 });

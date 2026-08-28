@@ -14,6 +14,8 @@ export const saveCleasIncident = (caseId, payload) => requestJson(`${basePath(ca
 export const getCleasProcessing = (caseId) => requestJson(`${basePath(caseId)}/processing`);
 export const saveCleasProcessing = (caseId, payload) => requestJson(`${basePath(caseId)}/processing`, { method: 'PATCH', body: JSON.stringify(payload) });
 export const closeCleasCase = (caseId) => requestJson(`${basePath(caseId)}/close`, { method: 'POST' });
+export const getCleasCompanyPaymentSummary = (caseId) => requestJson(`${basePath(caseId)}/summary`);
+export const registerCleasCompanyPayment = (caseId, payload) => requestJson(`${basePath(caseId)}/company-payments`, { method: 'POST', body: JSON.stringify(payload) });
 
 export const listCleasOrders = (caseId) => requestJson(`${basePath(caseId)}/orders`);
 export const createCleasOrder = (caseId, payload) => requestJson(`${basePath(caseId)}/orders`, { method: 'POST', body: JSON.stringify(payload) });
