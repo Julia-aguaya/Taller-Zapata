@@ -24,13 +24,34 @@ public class CleasSettlementPolicy {
     public CleasSettlement settle(CaseCleasEntity cleas, BigDecimal agreedAmount) {
         BigDecimal amount = money(agreedAmount);
         String scopeCode = cleas == null ? null : cleas.getScopeCode();
+        String opinionCode = cleas == null ? null : cleas.getOpinionCode();
 
         if ("DANIO_TOTAL".equals(scopeCode)) {
             // Daño total: no hay franquicia; se factura a la compañía el total acordado.
             return new CleasSettlement(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, amount);
         }
 
-        // FRANQUICIA (y cualquier alcance nuevo) se incorpora en una fase posterior.
+        if ("FRANQUICIA".equals(scopeCode)) {
+            BigDecimal franchise = money(cleas.getFranchiseAmount());
+            BigDecimal companyRequired = money(cleas.getCompanyFranchisePaymentAmount());
+
+            if ("A_FAVOR".equals(opinionCode)) {
+                // El cliente NO paga la franquicia: la cía del tercero la compensa.
+                // A facturar a la cía = monto de cotización acordado.
+                return new CleasSettlement(franchise, BigDecimal.ZERO, BigDecimal.ZERO, amount);
+            }
+            if ("EN_CONTRA".equals(opinionCode)) {
+                // El cliente paga la franquicia.
+                // A cargo del cliente (al taller) = franquicia - parte exigida por la cía.
+                // A facturar a la cía = cotización - cargo del cliente.
+                BigDecimal customerCharge = franchise.subtract(companyRequired).max(BigDecimal.ZERO);
+                BigDecimal amountToBill = amount.subtract(customerCharge).max(BigDecimal.ZERO);
+                return new CleasSettlement(franchise, companyRequired, customerCharge, amountToBill);
+            }
+            throw new ConflictException("La liquidación CLEAS sobre franquicia con dictamen " + opinionCode + " aún no está definida");
+        }
+
+        // Alcances nuevos se incorporan en una fase posterior.
         throw new ConflictException("La liquidación CLEAS sobre " + (scopeCode == null ? "un alcance sin definir" : scopeCode) + " aún no está habilitada");
     }
 

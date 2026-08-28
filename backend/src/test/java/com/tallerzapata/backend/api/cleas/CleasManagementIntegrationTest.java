@@ -318,6 +318,66 @@ class CleasManagementIntegrationTest {
                 .andExpect(content().contentType(MediaType.APPLICATION_PDF));
     }
 
+    @Test
+    void shouldRegisterCustomerFranchisePaymentAndSettleAgainstTheFormula() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scopeCode\":\"FRANQUICIA\",\"opinionCode\":\"EN_CONTRA\",\"franchiseAmount\":1000,\"companyFranchisePaymentAmount\":500}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/cases/100/cleas/insurance").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"insuranceCompanyId\":1}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-08-02\",\"agreedAmount\":2000}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100/cleas/franchise-summary").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.franchiseAmount").value(1000))
+                .andExpect(jsonPath("$.companyRequiredAmount").value(500))
+                .andExpect(jsonPath("$.customerChargeAmount").value(500))
+                .andExpect(jsonPath("$.amountToBillCompany").value(1500))
+                .andExpect(jsonPath("$.customerPaidAmount").value(0))
+                .andExpect(jsonPath("$.customerPendingAmount").value(500));
+
+        mockMvc.perform(post("/api/v1/cases/100/cleas/customer-franchise-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":500,\"paymentMethodCode\":\"EFECTIVO\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.customerPaidAmount").value(500))
+                .andExpect(jsonPath("$.customerPendingAmount").value(0));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ? AND origen_flujo_codigo = 'CLIENTE' AND cancela_tipo_codigo = 'FRANQUICIA'", Integer.class, 100L)).isEqualTo(1);
+
+        mockMvc.perform(post("/api/v1/cases/100/cleas/customer-franchise-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":100,\"paymentMethodCode\":\"EFECTIVO\"}"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldRegisterCompanyFranchisePaymentForAdverseFranchise() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scopeCode\":\"FRANQUICIA\",\"opinionCode\":\"EN_CONTRA\",\"franchiseAmount\":1000,\"companyFranchisePaymentAmount\":500}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/cases/100/cleas/insurance").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"insuranceCompanyId\":1}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-08-02\",\"agreedAmount\":2000}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/cases/100/cleas/franchise-company-payment").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"paymentDate\":\"2026-08-05\",\"statusCode\":\"COBRADO\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.companyPaymentStatusCode").value("COBRADO"))
+                .andExpect(jsonPath("$.companyPaymentDate").value("2026-08-05"));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT estado_pago_compania_franquicia_codigo FROM caso_cleas WHERE caso_id = 100", String.class)).isEqualTo("COBRADO");
+        assertThat(jdbcTemplate.queryForObject("SELECT fecha_pago_compania_franquicia FROM caso_cleas WHERE caso_id = 100", java.sql.Date.class).toLocalDate()).isEqualTo("2026-08-05");
+
+        mockMvc.perform(post("/api/v1/cases/100/cleas/franchise-company-payment").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"paymentDate\":\"2026-08-05\",\"statusCode\":\"INVALIDO\"}"))
+                .andExpect(status().isConflict());
+    }
+
     private void prepareEligibleCompanyPayment() throws Exception {
         mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scopeCode\":\"DANIO_TOTAL\",\"opinionCode\":\"A_FAVOR\"}"))

@@ -89,6 +89,18 @@ public class CleasManagementController {
         return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=liquidacion-cleas-" + caseId + ".pdf").contentType(MediaType.APPLICATION_PDF).body(pdf);
     }
 
+    @PreAuthorize("hasAuthority('finanza.ver')")
+    @GetMapping("/franchise-summary")
+    public CleasFranchisePaymentSummaryResponse franchiseSummary(@PathVariable Long caseId) { return service.franchisePaymentSummary(caseId); }
+
+    @PreAuthorize("hasAuthority('finanza.crear')")
+    @PostMapping("/customer-franchise-payments")
+    public CleasFranchisePaymentSummaryResponse registerCustomerFranchisePayment(@PathVariable Long caseId, @Valid @RequestBody CleasCustomerFranchisePaymentRequest request, HttpServletRequest httpRequest) { return service.registerCustomerFranchisePayment(caseId, request, httpRequest); }
+
+    @PreAuthorize("hasAuthority('finanza.crear')")
+    @PostMapping("/franchise-company-payment")
+    public CleasFranchisePaymentSummaryResponse registerCompanyFranchisePayment(@PathVariable Long caseId, @Valid @RequestBody CleasCompanyFranchisePaymentRequest request, HttpServletRequest httpRequest) { return service.registerCompanyFranchisePayment(caseId, request, httpRequest); }
+
     @PreAuthorize("hasAuthority('documento.ver')")
     @GetMapping("/orders")
     public List<CleasOrderResponse> listOrders(@PathVariable Long caseId) { return service.listOrders(caseId); }

@@ -4,10 +4,13 @@ import com.tallerzapata.backend.api.casefile.CaseIncidentResponse;
 import com.tallerzapata.backend.api.cleas.CleasIncidentResponse;
 import com.tallerzapata.backend.api.cleas.CleasIncidentUpsertRequest;
 import com.tallerzapata.backend.api.cleas.CleasClosureResponse;
+import com.tallerzapata.backend.api.cleas.CleasCompanyFranchisePaymentRequest;
 import com.tallerzapata.backend.api.cleas.CleasCompanyPaymentAnnulmentRequest;
 import com.tallerzapata.backend.api.cleas.CleasCompanyPaymentRequest;
 import com.tallerzapata.backend.api.cleas.CleasCompanyPaymentResponse;
 import com.tallerzapata.backend.api.cleas.CleasCompanyPaymentSummaryResponse;
+import com.tallerzapata.backend.api.cleas.CleasCustomerFranchisePaymentRequest;
+import com.tallerzapata.backend.api.cleas.CleasFranchisePaymentSummaryResponse;
 import com.tallerzapata.backend.api.cleas.CleasOrderCreateRequest;
 import com.tallerzapata.backend.api.cleas.CleasOrderResponse;
 import com.tallerzapata.backend.api.finance.FinancialMovementRetentionRequest;
@@ -57,6 +60,7 @@ import java.util.Map;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import org.springframework.data.domain.Sort;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Service
@@ -339,6 +343,92 @@ public class CleasManagementService {
         CaseEntity caseEntity = requireCleasCase(caseId);
         requireAccess(caseEntity, "finanza.ver");
         return cleasLiquidationPdfService.generate(caseId);
+    }
+
+    @Transactional(readOnly = true)
+    public CleasFranchisePaymentSummaryResponse franchisePaymentSummary(Long caseId) {
+        CaseEntity caseEntity = requireEditableCleasCase(caseId);
+        requireAccess(caseEntity, "finanza.ver");
+        return franchiseSummary(caseEntity);
+    }
+
+    @Transactional
+    public CleasFranchisePaymentSummaryResponse registerCustomerFranchisePayment(Long caseId, CleasCustomerFranchisePaymentRequest request, HttpServletRequest httpRequest) {
+        CaseEntity caseEntity = requireEditableCleasCase(caseId);
+        AuthenticatedUser currentUser = requireAccess(caseEntity, "finanza.crear");
+        var cleas = caseCleasRepository.findByCaseId(caseId).orElseThrow(() -> new ConflictException("El caso no tiene definicion CLEAS"));
+        if (!"FRANQUICIA".equals(cleas.getScopeCode()) || !"EN_CONTRA".equals(cleas.getOpinionCode())) {
+            throw new ConflictException("El pago de franquicia del cliente solo aplica a CLEAS FRANQUICIA con dictamen EN_CONTRA");
+        }
+        CleasFranchisePaymentSummaryResponse summary = franchiseSummary(caseEntity);
+        BigDecimal grossAmount = money(request.amount());
+        if (grossAmount.signum() <= 0) throw new ConflictException("El importe del pago de franquicia debe ser positivo");
+        if (grossAmount.compareTo(summary.customerPendingAmount()) > 0) throw new ConflictException("El importe supera el saldo pendiente de la franquicia");
+        if (request.paymentMethodCode() == null || !financialPaymentMethodRepository.existsByCodeAndActiveTrue(normalizeCode(request.paymentMethodCode()))) throw new ConflictException("paymentMethodCode no permitido: " + request.paymentMethodCode());
+        if (request.receiptId() != null && issuedReceiptRepository.findByIdAndCaseId(request.receiptId(), caseId).isEmpty()) throw new ResourceNotFoundException("No existe el comprobante del caso " + request.receiptId());
+
+        FinancialMovementEntity movement = new FinancialMovementEntity();
+        movement.setCaseId(caseId);
+        movement.setReceiptId(request.receiptId());
+        movement.setMovementTypeCode("INGRESO");
+        movement.setFlowOriginCode("CLIENTE");
+        movement.setCounterpartyTypeCode("PERSONA");
+        movement.setCounterpartyPersonId(caseEntity.getPrincipalCustomerPersonId());
+        movement.setMovementAt(request.movementAt() == null ? LocalDateTime.now() : request.movementAt());
+        movement.setGrossAmount(grossAmount);
+        movement.setNetAmount(grossAmount);
+        movement.setPaymentMethodCode(normalizeCode(request.paymentMethodCode()));
+        movement.setPaymentMethodDetail(blankToNull(request.paymentMethodDetail()));
+        movement.setCancellationTypeCode("FRANQUICIA");
+        movement.setAdvancePayment(false);
+        movement.setBonification(false);
+        movement.setExternalReference(blankToNull(request.externalReference()));
+        movement.setReason(blankToNull(request.reason()) == null ? "Pago de franquicia CLEAS del cliente" : blankToNull(request.reason()));
+        movement.setRegisteredBy(currentUser.id());
+        movement = financialMovementRepository.saveAndFlush(movement);
+
+        CleasFranchisePaymentSummaryResponse updated = franchiseSummary(caseEntity);
+        cleas.setCustomerPaymentStatusCode(updated.customerPendingAmount().signum() <= 0 ? "COBRADO" : "PENDIENTE");
+        cleas.setCustomerPaymentDate(request.movementAt() == null ? LocalDate.now() : request.movementAt().toLocalDate());
+        caseCleasRepository.save(cleas);
+
+        caseAuditService.register(currentUser.id(), caseId, "movimientos_financieros", movement.getId(), "registrar_pago_franquicia_cleas", null,
+                caseAuditService.toJson(Map.of("grossAmount", grossAmount, "movementId", movement.getId())), caseAuditService.toJson(Map.of("domain", CLEAS_MODULE)), httpRequest);
+
+        return updated;
+    }
+
+    @Transactional
+    public CleasFranchisePaymentSummaryResponse registerCompanyFranchisePayment(Long caseId, CleasCompanyFranchisePaymentRequest request, HttpServletRequest httpRequest) {
+        CaseEntity caseEntity = requireEditableCleasCase(caseId);
+        AuthenticatedUser currentUser = requireAccess(caseEntity, "finanza.crear");
+        var cleas = caseCleasRepository.findByCaseId(caseId).orElseThrow(() -> new ConflictException("El caso no tiene definicion CLEAS"));
+        if (!"FRANQUICIA".equals(cleas.getScopeCode()) || !"EN_CONTRA".equals(cleas.getOpinionCode())) {
+            throw new ConflictException("El pago de franquicia a la compania solo aplica a CLEAS FRANQUICIA con dictamen EN_CONTRA");
+        }
+        String statusCode = normalizeCode(request.statusCode());
+        if (statusCode == null || !List.of("PENDIENTE", "COBRADO", "NO_APLICA").contains(statusCode)) {
+            throw new ConflictException("statusCode no permitido: " + request.statusCode());
+        }
+        cleas.setCompanyFranchisePaymentStatusCode(statusCode);
+        cleas.setCompanyFranchisePaymentDate(request.paymentDate());
+        caseCleasRepository.save(cleas);
+        caseAuditService.register(currentUser.id(), caseId, "caso_cleas", cleas.getId(), "registrar_pago_compania_franquicia_cleas", null,
+                caseAuditService.toJson(Map.of("statusCode", statusCode, "paymentDate", request.paymentDate())), caseAuditService.toJson(Map.of("domain", CLEAS_MODULE)), httpRequest);
+        return franchiseSummary(caseEntity);
+    }
+
+    private CleasFranchisePaymentSummaryResponse franchiseSummary(CaseEntity caseEntity) {
+        var cleas = caseCleasRepository.findByCaseId(caseEntity.getId()).orElseThrow(() -> new ConflictException("El caso no tiene definicion CLEAS"));
+        BigDecimal agreedAmount = insuranceProcessingRepository.findByCaseId(caseEntity.getId()).map(value -> money(value.getAgreedAmount())).orElse(BigDecimal.ZERO);
+        CleasSettlement settlement = cleasSettlementPolicy.settle(cleas, agreedAmount);
+        BigDecimal customerPaid = financialMovementRepository.findByCaseId(caseEntity.getId(), Sort.unsorted()).stream()
+                .filter(movement -> "CLIENTE".equals(normalizeCode(movement.getFlowOriginCode()))
+                        && "FRANQUICIA".equals(normalizeCode(movement.getCancellationTypeCode())))
+                .map(this::signedNetAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal customerPending = settlement.customerChargeAmount().subtract(customerPaid).max(BigDecimal.ZERO);
+        return new CleasFranchisePaymentSummaryResponse(caseEntity.getId(), settlement.franchiseAmount(), settlement.companyRequiredAmount(), settlement.customerChargeAmount(), settlement.amountToBillCompany(), customerPaid, customerPending, cleas.getCompanyFranchisePaymentStatusCode(), cleas.getCompanyFranchisePaymentDate());
     }
 
     private void updateThirdPartyVehicle(Long caseId, Long vehicleId) {
