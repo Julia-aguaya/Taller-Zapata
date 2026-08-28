@@ -170,6 +170,49 @@ class CleasManagementIntegrationTest {
     }
 
     @Test
+    void shouldIssueCleasInvoiceAndLinkCompanyPaymentToItsReceipt() throws Exception {
+        prepareEligibleCompanyPayment();
+
+        String receiptResponse = mockMvc.perform(post("/api/v1/cases/100/receipts").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"receiptTypeCode\":\"FACTURA\",\"receiptNumber\":\"A-0001-00000100\",\"receiverBusinessName\":\"Rivadavia\",\"issuedDate\":\"2026-08-03\",\"taxableNet\":1000,\"vatAmount\":210,\"total\":1210,\"comprobanteFiscal\":\"A\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.caseId").value(100))
+                .andExpect(jsonPath("$.receiptTypeCode").value("FACTURA"))
+                .andReturn().getResponse().getContentAsString();
+        Long receiptId = objectMapper.readTree(receiptResponse).get("id").asLong();
+
+        mockMvc.perform(get("/api/v1/cases/100/receipts").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(receiptId))
+                .andExpect(jsonPath("$[0].receiptNumber").value("A-0001-00000100"));
+
+        mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":400,\"movementAt\":\"2026-08-03T10:30:00\",\"paymentMethodCode\":\"TRANSFERENCIA\",\"receiptId\":" + receiptId + "}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.receiptId").value(receiptId));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT comprobante_id FROM movimientos_financieros WHERE caso_id = ?", Long.class, 100L)).isEqualTo(receiptId);
+    }
+
+    @Test
+    void shouldRejectCompanyPaymentLinkedToReceiptFromAnotherCase() throws Exception {
+        prepareEligibleCompanyPayment();
+        jdbcTemplate.update("INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, estado_tramite_actual_id, estado_reparacion_actual_id, estado_pago_actual_id, estado_documentacion_actual_id, estado_legal_actual_id, prioridad_codigo) VALUES (101, '00000000-0000-0000-0000-000000003101', '0101CL', 101, 4, 1, 1, 10, 10, false, 1, 1, 4, 7, 9, 11, 'MEDIA')");
+
+        String receiptResponse = mockMvc.perform(post("/api/v1/cases/101/receipts").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"receiptTypeCode\":\"FACTURA\",\"receiptNumber\":\"A-0001-00000101\",\"receiverBusinessName\":\"Rivadavia\",\"issuedDate\":\"2026-08-03\",\"taxableNet\":1000,\"vatAmount\":210,\"total\":1210,\"comprobanteFiscal\":\"A\"}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        Long otherCaseReceiptId = objectMapper.readTree(receiptResponse).get("id").asLong();
+
+        mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":400,\"paymentMethodCode\":\"TRANSFERENCIA\",\"receiptId\":" + otherCaseReceiptId + "}"))
+                .andExpect(status().isNotFound());
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ?", Integer.class, 100L)).isZero();
+    }
+
+    @Test
     void shouldRejectCompanyPaymentsOutsideTheCleasEligibilityAndBalanceRules() throws Exception {
         mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"amount\":100,\"paymentMethodCode\":\"TRANSFERENCIA\"}"))
@@ -195,5 +238,17 @@ class CleasManagementIntegrationTest {
                         .content("{\"amount\":100,\"paymentMethodCode\":\"INACTIVO\"}"))
                 .andExpect(status().isConflict());
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ?", Integer.class, 100L)).isZero();
+    }
+
+    private void prepareEligibleCompanyPayment() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scopeCode\":\"DANIO_TOTAL\",\"opinionCode\":\"A_FAVOR\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/cases/100/cleas/insurance").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"insuranceCompanyId\":1}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-08-02\",\"agreedAmount\":1000}"))
+                .andExpect(status().isOk());
     }
 }

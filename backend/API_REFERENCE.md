@@ -185,6 +185,7 @@ Header: `Authorization: Bearer <token>`
 | GET/PUT | /api/v1/cases/{caseId}/cleas/insurance | Consultar o actualizar seguro y contactos CLEAS | seguro.ver / seguro.crear |
 | GET/PUT | /api/v1/cases/{caseId}/cleas/incident | Consultar o actualizar siniestro y vehículo tercero | caso.ver / caso.crear |
 | GET/PATCH | /api/v1/cases/{caseId}/cleas/processing | Consultar o actualizar tramitación CLEAS | seguro.ver / seguro.crear |
+| POST | /api/v1/cases/{caseId}/cleas/company-payments | Registrar cobro de compañía CLEAS | finanza.crear |
 | GET/POST | /api/v1/cases/{caseId}/cleas/orders | Listar o vincular órdenes documentales CLEAS | documento.ver / documento.crear |
 | DELETE | /api/v1/cases/{caseId}/cleas/orders/{relationId} | Desvincular orden documental CLEAS | documento.crear |
 | GET | /api/v1/cases/{caseId}/third-party | Obtener tercero | seguro.ver |
@@ -319,6 +320,8 @@ Header: `Authorization: Bearer <token>`
 - `CleasIncidentResponse`: `{ incident: CaseIncidentResponse, thirdPartyVehicleId }`
 - `CleasOrderCreateRequest`: `{ documentId: long, principal?: boolean, visibleToCustomer?: boolean, visualOrder?: integer }`; el documento debe pertenecer a la categoría `ORDEN_CLEAS`.
 - `CleasOrderResponse`: `{ relationId, documentId, publicId, fileName, mimeType, documentDate, principal, visibleToCustomer, visualOrder }`
+- `CleasCompanyPaymentRequest`: `{ amount, movementAt?, paymentMethodCode, paymentMethodDetail?, receiptId?, externalReference?, reason? }`; `receiptId` vincula el cobro con un comprobante emitido mediante `POST /api/v1/cases/{caseId}/receipts` y, cuando se informa, debe pertenecer al mismo caso CLEAS.
+- `CleasCompanyPaymentResponse`: `{ movementId, publicId, amount, movementAt, paymentMethodCode, paymentMethodDetail, receiptId, externalReference, reason }`
 - `CaseLegalResponse` / `CaseLegalUpsertRequest`
 - `LegalNewsResponse` / `LegalNewsCreateRequest`
 - `LegalExpenseResponse` / `LegalExpenseCreateRequest`
