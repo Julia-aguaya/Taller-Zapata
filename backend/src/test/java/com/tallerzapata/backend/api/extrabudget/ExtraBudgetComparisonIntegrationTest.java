@@ -63,27 +63,35 @@ class ExtraBudgetComparisonIntegrationTest {
     @Test
     void exposesTheCanonicalItemIdAcrossDraftGetAndPresentationForTheIsolatedComparisonWorkflow() throws Exception {
         JsonNode draft = json.readTree(mockMvc.perform(put("/api/v1/cases/100/extra-budget/draft").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"expectedVersion\":0,\"items\":[{\"visualOrder\":1,\"description\":\"Espejo extra\",\"quantity\":1,\"partUnitAmount\":100,\"laborUnitAmount\":0}]}"))
+                        .content("{\"expectedVersion\":0,\"items\":[{\"visualOrder\":1,\"description\":\"Espejo extra\",\"quantity\":1,\"partUnitAmount\":100,\"laborUnitAmount\":0,\"affectedPiece\":\"Espejo\",\"actionCode\":\"REEMPLAZAR\",\"damageLevelCode\":\"LEVE\",\"partsAmount\":100}]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        long itemId = draft.at("/versions/0/items/0/itemId").asLong();
+        long itemId = activeItemId(draft);
+        long draftLock = draft.get("versionLock").asLong();
         assertThat(itemId).isPositive();
 
         JsonNode loaded = json.readTree(mockMvc.perform(get("/api/v1/cases/100/extra-budget").header("X-User-Id", "3"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(loaded.at("/versions/0/items/0/itemId").asLong()).isEqualTo(itemId);
+        assertThat(activeItemId(loaded)).isEqualTo(itemId);
 
         JsonNode quoted = json.readTree(mockMvc.perform(post("/api/v1/cases/100/extra-budget/comparison/quotes").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"expectedVersion\":0,\"itemId\":" + itemId + ",\"providerId\":20,\"amount\":100}"))
+                        .content("{\"expectedVersion\":" + draftLock + ",\"itemId\":" + itemId + ",\"providerId\":20,\"amount\":100}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
         assertThat(quoted.get("itemId").asLong()).isEqualTo(itemId);
 
         mockMvc.perform(post("/api/v1/cases/100/extra-budget/comparison/select").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"expectedVersion\":0,\"itemId\":" + itemId + ",\"providerId\":20}"))
+                        .content("{\"expectedVersion\":" + draftLock + ",\"itemId\":" + itemId + ",\"providerId\":20}"))
                 .andExpect(status().isOk());
         JsonNode presented = json.readTree(mockMvc.perform(post("/api/v1/cases/100/extra-budget/present").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"expectedVersion\":0}"))
+                        .content("{\"expectedVersion\":" + draftLock + "}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-        assertThat(presented.at("/versions/0/items/0/itemId").asLong()).isEqualTo(itemId);
+        assertThat(activeItemId(presented)).isEqualTo(itemId);
+    }
+
+    private long activeItemId(JsonNode response) {
+        for (JsonNode item : response.at("/versions/0/items")) {
+            if (item.at("/active").asBoolean(true)) return item.at("/itemId").asLong();
+        }
+        throw new AssertionError("No se encontró un item activo en el presupuesto extra");
     }
 
     @Test
@@ -158,14 +166,14 @@ class ExtraBudgetComparisonIntegrationTest {
         jdbc.update("UPDATE presupuestos_extra SET estado_actual = 'ACEPTADO', confirmacion_cliente = 'SI' WHERE id = 800");
         jdbc.update("UPDATE presupuesto_extra_versiones SET estado = 'ACEPTADO' WHERE id = 801");
         jdbc.update("INSERT INTO repuestos_caso (caso_id, descripcion, estado_codigo, usado, devuelto, non_canonical, is_accessory, source_type, presupuesto_extra_item_id) VALUES (100, 'Extra confirmado', 'PENDIENTE', false, false, false, true, 'EXTRA_BUDGET_ITEM', 900)");
-        jdbc.update("INSERT INTO repuestos_caso (caso_id, descripcion, estado_codigo, usado, devuelto, non_canonical, is_accessory, source_type) VALUES (100, 'Repuesto principal', 'PENDIENTE', false, false, false, false, 'BUDGET_ITEM')");
+        jdbc.update("INSERT INTO repuestos_caso (caso_id, descripcion, estado_codigo, usado, devuelto, non_canonical, is_accessory, source_type) VALUES (100, 'Repuesto principal', 'PENDIENTE', false, false, false, false, 'MANUAL')");
         jdbc.update("INSERT INTO movimientos_financieros (public_id, caso_id, tipo_movimiento_codigo, origen_flujo_codigo, contraparte_tipo_codigo, fecha_movimiento, monto_bruto, monto_neto, medio_pago_codigo, es_senia, es_bonificacion, registrado_por) VALUES ('00000000-0000-0000-0000-000000009900', 100, 'INGRESO', 'ASEGURADORA', 'COMPANIA', CURRENT_TIMESTAMP, 50, 50, 'EFECTIVO', false, false, 3)");
 
         mockMvc.perform(post("/api/v1/cases/100/extra-budget/activation").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"expectedVersion\":0,\"active\":false,\"confirmDeactivation\":true}"))
                 .andExpect(status().isOk());
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM repuestos_caso WHERE caso_id = 100 AND source_type = 'EXTRA_BUDGET_ITEM'", Integer.class)).isZero();
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM repuestos_caso WHERE caso_id = 100 AND source_type = 'BUDGET_ITEM'", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM repuestos_caso WHERE caso_id = 100 AND source_type = 'MANUAL'", Integer.class)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM presupuestos_extra WHERE id = 800 AND revertido_at IS NOT NULL AND revertido_by = 3 AND motivo_reversion = 'DESACTIVACION'", Integer.class)).isEqualTo(1);
 
         jdbc.update("INSERT INTO repuestos_caso (caso_id, descripcion, estado_codigo, usado, devuelto, non_canonical, is_accessory, source_type, presupuesto_extra_item_id, fecha_recibido) VALUES (100, 'Extra con recepción', 'PENDIENTE', false, false, false, true, 'EXTRA_BUDGET_ITEM', 900, CURRENT_DATE)");
@@ -198,11 +206,10 @@ class ExtraBudgetComparisonIntegrationTest {
                         .content("{\"expectedVersion\":0,\"items\":[{\"visualOrder\":1,\"description\":\"Espejo extra\",\"quantity\":1,\"partUnitAmount\":0,\"affectedPiece\":\"Espejo\",\"actionCode\":\"REEMPLAZAR\",\"damageLevelCode\":\"LEVE\",\"partsAmount\":0,\"active\":true}]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
 
-        long itemId = draft.at("/versions/0/items/0/itemId").asLong();
         long snapshotId = draft.at("/versions/0/comparisonSnapshotId").asLong();
         assertThat(draft.at("/versions/0/generalLaborVatApplies").asBoolean()).isFalse();
         assertThat(snapshotId).isPositive();
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM comparacion_pieza WHERE contexto = 'EXTRA' AND presupuesto_extra_item_origen_id = ?", Integer.class, itemId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM comparacion_pieza WHERE snapshot_id = ? AND contexto = 'EXTRA'", Integer.class, snapshotId)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM repuestos_caso WHERE caso_id = 100", Integer.class)).isZero();
 
         JsonNode snapshots = json.readTree(mockMvc.perform(get("/api/v1/cases/100/budget-comparisons?context=EXTRA").header("X-User-Id", "3"))
@@ -224,8 +231,9 @@ class ExtraBudgetComparisonIntegrationTest {
         mockMvc.perform(post("/api/v1/cases/100/budget-comparisons/{snapshotId}/pieces/{pieceId}/providers/{columnId}/select", snapshotId, pieceId, columnId).header("X-User-Id", "3"))
                 .andExpect(status().isOk());
 
-        assertThat(jdbc.queryForObject("SELECT importe_cotizacion_seleccionada FROM presupuesto_extra_items WHERE id = ?", BigDecimal.class, itemId)).isEqualByComparingTo("120.00");
-        assertThat(jdbc.queryForObject("SELECT proveedor_seleccionado_id FROM presupuesto_extra_items WHERE id = ?", Long.class, itemId)).isEqualTo(20L);
+        long canonicalItemId = jdbc.queryForObject("SELECT presupuesto_extra_item_origen_id FROM comparacion_pieza WHERE id = ?", Long.class, pieceId);
+        assertThat(jdbc.queryForObject("SELECT importe_cotizacion_seleccionada FROM presupuesto_extra_items WHERE id = ?", BigDecimal.class, canonicalItemId)).isEqualByComparingTo("120.00");
+        assertThat(jdbc.queryForObject("SELECT proveedor_seleccionado_id FROM presupuesto_extra_items WHERE id = ?", Long.class, canonicalItemId)).isEqualTo(20L);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM repuestos_caso WHERE caso_id = 100", Integer.class)).isZero();
     }
 

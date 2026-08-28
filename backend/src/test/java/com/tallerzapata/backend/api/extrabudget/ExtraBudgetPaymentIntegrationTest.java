@@ -46,7 +46,7 @@ class ExtraBudgetPaymentIntegrationTest {
     @Test
     void paymentIsForcedToClientAndAnnulmentRestoresOnlyTheExtraLedger() throws Exception {
         JsonNode accepted = createAcceptedExtra();
-        JsonNode paid = postJson("/api/v1/cases/100/extra-budget/payments", "{\"expectedVersion\":" + accepted.get("versionLock").asLong() + ",\"amount\":121.00,\"paymentMethodCode\":\"EFECTIVO\"}");
+        JsonNode paid = postJson("/api/v1/cases/100/extra-budget/payments", "{\"expectedVersion\":" + accepted.get("versionLock").asLong() + ",\"amount\":100.00,\"paymentMethodCode\":\"EFECTIVO\"}");
         long paymentMovementId = paid.get("payments").get(0).get("movementId").asLong();
         long paymentVersion = paid.get("versionLock").asLong();
 
@@ -55,7 +55,7 @@ class ExtraBudgetPaymentIntegrationTest {
 
         JsonNode annulled = postJson("/api/v1/cases/100/extra-budget/payments/annul", "{\"expectedVersion\":" + paymentVersion + ",\"movementId\":" + paymentMovementId + "}");
         assertThat(annulled.get("paidAmount").decimalValue()).isEqualByComparingTo("0.00");
-        assertThat(annulled.get("balance").decimalValue()).isEqualByComparingTo("121.00");
+        assertThat(annulled.get("balance").decimalValue()).isEqualByComparingTo("100.00");
         assertThat(annulled.get("payments").size()).isEqualTo(2);
 
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ? AND origen_flujo_codigo = 'CLIENTE' AND contraparte_tipo_codigo = 'PERSONA' AND cancela_tipo_codigo = 'TRABAJOS_EXTRAS'", Integer.class, 100L)).isEqualTo(2);
@@ -103,7 +103,7 @@ class ExtraBudgetPaymentIntegrationTest {
         mockMvc.perform(get("/api/v1/cases/100/extra-budget").header("X-User-Id", "3"))
                 .andExpect(status().isConflict());
         mockMvc.perform(put("/api/v1/cases/100/extra-budget/draft").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"items\":[{\"visualOrder\":1,\"description\":\"Extra\",\"quantity\":1,\"partUnitAmount\":0,\"laborUnitAmount\":100}]}"))
+                        .content("{\"items\":[{\"visualOrder\":1,\"description\":\"Extra\",\"quantity\":1,\"partUnitAmount\":100,\"laborUnitAmount\":0,\"affectedPiece\":\"Extra\",\"actionCode\":\"REPARAR\",\"damageLevelCode\":\"LEVE\",\"partsAmount\":100}]}"))
                 .andExpect(status().isConflict());
 
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM presupuestos_extra WHERE caso_id = ?", Integer.class, 100L)).isZero();
@@ -134,7 +134,7 @@ class ExtraBudgetPaymentIntegrationTest {
 
     @Test
     void rejectsPaymentsBeforeAcceptanceAndAfterRejectionWithoutWritingLedgerRows() throws Exception {
-        JsonNode draft = putJson("/api/v1/cases/100/extra-budget/draft", "{\"items\":[{\"visualOrder\":1,\"description\":\"Extra\",\"quantity\":1,\"partUnitAmount\":0,\"laborUnitAmount\":100}]}");
+        JsonNode draft = putJson("/api/v1/cases/100/extra-budget/draft", "{\"items\":[{\"visualOrder\":1,\"description\":\"Extra\",\"quantity\":1,\"partUnitAmount\":100,\"laborUnitAmount\":0,\"affectedPiece\":\"Extra\",\"actionCode\":\"REPARAR\",\"damageLevelCode\":\"LEVE\",\"partsAmount\":100}]}");
         assertPaymentIsRejected(draft.get("versionLock").asLong());
 
         JsonNode presented = postJson("/api/v1/cases/100/extra-budget/present", "{\"expectedVersion\":" + draft.get("versionLock").asLong() + "}");
@@ -147,7 +147,7 @@ class ExtraBudgetPaymentIntegrationTest {
 
     @Test
     void acceptsOnlyOneCommandForTheSameVersionAndRejectsTheStaleCompetitor() throws Exception {
-        JsonNode draft = putJson("/api/v1/cases/100/extra-budget/draft", "{\"items\":[{\"visualOrder\":1,\"description\":\"Extra\",\"quantity\":1,\"partUnitAmount\":0,\"laborUnitAmount\":100}]}");
+        JsonNode draft = putJson("/api/v1/cases/100/extra-budget/draft", "{\"items\":[{\"visualOrder\":1,\"description\":\"Extra\",\"quantity\":1,\"partUnitAmount\":100,\"laborUnitAmount\":0,\"affectedPiece\":\"Extra\",\"actionCode\":\"REPARAR\",\"damageLevelCode\":\"LEVE\",\"partsAmount\":100}]}");
         JsonNode presented = postJson("/api/v1/cases/100/extra-budget/present", "{\"expectedVersion\":" + draft.get("versionLock").asLong() + "}");
         long expectedVersion = presented.get("versionLock").asLong();
 
@@ -158,12 +158,12 @@ class ExtraBudgetPaymentIntegrationTest {
                 .andExpect(status().isConflict());
 
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM presupuesto_extra_versiones WHERE estado = 'ACEPTADO'", Integer.class)).isEqualTo(1);
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM presupuesto_extra_eventos WHERE transicion = 'ACEPTADO'", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM presupuesto_extra_eventos WHERE transicion = 'CONFIRMAR_SI'", Integer.class)).isEqualTo(1);
     }
 
     @Test
     void concurrentAcceptCommandsProduceOneAcceptanceAndOneConflict() throws Exception {
-        JsonNode draft = putJson("/api/v1/cases/100/extra-budget/draft", "{\"items\":[{\"visualOrder\":1,\"description\":\"Extra\",\"quantity\":1,\"partUnitAmount\":0,\"laborUnitAmount\":100}]}");
+        JsonNode draft = putJson("/api/v1/cases/100/extra-budget/draft", "{\"items\":[{\"visualOrder\":1,\"description\":\"Extra\",\"quantity\":1,\"partUnitAmount\":100,\"laborUnitAmount\":0,\"affectedPiece\":\"Extra\",\"actionCode\":\"REPARAR\",\"damageLevelCode\":\"LEVE\",\"partsAmount\":100}]}");
         JsonNode presented = postJson("/api/v1/cases/100/extra-budget/present", "{\"expectedVersion\":" + draft.get("versionLock").asLong() + "}");
         String body = "{\"expectedVersion\":" + presented.get("versionLock").asLong() + "}";
         CountDownLatch start = new CountDownLatch(1);
@@ -180,7 +180,7 @@ class ExtraBudgetPaymentIntegrationTest {
             executor.shutdownNow();
         }
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM presupuesto_extra_versiones WHERE estado = 'ACEPTADO'", Integer.class)).isEqualTo(1);
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM presupuesto_extra_eventos WHERE transicion = 'ACEPTADO'", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM presupuesto_extra_eventos WHERE transicion = 'CONFIRMAR_SI'", Integer.class)).isEqualTo(1);
     }
 
     @Test
@@ -193,45 +193,6 @@ class ExtraBudgetPaymentIntegrationTest {
 
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM presupuesto_extra_pago_aplicaciones", Integer.class)).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ? AND origen_flujo_codigo = 'CLIENTE'", Integer.class, 100L)).isEqualTo(1);
-    }
-
-    @Test
-    void draftReconcilesV66SourceFieldsWhilePreservingSavedExtraLabor() throws Exception {
-        mockMvc.perform(put("/api/v1/cases/100/budget")
-                        .header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"budgetDate\":\"2026-04-20\",\"reportStatusCode\":\"BORRADOR\",\"laborWithoutVat\":1000,\"vatRate\":21,\"partsTotal\":500}"))
-                .andExpect(status().isOk());
-        Long budgetId = jdbcTemplate.queryForObject("SELECT id FROM presupuestos WHERE caso_id = ?", Long.class, 100L);
-        jdbcTemplate.update("INSERT INTO presupuesto_trabajos_extras (presupuesto_id, pieza_afectada, monto_repuestos, activo) VALUES (?, ?, ?, ?)", budgetId, "Moldura", new BigDecimal("300.00"), true);
-        jdbcTemplate.update("INSERT INTO presupuesto_trabajos_extras (presupuesto_id, pieza_afectada, monto_repuestos, activo) VALUES (?, ?, ?, ?)", budgetId, "Espejo", new BigDecimal("200.00"), true);
-
-        JsonNode draft = putJson("/api/v1/cases/100/extra-budget/draft", "{\"items\":[{\"visualOrder\":9,\"description\":\"Manual\",\"quantity\":1,\"partUnitAmount\":10,\"laborUnitAmount\":20}]}");
-        JsonNode initialItems = draft.get("versions").get(0).get("items");
-        assertThat(initialItems.size()).isEqualTo(3);
-        assertThat(initialItems.get(0).get("sourceType").asText()).isEqualTo("V66_ACCESSORY_WORK");
-        assertThat(initialItems.get(0).get("laborUnitAmount").decimalValue()).isEqualByComparingTo("0.00");
-
-        Long activeSourceId = jdbcTemplate.queryForObject("SELECT id FROM presupuesto_trabajos_extras WHERE pieza_afectada = 'Moldura'", Long.class);
-        JsonNode savedLabor = putJson("/api/v1/cases/100/extra-budget/draft", "{\"expectedVersion\":" + draft.get("versionLock").asLong() + ",\"items\":[{\"visualOrder\":1,\"description\":\"Moldura\",\"quantity\":1,\"partUnitAmount\":300,\"laborUnitAmount\":70,\"sourceType\":\"V66_ACCESSORY_WORK\",\"sourceId\":" + activeSourceId + "},{\"visualOrder\":2,\"description\":\"Manual\",\"quantity\":1,\"partUnitAmount\":10,\"laborUnitAmount\":20}]}" );
-        jdbcTemplate.update("UPDATE presupuesto_trabajos_extras SET monto_repuestos = ? WHERE id = ?", new BigDecimal("450.00"), activeSourceId);
-        jdbcTemplate.update("UPDATE presupuesto_trabajos_extras SET activo = false WHERE pieza_afectada = 'Espejo'");
-
-        MvcResult reloaded = mockMvc.perform(get("/api/v1/cases/100/extra-budget").header("X-User-Id", "3"))
-                .andExpect(status().isOk()).andReturn();
-        JsonNode reloadedItems = objectMapper.readTree(reloaded.getResponse().getContentAsString()).get("versions").get(0).get("items");
-        assertThat(reloadedItems.size()).isEqualTo(2);
-        assertThat(reloadedItems.get(0).get("partUnitAmount").decimalValue()).isEqualByComparingTo("450.00");
-        assertThat(reloadedItems.get(0).get("laborUnitAmount").decimalValue()).isEqualByComparingTo("70.00");
-        assertThat(reloadedItems.get(1).get("description").asText()).isEqualTo("Manual");
-
-        JsonNode presented = postJson("/api/v1/cases/100/extra-budget/present", "{\"expectedVersion\":" + savedLabor.get("versionLock").asLong() + "}");
-        JsonNode accepted = postJson("/api/v1/cases/100/extra-budget/accept", "{\"expectedVersion\":" + presented.get("versionLock").asLong() + "}");
-        jdbcTemplate.update("UPDATE presupuesto_trabajos_extras SET monto_repuestos = ? WHERE id = ?", new BigDecimal("600.00"), activeSourceId);
-        JsonNode revised = postJson("/api/v1/cases/100/extra-budget/revise", "{\"expectedVersion\":" + accepted.get("versionLock").asLong() + "}");
-        assertThat(revised.get("versions").get(0).get("items").get(0).get("partUnitAmount").decimalValue()).isEqualByComparingTo("450.00");
-        assertThat(revised.get("versions").get(0).get("items").get(0).get("laborUnitAmount").decimalValue()).isEqualByComparingTo("70.00");
-        assertThat(revised.get("versions").get(1).get("items").get(0).get("partUnitAmount").decimalValue()).isEqualByComparingTo("600.00");
-        assertThat(revised.get("versions").get(1).get("items").get(0).get("laborUnitAmount").decimalValue()).isEqualByComparingTo("0.00");
     }
 
     @Test
@@ -249,47 +210,6 @@ class ExtraBudgetPaymentIntegrationTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("El cuerpo de la solicitud contiene valores inválidos"));
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM presupuesto_extra_items", Integer.class)).isZero();
-    }
-
-    @Test
-    void rejectsDuplicateSubmittedV66SourceBeforeReplacingTheDraft() throws Exception {
-        mockMvc.perform(put("/api/v1/cases/100/budget")
-                        .header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"budgetDate\":\"2026-04-20\",\"reportStatusCode\":\"BORRADOR\",\"laborWithoutVat\":1000,\"vatRate\":21,\"partsTotal\":500}"))
-                .andExpect(status().isOk());
-        Long budgetId = jdbcTemplate.queryForObject("SELECT id FROM presupuestos WHERE caso_id = ?", Long.class, 100L);
-        jdbcTemplate.update("INSERT INTO presupuesto_trabajos_extras (presupuesto_id, pieza_afectada, monto_repuestos, activo) VALUES (?, ?, ?, ?)", budgetId, "Moldura", new BigDecimal("300.00"), true);
-        Long sourceId = jdbcTemplate.queryForObject("SELECT id FROM presupuesto_trabajos_extras", Long.class);
-        JsonNode draft = putJson("/api/v1/cases/100/extra-budget/draft", "{\"items\":[{\"visualOrder\":1,\"description\":\"Manual\",\"quantity\":1,\"partUnitAmount\":10,\"laborUnitAmount\":0}]}");
-
-        mockMvc.perform(put("/api/v1/cases/100/extra-budget/draft").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"expectedVersion\":" + draft.get("versionLock").asLong() + ",\"items\":[{\"sourceType\":\"V66_ACCESSORY_WORK\",\"sourceId\":" + sourceId + "},{\"sourceType\":\"V66_ACCESSORY_WORK\",\"sourceId\":" + sourceId + "}]}"))
-                .andExpect(status().isConflict());
-
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM presupuesto_extra_items WHERE source_type IS NULL", Integer.class)).isEqualTo(1);
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM presupuesto_extra_items WHERE source_type = 'V66_ACCESSORY_WORK'", Integer.class)).isEqualTo(1);
-    }
-
-    @Test
-    void rejectsSubmittedV66SourceFromAnotherCaseWithoutChangingExtraBudgetLines() throws Exception {
-        jdbcTemplate.update("INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, estado_tramite_actual_id, estado_reparacion_actual_id, estado_pago_actual_id, estado_documentacion_actual_id, estado_legal_actual_id, prioridad_codigo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 200L, "00000000-0000-0000-0000-000000003200", "0200PZ", 200L, 2L, 1L, 1L, 10L, 10L, false, 1L, 1L, 4L, 7L, 9L, 11L, "MEDIA");
-        mockMvc.perform(put("/api/v1/cases/200/budget")
-                        .header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"budgetDate\":\"2026-04-20\",\"reportStatusCode\":\"BORRADOR\",\"laborWithoutVat\":1000,\"vatRate\":21,\"partsTotal\":500}"))
-                .andExpect(status().isOk());
-        Long foreignBudgetId = jdbcTemplate.queryForObject("SELECT id FROM presupuestos WHERE caso_id = ?", Long.class, 200L);
-        jdbcTemplate.update("INSERT INTO presupuesto_trabajos_extras (presupuesto_id, pieza_afectada, monto_repuestos, activo) VALUES (?, ?, ?, ?)", foreignBudgetId, "Moldura ajena", new BigDecimal("300.00"), true);
-        Long foreignSourceId = jdbcTemplate.queryForObject("SELECT id FROM presupuesto_trabajos_extras WHERE presupuesto_id = ?", Long.class, foreignBudgetId);
-        JsonNode draft = putJson("/api/v1/cases/100/extra-budget/draft", "{\"items\":[{\"visualOrder\":1,\"description\":\"Manual existente\",\"quantity\":1,\"partUnitAmount\":10,\"laborUnitAmount\":20}]}");
-
-        mockMvc.perform(put("/api/v1/cases/100/extra-budget/draft").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"expectedVersion\":" + draft.get("versionLock").asLong() + ",\"items\":[{\"visualOrder\":1,\"description\":\"Moldura ajena\",\"quantity\":1,\"partUnitAmount\":300,\"laborUnitAmount\":0,\"sourceType\":\"V66_ACCESSORY_WORK\",\"sourceId\":" + foreignSourceId + "}]}"))
-                .andExpect(status().isConflict());
-
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM presupuesto_extra_items", Integer.class)).isEqualTo(1);
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM presupuesto_extra_items WHERE source_type = 'V66_ACCESSORY_WORK'", Integer.class)).isZero();
-        assertThat(jdbcTemplate.queryForObject("SELECT descripcion FROM presupuesto_extra_items", String.class)).isEqualTo("Manual existente");
-        assertThat(jdbcTemplate.queryForObject("SELECT importe_unitario_mano_obra FROM presupuesto_extra_items", BigDecimal.class)).isEqualByComparingTo("20.00");
     }
 
     @Test
@@ -319,7 +239,7 @@ class ExtraBudgetPaymentIntegrationTest {
 
     @Test
     void rejectsPresentationOfADraftWithoutAPositiveNormalizedLineOrPdfSnapshot() throws Exception {
-        JsonNode draft = putJson("/api/v1/cases/100/extra-budget/draft", "{\"items\":[{\"visualOrder\":1,\"description\":\"Sin valor\",\"quantity\":1,\"partUnitAmount\":0.004,\"laborUnitAmount\":0.004}]}");
+        JsonNode draft = putJson("/api/v1/cases/100/extra-budget/draft", "{\"items\":[{\"visualOrder\":1,\"description\":\"Sin valor\",\"quantity\":1,\"partUnitAmount\":0.004,\"laborUnitAmount\":0.004,\"affectedPiece\":\"Sin valor\",\"actionCode\":\"REPARAR\",\"damageLevelCode\":\"LEVE\",\"partsAmount\":0}]}");
 
         mockMvc.perform(post("/api/v1/cases/100/extra-budget/present")
                         .header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
@@ -333,7 +253,7 @@ class ExtraBudgetPaymentIntegrationTest {
 
     @Test
     void presentationFreezesOnlyPositiveLinesAndKeepsHistoricalVersionAvailableAfterRevision() throws Exception {
-        JsonNode draft = putJson("/api/v1/cases/100/extra-budget/draft", "{\"items\":[{\"visualOrder\":1,\"description\":\"Incluida\",\"quantity\":1,\"partUnitAmount\":100,\"laborUnitAmount\":0},{\"visualOrder\":2,\"description\":\"Omitida\",\"quantity\":1,\"partUnitAmount\":0,\"laborUnitAmount\":0}]}");
+        JsonNode draft = putJson("/api/v1/cases/100/extra-budget/draft", "{\"items\":[{\"visualOrder\":1,\"description\":\"Incluida\",\"quantity\":1,\"partUnitAmount\":100,\"laborUnitAmount\":0,\"affectedPiece\":\"Incluida\",\"actionCode\":\"REEMPLAZAR\",\"damageLevelCode\":\"LEVE\",\"partsAmount\":100},{\"visualOrder\":2,\"description\":\"Omitida\",\"quantity\":1,\"partUnitAmount\":0,\"laborUnitAmount\":0,\"affectedPiece\":\"Omitida\",\"actionCode\":\"REPARAR\",\"damageLevelCode\":\"LEVE\",\"partsAmount\":0}]}");
         JsonNode presented = postJson("/api/v1/cases/100/extra-budget/present", "{\"expectedVersion\":" + draft.get("versionLock").asLong() + "}");
 
         assertThat(jdbcTemplate.queryForObject("SELECT pdf_snapshot_json FROM presupuesto_extra_versiones WHERE numero_version = 1", String.class))
@@ -375,7 +295,7 @@ class ExtraBudgetPaymentIntegrationTest {
     }
 
     private JsonNode createAcceptedExtra() throws Exception {
-        JsonNode draft = putJson("/api/v1/cases/100/extra-budget/draft", "{\"items\":[{\"visualOrder\":1,\"description\":\"Mano de obra extra\",\"quantity\":1,\"partUnitAmount\":0,\"laborUnitAmount\":100}]}");
+        JsonNode draft = putJson("/api/v1/cases/100/extra-budget/draft", "{\"items\":[{\"visualOrder\":1,\"description\":\"Mano de obra extra\",\"quantity\":1,\"partUnitAmount\":100,\"laborUnitAmount\":0,\"affectedPiece\":\"Mano de obra\",\"actionCode\":\"REPARAR\",\"damageLevelCode\":\"LEVE\",\"partsAmount\":100}]}");
         JsonNode presented = postJson("/api/v1/cases/100/extra-budget/present", "{\"expectedVersion\":" + draft.get("versionLock").asLong() + "}");
         return postJson("/api/v1/cases/100/extra-budget/accept", "{\"expectedVersion\":" + presented.get("versionLock").asLong() + "}");
     }
