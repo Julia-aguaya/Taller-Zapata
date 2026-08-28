@@ -18,6 +18,9 @@ export const getCleasCompanyPaymentSummary = (caseId) => requestJson(`${basePath
 export const registerCleasCompanyPayment = (caseId, payload) => requestJson(`${basePath(caseId)}/company-payments`, { method: 'POST', body: JSON.stringify(payload) });
 export const annulCleasCompanyPayment = (caseId, movementId, payload) => requestJson(`${basePath(caseId)}/company-payments/${movementId}/annul`, { method: 'POST', body: JSON.stringify(payload ?? {}) });
 export const downloadCleasLiquidationPdf = (caseId) => requestBlob(`${basePath(caseId)}/liquidation-pdf`);
+export const getCleasFranchisePaymentSummary = (caseId) => requestJson(`${basePath(caseId)}/franchise-summary`);
+export const registerCleasCustomerFranchisePayment = (caseId, payload) => requestJson(`${basePath(caseId)}/customer-franchise-payments`, { method: 'POST', body: JSON.stringify(payload) });
+export const registerCleasCompanyFranchisePayment = (caseId, payload) => requestJson(`${basePath(caseId)}/franchise-company-payment`, { method: 'POST', body: JSON.stringify(payload) });
 
 export const listCleasOrders = (caseId) => requestJson(`${basePath(caseId)}/orders`);
 export const createCleasOrder = (caseId, payload) => requestJson(`${basePath(caseId)}/orders`, { method: 'POST', body: JSON.stringify(payload) });

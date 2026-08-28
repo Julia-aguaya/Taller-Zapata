@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ban, Building2, CheckCircle, FileDown, Receipt, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { createFinancialMovement, createReceipt, getClientPaymentPdfUrl, getFinanceCatalogs, getReceiptPdfUrl, listFinancialMovements, listReceipts } from '@/modules/cases/api/finance-api';
-import { annulCleasCompanyPayment, downloadCleasLiquidationPdf, getCleasCompanyPaymentSummary, registerCleasCompanyPayment } from '@/modules/cases/api/cleas-api';
+import { annulCleasCompanyPayment, downloadCleasLiquidationPdf, getCleasCompanyPaymentSummary, getCleasFranchisePaymentSummary, registerCleasCompanyFranchisePayment, registerCleasCompanyPayment, registerCleasCustomerFranchisePayment } from '@/modules/cases/api/cleas-api';
 import { extraBudgetQueryKey, registerExtraBudgetPayment } from '@/modules/cases/api/extra-budget-api';
 import { requestJson } from '@/shared/api/http-client';
 import { readStoredAuth } from '@/shared/auth/session-storage';
@@ -85,13 +85,14 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const isClosedCleas = isCleasAdverseTotal && Boolean(cleasClosedAt);
   const blockCleasPayments = Boolean(cleasWorkflowGuard) || isClosedCleas;
   const isUnfavorableFranchise = isCleas && cleasOver === 'franchise' && cleasOpinion === 'unfavorable';
+  const franchiseSummaryQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'franchise-summary'], queryFn: () => getCleasFranchisePaymentSummary(caseId), enabled: isUnfavorableFranchise });
   const cleasNumberDisplay = nroCleas?.trim() ? nroCleas : 'Sin número de CLEAS cargado';
   const franchiseAmount = toAmount(cleasFranchiseDistribution?.franchiseAmount);
   const companyRequiredAmount = toAmount(cleasFranchiseDistribution?.companyRequiredAmount);
   const cleasAmountToBill = isUnfavorableFranchise
     ? toAmount(cleasAgreedAmount) - (franchiseAmount - companyRequiredAmount)
     : cleasAgreedAmount || '';
-  const franchiseClientAmount = toAmount(paymentBreakdownQuery.data?.client?.franchisePending ?? (toAmount(cleasAgreedAmount) - toAmount(cleasAmountToBill)));
+  const franchiseClientAmount = toAmount(franchiseSummaryQuery.data?.customerPendingAmount);
   const requestedClientPayment = clientPaymentRequest ?? localClientPaymentRequest;
   const activeClientPaymentRequest = isGranizo && requestedClientPayment?.concept === 'FRANQUICIA' ? null : requestedClientPayment;
 
@@ -155,6 +156,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
           externalReference: form.externalReference || null,
         });
       }
+      if (isUnfavorableFranchise && activeClientPaymentRequest?.concept === 'FRANQUICIA') return registerCleasCustomerFranchisePayment(caseId, { amount: monto, movementAt: form.movementAt, paymentMethodCode: form.paymentMethodCode, paymentMethodDetail: form.paymentMethodDetail || null, receiptId, externalReference: form.externalReference || null, reason: form.reason || null });
       return createFinancialMovement(caseId, {
         receiptId,
         movementTypeCode: 'INGRESO',
@@ -311,16 +313,18 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
          {Number(paymentBreakdownQuery.data.client.franchisePending) > 0 ? <div className="mt-4"><Button variant="outline" onClick={() => setLocalClientPaymentRequest({ concept: 'FRANQUICIA', amount: String(paymentBreakdownQuery.data.client.franchisePending) })}>Registrar pago de franquicia</Button></div> : null}
        </div> : null}
 
-        {isUnfavorableFranchise && franchiseClientAmount > 0 ? (
-         <Card className="rounded-3xl border-border/70 p-5">
-           <h4 className="text-lg font-semibold">Pago de franquicia a cargo del cliente</h4>
-          <p className="mt-1 text-sm text-muted-foreground">Pago pendiente del cliente al taller. No corresponde al pago de la compañía.</p>
+        {isUnfavorableFranchise && franchiseSummaryQuery.data ? (
+          <Card className="rounded-3xl border-border/70 p-5">
+            <h4 className="text-lg font-semibold">Pago de franquicia a cargo del cliente</h4>
+           <p className="mt-1 text-sm text-muted-foreground">Liquidación canónica de franquicia adversa.</p>
             <div className="mt-4 grid gap-4 md:grid-cols-3">
-              <Field label="A cargo del cliente"><Input value={franchiseClientAmount} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
+              <MiniCard label="A facturar Cía." value={formatCurrency(franchiseSummaryQuery.data.amountToBillCompany)} highlight />
+              <MiniCard label="Franquicia exigida por Cía." value={formatCurrency(franchiseSummaryQuery.data.companyRequiredAmount)} />
               <MiniCard label="Pendiente de franquicia" value={formatCurrency(franchiseClientAmount)} highlight />
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-3">
-              <Button type="button" onClick={() => setLocalClientPaymentRequest({ concept: 'FRANQUICIA', amount: String(franchiseClientAmount) })}>+ Registrar pago del cliente</Button>
+              {franchiseClientAmount > 0 ? <Button type="button" onClick={() => setLocalClientPaymentRequest({ concept: 'FRANQUICIA', amount: String(franchiseClientAmount) })}>+ Registrar pago al taller</Button> : null}
+              <Button type="button" variant="outline" onClick={() => registerCleasCompanyFranchisePayment(caseId, { statusCode: 'COBRADO', paymentDate: new Date().toISOString().slice(0, 10) }).then(() => queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'franchise-summary'] }))}>Confirmar pago cliente → Cía.</Button>
             </div>
          </Card>
        ) : null}

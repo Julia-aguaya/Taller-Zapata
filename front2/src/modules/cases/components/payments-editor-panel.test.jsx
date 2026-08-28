@@ -19,6 +19,9 @@ const mockGetCleasCompanyPaymentSummary = vi.fn();
 const mockRegisterCleasCompanyPayment = vi.fn().mockResolvedValue({ id: 12 });
 const mockAnnulCleasCompanyPayment = vi.fn().mockResolvedValue({});
 const mockDownloadCleasLiquidationPdf = vi.fn().mockResolvedValue(new Blob(['pdf'], { type: 'application/pdf' }));
+const mockGetCleasFranchisePaymentSummary = vi.fn();
+const mockRegisterCleasCustomerFranchisePayment = vi.fn();
+const mockRegisterCleasCompanyFranchisePayment = vi.fn();
 let useQueryData = {};
 
 vi.mock('@/modules/cases/api/finance-api', () => ({
@@ -35,6 +38,9 @@ vi.mock('@/modules/cases/api/cleas-api', () => ({
   registerCleasCompanyPayment: (...a) => mockRegisterCleasCompanyPayment(...a),
   annulCleasCompanyPayment: (...a) => mockAnnulCleasCompanyPayment(...a),
   downloadCleasLiquidationPdf: (...a) => mockDownloadCleasLiquidationPdf(...a),
+  getCleasFranchisePaymentSummary: (...a) => mockGetCleasFranchisePaymentSummary(...a),
+  registerCleasCustomerFranchisePayment: (...a) => mockRegisterCleasCustomerFranchisePayment(...a),
+  registerCleasCompanyFranchisePayment: (...a) => mockRegisterCleasCompanyFranchisePayment(...a),
 }));
 
 vi.mock('@tanstack/react-query', () => ({
@@ -90,7 +96,7 @@ const CleasPaymentsHarness = (props) => {
 };
 
   const mount = (overrides = {}) => {
-   useQueryData = { [JSON.stringify(['cases', '42', 'insurance'])]: { insuranceCompanyId: 7 } };
+   useQueryData = { [JSON.stringify(['cases', '42', 'insurance'])]: { insuranceCompanyId: 7 }, ...useQueryData };
   mockCreateFinancialMovement.mockClear();
   mockCreateReceipt.mockClear();
   mockRequestJson.mockClear();
@@ -314,6 +320,7 @@ describe('PaymentsEditorPanel', () => {
   });
 
   it('hides CLEAS billing and payment registration only after exact adverse-total closure', () => {
+    useQueryData = {};
     mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }, cleasOver: 'damage', cleasOpinion: 'unfavorable', cleasClosedAt: '2026-08-20T10:00:00.000Z' });
 
     expect(screen.queryByText('Facturación')).toBeNull();
@@ -414,7 +421,8 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.getByRole('button', { name: /^registrar pago$/i })).toBeEnabled();
   });
 
-  it('uses the unfavorable franchise derived company amount and reuses the generic client payment modal', () => {
+  it('uses the canonical unfavorable franchise summary and payment modal', () => {
+    useQueryData = { [JSON.stringify(['cases', '42', 'cleas', 'franchise-summary'])]: { amountToBillCompany: 1500000, companyRequiredAmount: 500000, customerPendingAmount: 500000 } };
     mount({
       caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' },
       cleasOver: 'franchise',
@@ -425,8 +433,8 @@ describe('PaymentsEditorPanel', () => {
 
     expect(screen.queryByText('Facturación')).toBeNull();
     expect(screen.getByText('Pago de franquicia a cargo del cliente')).toBeTruthy();
-    expect(screen.getByLabelText('A cargo del cliente')).toHaveValue('500000');
-    fireEvent.click(screen.getByRole('button', { name: '+ Registrar pago del cliente' }));
+    expect(screen.getByText('A facturar Cía.').parentElement).toHaveTextContent('1.500.000');
+    fireEvent.click(screen.getByRole('button', { name: '+ Registrar pago al taller' }));
     expect(screen.getByRole('heading', { name: 'Registrar pago' })).toBeTruthy();
     expect(screen.getByLabelText('Monto')).toHaveValue(500000);
     expect(screen.getByLabelText('Cancela saldo')).toHaveValue('FRANQUICIA');
