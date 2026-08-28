@@ -139,7 +139,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
         const p = { visualOrder: item.visualOrder, affectedPiece: item.affectedPiece, taskCode: item.taskCode, damageLevelCode: item.damageLevelCode, partDecisionCode: item.partDecisionCode, actionCode: item.actionCode, requiresReplacement: item.requiresReplacement, partValue: toDecimal(item.partValue), estimatedHours: toDecimal(item.estimatedHours), laborAmount: toDecimal(item.laborAmount), active: item.active, providerId: item.providerId };
          if (item.id) await updateCaseBudgetItem(caseId, item.id, p); else await createCaseBudgetItem(caseId, p);
        }
-        if (['TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode)) await syncPartsFromBudget(caseId);
+        if (['PARTICULAR', 'TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode)) await syncPartsFromBudget(caseId);
        if (closeAfterSave) await closeCaseBudget(caseId, { reportStatusCode: 'CERRADO', observations: header.observations || null });
     },
     onSuccess: async (response, variables) => { await invalidateWorkspace(); if (variables.closeAfterSave) { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'budget-comparisons'] }); if (canViewComparison) { setActiveTab('comparison'); setComparisonAnnouncement(`Presupuesto generado. Se importaron ${response?.comparisonSnapshot?.importedPieceCount ?? 0} piezas para comparar.`); window.setTimeout(() => comparisonHeadingRef.current?.focus(), 0); } toast.success('Presupuesto generado y comparación creada.'); } else toast.success('Presupuesto guardado.'); },

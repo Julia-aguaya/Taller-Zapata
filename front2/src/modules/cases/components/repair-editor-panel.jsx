@@ -190,6 +190,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     [partsCatalogsQuery.data?.authorizationCodes],
   );
   const isInsuranceRepair = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
+  const syncsCanonicalParts = ['PARTICULAR', 'TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
   const supportsNoRepair = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
   const isNoRepair = caseDetail?.visibleRepairState?.code === 'NO_DEBE_REPARARSE';
   const [noRepairDialog, setNoRepairDialog] = useState(null);
@@ -230,10 +231,10 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   });
 
   useEffect(() => {
-    if (!isInsuranceRepair || syncStartedForCase.current === String(caseId)) return;
+    if (!syncsCanonicalParts || syncStartedForCase.current === String(caseId)) return;
     syncStartedForCase.current = String(caseId);
     entrySyncMutation.mutate();
-  }, [caseId, isInsuranceRepair]);
+  }, [caseId, syncsCanonicalParts]);
 
   const resolveWarningMutation = useMutation({
     mutationFn: ({ partId, warningId, resolution }) => resolvePartReconciliationWarning(caseId, partId, warningId, resolution),

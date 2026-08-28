@@ -27,7 +27,7 @@ describe('invalidateCaseProjection', () => {
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['panel'] });
   });
 
-  it('keeps PARTICULAR repair actions without comparison import or automatic sync', async () => {
+  it('keeps PARTICULAR repair actions without comparison import and synchronizes canonical parts', async () => {
     partsApi.list.mockResolvedValue([{ id: 7, description: 'Paragolpes', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' }]);
     partsApi.catalogs.mockResolvedValue({});
     partsApi.sync.mockResolvedValue([]);
@@ -41,10 +41,10 @@ describe('invalidateCaseProjection', () => {
     expect(screen.queryByRole('columnheader', { name: 'Inventario' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Autorizado' })).toBeNull();
     expect(screen.queryByLabelText('Autorización Paragolpes')).toBeNull();
-    expect(partsApi.sync).not.toHaveBeenCalled();
+    await waitFor(() => expect(partsApi.sync).toHaveBeenCalledWith('42'));
   });
 
-  it('does not expose comparison import or a draft sync command', async () => {
+  it('synchronizes PARTICULAR canonical parts without exposing comparison import or a draft sync command', async () => {
     partsApi.list.mockResolvedValue([]);
     partsApi.catalogs.mockResolvedValue({});
     const { RepairEditorPanel } = await import('./repair-editor-panel');
@@ -53,7 +53,7 @@ describe('invalidateCaseProjection', () => {
 
     expect(screen.queryByRole('button', { name: 'Sincronizar repuestos' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Traer repuestos desde comparación' })).toBeNull();
-    expect(partsApi.sync).not.toHaveBeenCalled();
+    await waitFor(() => expect(partsApi.sync).toHaveBeenCalledWith('42'));
   });
 
   it('adds manual parts through an accessible modal instead of an inline form', async () => {
@@ -114,7 +114,7 @@ describe('invalidateCaseProjection', () => {
     expect(screen.queryByTitle('Rechazar repuesto')).toBeNull();
   });
 
-  it.each(['TODO_RIESGO', 'GRANIZO'])('runs the canonical entry sync for insured repair cases: %s', async (caseTypeCode) => {
+  it.each(['PARTICULAR', 'TODO_RIESGO', 'GRANIZO'])('runs the canonical entry sync for supported repair cases: %s', async (caseTypeCode) => {
     partsApi.list.mockResolvedValue([]);
     partsApi.catalogs.mockResolvedValue({});
     partsApi.sync.mockResolvedValue([]);

@@ -348,14 +348,15 @@ class ParticularVisibleStateIntegrationTest {
                 .andExpect(status().isOk());
         assertThat(countHistory(caseId)).isEqualTo(historyBeforeNonStateFinancialMutations);
 
-        // InsuranceRepairCasePolicy gates canonical part reconciliation to TODO_RIESGO/GRANIZO:
-        // a PARTICULAR budget no longer derives case parts, so repair stays EN_TRAMITE.
+        // A PARTICULAR budget also derives canonical parts from REEMPLAZAR lines;
+        // this must not alter the visible repair-state projection.
         mockMvc.perform(post("/api/v1/cases/{caseId}/budget/items", caseId).header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"visualOrder\":1,\"affectedPiece\":\"Optica\",\"taskCode\":\"ELECTRICIDAD\",\"damageLevelCode\":\"LEVE\",\"partDecisionCode\":\"REEMPLAZAR\",\"actionCode\":\"REEMPLAZAR\",\"requiresReplacement\":true,\"partValue\":10,\"estimatedHours\":1,\"laborAmount\":1}"))
                 .andExpect(status().isOk());
         mockMvc.perform(post("/api/v1/cases/{caseId}/parts/sync-from-budget", caseId).header("X-User-Id", "1"))
                 .andExpect(status().isOk());
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM repuestos_caso WHERE caso_id = ? AND source_type = 'BUDGET_ITEM' AND non_canonical = 0", Integer.class, caseId)).isEqualTo(1);
         assertProjection(caseId, "PAGADO", "EN_TRAMITE");
 
         mockMvc.perform(post("/api/v1/cases/{caseId}/budget/close", caseId).header("X-User-Id", "1")

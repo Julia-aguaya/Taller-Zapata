@@ -34,7 +34,7 @@ public class CanonicalPartReconciliationService {
     @Transactional
     public List<CasePartEntity> reconcile(Long caseId, AuthenticatedUser user, HttpServletRequest request) {
         CaseEntity caseEntity = cases.findByIdForUpdate(caseId).orElseThrow();
-        if (!caseTypes.findById(caseEntity.getCaseTypeId()).map(type -> insuranceRepairCasePolicy.isInsuranceRepair(type.getCode())).orElse(false)) return List.of();
+        if (!caseTypes.findById(caseEntity.getCaseTypeId()).map(type -> supportsCanonicalParts(type.getCode())).orElse(false)) return List.of();
         var budget = budgets.findByCaseId(caseId).orElse(null);
         if (budget == null) return List.of();
 
@@ -82,6 +82,11 @@ public class CanonicalPartReconciliationService {
             audit.register(user.id(), caseId, "repuestos_caso", part.getId(), "eliminar_repuesto_canonico_inactivo", null, null, audit.toJson(Map.of("sourceType", part.getSourceType().name())), request);
         }
         return changed;
+    }
+
+    private boolean supportsCanonicalParts(String caseTypeCode) {
+        return insuranceRepairCasePolicy.isInsuranceRepair(caseTypeCode)
+                || "PARTICULAR".equals(insuranceRepairCasePolicy.normalize(caseTypeCode));
     }
 
     private CasePartEntity newBudgetPart(Long caseId, BudgetItemEntity item) {

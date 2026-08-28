@@ -520,6 +520,15 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.getByRole('button', { name: /^registrar pago$/i })).toBeTruthy();
   });
 
+  it('keeps the PARTICULAR payment form within the viewport with an internal scroll area', () => {
+    mount();
+    openPaymentForm();
+
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveClass('max-h-[calc(100dvh-2rem)]');
+    expect(dialog.querySelector('.overflow-y-auto')).toBeTruthy();
+  });
+
   it('shows historial section', () => {
     mount();
     expect(screen.getByText('Historial de movimientos')).toBeTruthy();

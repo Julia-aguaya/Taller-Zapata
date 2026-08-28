@@ -359,7 +359,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
        ) : null}
 
       {/* Modal: Registrar pago */}
-       <Dialog open={!blockCleasPayments && showPaymentModal} onClose={() => setShowPaymentModal(false)} title="Registrar pago" description={<>{`Cliente: ${caseDetail?.principalCustomerName || ''} — ${caseDetail?.principalVehiclePlate || ''}`}{isCleas ? <><br /><span>N.º de CLEAS: {cleasNumberDisplay}</span></> : null}</>} scrollable={isCleas}>
+       <Dialog open={!blockCleasPayments && showPaymentModal} onClose={() => setShowPaymentModal(false)} title="Registrar pago" description={<>{`Cliente: ${caseDetail?.principalCustomerName || ''} — ${caseDetail?.principalVehiclePlate || ''}`}{isCleas ? <><br /><span>N.º de CLEAS: {cleasNumberDisplay}</span></> : null}</>} scrollable>
 
          {/* Tipo de comprobante */}
         <div className="mb-5 rounded-2xl border border-border/60 bg-background/70 p-4">
