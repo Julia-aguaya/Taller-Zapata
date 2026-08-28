@@ -3,6 +3,7 @@ package com.tallerzapata.backend.application.casefile;
 import com.tallerzapata.backend.api.casefile.CaseReadinessResponse;
 import com.tallerzapata.backend.api.casefile.CaseReadinessTabResponse;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
+import com.tallerzapata.backend.application.cleas.CleasClosurePolicy;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
 import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetEntity;
 import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetItemEntity;
@@ -22,6 +23,8 @@ import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseFranchi
 import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseFranchiseRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseInsuranceEntity;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseInsuranceRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseCleasEntity;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseCleasRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingEntity;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.RepairAppointmentEntity;
@@ -65,6 +68,8 @@ public class CaseReadinessService {
     private final InsuranceProcessingRepository insuranceProcessingRepository;
     private final CaseFranchiseRepository caseFranchiseRepository;
     private final FranchiseRecoveryRepository franchiseRecoveryRepository;
+    private final CaseCleasRepository caseCleasRepository;
+    private final CleasClosurePolicy cleasClosurePolicy;
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService caseAccessControlService;
 
@@ -85,6 +90,8 @@ public class CaseReadinessService {
             InsuranceProcessingRepository insuranceProcessingRepository,
             CaseFranchiseRepository caseFranchiseRepository,
             FranchiseRecoveryRepository franchiseRecoveryRepository,
+            CaseCleasRepository caseCleasRepository,
+            CleasClosurePolicy cleasClosurePolicy,
             CurrentUserService currentUserService,
             CaseAccessControlService caseAccessControlService
     ) {
@@ -104,6 +111,8 @@ public class CaseReadinessService {
         this.insuranceProcessingRepository = insuranceProcessingRepository;
         this.caseFranchiseRepository = caseFranchiseRepository;
         this.franchiseRecoveryRepository = franchiseRecoveryRepository;
+        this.caseCleasRepository = caseCleasRepository;
+        this.cleasClosurePolicy = cleasClosurePolicy;
         this.currentUserService = currentUserService;
         this.caseAccessControlService = caseAccessControlService;
     }
@@ -150,6 +159,12 @@ public class CaseReadinessService {
             tabs.add(budgetTab);
             tabs.add(buildTodoRiesgoReparacionReadiness(caseId, budgetTab.completed(), tramiteTab.completed()));
             tabs.add(buildInsuranceRepairPagosReadiness(caseId, false));
+        } else if ("CLEAS".equals(caseType.getCode())) {
+            CaseCleasEntity definition = caseCleasRepository.findByCaseId(caseId).orElse(null);
+            tabs.add(buildCleasGestionTramiteReadiness(definition));
+            tabs.add(buildCleasDownstreamReadiness("PRESUPUESTO", definition));
+            tabs.add(buildCleasDownstreamReadiness("GESTION_REPARACION", definition));
+            tabs.add(buildCleasDownstreamReadiness("PAGOS", definition));
         } else if ("RECUPERO_FRANQUICIA".equals(caseType.getCode())) {
             FranchiseRecoveryEntity recovery = franchiseRecoveryRepository.findByCaseId(caseId).orElse(null);
             CaseReadinessTabResponse tramiteTab = buildFranchiseRecoveryGestionTramiteReadiness(recovery);
@@ -164,6 +179,20 @@ public class CaseReadinessService {
         }
 
         return new CaseReadinessResponse(caseId, caseType.getCode(), tabs);
+    }
+
+    private CaseReadinessTabResponse buildCleasGestionTramiteReadiness(CaseCleasEntity definition) {
+        List<String> blocking = new ArrayList<>();
+        if (definition == null || definition.getScopeCode() == null) blocking.add("Falta indicar el alcance del CLEAS");
+        if (definition == null || definition.getOpinionCode() == null) blocking.add("Falta cargar el dictamen CLEAS");
+        return toTab("GESTION_TRAMITE", true, blocking, List.of());
+    }
+
+    private CaseReadinessTabResponse buildCleasDownstreamReadiness(String tabCode, CaseCleasEntity definition) {
+        if (cleasClosurePolicy.blocksDownstream(definition)) {
+            return toTab(tabCode, false, List.of(cleasClosurePolicy.downstreamBlockingReason(definition)), List.of());
+        }
+        return toTab(tabCode, true, List.of(), List.of());
     }
 
     private CaseReadinessTabResponse buildParticularBudgetReadiness(Long caseId, VehicleEntity principalVehicle) {

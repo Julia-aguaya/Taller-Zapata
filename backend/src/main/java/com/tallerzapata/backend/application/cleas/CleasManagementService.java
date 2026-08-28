@@ -1,0 +1,221 @@
+package com.tallerzapata.backend.application.cleas;
+
+import com.tallerzapata.backend.api.casefile.CaseIncidentResponse;
+import com.tallerzapata.backend.api.cleas.CleasIncidentResponse;
+import com.tallerzapata.backend.api.cleas.CleasIncidentUpsertRequest;
+import com.tallerzapata.backend.api.cleas.CleasClosureResponse;
+import com.tallerzapata.backend.api.cleas.CleasOrderCreateRequest;
+import com.tallerzapata.backend.api.cleas.CleasOrderResponse;
+import com.tallerzapata.backend.api.insurance.CaseCleasResponse;
+import com.tallerzapata.backend.api.insurance.CaseCleasUpsertRequest;
+import com.tallerzapata.backend.api.insurance.CaseInsuranceResponse;
+import com.tallerzapata.backend.api.insurance.CaseInsuranceUpsertRequest;
+import com.tallerzapata.backend.api.insurance.InsuranceProcessingPatchRequest;
+import com.tallerzapata.backend.api.insurance.InsuranceProcessingResponse;
+import com.tallerzapata.backend.application.casefile.CaseAuditService;
+import com.tallerzapata.backend.application.casefile.CaseManagementService;
+import com.tallerzapata.backend.application.common.ConflictException;
+import com.tallerzapata.backend.application.common.ResourceNotFoundException;
+import com.tallerzapata.backend.application.insurance.InsuranceService;
+import com.tallerzapata.backend.application.security.CaseAccessControlService;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeEntity;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeRepository;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseVehicleEntity;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseVehicleRepository;
+import com.tallerzapata.backend.infrastructure.persistence.document.DocumentCategoryRepository;
+import com.tallerzapata.backend.infrastructure.persistence.document.DocumentEntity;
+import com.tallerzapata.backend.infrastructure.persistence.document.DocumentRelationEntity;
+import com.tallerzapata.backend.infrastructure.persistence.document.DocumentRelationRepository;
+import com.tallerzapata.backend.infrastructure.persistence.document.DocumentRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseCleasRepository;
+import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleRepository;
+import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
+import com.tallerzapata.backend.infrastructure.security.CurrentUserService;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Map;
+import java.time.LocalDateTime;
+
+@Service
+public class CleasManagementService {
+    private static final String THIRD_PARTY_ROLE = "TERCERO";
+    private static final String CLEAS_MODULE = "CLEAS";
+    private final InsuranceService insuranceService;
+    private final CaseManagementService caseManagementService;
+    private final CaseRepository caseRepository;
+    private final CaseTypeRepository caseTypeRepository;
+    private final CaseVehicleRepository caseVehicleRepository;
+    private final VehicleRepository vehicleRepository;
+    private final DocumentRepository documentRepository;
+    private final DocumentCategoryRepository documentCategoryRepository;
+    private final DocumentRelationRepository documentRelationRepository;
+    private final CurrentUserService currentUserService;
+    private final CaseAccessControlService accessControlService;
+    private final CaseAuditService caseAuditService;
+    private final CaseCleasRepository caseCleasRepository;
+    private final CleasClosurePolicy cleasClosurePolicy;
+
+    public CleasManagementService(InsuranceService insuranceService, CaseManagementService caseManagementService, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CaseVehicleRepository caseVehicleRepository, VehicleRepository vehicleRepository, DocumentRepository documentRepository, DocumentCategoryRepository documentCategoryRepository, DocumentRelationRepository documentRelationRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, CaseCleasRepository caseCleasRepository, CleasClosurePolicy cleasClosurePolicy) {
+        this.insuranceService = insuranceService;
+        this.caseManagementService = caseManagementService;
+        this.caseRepository = caseRepository;
+        this.caseTypeRepository = caseTypeRepository;
+        this.caseVehicleRepository = caseVehicleRepository;
+        this.vehicleRepository = vehicleRepository;
+        this.documentRepository = documentRepository;
+        this.documentCategoryRepository = documentCategoryRepository;
+        this.documentRelationRepository = documentRelationRepository;
+        this.currentUserService = currentUserService;
+        this.accessControlService = accessControlService;
+        this.caseAuditService = caseAuditService;
+        this.caseCleasRepository = caseCleasRepository;
+        this.cleasClosurePolicy = cleasClosurePolicy;
+    }
+
+    @Transactional(readOnly = true)
+    public CaseCleasResponse getDefinition(Long caseId) { requireCleasCase(caseId); return insuranceService.getCaseCleas(caseId); }
+
+    @Transactional
+    public CaseCleasResponse upsertDefinition(Long caseId, CaseCleasUpsertRequest request, HttpServletRequest httpRequest) { requireEditableCleasCase(caseId); return insuranceService.upsertCaseCleas(caseId, request, httpRequest); }
+
+    @Transactional(readOnly = true)
+    public CaseInsuranceResponse getInsurance(Long caseId) { requireCleasCase(caseId); return insuranceService.getCaseInsurance(caseId); }
+
+    @Transactional
+    public CaseInsuranceResponse upsertInsurance(Long caseId, CaseInsuranceUpsertRequest request, HttpServletRequest httpRequest) { requireEditableCleasCase(caseId); return insuranceService.upsertCaseInsurance(caseId, request, httpRequest); }
+
+    @Transactional(readOnly = true)
+    public CleasIncidentResponse getIncident(Long caseId) {
+        requireEditableCleasCase(caseId);
+        CaseIncidentResponse incident = caseManagementService.getCaseIncident(caseId);
+        return new CleasIncidentResponse(incident, thirdPartyVehicleId(caseId));
+    }
+
+    @Transactional
+    public CleasIncidentResponse upsertIncident(Long caseId, CleasIncidentUpsertRequest request, HttpServletRequest httpRequest) {
+        requireCleasCase(caseId);
+        if (request.incident() == null) throw new ConflictException("incident es obligatorio");
+        caseManagementService.updateCaseIncident(caseId, request.incident(), httpRequest);
+        updateThirdPartyVehicle(caseId, request.thirdPartyVehicleId());
+        return new CleasIncidentResponse(caseManagementService.getCaseIncident(caseId), thirdPartyVehicleId(caseId));
+    }
+
+    @Transactional(readOnly = true)
+    public InsuranceProcessingResponse getProcessing(Long caseId) { requireCleasCase(caseId); return insuranceService.getCaseInsuranceProcessing(caseId); }
+
+    @Transactional
+    public InsuranceProcessingResponse patchProcessing(Long caseId, InsuranceProcessingPatchRequest request, HttpServletRequest httpRequest) { requireEditableCleasCase(caseId); return insuranceService.patchCaseInsuranceProcessing(caseId, request, httpRequest); }
+
+    @Transactional(readOnly = true)
+    public List<CleasOrderResponse> listOrders(Long caseId) {
+        CaseEntity caseEntity = requireEditableCleasCase(caseId);
+        requireAccess(caseEntity, "documento.ver");
+        return documentRelationRepository.findByCaseIdOrderByVisualOrderAscIdAsc(caseId).stream()
+                .filter(relation -> CLEAS_MODULE.equals(relation.getModuleCode()) && "CASO".equals(relation.getEntityType()) && caseId.equals(relation.getEntityId()))
+                .map(this::toOrderResponse)
+                .toList();
+    }
+
+    @Transactional
+    public CleasOrderResponse createOrder(Long caseId, CleasOrderCreateRequest request, HttpServletRequest httpRequest) {
+        CaseEntity caseEntity = requireEditableCleasCase(caseId);
+        AuthenticatedUser currentUser = requireAccess(caseEntity, "documento.crear");
+        DocumentEntity document = documentRepository.findByIdAndActiveTrue(request.documentId()).orElseThrow(() -> new ResourceNotFoundException("No existe el documento " + request.documentId()));
+        if (!documentCategoryRepository.findById(document.getCategoryId()).filter(category -> "ORDEN_CLEAS".equals(category.getCode()) && CLEAS_MODULE.equals(category.getModuleCode()) && Boolean.TRUE.equals(category.getActive())).isPresent()) {
+            throw new ConflictException("El documento debe usar la categoria ORDEN_CLEAS");
+        }
+        if (documentRelationRepository.existsByDocumentIdAndEntityTypeAndEntityId(document.getId(), "CASO", caseId)) throw new ConflictException("El documento ya esta relacionado con este caso");
+        DocumentRelationEntity relation = new DocumentRelationEntity();
+        relation.setDocumentId(document.getId());
+        relation.setCaseId(caseId);
+        relation.setEntityType("CASO");
+        relation.setEntityId(caseId);
+        relation.setModuleCode(CLEAS_MODULE);
+        relation.setPrincipal(Boolean.TRUE.equals(request.principal()));
+        relation.setVisibleToCustomer(Boolean.TRUE.equals(request.visibleToCustomer()));
+        relation.setVisualOrder(request.visualOrder() == null ? 0 : request.visualOrder());
+        relation = documentRelationRepository.save(relation);
+        caseAuditService.register(currentUser.id(), caseId, "documento_relaciones", relation.getId(), "vincular_orden_cleas", null, caseAuditService.toJson(Map.of("documentId", document.getId())), caseAuditService.toJson(Map.of("domain", CLEAS_MODULE)), httpRequest);
+        return toOrderResponse(relation);
+    }
+
+    @Transactional
+    public void deleteOrder(Long caseId, Long relationId, HttpServletRequest httpRequest) {
+        CaseEntity caseEntity = requireEditableCleasCase(caseId);
+        AuthenticatedUser currentUser = requireAccess(caseEntity, "documento.crear");
+        DocumentRelationEntity relation = documentRelationRepository.findById(relationId).orElseThrow(() -> new ResourceNotFoundException("No existe la relacion documental " + relationId));
+        if (!caseId.equals(relation.getCaseId()) || !CLEAS_MODULE.equals(relation.getModuleCode()) || !"CASO".equals(relation.getEntityType())) throw new ConflictException("La orden no pertenece al caso CLEAS indicado");
+        documentRelationRepository.delete(relation);
+        caseAuditService.register(currentUser.id(), caseId, "documento_relaciones", relationId, "desvincular_orden_cleas", caseAuditService.toJson(Map.of("documentId", relation.getDocumentId())), null, caseAuditService.toJson(Map.of("domain", CLEAS_MODULE)), httpRequest);
+    }
+
+    @Transactional
+    public CleasClosureResponse close(Long caseId, HttpServletRequest httpRequest) {
+        CaseEntity caseEntity = requireCleasCase(caseId);
+        AuthenticatedUser currentUser = requireAccess(caseEntity, "seguro.crear");
+        if (caseEntity.getClosedAt() != null) throw new ConflictException("El caso CLEAS ya se encuentra cerrado");
+        cleasClosurePolicy.requireAdverseTotal(caseCleasRepository.findByCaseId(caseId).orElse(null));
+        LocalDateTime closedAt = LocalDateTime.now();
+        caseEntity.setClosedAt(closedAt);
+        caseRepository.save(caseEntity);
+        caseAuditService.register(currentUser.id(), caseId, "casos", caseId, "cerrar_cleas_dictamen_en_contra", null,
+                caseAuditService.toJson(Map.of("closedAt", closedAt)), caseAuditService.toJson(Map.of("domain", CLEAS_MODULE)), httpRequest);
+        return new CleasClosureResponse(caseId, closedAt);
+    }
+
+    private void updateThirdPartyVehicle(Long caseId, Long vehicleId) {
+        List<CaseVehicleEntity> relations = caseVehicleRepository.findByCaseIdAndVehicleRoleCodeOrderByIdAsc(caseId, THIRD_PARTY_ROLE);
+        if (vehicleId == null) {
+            caseVehicleRepository.deleteAll(relations);
+            return;
+        }
+        if (vehicleRepository.findById(vehicleId).filter(vehicle -> Boolean.TRUE.equals(vehicle.getActivo())).isEmpty()) throw new ResourceNotFoundException("No existe el vehiculo activo " + vehicleId);
+        CaseVehicleEntity relation = relations.stream()
+                .filter(item -> vehicleId.equals(item.getVehicleId()))
+                .findFirst()
+                .orElse(relations.isEmpty() ? new CaseVehicleEntity() : relations.getFirst());
+        List<CaseVehicleEntity> obsoleteRelations = relations.stream()
+                .filter(item -> !item.getId().equals(relation.getId()))
+                .toList();
+        if (!obsoleteRelations.isEmpty()) caseVehicleRepository.deleteAll(obsoleteRelations);
+        relation.setCaseId(caseId);
+        relation.setVehicleId(vehicleId);
+        relation.setVehicleRoleCode(THIRD_PARTY_ROLE);
+        relation.setPrincipal(false);
+        relation.setVisualOrder(0);
+        caseVehicleRepository.save(relation);
+    }
+
+    private Long thirdPartyVehicleId(Long caseId) {
+        return caseVehicleRepository.findByCaseIdAndVehicleRoleCodeOrderByIdAsc(caseId, THIRD_PARTY_ROLE).stream().findFirst().map(CaseVehicleEntity::getVehicleId).orElse(null);
+    }
+
+    private CleasOrderResponse toOrderResponse(DocumentRelationEntity relation) {
+        DocumentEntity document = documentRepository.findByIdAndActiveTrue(relation.getDocumentId()).orElseThrow(() -> new ResourceNotFoundException("No existe el documento " + relation.getDocumentId()));
+        return new CleasOrderResponse(relation.getId(), document.getId(), document.getPublicId(), document.getFileName(), document.getMimeType(), document.getDocumentDate(), relation.getPrincipal(), relation.getVisibleToCustomer(), relation.getVisualOrder());
+    }
+
+    private CaseEntity requireCleasCase(Long caseId) {
+        CaseEntity caseEntity = caseRepository.findById(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
+        String caseTypeCode = caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(CaseTypeEntity::getCode).orElseThrow(() -> new ResourceNotFoundException("No existe el tipo de tramite del caso " + caseId));
+        if (!"CLEAS".equals(caseTypeCode)) throw new ConflictException("La gestion por secciones solo aplica a casos CLEAS");
+        return caseEntity;
+    }
+
+    private CaseEntity requireEditableCleasCase(Long caseId) {
+        CaseEntity caseEntity = requireCleasCase(caseId);
+        if (caseEntity.getClosedAt() != null) throw new ConflictException("El caso CLEAS esta cerrado y no admite nuevas acciones");
+        return caseEntity;
+    }
+
+    private AuthenticatedUser requireAccess(CaseEntity caseEntity, String permission) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        accessControlService.requireCaseAccess(currentUser, caseEntity, permission);
+        return currentUser;
+    }
+}

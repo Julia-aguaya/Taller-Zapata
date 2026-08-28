@@ -181,6 +181,12 @@ Header: `Authorization: Bearer <token>`
 | PUT | /api/v1/cases/{caseId}/franchise | Actualizar franquicia | seguro.crear |
 | GET | /api/v1/cases/{caseId}/cleas | Obtener CLEAS | seguro.ver |
 | PUT | /api/v1/cases/{caseId}/cleas | Actualizar CLEAS | seguro.crear |
+| GET/PUT | /api/v1/cases/{caseId}/cleas/definition | Consultar o actualizar definición CLEAS | seguro.ver / seguro.crear |
+| GET/PUT | /api/v1/cases/{caseId}/cleas/insurance | Consultar o actualizar seguro y contactos CLEAS | seguro.ver / seguro.crear |
+| GET/PUT | /api/v1/cases/{caseId}/cleas/incident | Consultar o actualizar siniestro y vehículo tercero | caso.ver / caso.crear |
+| GET/PATCH | /api/v1/cases/{caseId}/cleas/processing | Consultar o actualizar tramitación CLEAS | seguro.ver / seguro.crear |
+| GET/POST | /api/v1/cases/{caseId}/cleas/orders | Listar o vincular órdenes documentales CLEAS | documento.ver / documento.crear |
+| DELETE | /api/v1/cases/{caseId}/cleas/orders/{relationId} | Desvincular orden documental CLEAS | documento.crear |
 | GET | /api/v1/cases/{caseId}/third-party | Obtener tercero | seguro.ver |
 | PUT | /api/v1/cases/{caseId}/third-party | Actualizar tercero | seguro.crear |
 | GET | /api/v1/cases/{caseId}/legal | Obtener legal | seguro.ver |
@@ -307,8 +313,12 @@ Header: `Authorization: Bearer <token>`
 - `CaseInsuranceResponse` / `CaseInsuranceUpsertRequest`: `insuranceCompanyId` es obligatorio y debe identificar una compania existente; las companias inactivas se conservan para lectura historica y se excluyen de listados activos.
 - `InsuranceProcessingResponse` / `InsuranceProcessingUpsertRequest`
 - `CaseFranchiseResponse` / `CaseFranchiseUpsertRequest`
-- `CaseCleasResponse` / `CaseCleasUpsertRequest`
+- `CaseCleasResponse` / `CaseCleasUpsertRequest`: la definición CLEAS usa `scopeCode` (`DANIO_TOTAL` o `FRANQUICIA`) y `opinionCode` (`A_FAVOR`, `EN_CONTRA` o `CULPA_COMPARTIDA`); los códigos históricos continúan disponibles para lectura.
 - `CaseThirdPartyResponse` / `CaseThirdPartyUpsertRequest`
+- `CleasIncidentUpsertRequest`: `{ incident: CaseIncidentUpdateRequest, thirdPartyVehicleId: long|null }`; el vehículo tercero es una referencia canónica a `vehiculos`, vinculada al caso con rol `TERCERO`.
+- `CleasIncidentResponse`: `{ incident: CaseIncidentResponse, thirdPartyVehicleId }`
+- `CleasOrderCreateRequest`: `{ documentId: long, principal?: boolean, visibleToCustomer?: boolean, visualOrder?: integer }`; el documento debe pertenecer a la categoría `ORDEN_CLEAS`.
+- `CleasOrderResponse`: `{ relationId, documentId, publicId, fileName, mimeType, documentDate, principal, visibleToCustomer, visualOrder }`
 - `CaseLegalResponse` / `CaseLegalUpsertRequest`
 - `LegalNewsResponse` / `LegalNewsCreateRequest`
 - `LegalExpenseResponse` / `LegalExpenseCreateRequest`
