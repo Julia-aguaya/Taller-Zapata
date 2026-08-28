@@ -22,6 +22,14 @@ Deben mostrarse solo cuando corresponda, por ejemplo:
 - titular distinto del cliente -> datos del titular
 - lesionados -> datos de lesionados
 
+## Trabajos accesorios en trámites con compañía
+
+- aplican a TODO_RIESGO, GRANIZO y CLEAS; no aplican a PARTICULAR;
+- se presupuestan, aceptan, cobran, anulan y documentan en un presupuesto separado del presupuesto principal;
+- son una deuda exclusiva del cliente: nunca se incorporan al monto acordado, a la factura ni a la liquidación de la compañía;
+- sus pagos y anulaciones no modifican franquicia, saldo de franquicia, monto facturable ni saldo de la compañía;
+- el presupuesto accesorio sólo habilita su propio pago tras aceptación del cliente y conserva su propia trazabilidad documental y PDF.
+
 ## Automatizaciones requeridas
 
 - calculo de prescripcion

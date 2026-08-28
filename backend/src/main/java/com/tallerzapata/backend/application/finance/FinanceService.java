@@ -186,8 +186,9 @@ public class FinanceService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "finanza.crear");
-        validateReceiptRequest(request);
-        if (receiptRepository.existsByReceiptTypeCodeAndReceiptNumber(normalizeCode(request.receiptTypeCode()), request.receiptNumber().trim())) throw new ConflictException("Ya existe un comprobante con ese tipo y número");
+        validateReceiptRequest(caseEntity, request);
+        if (request.fiscalTypeCode() != null && receiptRepository.existsByFiscalTypeCodeAndSalePointAndFiscalNumber(normalizeFiscalType(request.fiscalTypeCode()), normalizeSalePoint(request.salePoint()), normalizeFiscalNumber(request.fiscalNumber()))) throw new ConflictException("Ya existe un comprobante con ese tipo fiscal, punto de venta y número");
+        if (request.fiscalTypeCode() == null && receiptRepository.existsByReceiptTypeCodeAndReceiptNumber(normalizeCode(request.receiptTypeCode()), request.receiptNumber().trim())) throw new ConflictException("Ya existe un comprobante con ese tipo y número");
 
         IssuedReceiptEntity entity = new IssuedReceiptEntity();
         entity.setCaseId(caseId);
@@ -201,6 +202,9 @@ public class FinanceService {
         entity.setSignedAt(request.signedAt());
         entity.setNotes(blankToNull(request.notes()));
         entity.setComprobanteFiscal(blankToNull(request.comprobanteFiscal()));
+        entity.setFiscalTypeCode(normalizeFiscalType(request.fiscalTypeCode()));
+        entity.setSalePoint(normalizeSalePoint(request.salePoint()));
+        entity.setFiscalNumber(normalizeFiscalNumber(request.fiscalNumber()));
         entity.setDocumentId(request.documentId());
         entity.setOriginalReceiptId(request.originalReceiptId());
         entity = receiptRepository.save(entity);
@@ -412,14 +416,26 @@ public class FinanceService {
         return receiptPdfService.generate(receipt, caseEntity, org, branch);
     }
 
-    private void validateReceiptRequest(IssuedReceiptCreateRequest request) {
+    private void validateReceiptRequest(CaseEntity caseEntity, IssuedReceiptCreateRequest request) {
         if (!issuedReceiptTypeRepository.existsByCodeAndActiveTrue(normalizeCode(request.receiptTypeCode()))) throw new ConflictException("receiptTypeCode no permitido: " + request.receiptTypeCode());
         if (request.documentId() != null && documentRepository.findByIdAndActiveTrue(request.documentId()).isEmpty()) throw new ResourceNotFoundException("No existe el documento " + request.documentId());
         if (scale(request.taxableNet()).add(scale(request.vatAmount())).compareTo(scale(request.total())) != 0) throw new ConflictException("total debe ser igual a taxableNet + vatAmount");
+        boolean hasFiscalIdentity = request.fiscalTypeCode() != null || request.salePoint() != null || request.fiscalNumber() != null;
+        if (hasFiscalIdentity) {
+            String fiscalType = normalizeFiscalType(request.fiscalTypeCode());
+            String salePoint = normalizeSalePoint(request.salePoint());
+            String fiscalNumber = normalizeFiscalNumber(request.fiscalNumber());
+            if (fiscalType == null || salePoint == null || fiscalNumber == null) throw new ConflictException("Tipo fiscal, punto de venta y número fiscal son obligatorios juntos");
+            if (!List.of("A", "B", "C", "M", "E").contains(fiscalType)) throw new ConflictException("tipo fiscal no permitido: " + request.fiscalTypeCode());
+            if (!request.receiptNumber().trim().equals(salePoint + "-" + fiscalNumber)) throw new ConflictException("receiptNumber debe coincidir con punto de venta y número fiscal");
+        }
         if ("NOTA_CREDITO".equals(normalizeCode(request.receiptTypeCode()))) {
             if (request.originalReceiptId() == null) throw new ConflictException("La nota de crédito debe indicar una factura original");
             IssuedReceiptEntity original = receiptRepository.findById(request.originalReceiptId()).orElseThrow(() -> new ConflictException("La nota de crédito debe indicar una factura original"));
             if (!"FACTURA".equals(original.getReceiptTypeCode())) throw new ConflictException("La nota de crédito solo puede aplicarse a una factura");
+            if (!original.getCaseId().equals(caseEntity.getId())) throw new ConflictException("La nota de crédito debe vincular una factura del mismo caso");
+            if (original.getFiscalTypeCode() != null && !original.getFiscalTypeCode().equals(normalizeFiscalType(request.fiscalTypeCode()))) throw new ConflictException("La nota de crédito debe conservar el tipo fiscal de la factura original");
+            if (original.getSalePoint() != null && !original.getSalePoint().equals(normalizeSalePoint(request.salePoint()))) throw new ConflictException("La nota de crédito debe conservar el punto de venta de la factura original");
             BigDecimal credited = receiptRepository.findByOriginalReceiptId(original.getId()).stream().map(item -> scale(item.getTotal())).reduce(BigDecimal.ZERO, BigDecimal::add);
             if (credited.add(scale(request.total())).compareTo(scale(original.getTotal())) > 0) throw new ConflictException("La nota de crédito supera el saldo de la factura original");
         } else if (request.originalReceiptId() != null) throw new ConflictException("Solo una nota de crédito puede vincular una factura original");
@@ -586,7 +602,7 @@ public class FinanceService {
     }
 
     private IssuedReceiptResponse toReceiptResponse(IssuedReceiptEntity entity) {
-        return new IssuedReceiptResponse(entity.getId(), entity.getPublicId(), entity.getCaseId(), entity.getReceiptTypeCode(), entity.getReceiptNumber(), entity.getReceiverBusinessName(), entity.getIssuedDate(), entity.getTaxableNet(), entity.getVatAmount(), entity.getTotal(), entity.getComprobanteFiscal(), entity.getSignedAt(), entity.getNotes(), entity.getDocumentId(), entity.getOriginalReceiptId(), entity.getCreatedAt(), entity.getUpdatedAt());
+        return new IssuedReceiptResponse(entity.getId(), entity.getPublicId(), entity.getCaseId(), entity.getReceiptTypeCode(), entity.getReceiptNumber(), entity.getReceiverBusinessName(), entity.getIssuedDate(), entity.getTaxableNet(), entity.getVatAmount(), entity.getTotal(), entity.getComprobanteFiscal(), entity.getSignedAt(), entity.getNotes(), entity.getDocumentId(), entity.getOriginalReceiptId(), entity.getFiscalTypeCode(), entity.getSalePoint(), entity.getFiscalNumber(), entity.getCreatedAt(), entity.getUpdatedAt());
     }
 
     private Map<String, Object> movementSnapshot(FinancialMovementEntity entity) {
@@ -604,4 +620,7 @@ public class FinanceService {
     private String normalizeCode(String value) { return value == null || value.isBlank() ? null : value.trim().toUpperCase(); }
     private String normalizedOptionalCode(String value) { return value == null || value.isBlank() ? null : normalizeCode(value); }
     private String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
+    private String normalizeFiscalType(String value) { return blankToNull(value) == null ? null : value.trim().toUpperCase(); }
+    private String normalizeSalePoint(String value) { return value == null || !value.matches("\\d{4}") ? null : value; }
+    private String normalizeFiscalNumber(String value) { return value == null || !value.matches("\\d{8}") ? null : value; }
 }

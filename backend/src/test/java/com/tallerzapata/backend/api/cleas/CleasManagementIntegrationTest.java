@@ -42,6 +42,8 @@ class CleasManagementIntegrationTest {
         jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, activo) VALUES (1, '00000000-0000-0000-0000-000000004001', 'RIVA', 'Rivadavia', true)");
         Long paymentDocumentCategoryId = jdbcTemplate.queryForObject("SELECT id FROM categorias_documentales WHERE codigo = 'COMPROBANTE_PAGO_CLEAS' AND modulo_codigo = 'CLEAS'", Long.class);
         jdbcTemplate.update("INSERT INTO documentos (id, public_id, storage_key, nombre_archivo, mime_type, tamano_bytes, checksum_sha256, categoria_id, subido_por, origen_codigo, activo) VALUES (201, '00000000-0000-0000-0000-000000000201', 'cleas/pago-100.pdf', 'pago-100.pdf', 'application/pdf', 10, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', ?, 3, 'CLEAS', true)", paymentDocumentCategoryId);
+        Long customerCompanyPaymentDocumentCategoryId = jdbcTemplate.queryForObject("SELECT id FROM categorias_documentales WHERE codigo = 'COMPROBANTE_PAGO_CLIENTE_COMPANIA_CLEAS' AND modulo_codigo = 'CLEAS'", Long.class);
+        jdbcTemplate.update("INSERT INTO documentos (id, public_id, storage_key, nombre_archivo, mime_type, tamano_bytes, checksum_sha256, categoria_id, subido_por, origen_codigo, activo) VALUES (202, '00000000-0000-0000-0000-000000000202', 'cleas/pago-cliente-compania-100.pdf', 'pago-cliente-compania-100.pdf', 'application/pdf', 10, 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', ?, 3, 'CLEAS', true)", customerCompanyPaymentDocumentCategoryId);
     }
 
     @Test
@@ -334,6 +336,39 @@ class CleasManagementIntegrationTest {
     }
 
     @Test
+    void shouldKeepSharedFaultAuditableWhileBillingTheFullTotalDamageAmount() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scopeCode\":\"DANIO_TOTAL\",\"opinionCode\":\"CULPA_COMPARTIDA\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.opinionCode").value("CULPA_COMPARTIDA"));
+        mockMvc.perform(put("/api/v1/cases/100/cleas/insurance").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"insuranceCompanyId\":1}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-08-02\",\"agreedAmount\":1000}"))
+                .andExpect(status().isOk());
+
+        String invoice = mockMvc.perform(post("/api/v1/cases/100/receipts").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"receiptTypeCode\":\"FACTURA\",\"receiptNumber\":\"A-SHARED-100\",\"receiverBusinessName\":\"Rivadavia\",\"issuedDate\":\"2026-08-03\",\"taxableNet\":1000,\"vatAmount\":0,\"total\":1000}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        Long invoiceId = objectMapper.readTree(invoice).get("id").asLong();
+
+        mockMvc.perform(get("/api/v1/cases/100/cleas/summary").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.agreedAmount").value(1000))
+                .andExpect(jsonPath("$.pendingGrossAmount").value(1000));
+        mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":1000,\"paymentMethodCode\":\"TRANSFERENCIA\",\"receiptId\":" + invoiceId + ",\"documentId\":201}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.grossAmount").value(1000));
+        mockMvc.perform(get("/api/v1/cases/100/cleas/liquidation-pdf").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_PDF));
+        assertThat(jdbcTemplate.queryForObject("SELECT dictamen_codigo FROM caso_cleas WHERE caso_id = 100", String.class)).isEqualTo("CULPA_COMPARTIDA");
+    }
+
+    @Test
     void shouldRegisterCustomerFranchisePaymentAndSettleAgainstTheFormula() throws Exception {
         mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scopeCode\":\"FRANQUICIA\",\"opinionCode\":\"EN_CONTRA\",\"franchiseAmount\":1000,\"companyFranchisePaymentAmount\":500}"))
@@ -398,6 +433,36 @@ class CleasManagementIntegrationTest {
     }
 
     @Test
+    void shouldCompleteFavorableFranchiseWithoutChargingTheCustomer() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scopeCode\":\"FRANQUICIA\",\"opinionCode\":\"A_FAVOR\",\"franchiseAmount\":1000}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/cases/100/cleas/insurance").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"insuranceCompanyId\":1}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-08-02\",\"agreedAmount\":2000}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/cases/100/cleas/franchise-summary").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.customerChargeAmount").value(0))
+                .andExpect(jsonPath("$.amountToBillCompany").value(2000));
+
+        String invoice = mockMvc.perform(post("/api/v1/cases/100/receipts").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"receiptTypeCode\":\"FACTURA\",\"receiptNumber\":\"A-FRANQ-FAVOR-100\",\"receiverBusinessName\":\"Rivadavia\",\"issuedDate\":\"2026-08-03\",\"taxableNet\":2000,\"vatAmount\":0,\"total\":2000}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        Long invoiceId = objectMapper.readTree(invoice).get("id").asLong();
+        mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":2000,\"paymentMethodCode\":\"TRANSFERENCIA\",\"receiptId\":" + invoiceId + ",\"documentId\":201}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.grossAmount").value(2000));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = 100 AND origen_flujo_codigo = 'CLIENTE'", Integer.class)).isZero();
+        mockMvc.perform(get("/api/v1/cases/100/cleas/liquidation-pdf").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType(MediaType.APPLICATION_PDF));
+    }
+
+    @Test
     void shouldRegisterCompanyFranchisePaymentForAdverseFranchise() throws Exception {
         mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scopeCode\":\"FRANQUICIA\",\"opinionCode\":\"EN_CONTRA\",\"franchiseAmount\":1000,\"companyFranchisePaymentAmount\":500}"))
@@ -410,7 +475,7 @@ class CleasManagementIntegrationTest {
                 .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/v1/cases/100/cleas/franchise-company-payment").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"paymentDate\":\"2026-08-05\",\"statusCode\":\"COBRADO\"}"))
+                .content("{\"paymentDate\":\"2026-08-05\",\"statusCode\":\"COBRADO\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.companyPaymentStatusCode").value("COBRADO"))
                 .andExpect(jsonPath("$.companyPaymentDate").value("2026-08-05"));
@@ -419,8 +484,27 @@ class CleasManagementIntegrationTest {
         assertThat(jdbcTemplate.queryForObject("SELECT fecha_pago_compania_franquicia FROM caso_cleas WHERE caso_id = 100", java.sql.Date.class).toLocalDate()).isEqualTo("2026-08-05");
 
         mockMvc.perform(post("/api/v1/cases/100/cleas/franchise-company-payment").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"paymentDate\":\"2026-08-05\",\"statusCode\":\"INVALIDO\"}"))
+                        .content("{\"paymentDate\":\"2026-08-06\",\"statusCode\":\"COBRADO\",\"documentId\":202}"))
+                .andExpect(status().isOk());
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM documento_relaciones WHERE documento_id = 202 AND entidad_tipo = 'CASO_CLEAS'", Integer.class)).isEqualTo(1);
+
+        mockMvc.perform(post("/api/v1/cases/100/cleas/franchise-company-payment").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"paymentDate\":\"2026-08-05\",\"statusCode\":\"INVALIDO\"}"))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldRejectCustomerCompanyPaymentProofFromAnotherCase() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scopeCode\":\"FRANQUICIA\",\"opinionCode\":\"EN_CONTRA\",\"franchiseAmount\":1000}"))
+                .andExpect(status().isOk());
+        jdbcTemplate.update("INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, estado_tramite_actual_id, estado_reparacion_actual_id, estado_pago_actual_id, estado_documentacion_actual_id, estado_legal_actual_id, prioridad_codigo) VALUES (101, '00000000-0000-0000-0000-000000003101', '0101CL', 101, 4, 1, 1, 10, 10, false, 1, 1, 4, 7, 9, 11, 'MEDIA')");
+        jdbcTemplate.update("INSERT INTO documento_relaciones (documento_id, caso_id, entidad_tipo, entidad_id, modulo_codigo, principal, visible_cliente, orden_visual) VALUES (202, 101, 'CASO', 101, 'CLEAS', false, false, 0)");
+
+        mockMvc.perform(post("/api/v1/cases/100/cleas/franchise-company-payment").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"paymentDate\":\"2026-08-05\",\"statusCode\":\"COBRADO\",\"documentId\":202}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("El comprobante pertenece a otro caso"));
     }
 
     private void prepareEligibleCompanyPayment() throws Exception {

@@ -69,6 +69,7 @@ public class CleasManagementService {
     private static final String CLEAS_MODULE = "CLEAS";
     private static final String COMPANY_PAYMENT_CANCELLATION_TYPE = "COMPANIA";
     private static final String COMPANY_PAYMENT_DOCUMENT_CATEGORY = "COMPROBANTE_PAGO_CLEAS";
+    private static final String CUSTOMER_COMPANY_PAYMENT_DOCUMENT_CATEGORY = "COMPROBANTE_PAGO_CLIENTE_COMPANIA_CLEAS";
     private static final String FINANCIAL_MOVEMENT_ENTITY_TYPE = "MOVIMIENTO_FINANCIERO";
     private final InsuranceService insuranceService;
     private final CaseManagementService caseManagementService;
@@ -431,8 +432,35 @@ public class CleasManagementService {
         cleas.setCompanyFranchisePaymentStatusCode(statusCode);
         cleas.setCompanyFranchisePaymentDate(request.paymentDate());
         caseCleasRepository.save(cleas);
+        if (request.documentId() != null) {
+            DocumentEntity document = documentRepository.findByIdAndActiveTrue(request.documentId())
+                    .orElseThrow(() -> new ResourceNotFoundException("No existe el documento " + request.documentId()));
+            if (documentCategoryRepository.findById(document.getCategoryId()).filter(category -> CUSTOMER_COMPANY_PAYMENT_DOCUMENT_CATEGORY.equals(category.getCode())
+                    && CLEAS_MODULE.equals(category.getModuleCode()) && Boolean.TRUE.equals(category.getActive())).isEmpty()) {
+                throw new ConflictException("El documento debe usar la categoria COMPROBANTE_PAGO_CLIENTE_COMPANIA_CLEAS");
+            }
+            boolean belongsToAnotherCase = documentRelationRepository.findByDocumentIdOrderByVisualOrderAscIdAsc(document.getId()).stream()
+                    .anyMatch(relation -> !caseId.equals(relation.getCaseId()));
+            if (belongsToAnotherCase) throw new ConflictException("El comprobante pertenece a otro caso");
+            if (!documentRelationRepository.existsByDocumentIdAndEntityTypeAndEntityId(document.getId(), "CASO_CLEAS", cleas.getId())) {
+                DocumentRelationEntity relation = new DocumentRelationEntity();
+                relation.setDocumentId(document.getId());
+                relation.setCaseId(caseId);
+                relation.setEntityType("CASO_CLEAS");
+                relation.setEntityId(cleas.getId());
+                relation.setModuleCode(CLEAS_MODULE);
+                relation.setPrincipal(Boolean.FALSE);
+                relation.setVisibleToCustomer(Boolean.FALSE);
+                relation.setVisualOrder(0);
+                documentRelationRepository.save(relation);
+            }
+        }
+        Map<String, Object> paymentAudit = new java.util.LinkedHashMap<>();
+        paymentAudit.put("statusCode", statusCode);
+        paymentAudit.put("paymentDate", request.paymentDate());
+        paymentAudit.put("documentId", request.documentId());
         caseAuditService.register(currentUser.id(), caseId, "caso_cleas", cleas.getId(), "registrar_pago_compania_franquicia_cleas", null,
-                caseAuditService.toJson(Map.of("statusCode", statusCode, "paymentDate", request.paymentDate())), caseAuditService.toJson(Map.of("domain", CLEAS_MODULE)), httpRequest);
+                caseAuditService.toJson(paymentAudit), caseAuditService.toJson(Map.of("domain", CLEAS_MODULE)), httpRequest);
         return franchiseSummary(caseEntity);
     }
 

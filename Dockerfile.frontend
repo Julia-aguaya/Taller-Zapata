@@ -2,15 +2,13 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm ci
-
 COPY . .
-RUN npm run build
+RUN npm ci --prefix front2
+RUN npm run build --prefix front2
 
 FROM caddy:2.8-alpine
 
 COPY Caddyfile /etc/caddy/Caddyfile
-COPY --from=build /app/dist /srv
+COPY --from=build /app/front2/dist /srv
 
 EXPOSE 80 443

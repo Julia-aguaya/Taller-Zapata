@@ -1,0 +1,59 @@
+name: taller-zapata-e2e
+
+services:
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: taller_zapata_e2e
+      MYSQL_USER: e2e
+      MYSQL_PASSWORD: e2e
+      MYSQL_ROOT_PASSWORD: e2e_root
+    volumes:
+      - e2e_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  backend:
+    image: maven:3.9.9-eclipse-temurin-21
+    working_dir: /workspace/backend
+    command: mvn spring-boot:run -Dspring-boot.run.profiles=local
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://db:3306/taller_zapata_e2e?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=America/Argentina/Buenos_Aires
+      SPRING_DATASOURCE_USERNAME: e2e
+      SPRING_DATASOURCE_PASSWORD: e2e
+      APP_SECURITY_JWT_SECRET: e2e-only-secret-do-not-use-outside-local-e2e-environments
+      APP_STORAGE_LOCAL_PATH: /workspace/e2e-storage
+      APP_CORS_ALLOWED_ORIGINS: http://localhost:5181
+    ports:
+      - "8082:8080"
+    volumes:
+      - ./:/workspace
+      - e2e_maven_cache:/root/.m2
+      - e2e_backend_storage:/workspace/e2e-storage
+    depends_on:
+      db:
+        condition: service_healthy
+
+  front2:
+    image: node:20-alpine
+    working_dir: /workspace/front2
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 5180"
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:8080
+    ports:
+      - "5181:5180"
+    volumes:
+      - ./:/workspace
+      - e2e_front2_node_modules:/workspace/front2/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  e2e_mysql_data:
+  e2e_maven_cache:
+  e2e_backend_storage:
+  e2e_front2_node_modules:

@@ -20,6 +20,9 @@ public record IssuedReceiptResponse(
         String notes,
         Long documentId,
         Long originalReceiptId,
+        String fiscalTypeCode,
+        String salePoint,
+        String fiscalNumber,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {

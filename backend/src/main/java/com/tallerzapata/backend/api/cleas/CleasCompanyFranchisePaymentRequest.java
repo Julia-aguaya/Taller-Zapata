@@ -4,6 +4,7 @@ import java.time.LocalDate;
 
 public record CleasCompanyFranchisePaymentRequest(
         LocalDate paymentDate,
-        String statusCode
+        String statusCode,
+        Long documentId
 ) {
 }

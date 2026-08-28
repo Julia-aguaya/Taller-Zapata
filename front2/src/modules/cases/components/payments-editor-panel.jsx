@@ -22,6 +22,8 @@ const toAmount = (value) => {
 const formatCurrency = (amount) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(amount || 0);
 
+const fiscalReceiptDisplayNumber = (salePoint, fiscalNumber) => `${salePoint}-${fiscalNumber}`;
+
 const COMPROBANTE_TYPES = [
   { value: 'A', label: 'A — Factura con IVA' },
   { value: 'C', label: 'C — Factura sin IVA (Consumidor Final / Monotributo)' },
@@ -65,7 +67,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [localClientPaymentRequest, setLocalClientPaymentRequest] = useState(null);
   const [cancelMovement, setCancelMovement] = useState(null);
-  const [franchiseCompanyPayment, setFranchiseCompanyPayment] = useState({ statusCode: 'COBRADO', paymentDate: new Date().toISOString().slice(0, 10) });
+  const [franchiseCompanyPayment, setFranchiseCompanyPayment] = useState({ statusCode: 'COBRADO', paymentDate: new Date().toISOString().slice(0, 10), documentId: '', proofFile: null });
   const paymentDocumentInputRef = useRef(null);
   const companyPaymentSubmittingRef = useRef(false);
   const clientPaymentSubmittingRef = useRef(false);
@@ -87,9 +89,26 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const blockCleasPayments = Boolean(cleasWorkflowGuard) || isClosedCleas;
   const isUnfavorableFranchise = isCleas && cleasOver === 'franchise' && cleasOpinion === 'unfavorable';
   const franchiseSummaryQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'franchise-summary'], queryFn: () => getCleasFranchisePaymentSummary(caseId), enabled: isUnfavorableFranchise });
+  const cleasDocumentsQuery = useQuery({ queryKey: ['cases', String(caseId), 'documents'], queryFn: () => requestJson(`/cases/${caseId}/documents`), enabled: isCleas });
+  const documentCategoriesQuery = useQuery({ queryKey: ['documents', 'catalogs'], queryFn: () => requestJson('/documents/catalogs'), enabled: isCleas });
+  const customerCompanyPaymentProofCategory = (documentCategoriesQuery.data?.categories ?? []).find((category) => category.code === 'COMPROBANTE_PAGO_CLIENTE_COMPANIA_CLEAS');
+  const customerCompanyPaymentProofs = (cleasDocumentsQuery.data ?? []).filter((document) => String(document.categoryId) === String(customerCompanyPaymentProofCategory?.id));
   const franchiseCompanyPaymentMutation = useMutation({
-    mutationFn: () => registerCleasCompanyFranchisePayment(caseId, franchiseCompanyPayment),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'franchise-summary'] }); toast.success('Pago del cliente a la compañía actualizado.'); },
+    mutationFn: async () => {
+      let documentId = franchiseCompanyPayment.documentId ? Number(franchiseCompanyPayment.documentId) : null;
+      if (franchiseCompanyPayment.proofFile) {
+        const category = (documentCategoriesQuery.data?.categories ?? []).find((item) => item.code === 'COMPROBANTE_PAGO_CLIENTE_COMPANIA_CLEAS');
+        if (!category) throw new Error('No está disponible la categoría de comprobante cliente → compañía CLEAS.');
+        const upload = new FormData();
+        upload.append('file', franchiseCompanyPayment.proofFile);
+        upload.append('categoryId', String(category.id));
+        upload.append('originCode', 'CLEAS');
+        const document = await requestJson('/documents', { method: 'POST', body: upload });
+        documentId = document.id;
+      }
+      return registerCleasCompanyFranchisePayment(caseId, { statusCode: franchiseCompanyPayment.statusCode, paymentDate: franchiseCompanyPayment.paymentDate || null, documentId });
+    },
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'franchise-summary'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'documents'] }); toast.success('Pago del cliente a la compañía actualizado.'); },
     onError: (error) => toast.error(error.message || 'No pude actualizar el pago a la compañía.'),
   });
   const cleasNumberDisplay = nroCleas?.trim() ? nroCleas : 'Sin número de CLEAS cargado';
@@ -330,9 +349,11 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
             </div>
             <div className="mt-4 flex flex-wrap items-center gap-3">
               {franchiseClientAmount > 0 ? <Button type="button" onClick={() => setLocalClientPaymentRequest({ concept: 'FRANQUICIA', amount: String(franchiseClientAmount) })}>+ Registrar pago al taller</Button> : null}
-              <Select aria-label="Estado pago a compañía" value={franchiseCompanyPayment.statusCode} onChange={(event) => setFranchiseCompanyPayment((current) => ({ ...current, statusCode: event.target.value }))} options={[{ value: 'PENDIENTE', label: 'Pendiente' }, { value: 'COBRADO', label: 'Cobrado' }, { value: 'NO_APLICA', label: 'No aplica' }]} />
-              <Input aria-label="Fecha pago a compañía" type="date" value={franchiseCompanyPayment.paymentDate} onChange={(event) => setFranchiseCompanyPayment((current) => ({ ...current, paymentDate: event.target.value }))} />
-              <Button type="button" variant="outline" disabled={franchiseCompanyPaymentMutation.isPending} onClick={() => franchiseCompanyPaymentMutation.mutate()}>Guardar pago cliente → Cía.</Button>
+               <Select aria-label="Estado pago a compañía" value={franchiseCompanyPayment.statusCode} onChange={(event) => setFranchiseCompanyPayment((current) => ({ ...current, statusCode: event.target.value }))} options={[{ value: 'PENDIENTE', label: 'Pendiente' }, { value: 'COBRADO', label: 'Cobrado' }, { value: 'NO_APLICA', label: 'No aplica' }]} />
+               <Input aria-label="Fecha pago a compañía" type="date" value={franchiseCompanyPayment.paymentDate} onChange={(event) => setFranchiseCompanyPayment((current) => ({ ...current, paymentDate: event.target.value }))} />
+               <Select aria-label="Comprobante pago cliente a compañía" value={franchiseCompanyPayment.documentId} onChange={(event) => setFranchiseCompanyPayment((current) => ({ ...current, documentId: event.target.value, proofFile: null }))} options={[{ value: '', label: 'Sin comprobante documental' }, ...customerCompanyPaymentProofs.map((document) => ({ value: String(document.documentId), label: document.fileName || `Documento #${document.documentId}` }))]} />
+               <Input aria-label="Subir comprobante pago cliente a compañía" type="file" onChange={(event) => setFranchiseCompanyPayment((current) => ({ ...current, proofFile: event.target.files?.[0] ?? null, documentId: '' }))} />
+               <Button type="button" variant="outline" disabled={franchiseCompanyPaymentMutation.isPending} onClick={() => franchiseCompanyPaymentMutation.mutate()}>Guardar pago cliente → Cía.</Button>
             </div>
          </Card>
        ) : null}
@@ -734,21 +755,42 @@ const CleasInvoicePanel = ({ caseId, onSaved }) => {
   const queryClient = useQueryClient();
   const summaryQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'summary'], queryFn: () => getCleasCompanyPaymentSummary(caseId) });
   const receiptsQuery = useQuery({ queryKey: ['cases', String(caseId), 'receipts'], queryFn: () => listReceipts(caseId) });
-  const [form, setForm] = useState({ receiptNumber: '', receiverBusinessName: '', issuedDate: new Date().toISOString().slice(0, 10) });
-  const [creditForm, setCreditForm] = useState({ originalReceiptId: '', receiptNumber: '', issuedDate: new Date().toISOString().slice(0, 10), amount: '' });
+  const [form, setForm] = useState({ fiscalTypeCode: 'A', salePoint: '0001', fiscalNumber: '', receiverBusinessName: '', issuedDate: new Date().toISOString().slice(0, 10) });
+  const [creditForm, setCreditForm] = useState({ originalReceiptId: '', fiscalTypeCode: 'A', salePoint: '0001', fiscalNumber: '', issuedDate: new Date().toISOString().slice(0, 10), amount: '' });
+  const receipts = receiptsQuery.data ?? [];
+  const invoices = receipts.filter((receipt) => receipt.receiptTypeCode === 'FACTURA');
+  const creditNotes = receipts.filter((receipt) => receipt.receiptTypeCode === 'NOTA_CREDITO');
+  const selectedInvoice = invoices.find((invoice) => String(invoice.id) === creditForm.originalReceiptId);
   const invoiceMutation = useMutation({
     mutationFn: () => createReceipt(caseId, {
-      receiptTypeCode: 'FACTURA', receiptNumber: form.receiptNumber.trim(), receiverBusinessName: form.receiverBusinessName.trim(), issuedDate: form.issuedDate,
-      taxableNet: toAmount(summaryQuery.data.agreedAmount), vatAmount: 0, total: toAmount(summaryQuery.data.agreedAmount), comprobanteFiscal: null, notes: null,
+      receiptTypeCode: 'FACTURA', receiptNumber: fiscalReceiptDisplayNumber(form.salePoint, form.fiscalNumber), receiverBusinessName: form.receiverBusinessName.trim(), issuedDate: form.issuedDate,
+      taxableNet: toAmount(summaryQuery.data.agreedAmount), vatAmount: 0, total: toAmount(summaryQuery.data.agreedAmount), comprobanteFiscal: form.fiscalTypeCode, notes: null,
+      fiscalTypeCode: form.fiscalTypeCode, salePoint: form.salePoint, fiscalNumber: form.fiscalNumber,
     }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'receipts'] });
       await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
       await onSaved?.();
-      setForm({ receiptNumber: '', receiverBusinessName: '', issuedDate: new Date().toISOString().slice(0, 10) });
+      setForm({ fiscalTypeCode: 'A', salePoint: '0001', fiscalNumber: '', receiverBusinessName: '', issuedDate: new Date().toISOString().slice(0, 10) });
       toast.success('Factura CLEAS registrada.');
     },
     onError: (error) => toast.error(error.message || 'No pude registrar la factura CLEAS.'),
+  });
+  const creditMutation = useMutation({
+    mutationFn: () => createReceipt(caseId, {
+      receiptTypeCode: 'NOTA_CREDITO', receiptNumber: fiscalReceiptDisplayNumber(creditForm.salePoint, creditForm.fiscalNumber), receiverBusinessName: selectedInvoice.receiverBusinessName,
+      issuedDate: creditForm.issuedDate, taxableNet: toAmount(creditForm.amount), vatAmount: 0, total: toAmount(creditForm.amount),
+      comprobanteFiscal: creditForm.fiscalTypeCode, notes: null, originalReceiptId: selectedInvoice.id,
+      fiscalTypeCode: creditForm.fiscalTypeCode, salePoint: creditForm.salePoint, fiscalNumber: creditForm.fiscalNumber,
+    }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'receipts'] });
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
+      await onSaved?.();
+      setCreditForm({ originalReceiptId: '', fiscalTypeCode: 'A', salePoint: '0001', fiscalNumber: '', issuedDate: new Date().toISOString().slice(0, 10), amount: '' });
+      toast.success('Nota de crédito registrada.');
+    },
+    onError: (error) => toast.error(error.message || 'No pude registrar la nota de crédito.'),
   });
 
   if (summaryQuery.isLoading || receiptsQuery.isLoading) return null;
@@ -756,29 +798,33 @@ const CleasInvoicePanel = ({ caseId, onSaved }) => {
   if (!summaryQuery.data) return null;
 
   const agreedAmount = toAmount(summaryQuery.data.agreedAmount);
-  const invoices = (receiptsQuery.data ?? []).filter((receipt) => receipt.receiptTypeCode === 'FACTURA');
-  const selectedInvoice = invoices.find((invoice) => String(invoice.id) === creditForm.originalReceiptId);
-  const creditMutation = useMutation({
-    mutationFn: () => createReceipt(caseId, { receiptTypeCode: 'NOTA_CREDITO', receiptNumber: creditForm.receiptNumber.trim(), receiverBusinessName: selectedInvoice.receiverBusinessName, issuedDate: creditForm.issuedDate, taxableNet: toAmount(creditForm.amount), vatAmount: 0, total: toAmount(creditForm.amount), comprobanteFiscal: null, notes: null, originalReceiptId: selectedInvoice.id }),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'receipts'] }); setCreditForm({ originalReceiptId: '', receiptNumber: '', issuedDate: new Date().toISOString().slice(0, 10), amount: '' }); toast.success('Nota de crédito registrada.'); },
-    onError: (error) => toast.error(error.message || 'No pude registrar la nota de crédito.'),
-  });
-  const canSubmit = agreedAmount > 0 && Boolean(form.receiptNumber.trim()) && Boolean(form.receiverBusinessName.trim()) && Boolean(form.issuedDate) && !invoiceMutation.isPending;
+  const hasValidFiscalIdentity = (currentForm) => /^\d{4}$/.test(currentForm.salePoint) && /^\d{8}$/.test(currentForm.fiscalNumber);
+  const canSubmit = agreedAmount > 0 && hasValidFiscalIdentity(form) && Boolean(form.receiverBusinessName.trim()) && Boolean(form.issuedDate) && !invoiceMutation.isPending;
 
   return (
   <Card className="rounded-3xl border-border/70 p-5">
     <h4 className="text-lg font-semibold">Facturación</h4>
     <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       <Field label="Monto acordado"><Input value={formatCurrency(agreedAmount)} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
-      <Field label="N.º de factura"><Input value={form.receiptNumber} onChange={(event) => setForm((current) => ({ ...current, receiptNumber: event.target.value }))} /></Field>
+      <Field label="Tipo fiscal"><Select value={form.fiscalTypeCode} onChange={(event) => setForm((current) => ({ ...current, fiscalTypeCode: event.target.value }))} options={['A', 'B', 'C', 'M', 'E'].map((value) => ({ value, label: `Factura ${value}` }))} /></Field>
+      <Field label="Punto de venta"><Input inputMode="numeric" maxLength="4" value={form.salePoint} onChange={(event) => setForm((current) => ({ ...current, salePoint: event.target.value }))} /></Field>
+      <Field label="Número fiscal"><Input inputMode="numeric" maxLength="8" value={form.fiscalNumber} onChange={(event) => setForm((current) => ({ ...current, fiscalNumber: event.target.value }))} /></Field>
       <Field label="Razón social"><Input value={form.receiverBusinessName} onChange={(event) => setForm((current) => ({ ...current, receiverBusinessName: event.target.value }))} /></Field>
       <Field label="Fecha de emisión"><Input type="date" value={form.issuedDate} onChange={(event) => setForm((current) => ({ ...current, issuedDate: event.target.value }))} /></Field>
     </div>
     <div className="mt-5"><Button type="button" disabled={!canSubmit} onClick={() => invoiceMutation.mutate()}>+ Registrar factura</Button></div>
-    {invoices.length > 0 ? <div className="mt-5 rounded-2xl border border-border/60 p-4"><p className="text-sm font-semibold">Nota de crédito parcial</p><div className="mt-3 grid gap-3 md:grid-cols-4"><Select aria-label="Factura a acreditar" value={creditForm.originalReceiptId} onChange={(event) => setCreditForm((current) => ({ ...current, originalReceiptId: event.target.value }))} options={[{ value: '', label: 'Seleccionar factura...' }, ...invoices.map((invoice) => ({ value: String(invoice.id), label: `${invoice.receiptNumber} - ${formatCurrency(invoice.total)}` }))]} /><Input aria-label="N.º de nota de crédito" value={creditForm.receiptNumber} onChange={(event) => setCreditForm((current) => ({ ...current, receiptNumber: event.target.value }))} /><Input aria-label="Monto nota de crédito" type="number" min="0" step="0.01" value={creditForm.amount} onChange={(event) => setCreditForm((current) => ({ ...current, amount: event.target.value }))} /><Input aria-label="Fecha nota de crédito" type="date" value={creditForm.issuedDate} onChange={(event) => setCreditForm((current) => ({ ...current, issuedDate: event.target.value }))} /></div><div className="mt-3"><Button type="button" variant="outline" disabled={!selectedInvoice || !creditForm.receiptNumber.trim() || toAmount(creditForm.amount) <= 0 || creditMutation.isPending} onClick={() => creditMutation.mutate()}>Registrar nota de crédito</Button></div></div> : null}
+    {invoices.length > 0 ? <div className="mt-5 rounded-2xl border border-border/60 p-4"><p className="text-sm font-semibold">Nota de crédito parcial</p><div className="mt-3 grid gap-3 md:grid-cols-4"><Select aria-label="Factura a acreditar" value={creditForm.originalReceiptId} onChange={(event) => setCreditForm((current) => { const invoice = invoices.find((item) => String(item.id) === event.target.value); return { ...current, originalReceiptId: event.target.value, fiscalTypeCode: invoice?.fiscalTypeCode ?? current.fiscalTypeCode, salePoint: invoice?.salePoint ?? current.salePoint }; })} options={[{ value: '', label: 'Seleccionar factura...' }, ...invoices.map((invoice) => ({ value: String(invoice.id), label: `${invoice.receiptNumber} - ${formatCurrency(invoice.total)}` }))]} /><Input aria-label="Tipo fiscal nota de crédito" value={creditForm.fiscalTypeCode} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /><Input aria-label="Punto de venta nota de crédito" value={creditForm.salePoint} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /><Input aria-label="Número fiscal nota de crédito" inputMode="numeric" maxLength="8" value={creditForm.fiscalNumber} onChange={(event) => setCreditForm((current) => ({ ...current, fiscalNumber: event.target.value }))} /><Input aria-label="Monto nota de crédito" type="number" min="0" step="0.01" value={creditForm.amount} onChange={(event) => setCreditForm((current) => ({ ...current, amount: event.target.value }))} /><Input aria-label="Fecha nota de crédito" type="date" value={creditForm.issuedDate} onChange={(event) => setCreditForm((current) => ({ ...current, issuedDate: event.target.value }))} /></div><div className="mt-3"><Button type="button" variant="outline" disabled={!selectedInvoice || !hasValidFiscalIdentity(creditForm) || toAmount(creditForm.amount) <= 0 || creditMutation.isPending} onClick={() => creditMutation.mutate()}>Registrar nota de crédito</Button></div></div> : null}
     <div className="mt-5">
       <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Facturas del caso</p>
-      {invoices.length === 0 ? <p className="text-sm text-muted-foreground">Sin facturas registradas.</p> : <ul className="space-y-2">{invoices.map((invoice) => <li key={invoice.id} className="flex flex-wrap justify-between gap-2 rounded-2xl border border-border/60 px-4 py-3 text-sm"><span>{invoice.receiptNumber} - {invoice.receiverBusinessName}</span><strong>{formatCurrency(invoice.total)}</strong></li>)}</ul>}
+       {invoices.length === 0 ? <p className="text-sm text-muted-foreground">Sin facturas registradas.</p> : <ul className="space-y-2">{invoices.map((invoice) => {
+         const associatedCredits = creditNotes.filter((creditNote) => creditNote.originalReceiptId === invoice.id);
+         const creditedTotal = associatedCredits.reduce((total, creditNote) => total + toAmount(creditNote.total), 0);
+         const outstandingBalance = Math.max(0, toAmount(invoice.total) - creditedTotal);
+         return <li key={invoice.id} className="rounded-2xl border border-border/60 px-4 py-3 text-sm">
+           <div className="flex flex-wrap justify-between gap-2"><span>{invoice.receiptNumber} - {invoice.receiverBusinessName}</span><strong>Total facturado: {formatCurrency(invoice.total)}</strong></div>
+           <div className="mt-2 grid gap-2 text-muted-foreground sm:grid-cols-3"><span>Total acreditado: {formatCurrency(creditedTotal)}</span><span>Saldo vigente: {formatCurrency(outstandingBalance)}</span><span>NC asociadas: {associatedCredits.length ? associatedCredits.map((creditNote) => creditNote.receiptNumber).join(', ') : '—'}</span></div>
+         </li>;
+       })}</ul>}
     </div>
   </Card>
   );

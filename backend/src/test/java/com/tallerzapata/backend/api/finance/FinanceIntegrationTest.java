@@ -257,6 +257,9 @@ class FinanceIntegrationTest {
                 null,
                 "Factura inicial",
                 null,
+                null,
+                null,
+                null,
                 null
         );
 
@@ -286,6 +289,37 @@ class FinanceIntegrationTest {
         mockMvc.perform(post("/api/v1/cases/100/receipts").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"receiptTypeCode\":\"NOTA_CREDITO\",\"receiptNumber\":\"NC-2\",\"receiverBusinessName\":\"Aseguradora SA\",\"issuedDate\":\"2026-05-12\",\"taxableNet\":700,\"vatAmount\":0,\"total\":700,\"originalReceiptId\":" + invoiceId + "}"))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldRejectCreditNoteAgainstAnInvoiceFromAnotherCase() throws Exception {
+        String invoice = mockMvc.perform(post("/api/v1/cases/100/receipts").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"receiptTypeCode\":\"FACTURA\",\"receiptNumber\":\"A-OTHER-1\",\"receiverBusinessName\":\"Aseguradora SA\",\"issuedDate\":\"2026-05-11\",\"taxableNet\":1000,\"vatAmount\":0,\"total\":1000}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        long originalReceiptId = objectMapper.readTree(invoice).get("id").asLong();
+        Long otherCaseId = createParticularCase();
+
+        mockMvc.perform(post("/api/v1/cases/{caseId}/receipts", otherCaseId).header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"receiptTypeCode\":\"NOTA_CREDITO\",\"receiptNumber\":\"NC-OTHER-1\",\"receiverBusinessName\":\"Aseguradora SA\",\"issuedDate\":\"2026-05-12\",\"taxableNet\":100,\"vatAmount\":0,\"total\":100,\"originalReceiptId\":" + originalReceiptId + "}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("La nota de crédito debe vincular una factura del mismo caso"));
+    }
+
+    @Test
+    void shouldKeepFiscalTypeSalePointAndNumberSeparateWhenRegisteringReceipts() throws Exception {
+        mockMvc.perform(post("/api/v1/cases/100/receipts").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"receiptTypeCode\":\"FACTURA\",\"receiptNumber\":\"0001-00000001\",\"receiverBusinessName\":\"Aseguradora SA\",\"issuedDate\":\"2026-05-11\",\"taxableNet\":1000,\"vatAmount\":0,\"total\":1000,\"fiscalTypeCode\":\"A\",\"salePoint\":\"0001\",\"fiscalNumber\":\"00000001\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fiscalTypeCode").value("A"))
+                .andExpect(jsonPath("$.salePoint").value("0001"))
+                .andExpect(jsonPath("$.fiscalNumber").value("00000001"));
+        mockMvc.perform(post("/api/v1/cases/100/receipts").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"receiptTypeCode\":\"FACTURA\",\"receiptNumber\":\"0001-00000001\",\"receiverBusinessName\":\"Aseguradora SA\",\"issuedDate\":\"2026-05-11\",\"taxableNet\":1000,\"vatAmount\":0,\"total\":1000,\"fiscalTypeCode\":\"B\",\"salePoint\":\"0001\",\"fiscalNumber\":\"00000001\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/cases/100/receipts").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"receiptTypeCode\":\"FACTURA\",\"receiptNumber\":\"0001-00000001\",\"receiverBusinessName\":\"Aseguradora SA\",\"issuedDate\":\"2026-05-11\",\"taxableNet\":1000,\"vatAmount\":0,\"total\":1000,\"fiscalTypeCode\":\"A\",\"salePoint\":\"0001\",\"fiscalNumber\":\"00000001\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Ya existe un comprobante con ese tipo fiscal, punto de venta y número"));
     }
 
     @Test

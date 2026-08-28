@@ -52,16 +52,16 @@ deploy_backend() {
 }
 
 deploy_frontend() {
-  log "Building frontend"
+  log "Building frontend front2"
   cd "$REPO_DIR"
-  rm -rf dist
-  npm ci
-  npm run build
+  rm -rf front2/dist
+  npm ci --prefix front2
+  npm run build --prefix front2
 
   log "Publishing frontend assets"
   rm -rf "$FRONTEND_DIR"
   mkdir -p "$FRONTEND_DIR"
-  cp -a "$REPO_DIR"/dist/. "$FRONTEND_DIR/"
+  cp -a "$REPO_DIR"/front2/dist/. "$FRONTEND_DIR/"
 
   log "Reloading nginx"
   sudo systemctl reload "$NGINX_SERVICE"

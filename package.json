@@ -12,7 +12,10 @@
     "test:watch": "vitest --watch",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "e2e:reset": "powershell -ExecutionPolicy Bypass -File scripts/e2e/reset.ps1",
+    "e2e:seed": "powershell -ExecutionPolicy Bypass -File scripts/e2e/seed.ps1",
+    "test:e2e:real": "playwright test --config playwright.e2e.config.js"
   },
   "dependencies": {
     "react": "^18.3.1",

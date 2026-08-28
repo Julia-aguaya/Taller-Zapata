@@ -20,6 +20,9 @@ public record IssuedReceiptCreateRequest(
         LocalDateTime signedAt,
         String notes,
         Long documentId,
-        Long originalReceiptId
+        Long originalReceiptId,
+        String fiscalTypeCode,
+        String salePoint,
+        String fiscalNumber
 ) {
 }

@@ -310,12 +310,13 @@ describe('PaymentsEditorPanel', () => {
 
     expect(screen.getByLabelText('Monto acordado')).toHaveValue('$ 125.000');
     expect(screen.getByText('0001-9 - Aseguradora SA')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('N.º de factura'), { target: { value: '0001-10' } });
+    fireEvent.change(screen.getByLabelText('Número fiscal'), { target: { value: '00000010' } });
     fireEvent.change(screen.getByLabelText('Razón social'), { target: { value: 'Aseguradora SA' } });
     fireEvent.click(screen.getByRole('button', { name: /registrar factura/i }));
 
     await waitFor(() => expect(mockCreateReceipt).toHaveBeenCalledWith(42, expect.objectContaining({
-      receiptTypeCode: 'FACTURA', receiptNumber: '0001-10', receiverBusinessName: 'Aseguradora SA', taxableNet: 125000, vatAmount: 0, total: 125000,
+      receiptTypeCode: 'FACTURA', receiptNumber: '0001-00000010', receiverBusinessName: 'Aseguradora SA', taxableNet: 125000, vatAmount: 0, total: 125000,
+      fiscalTypeCode: 'A', salePoint: '0001', fiscalNumber: '00000010',
     })));
   });
 
@@ -440,6 +441,45 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.getByLabelText('Cancela saldo')).toHaveValue('FRANQUICIA');
     expect(screen.getByLabelText('Estado pago a compañía')).toHaveValue('COBRADO');
     expect(screen.getByLabelText('Fecha pago a compañía')).toHaveValue(new Date().toISOString().slice(0, 10));
+    expect(screen.getByLabelText('Comprobante pago cliente a compañía')).toHaveValue('');
+    expect(screen.getByLabelText('Subir comprobante pago cliente a compañía')).toBeInTheDocument();
+  });
+
+  it('keeps company billing available for shared-fault total damage without changing the agreed amount', () => {
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'cleas', 'summary'])]: { caseId: 42, companyId: 7, agreedAmount: 100000, paidAmount: 0, pendingAmount: 100000, paidGrossAmount: 0, pendingGrossAmount: 100000 },
+      [JSON.stringify(['documents', 'catalogs'])]: { categories: [{ id: 9, code: 'COMPROBANTE_PAGO_CLEAS', name: 'Comprobante de pago CLEAS' }] },
+      [JSON.stringify(['finance', 'catalogs'])]: { retentionTypeCodes: [] },
+    };
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }, cleasOver: 'damage', cleasOpinion: 'shared' });
+
+    const companyPanel = screen.getByText('Pago de compañía CLEAS').closest('.border');
+    expect(within(companyPanel).getByText('Acordado').parentElement).toHaveTextContent('100.000');
+    expect(within(companyPanel).getByText('Saldo bruto').parentElement).toHaveTextContent('100.000');
+  });
+
+  it('creates a partial credit note linked to its original CLEAS invoice and shows its outstanding balance', async () => {
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'cleas', 'summary'])]: { caseId: 42, companyId: 7, agreedAmount: 125000, paidAmount: 0, pendingAmount: 125000 },
+      [JSON.stringify(['cases', '42', 'receipts'])]: [
+        { id: 9, receiptTypeCode: 'FACTURA', receiptNumber: '0001-9', receiverBusinessName: 'Aseguradora SA', total: 125000 },
+        { id: 10, receiptTypeCode: 'NOTA_CREDITO', receiptNumber: 'NC-0001', receiverBusinessName: 'Aseguradora SA', total: 25000, originalReceiptId: 9 },
+      ],
+    };
+    render(<CleasPaymentsHarness {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }} />);
+
+    expect(screen.getByText('Total acreditado: $ 25.000')).toBeInTheDocument();
+    expect(screen.getByText('Saldo vigente: $ 100.000')).toBeInTheDocument();
+    expect(screen.getByText('NC asociadas: NC-0001')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Factura a acreditar'), { target: { value: '9' } });
+    fireEvent.change(screen.getByLabelText('Número fiscal nota de crédito'), { target: { value: '00000002' } });
+    fireEvent.change(screen.getByLabelText('Monto nota de crédito'), { target: { value: '10000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Registrar nota de crédito' }));
+
+    await waitFor(() => expect(mockCreateReceipt).toHaveBeenCalledWith(42, expect.objectContaining({
+      receiptTypeCode: 'NOTA_CREDITO', receiptNumber: '0001-00000002', originalReceiptId: 9, total: 10000,
+      fiscalTypeCode: 'A', salePoint: '0001', fiscalNumber: '00000002',
+    })));
   });
 
   it('shows CLEAS payment draft fields and only reveals retentions when selected', () => {

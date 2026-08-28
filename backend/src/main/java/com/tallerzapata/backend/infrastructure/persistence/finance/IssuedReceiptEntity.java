@@ -43,6 +43,12 @@ public class IssuedReceiptEntity {
     private String notes;
     @Column(name = "comprobante_fiscal")
     private String comprobanteFiscal;
+    @Column(name = "tipo_fiscal_codigo")
+    private String fiscalTypeCode;
+    @Column(name = "punto_venta")
+    private String salePoint;
+    @Column(name = "numero_fiscal")
+    private String fiscalNumber;
     @Column(name = "documento_id")
     private Long documentId;
     @Column(name = "comprobante_origen_id")
@@ -77,6 +83,12 @@ public class IssuedReceiptEntity {
     public void setNotes(String notes) { this.notes = notes; }
     public String getComprobanteFiscal() { return comprobanteFiscal; }
     public void setComprobanteFiscal(String comprobanteFiscal) { this.comprobanteFiscal = comprobanteFiscal; }
+    public String getFiscalTypeCode() { return fiscalTypeCode; }
+    public void setFiscalTypeCode(String fiscalTypeCode) { this.fiscalTypeCode = fiscalTypeCode; }
+    public String getSalePoint() { return salePoint; }
+    public void setSalePoint(String salePoint) { this.salePoint = salePoint; }
+    public String getFiscalNumber() { return fiscalNumber; }
+    public void setFiscalNumber(String fiscalNumber) { this.fiscalNumber = fiscalNumber; }
     public Long getDocumentId() { return documentId; }
     public void setDocumentId(Long documentId) { this.documentId = documentId; }
     public Long getOriginalReceiptId() { return originalReceiptId; }
