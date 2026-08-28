@@ -1,4 +1,4 @@
-import { requestJson } from '@/shared/api/http-client';
+import { requestBlob, requestJson } from '@/shared/api/http-client';
 
 const basePath = (caseId) => `/cases/${caseId}/cleas`;
 
@@ -16,6 +16,8 @@ export const saveCleasProcessing = (caseId, payload) => requestJson(`${basePath(
 export const closeCleasCase = (caseId) => requestJson(`${basePath(caseId)}/close`, { method: 'POST' });
 export const getCleasCompanyPaymentSummary = (caseId) => requestJson(`${basePath(caseId)}/summary`);
 export const registerCleasCompanyPayment = (caseId, payload) => requestJson(`${basePath(caseId)}/company-payments`, { method: 'POST', body: JSON.stringify(payload) });
+export const annulCleasCompanyPayment = (caseId, movementId, payload) => requestJson(`${basePath(caseId)}/company-payments/${movementId}/annul`, { method: 'POST', body: JSON.stringify(payload ?? {}) });
+export const downloadCleasLiquidationPdf = (caseId) => requestBlob(`${basePath(caseId)}/liquidation-pdf`);
 
 export const listCleasOrders = (caseId) => requestJson(`${basePath(caseId)}/orders`);
 export const createCleasOrder = (caseId, payload) => requestJson(`${basePath(caseId)}/orders`, { method: 'POST', body: JSON.stringify(payload) });

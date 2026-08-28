@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ban, Building2, CheckCircle, FileDown, Receipt, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { createFinancialMovement, createReceipt, getClientPaymentPdfUrl, getFinanceCatalogs, getReceiptPdfUrl, listFinancialMovements, listReceipts } from '@/modules/cases/api/finance-api';
-import { getCleasCompanyPaymentSummary, registerCleasCompanyPayment } from '@/modules/cases/api/cleas-api';
+import { annulCleasCompanyPayment, downloadCleasLiquidationPdf, getCleasCompanyPaymentSummary, registerCleasCompanyPayment } from '@/modules/cases/api/cleas-api';
 import { extraBudgetQueryKey, registerExtraBudgetPayment } from '@/modules/cases/api/extra-budget-api';
 import { requestJson } from '@/shared/api/http-client';
 import { readStoredAuth } from '@/shared/auth/session-storage';
@@ -538,22 +538,27 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
           const m = cancelMovement;
           setCancelMovement(null);
           try {
-            await createFinancialMovement(caseId, {
-              movementTypeCode: 'EGRESO', flowOriginCode: m.flowOriginCode || 'CLIENTE',
-              counterpartyTypeCode: m.counterpartyTypeCode || 'PERSONA',
-              counterpartyPersonId: m.counterpartyPersonId || null, counterpartyCompanyId: m.counterpartyCompanyId || null,
-              movementAt: new Date().toISOString(),
-              grossAmount: m.netAmount, netAmount: m.netAmount,
-              paymentMethodCode: m.paymentMethodCode || null,
-              cancellationTypeCode: m.cancellationTypeCode || null, advancePayment: false, bonification: false,
-              reason: `Anulación de pago #${m.id}`, externalReference: null, retentions: [], applications: [],
-            });
+            if (isCleas && m.flowOriginCode === 'ASEGURADORA' && m.cancellationTypeCode === 'COMPANIA') {
+              await annulCleasCompanyPayment(caseId, m.id);
+              await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'summary'] });
+            } else {
+              await createFinancialMovement(caseId, {
+                movementTypeCode: 'EGRESO', flowOriginCode: m.flowOriginCode || 'CLIENTE',
+                counterpartyTypeCode: m.counterpartyTypeCode || 'PERSONA',
+                counterpartyPersonId: m.counterpartyPersonId || null, counterpartyCompanyId: m.counterpartyCompanyId || null,
+                movementAt: new Date().toISOString(),
+                grossAmount: m.netAmount, netAmount: m.netAmount,
+                paymentMethodCode: m.paymentMethodCode || null,
+                cancellationTypeCode: m.cancellationTypeCode || null, advancePayment: false, bonification: false,
+                reason: `Anulación de pago #${m.id}`, externalReference: null, retentions: [], applications: [],
+              });
+            }
             await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] });
              await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
              await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'finance', 'payment-breakdown'] });
             await onSaved?.();
             toast.success('Pago anulado.');
-          } catch (e) { toast.error('No se pudo anular el pago.'); }
+          } catch (e) { toast.error(e.message || 'No se pudo anular el pago.'); }
         }}>Anular pago</Button>
       </div>
     </Dialog>
@@ -633,6 +638,18 @@ const CleasCompanyPaymentPanel = ({ caseId, receipts, onSaved }) => {
     },
     onError: (error) => toast.error(error.message || 'No pude registrar el pago de la compañía.'),
   });
+  const pdfMutation = useMutation({
+    mutationFn: async () => ({ blob: await downloadCleasLiquidationPdf(caseId) }),
+    onSuccess: ({ blob }) => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `liquidacion-cleas-${caseId}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+    },
+    onError: (error) => toast.error(error.message || 'No pude generar el PDF de liquidación CLEAS.'),
+  });
 
   if (summaryQuery.isLoading) return null;
   if (summaryQuery.isError) {
@@ -657,8 +674,10 @@ const CleasCompanyPaymentPanel = ({ caseId, receipts, onSaved }) => {
 
   return (
     <Card className="rounded-3xl border-border/70 p-5">
-      <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Building2 className="h-5 w-5" /></div>
-      <h4 className="text-lg font-semibold">Pago de compañía CLEAS</h4>
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Building2 className="h-5 w-5" /></div><h4 className="text-lg font-semibold">Pago de compañía CLEAS</h4></div>
+        <Button variant="outline" size="sm" onClick={() => pdfMutation.mutate()} disabled={pdfMutation.isPending}><FileDown className="mr-1.5 h-4 w-4" />Liquidación PDF</Button>
+      </div>
       <div className="mt-4 grid gap-3 md:grid-cols-4">
         <MiniCard label="Acordado" value={formatCurrency(summary.agreedAmount)} highlight />
         <MiniCard label="Bruto cancelado" value={formatCurrency(summary.paidGrossAmount ?? summary.paidAmount)} />

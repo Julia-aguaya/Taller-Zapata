@@ -17,6 +17,8 @@ const mockAnnulExtraBudgetPayment = vi.fn();
 const mockRegisterExtraBudgetPayment = vi.fn().mockResolvedValue({});
 const mockGetCleasCompanyPaymentSummary = vi.fn();
 const mockRegisterCleasCompanyPayment = vi.fn().mockResolvedValue({ id: 12 });
+const mockAnnulCleasCompanyPayment = vi.fn().mockResolvedValue({});
+const mockDownloadCleasLiquidationPdf = vi.fn().mockResolvedValue(new Blob(['pdf'], { type: 'application/pdf' }));
 let useQueryData = {};
 
 vi.mock('@/modules/cases/api/finance-api', () => ({
@@ -31,6 +33,8 @@ vi.mock('@/modules/cases/api/finance-api', () => ({
 vi.mock('@/modules/cases/api/cleas-api', () => ({
   getCleasCompanyPaymentSummary: (...a) => mockGetCleasCompanyPaymentSummary(...a),
   registerCleasCompanyPayment: (...a) => mockRegisterCleasCompanyPayment(...a),
+  annulCleasCompanyPayment: (...a) => mockAnnulCleasCompanyPayment(...a),
+  downloadCleasLiquidationPdf: (...a) => mockDownloadCleasLiquidationPdf(...a),
 }));
 
 vi.mock('@tanstack/react-query', () => ({

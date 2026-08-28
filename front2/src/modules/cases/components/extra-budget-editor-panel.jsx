@@ -27,7 +27,7 @@ const complete = (item) => item.affectedPiece.trim() && item.actionCode && item.
 
 export const ExtraBudgetEditorPanel = ({ caseId, caseTypeCode, onSaved }) => {
   const client = useQueryClient();
-  const supported = ['TODO_RIESGO', 'GRANIZO'].includes(caseTypeCode);
+  const supported = ['TODO_RIESGO', 'GRANIZO', 'CLEAS'].includes(caseTypeCode);
   const budgetQuery = useQuery({ queryKey: extraBudgetQueryKey(caseId), queryFn: () => getExtraBudget(caseId), enabled: supported, retry: false });
   const catalogs = useQuery({ queryKey: ['budget', 'catalogs'], queryFn: getBudgetCatalogs, enabled: supported });
   const [items, setItems] = useState([]); const [generalLabor, setGeneralLabor] = useState('0'); const [vatApplies, setVatApplies] = useState(false); const [notes, setNotes] = useState(''); const [errors, setErrors] = useState({}); const [conflict, setConflict] = useState(false); const [confirmDeactivate, setConfirmDeactivate] = useState(false); const mutationInFlight = useRef(false);

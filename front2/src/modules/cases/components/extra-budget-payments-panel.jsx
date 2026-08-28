@@ -6,7 +6,7 @@ import { Button } from '@/shared/ui/button';
 const currency = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 });
 export const ExtraBudgetPaymentsPanel = ({ caseId, caseTypeCode, onSaved, onRegisterClientPayment }) => {
   const queryClient = useQueryClient();
-  const supportsExtraBudget = ['TODO_RIESGO', 'GRANIZO'].includes(caseTypeCode);
+  const supportsExtraBudget = ['TODO_RIESGO', 'GRANIZO', 'CLEAS'].includes(caseTypeCode);
   const extraQuery = useQuery({ queryKey: extraBudgetQueryKey(caseId), queryFn: () => getExtraBudget(caseId), retry: false, enabled: supportsExtraBudget });
   const extra = extraQuery.data;
   const canPay = extra?.customerConfirmation === 'SI' && extra?.currentStatus === 'ACEPTADO' && Number(extra.balance) > 0;

@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { requestJson } from '@/shared/api/http-client';
-import { closeCleasCase, createCleasOrder, deleteCleasOrder, getCleasCompanyPaymentSummary, getCleasDefinition, getCleasIncident, getCleasInsurance, getCleasProcessing, listCleasOrders, registerCleasCompanyPayment, saveCleasDefinition, saveCleasIncident, saveCleasInsurance, saveCleasProcessing } from './cleas-api';
+import { requestBlob, requestJson } from '@/shared/api/http-client';
+import { annulCleasCompanyPayment, closeCleasCase, createCleasOrder, deleteCleasOrder, downloadCleasLiquidationPdf, getCleasCompanyPaymentSummary, getCleasDefinition, getCleasIncident, getCleasInsurance, getCleasProcessing, listCleasOrders, registerCleasCompanyPayment, saveCleasDefinition, saveCleasIncident, saveCleasInsurance, saveCleasProcessing } from './cleas-api';
 
-vi.mock('@/shared/api/http-client', () => ({ requestJson: vi.fn() }));
+vi.mock('@/shared/api/http-client', () => ({ requestJson: vi.fn(), requestBlob: vi.fn() }));
 
 describe('cleas-api', () => {
   it('uses the CLEAS section endpoints with their required HTTP methods', () => {
@@ -26,5 +26,13 @@ describe('cleas-api', () => {
     expect(requestJson).toHaveBeenNthCalledWith(12, '/cases/42/cleas/orders');
     expect(requestJson).toHaveBeenNthCalledWith(13, '/cases/42/cleas/orders', { method: 'POST', body: JSON.stringify({ documentId: 8 }) });
     expect(requestJson).toHaveBeenNthCalledWith(14, '/cases/42/cleas/orders/9', { method: 'DELETE' });
+  });
+
+  it('annuls a company payment and downloads the liquidation PDF', () => {
+    annulCleasCompanyPayment(42, 99, { reason: 'Error de registro' });
+    downloadCleasLiquidationPdf(42);
+
+    expect(requestJson).toHaveBeenCalledWith('/cases/42/cleas/company-payments/99/annul', { method: 'POST', body: JSON.stringify({ reason: 'Error de registro' }) });
+    expect(requestBlob).toHaveBeenCalledWith('/cases/42/cleas/liquidation-pdf');
   });
 });
