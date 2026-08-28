@@ -73,7 +73,7 @@ public class CleasManagementController {
 
     @PreAuthorize("hasAuthority('finanza.crear')")
     @PostMapping("/company-payments")
-    public CleasCompanyPaymentResponse registerCompanyPayment(@PathVariable Long caseId, @RequestBody CleasCompanyPaymentRequest request, HttpServletRequest httpRequest) { return service.registerCompanyPayment(caseId, request, httpRequest); }
+    public CleasCompanyPaymentResponse registerCompanyPayment(@PathVariable Long caseId, @Valid @RequestBody CleasCompanyPaymentRequest request, HttpServletRequest httpRequest) { return service.registerCompanyPayment(caseId, request, httpRequest); }
 
     @PreAuthorize("hasAuthority('documento.ver')")
     @GetMapping("/orders")

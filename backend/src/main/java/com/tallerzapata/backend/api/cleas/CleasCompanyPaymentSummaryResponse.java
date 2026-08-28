@@ -7,6 +7,8 @@ public record CleasCompanyPaymentSummaryResponse(
         Long companyId,
         BigDecimal agreedAmount,
         BigDecimal paidAmount,
-        BigDecimal pendingAmount
+        BigDecimal pendingAmount,
+        BigDecimal paidGrossAmount,
+        BigDecimal pendingGrossAmount
 ) {
 }

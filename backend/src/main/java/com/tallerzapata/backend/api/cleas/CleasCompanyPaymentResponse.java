@@ -2,6 +2,8 @@ package com.tallerzapata.backend.api.cleas;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
+import com.tallerzapata.backend.api.finance.FinancialMovementRetentionResponse;
 
 public record CleasCompanyPaymentResponse(
         Long movementId,
@@ -12,6 +14,11 @@ public record CleasCompanyPaymentResponse(
         String paymentMethodDetail,
         Long receiptId,
         String externalReference,
-        String reason
+        String reason,
+        BigDecimal grossAmount,
+        BigDecimal retentionsAmount,
+        BigDecimal netAmount,
+        Long documentId,
+        List<FinancialMovementRetentionResponse> retentions
 ) {
 }

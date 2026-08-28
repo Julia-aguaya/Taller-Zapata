@@ -39,6 +39,8 @@ class CleasManagementIntegrationTest {
         jdbcTemplate.update("INSERT INTO vehiculos (id, public_id, dominio, dominio_normalizado, activo) VALUES (11, '00000000-0000-0000-0000-000000002011', 'AC123DE', 'AC123DE', true)");
         jdbcTemplate.update("INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, estado_tramite_actual_id, estado_reparacion_actual_id, estado_pago_actual_id, estado_documentacion_actual_id, estado_legal_actual_id, prioridad_codigo) VALUES (100, '00000000-0000-0000-0000-000000003100', '0100CL', 100, 4, 1, 1, 10, 10, false, 1, 1, 4, 7, 9, 11, 'MEDIA')");
         jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, activo) VALUES (1, '00000000-0000-0000-0000-000000004001', 'RIVA', 'Rivadavia', true)");
+        Long paymentDocumentCategoryId = jdbcTemplate.queryForObject("SELECT id FROM categorias_documentales WHERE codigo = 'COMPROBANTE_PAGO_CLEAS' AND modulo_codigo = 'CLEAS'", Long.class);
+        jdbcTemplate.update("INSERT INTO documentos (id, public_id, storage_key, nombre_archivo, mime_type, tamano_bytes, checksum_sha256, categoria_id, subido_por, origen_codigo, activo) VALUES (201, '00000000-0000-0000-0000-000000000201', 'cleas/pago-100.pdf', 'pago-100.pdf', 'application/pdf', 10, 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', ?, 3, 'CLEAS', true)", paymentDocumentCategoryId);
     }
 
     @Test
@@ -156,16 +158,23 @@ class CleasManagementIntegrationTest {
                 .andExpect(jsonPath("$.pendingAmount").value(1000));
 
         mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":400,\"movementAt\":\"2026-08-03T10:30:00\",\"paymentMethodCode\":\"TRANSFERENCIA\",\"externalReference\":\"CLEAS-400\"}"))
+                        .content("{\"amount\":400,\"movementAt\":\"2026-08-03T10:30:00\",\"paymentMethodCode\":\"TRANSFERENCIA\",\"externalReference\":\"CLEAS-400\",\"documentId\":201,\"retentions\":[{\"retentionTypeCode\":\"IVA\",\"amount\":40}]}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.amount").value(400))
+                .andExpect(jsonPath("$.grossAmount").value(400))
+                .andExpect(jsonPath("$.retentionsAmount").value(40))
+                .andExpect(jsonPath("$.netAmount").value(360))
                 .andExpect(jsonPath("$.reason").value("Pago CLEAS de compania"));
 
         mockMvc.perform(get("/api/v1/cases/100/cleas/summary").header("X-User-Id", "3"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.paidAmount").value(400))
+                .andExpect(jsonPath("$.paidGrossAmount").value(400))
                 .andExpect(jsonPath("$.pendingAmount").value(600));
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ? AND tipo_movimiento_codigo = 'INGRESO' AND origen_flujo_codigo = 'ASEGURADORA' AND contraparte_tipo_codigo = 'COMPANIA' AND cancela_tipo_codigo = 'COMPANIA'", Integer.class, 100L)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT monto_neto FROM movimientos_financieros WHERE caso_id = ?", java.math.BigDecimal.class, 100L)).isEqualByComparingTo("360.00");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimiento_retenciones WHERE movimiento_id = (SELECT id FROM movimientos_financieros WHERE caso_id = ?)", Integer.class, 100L)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT visible_cliente FROM documento_relaciones WHERE documento_id = 201 AND entidad_tipo = 'MOVIMIENTO_FINANCIERO'", Boolean.class)).isFalse();
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'registrar_pago_compania_cleas'", Integer.class, 100L)).isEqualTo(1);
     }
 
@@ -187,7 +196,7 @@ class CleasManagementIntegrationTest {
                 .andExpect(jsonPath("$[0].receiptNumber").value("A-0001-00000100"));
 
         mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":400,\"movementAt\":\"2026-08-03T10:30:00\",\"paymentMethodCode\":\"TRANSFERENCIA\",\"receiptId\":" + receiptId + "}"))
+                        .content("{\"amount\":400,\"movementAt\":\"2026-08-03T10:30:00\",\"paymentMethodCode\":\"TRANSFERENCIA\",\"receiptId\":" + receiptId + ",\"documentId\":201}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.receiptId").value(receiptId));
 
@@ -206,7 +215,7 @@ class CleasManagementIntegrationTest {
         Long otherCaseReceiptId = objectMapper.readTree(receiptResponse).get("id").asLong();
 
         mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":400,\"paymentMethodCode\":\"TRANSFERENCIA\",\"receiptId\":" + otherCaseReceiptId + "}"))
+                        .content("{\"amount\":400,\"paymentMethodCode\":\"TRANSFERENCIA\",\"receiptId\":" + otherCaseReceiptId + ",\"documentId\":201}"))
                 .andExpect(status().isNotFound());
 
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ?", Integer.class, 100L)).isZero();
@@ -215,7 +224,7 @@ class CleasManagementIntegrationTest {
     @Test
     void shouldRejectCompanyPaymentsOutsideTheCleasEligibilityAndBalanceRules() throws Exception {
         mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":100,\"paymentMethodCode\":\"TRANSFERENCIA\"}"))
+                        .content("{\"amount\":100,\"paymentMethodCode\":\"TRANSFERENCIA\",\"documentId\":201}"))
                 .andExpect(status().isConflict());
 
         mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
@@ -229,15 +238,42 @@ class CleasManagementIntegrationTest {
                 .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":101,\"paymentMethodCode\":\"TRANSFERENCIA\"}"))
+                        .content("{\"amount\":101,\"paymentMethodCode\":\"TRANSFERENCIA\",\"documentId\":201}"))
                 .andExpect(status().isConflict());
         mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":0,\"paymentMethodCode\":\"TRANSFERENCIA\"}"))
-                .andExpect(status().isConflict());
+                        .content("{\"amount\":0,\"paymentMethodCode\":\"TRANSFERENCIA\",\"documentId\":201}"))
+                .andExpect(status().isBadRequest());
         mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"amount\":100,\"paymentMethodCode\":\"INACTIVO\"}"))
+                        .content("{\"amount\":100,\"paymentMethodCode\":\"INACTIVO\",\"documentId\":201}"))
                 .andExpect(status().isConflict());
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ?", Integer.class, 100L)).isZero();
+    }
+
+    @Test
+    void shouldRejectInvalidPaymentDocumentAndRetentionsWithoutPersistingThePayment() throws Exception {
+        prepareEligibleCompanyPayment();
+
+        Long orderCategoryId = jdbcTemplate.queryForObject("SELECT id FROM categorias_documentales WHERE codigo = 'ORDEN_CLEAS' AND modulo_codigo = 'CLEAS'", Long.class);
+        jdbcTemplate.update("UPDATE documentos SET categoria_id = ? WHERE id = 201", orderCategoryId);
+        mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":100,\"paymentMethodCode\":\"TRANSFERENCIA\",\"documentId\":201}"))
+                .andExpect(status().isConflict());
+
+        Long paymentCategoryId = jdbcTemplate.queryForObject("SELECT id FROM categorias_documentales WHERE codigo = 'COMPROBANTE_PAGO_CLEAS' AND modulo_codigo = 'CLEAS'", Long.class);
+        jdbcTemplate.update("UPDATE documentos SET categoria_id = ? WHERE id = 201", paymentCategoryId);
+        jdbcTemplate.update("UPDATE tipos_retencion_financiero SET activo = false WHERE codigo = 'IVA'");
+        mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":100,\"paymentMethodCode\":\"TRANSFERENCIA\",\"documentId\":201,\"retentions\":[{\"retentionTypeCode\":\"IVA\",\"amount\":1}]}"))
+                .andExpect(status().isConflict());
+
+        jdbcTemplate.update("UPDATE tipos_retencion_financiero SET activo = true WHERE codigo = 'IVA'");
+        mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":100,\"paymentMethodCode\":\"TRANSFERENCIA\",\"documentId\":201,\"retentions\":[{\"retentionTypeCode\":\"IVA\",\"amount\":101}]}"))
+                .andExpect(status().isConflict());
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ?", Integer.class, 100L)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimiento_retenciones", Integer.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM documento_relaciones WHERE documento_id = 201", Integer.class)).isZero();
     }
 
     private void prepareEligibleCompanyPayment() throws Exception {
