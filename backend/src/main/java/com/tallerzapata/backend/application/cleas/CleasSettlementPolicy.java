@@ -44,8 +44,11 @@ public class CleasSettlementPolicy {
                 // El cliente paga la franquicia.
                 // A cargo del cliente (al taller) = franquicia - parte exigida por la cía.
                 // A facturar a la cía = cotización - cargo del cliente.
-                BigDecimal customerCharge = franchise.subtract(companyRequired).max(BigDecimal.ZERO);
-                BigDecimal amountToBill = amount.subtract(customerCharge).max(BigDecimal.ZERO);
+                BigDecimal franchiseBalance = franchise.subtract(companyRequired).max(BigDecimal.ZERO);
+                BigDecimal amountToBill = amount.subtract(franchiseBalance).max(BigDecimal.ZERO);
+                // Si la cotización es menor que la franquicia pendiente, el cliente nunca
+                // puede deber más que la reparación cotizada.
+                BigDecimal customerCharge = amount.subtract(amountToBill);
                 return new CleasSettlement(franchise, companyRequired, customerCharge, amountToBill);
             }
             throw new ConflictException("La liquidación CLEAS sobre franquicia con dictamen " + opinionCode + " aún no está definida");

@@ -67,7 +67,7 @@ class CleasSettlementPolicyTest {
         cleas.setFranchiseAmount(new BigDecimal("1000000"));
         cleas.setCompanyFranchisePaymentAmount(new BigDecimal("0"));
         CleasSettlement result = policy.settle(cleas, new BigDecimal("600000"));
-        assertThat(result.customerChargeAmount()).isEqualByComparingTo("1000000");
+        assertThat(result.customerChargeAmount()).isEqualByComparingTo("600000");
         assertThat(result.amountToBillCompany()).isEqualByComparingTo("0");
     }
 

@@ -484,12 +484,16 @@ public class CleasManagementService {
 
     private CleasCompanyPaymentSummaryResponse companyPaymentSummary(CaseEntity caseEntity) {
         var cleas = caseCleasRepository.findByCaseId(caseEntity.getId()).orElseThrow(() -> new ConflictException("El caso no tiene definicion CLEAS"));
-        if (!"A_FAVOR".equals(cleas.getOpinionCode())) throw new ConflictException("El pago de compania solo aplica a CLEAS con dictamen A_FAVOR");
+        boolean eligibleOpinion = "A_FAVOR".equals(cleas.getOpinionCode())
+                || ("DANIO_TOTAL".equals(cleas.getScopeCode()) && "CULPA_COMPARTIDA".equals(cleas.getOpinionCode()))
+                || ("FRANQUICIA".equals(cleas.getScopeCode()) && "EN_CONTRA".equals(cleas.getOpinionCode()));
+        if (!eligibleOpinion) throw new ConflictException("El pago de compania no aplica al dictamen CLEAS actual");
         Long companyId = caseInsuranceRepository.findByCaseId(caseEntity.getId()).map(value -> value.getInsuranceCompanyId())
                 .orElseThrow(() -> new ConflictException("El caso no tiene compania aseguradora configurada"));
         BigDecimal agreedAmount = insuranceProcessingRepository.findByCaseId(caseEntity.getId()).map(value -> money(value.getAgreedAmount())).orElse(BigDecimal.ZERO);
         if (agreedAmount.signum() <= 0) throw new ConflictException("No hay un monto acordado de la compania para registrar el pago");
         BigDecimal target = cleasSettlementPolicy.settle(cleas, agreedAmount).amountToBillCompany();
+        if (target.signum() <= 0) throw new ConflictException("No hay saldo de compania para registrar el pago");
         List<FinancialMovementEntity> companyPayments = financialMovementRepository.findByCaseId(caseEntity.getId(), Sort.unsorted()).stream()
                 .filter(movement -> "ASEGURADORA".equals(normalizeCode(movement.getFlowOriginCode()))
                         && COMPANY_PAYMENT_CANCELLATION_TYPE.equals(normalizeCode(movement.getCancellationTypeCode()))

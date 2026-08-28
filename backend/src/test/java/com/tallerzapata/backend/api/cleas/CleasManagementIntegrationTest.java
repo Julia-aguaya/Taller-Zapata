@@ -366,6 +366,27 @@ class CleasManagementIntegrationTest {
     }
 
     @Test
+    void shouldRegisterCompanyPaymentForAdverseFranchiseAgainstTheCanonicalAmount() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scopeCode\":\"FRANQUICIA\",\"opinionCode\":\"EN_CONTRA\",\"franchiseAmount\":1000,\"companyFranchisePaymentAmount\":500}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/cases/100/cleas/insurance").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"insuranceCompanyId\":1}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-08-02\",\"agreedAmount\":2000}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100/cleas/summary").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.agreedAmount").value(1500));
+        mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":1500,\"paymentMethodCode\":\"TRANSFERENCIA\",\"documentId\":201}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.grossAmount").value(1500));
+    }
+
+    @Test
     void shouldRegisterCompanyFranchisePaymentForAdverseFranchise() throws Exception {
         mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scopeCode\":\"FRANQUICIA\",\"opinionCode\":\"EN_CONTRA\",\"franchiseAmount\":1000,\"companyFranchisePaymentAmount\":500}"))
