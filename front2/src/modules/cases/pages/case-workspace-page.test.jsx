@@ -51,15 +51,13 @@ vi.mock('@/modules/cases/components/repair-editor-panel', () => ({
 }));
 
 vi.mock('@/modules/cases/components/payments-editor-panel', () => ({
-  PaymentsEditorPanel: ({ nroCleas, cleasInsurance, onCleasInsuranceChange, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange }) => cleasPaymentsUi ? (
+  PaymentsEditorPanel: ({ nroCleas, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange }) => cleasPaymentsUi ? (
     <div>
        <div>Payments panel {nroCleas} {cleasAgreedAmount}</div>
        <output data-testid="cleas-franchise-distribution">{JSON.stringify(cleasFranchiseDistribution)}</output>
-       <label>Factura CLEAS<input value={cleasInsurance.clientCompany} onChange={(event) => onCleasInsuranceChange((current) => ({ ...current, clientCompany: event.target.value }))} /></label>
-       <label>Siniestro CLEAS<input value={cleasInsurance.claimNumber} onChange={(event) => onCleasInsuranceChange((current) => ({ ...current, claimNumber: event.target.value }))} /></label>
-      <label>Monto depositado CLEAS<input value={cleasPaymentsUi.paymentDraft.depositedAmount} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, depositedAmount: event.target.value } }))} /></label>
-      <button type="button" onClick={() => onCleasPaymentsUiChange((current) => ({ ...current, invoiceAcknowledged: true, paymentDraft: { ...current.paymentDraft, hasRetentions: 'SI' }, paymentDocument: { file: new File(['pago'], 'pago.pdf'), name: 'pago.pdf' } }))}>Completar UI CLEAS</button>
-      <output data-testid="cleas-payments-ui">{JSON.stringify({ invoiceAcknowledged: cleasPaymentsUi.invoiceAcknowledged, hasRetentions: cleasPaymentsUi.paymentDraft.hasRetentions, paymentDocumentName: cleasPaymentsUi.paymentDocument.name })}</output>
+        <label>Monto depositado CLEAS<input value={cleasPaymentsUi.paymentDraft.depositedAmount} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, depositedAmount: event.target.value } }))} /></label>
+       <button type="button" onClick={() => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, hasRetentions: 'SI' }, paymentDocument: { file: new File(['pago'], 'pago.pdf'), name: 'pago.pdf' } }))}>Completar UI CLEAS</button>
+       <output data-testid="cleas-payments-ui">{JSON.stringify({ hasRetentions: cleasPaymentsUi.paymentDraft.hasRetentions, paymentDocumentName: cleasPaymentsUi.paymentDocument.name })}</output>
     </div>
   ) : <div>Payments panel</div>,
 }));
@@ -330,26 +328,6 @@ describe('CaseWorkspacePage UI', () => {
     expect(screen.getByText('Payments panel CLEAS-99 125000')).toBeInTheDocument();
   });
 
-  it('comparte aseguradora y número de siniestro entre Gestión del Trámite y Pagos', async () => {
-    const user = userEvent.setup();
-    const workspace = {
-      ...baseWorkspace,
-      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'CLEAS' },
-      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'CLEAS', tabs: [
-        { tabCode: 'GESTION_TRAMITE', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
-        { tabCode: 'PAGOS', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
-      ] },
-    };
-    await renderPage(workspace);
-
-    await user.click(screen.getByRole('tab', { name: /gestión del trámite/i }));
-    await user.type(screen.getByLabelText('N.º de siniestro'), 'SIN-99');
-    await user.click(screen.getByRole('tab', { name: /pagos/i }));
-
-    expect(screen.getByLabelText('Factura CLEAS')).toHaveValue('');
-    expect(screen.getByLabelText('Siniestro CLEAS')).toHaveValue('SIN-99');
-  });
-
   it('muestra los bloqueos downstream que entrega readiness para dictamen pendiente', async () => {
     const user = userEvent.setup();
     await renderPage({
@@ -434,12 +412,10 @@ describe('CaseWorkspacePage UI', () => {
     await renderPage(workspace);
 
     await user.click(screen.getByRole('tab', { name: /pagos/i }));
-    await user.type(screen.getByLabelText('Factura CLEAS'), 'Aseguradora Uno');
     await user.type(screen.getByLabelText('Monto depositado CLEAS'), '90000');
     await user.click(screen.getByRole('tab', { name: /gestión del trámite/i }));
     await user.click(screen.getByRole('tab', { name: /pagos/i }));
 
-    expect(screen.getByLabelText('Factura CLEAS')).toHaveValue('Aseguradora Uno');
     expect(screen.getByLabelText('Monto depositado CLEAS')).toHaveValue('90000');
   });
 
@@ -452,16 +428,14 @@ describe('CaseWorkspacePage UI', () => {
     };
     const rendered = await renderPage(workspace);
     await user.click(screen.getByRole('tab', { name: /pagos/i }));
-    await user.type(screen.getByLabelText('Factura CLEAS'), 'Aseguradora Uno');
     await user.type(screen.getByLabelText('Monto depositado CLEAS'), '90000');
     await user.click(screen.getByRole('button', { name: 'Completar UI CLEAS' }));
 
     currentCaseId = '2';
     rendered.rerender(<CaseWorkspacePage />);
 
-    await waitFor(() => expect(screen.getByLabelText('Factura CLEAS')).toHaveValue(''));
     expect(screen.getByLabelText('Monto depositado CLEAS')).toHaveValue('');
-    expect(screen.getByTestId('cleas-payments-ui')).toHaveTextContent('{"invoiceAcknowledged":false,"hasRetentions":"NO","paymentDocumentName":""}');
+    expect(screen.getByTestId('cleas-payments-ui')).toHaveTextContent('{"hasRetentions":"NO","paymentDocumentName":""}');
   });
 
   it('hidrata el cierre persistido y los bloqueos adversos desde el workspace', async () => {

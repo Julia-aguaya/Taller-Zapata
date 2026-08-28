@@ -58,8 +58,6 @@ const TODO_RIESGO_OVERRIDE_OPTIONS = {
 };
 
 const createCleasPaymentsUi = () => ({
-  billing: { agreementDate: '', invoiceNumber: '', businessName: '', totalAmount: '', taxableNet: '', vat: '', customerSigned: 'NO', passedToPayments: 'NO', estimatedPaymentDate: '' },
-  invoiceAcknowledged: false,
   paymentDraft: { paidAt: '', status: 'PENDIENTE', depositedAmount: '', hasRetentions: 'NO', vatRetention: '', earningsRetention: '', patrimonialContribution: '', iibbRetention: '', dreiRetention: '', otherRetention: '' },
   paymentDocument: { file: null, name: '' },
   franchiseClientPayment: { status: 'PENDIENTE', paidAt: '', amount: '', paymentMethod: 'TRANSFERENCIA', externalReference: '', notes: '', document: { file: null, name: '' }, registered: false },
@@ -408,7 +406,7 @@ export const CaseWorkspacePage = () => {
           ) : currentTab?.tabCode === 'PAGOS' ? (
             caseDetail.caseTypeCode === 'RECUPERO_FRANQUICIA'
               ? <FranchiseRecoveryPaymentsEditor caseId={caseId} caseDetail={caseDetail} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
-               : <div className="space-y-5"><PaymentsEditorPanel caseId={caseId} caseDetail={caseDetail} budget={budget} particularFinanceSummary={particularFinanceSummary} clientPaymentRequest={clientPaymentRequest} onClientPaymentRequestHandled={() => setClientPaymentRequest(null)} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, cleasInsurance, onCleasInsuranceChange: setCleasInsurance, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange: setCleasPaymentsUi, cleasOver, cleasOpinion, cleasClosedAt: caseDetail.closedAt } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />{caseDetail.caseTypeCode !== 'PARTICULAR' ? <ExtraBudgetPaymentsPanel caseId={caseId} caseTypeCode={caseDetail.caseTypeCode} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} onRegisterClientPayment={setClientPaymentRequest} /> : null}</div>
+               : <div className="space-y-5"><PaymentsEditorPanel caseId={caseId} caseDetail={caseDetail} budget={budget} particularFinanceSummary={particularFinanceSummary} clientPaymentRequest={clientPaymentRequest} onClientPaymentRequestHandled={() => setClientPaymentRequest(null)} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange: setCleasPaymentsUi, cleasOver, cleasOpinion, cleasClosedAt: caseDetail.closedAt } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />{caseDetail.caseTypeCode !== 'PARTICULAR' ? <ExtraBudgetPaymentsPanel caseId={caseId} caseTypeCode={caseDetail.caseTypeCode} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} onRegisterClientPayment={setClientPaymentRequest} /> : null}</div>
           ) : null}
         </div>
       </Card>

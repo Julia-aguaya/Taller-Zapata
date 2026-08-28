@@ -42,7 +42,7 @@ const PAYMENT_METHODS = [
   { value: 'OTRO', label: 'Otro' },
 ];
 
-export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFinanceSummary, clientPaymentRequest, onClientPaymentRequestHandled, nroCleas, cleasInsurance, onCleasInsuranceChange, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange, cleasOver, cleasOpinion, cleasClosedAt, cleasWorkflowGuard, onSaved }) => {
+export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFinanceSummary, clientPaymentRequest, onClientPaymentRequestHandled, nroCleas, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange, cleasOver, cleasOpinion, cleasClosedAt, cleasWorkflowGuard, onSaved }) => {
   const queryClient = useQueryClient();
 
   const [comprobanteTipo, setComprobanteTipo] = useState('A');
@@ -291,20 +291,9 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
         </div>
       ) : null}
 
-        {isCleas && !blockCleasPayments ? (
-        <CleasBillingCard
-            amountToBill={cleasAmountToBill}
-            billing={cleasPaymentsUi.billing}
-            insurance={cleasInsurance}
-          cleasNumberDisplay={cleasNumberDisplay}
-            onChange={(name) => (event) => onCleasPaymentsUiChange((current) => ({ ...current, billing: { ...current.billing, [name]: event.target.value } }))}
-            onInsuranceChange={(name) => (event) => onCleasInsuranceChange?.((current) => ({ ...current, [name]: event.target.value }))}
-          onAddInvoice={() => onCleasPaymentsUiChange((current) => ({ ...current, invoiceAcknowledged: true }))}
-          invoiceAcknowledged={cleasPaymentsUi.invoiceAcknowledged}
-        />
-      ) : null}
+      {isCleas && !blockCleasPayments ? <CleasInvoicePanel caseId={caseId} onSaved={onSaved} /> : null}
 
-      {isCleas ? <CleasCompanyPaymentPanel caseId={caseId} onSaved={onSaved} /> : null}
+      {isCleas ? <CleasCompanyPaymentPanel caseId={caseId} receipts={receiptsQuery.data ?? []} onSaved={onSaved} /> : null}
 
       {/* Comprobante + Formulario */}
         {!blockCleasPayments && !isInsurance ? (
@@ -579,7 +568,7 @@ const MiniCard = ({ label, value, highlight, variant }) => (
   </div>
 );
 
-const CleasCompanyPaymentPanel = ({ caseId, onSaved }) => {
+const CleasCompanyPaymentPanel = ({ caseId, receipts, onSaved }) => {
   const queryClient = useQueryClient();
   const summaryQuery = useQuery({
     queryKey: ['cases', String(caseId), 'cleas', 'summary'],
@@ -589,6 +578,7 @@ const CleasCompanyPaymentPanel = ({ caseId, onSaved }) => {
     amount: '',
     movementAt: new Date().toISOString().slice(0, 16),
     paymentMethodCode: 'TRANSFERENCIA',
+    receiptId: '',
     externalReference: '',
     reason: '',
   });
@@ -599,7 +589,7 @@ const CleasCompanyPaymentPanel = ({ caseId, onSaved }) => {
       await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] });
       await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
       await onSaved?.();
-      setForm({ amount: '', movementAt: new Date().toISOString().slice(0, 16), paymentMethodCode: 'TRANSFERENCIA', externalReference: '', reason: '' });
+      setForm({ amount: '', movementAt: new Date().toISOString().slice(0, 16), paymentMethodCode: 'TRANSFERENCIA', receiptId: '', externalReference: '', reason: '' });
       toast.success('Pago CLEAS de la compañía registrado.');
     },
     onError: (error) => toast.error(error.message || 'No pude registrar el pago de la compañía.'),
@@ -628,49 +618,63 @@ const CleasCompanyPaymentPanel = ({ caseId, onSaved }) => {
       {pendingAmount > 0 ? (
         <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <Field label="Monto de compañía"><Input type="number" min="0" max={pendingAmount} step="0.01" value={form.amount} onChange={(event) => setForm((current) => ({ ...current, amount: event.target.value }))} /></Field>
-          <Field label="Fecha y hora del pago"><Input type="datetime-local" value={form.movementAt} onChange={(event) => setForm((current) => ({ ...current, movementAt: event.target.value }))} /></Field>
-          <Field label="Medio de pago"><Select value={form.paymentMethodCode} onChange={(event) => setForm((current) => ({ ...current, paymentMethodCode: event.target.value }))} options={PAYMENT_METHODS} /></Field>
-          <Field label="Referencia externa"><Input value={form.externalReference} onChange={(event) => setForm((current) => ({ ...current, externalReference: event.target.value }))} /></Field>
-          <Field label="Notas"><Textarea rows={3} value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} /></Field>
-          <div className="flex items-end"><Button className="w-full" disabled={!canSubmit} onClick={() => paymentMutation.mutate({ amount, movementAt: form.movementAt, paymentMethodCode: form.paymentMethodCode, paymentMethodDetail: null, receiptId: null, externalReference: form.externalReference || null, reason: form.reason || null })}><Save className="mr-1.5 h-4 w-4" />Registrar pago de compañía</Button></div>
+           <Field label="Fecha y hora del pago"><Input type="datetime-local" value={form.movementAt} onChange={(event) => setForm((current) => ({ ...current, movementAt: event.target.value }))} /></Field>
+           <Field label="Medio de pago"><Select value={form.paymentMethodCode} onChange={(event) => setForm((current) => ({ ...current, paymentMethodCode: event.target.value }))} options={PAYMENT_METHODS} /></Field>
+           <Field label="Factura asociada (opcional)"><Select value={form.receiptId} onChange={(event) => setForm((current) => ({ ...current, receiptId: event.target.value }))} options={[{ value: '', label: 'Sin factura asociada' }, ...receipts.filter((receipt) => receipt.receiptTypeCode === 'FACTURA').map((receipt) => ({ value: String(receipt.id), label: `${receipt.receiptNumber} - ${formatCurrency(receipt.total)}` }))]} /></Field>
+           <Field label="Referencia externa"><Input value={form.externalReference} onChange={(event) => setForm((current) => ({ ...current, externalReference: event.target.value }))} /></Field>
+           <Field label="Notas"><Textarea rows={3} value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} /></Field>
+           <div className="flex items-end"><Button className="w-full" disabled={!canSubmit} onClick={() => paymentMutation.mutate({ amount, movementAt: form.movementAt, paymentMethodCode: form.paymentMethodCode, paymentMethodDetail: null, receiptId: form.receiptId ? Number(form.receiptId) : null, externalReference: form.externalReference || null, reason: form.reason || null })}><Save className="mr-1.5 h-4 w-4" />Registrar pago de compañía</Button></div>
         </div>
       ) : <p className="mt-4 text-sm text-muted-foreground">La compañía no tiene saldo pendiente.</p>}
     </Card>
   );
 };
 
-const CleasBillingCard = ({ amountToBill, billing, insurance = {}, cleasNumberDisplay, onChange, onInsuranceChange = () => {}, onAddInvoice, invoiceAcknowledged }) => (
+const CleasInvoicePanel = ({ caseId, onSaved }) => {
+  const queryClient = useQueryClient();
+  const summaryQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'summary'], queryFn: () => getCleasCompanyPaymentSummary(caseId) });
+  const receiptsQuery = useQuery({ queryKey: ['cases', String(caseId), 'receipts'], queryFn: () => listReceipts(caseId) });
+  const [form, setForm] = useState({ receiptNumber: '', receiverBusinessName: '', issuedDate: new Date().toISOString().slice(0, 10) });
+  const invoiceMutation = useMutation({
+    mutationFn: () => createReceipt(caseId, {
+      receiptTypeCode: 'FACTURA', receiptNumber: form.receiptNumber.trim(), receiverBusinessName: form.receiverBusinessName.trim(), issuedDate: form.issuedDate,
+      taxableNet: toAmount(summaryQuery.data.agreedAmount), vatAmount: 0, total: toAmount(summaryQuery.data.agreedAmount), comprobanteFiscal: null, notes: null,
+    }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'receipts'] });
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
+      await onSaved?.();
+      setForm({ receiptNumber: '', receiverBusinessName: '', issuedDate: new Date().toISOString().slice(0, 10) });
+      toast.success('Factura CLEAS registrada.');
+    },
+    onError: (error) => toast.error(error.message || 'No pude registrar la factura CLEAS.'),
+  });
+
+  if (summaryQuery.isLoading || receiptsQuery.isLoading) return null;
+  if (summaryQuery.isError) return null;
+  if (!summaryQuery.data) return null;
+
+  const agreedAmount = toAmount(summaryQuery.data.agreedAmount);
+  const invoices = (receiptsQuery.data ?? []).filter((receipt) => receipt.receiptTypeCode === 'FACTURA');
+  const canSubmit = agreedAmount > 0 && Boolean(form.receiptNumber.trim()) && Boolean(form.receiverBusinessName.trim()) && Boolean(form.issuedDate) && !invoiceMutation.isPending;
+
+  return (
   <Card className="rounded-3xl border-border/70 p-5">
     <h4 className="text-lg font-semibold">Facturación</h4>
-    {/* Grupo visual CLEAS: identificación de la factura. */}
     <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-      <Field label="Cía. aseguradora"><Input value={insurance.clientCompany || ''} onChange={onInsuranceChange('clientCompany')} /></Field>
-      <Field label="N.º de siniestro"><Input value={insurance.claimNumber || ''} onChange={onInsuranceChange('claimNumber')} /></Field>
-      <Field label="N.º de CLEAS"><Input value={cleasNumberDisplay} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
-      <Field label="A facturar Cía."><Input value={amountToBill} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
-      <Field label="Fecha de acuerdo"><Input type="date" value={billing.agreementDate} onChange={onChange('agreementDate')} /></Field>
-      <Field label="N.º de factura"><Input value={billing.invoiceNumber} onChange={onChange('invoiceNumber')} /></Field>
-      <Field label="Razón social"><Input value={billing.businessName} onChange={onChange('businessName')} /></Field>
+      <Field label="Monto acordado"><Input value={formatCurrency(agreedAmount)} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
+      <Field label="N.º de factura"><Input value={form.receiptNumber} onChange={(event) => setForm((current) => ({ ...current, receiptNumber: event.target.value }))} /></Field>
+      <Field label="Razón social"><Input value={form.receiverBusinessName} onChange={(event) => setForm((current) => ({ ...current, receiverBusinessName: event.target.value }))} /></Field>
+      <Field label="Fecha de emisión"><Input type="date" value={form.issuedDate} onChange={(event) => setForm((current) => ({ ...current, issuedDate: event.target.value }))} /></Field>
     </div>
-    {/* Grupo visual CLEAS: importes relacionados, sin cálculos ni persistencia. */}
-    <div className="mt-4 rounded-2xl border border-border/60 bg-background/50 p-4">
-      <div className="grid gap-4 md:grid-cols-3">
-        <Field label="Importe total"><Input type="number" min="0" step="0.01" value={billing.totalAmount} onChange={onChange('totalAmount')} /></Field>
-        <Field label="Neto gravado"><Input type="number" min="0" step="0.01" value={billing.taxableNet} onChange={onChange('taxableNet')} /></Field>
-        <Field label="IVA"><Input type="number" min="0" step="0.01" value={billing.vat} onChange={onChange('vat')} /></Field>
-      </div>
-    </div>
-    <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-      <Field label="Cliente firma conforme"><Select value={billing.customerSigned} onChange={onChange('customerSigned')} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
-      <Field label="Pasado a pagos"><Select value={billing.passedToPayments} onChange={onChange('passedToPayments')} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
-      <Field label="Fecha estimada de pago"><Input type="date" value={billing.estimatedPaymentDate} onChange={onChange('estimatedPaymentDate')} /></Field>
-    </div>
-    <div className="mt-5 flex flex-wrap items-center gap-3">
-      <Button type="button" onClick={onAddInvoice}>+ Agregar factura</Button>
-      {invoiceAcknowledged ? <span className="text-sm text-muted-foreground">Factura agregada visualmente.</span> : null}
+    <div className="mt-5"><Button type="button" disabled={!canSubmit} onClick={() => invoiceMutation.mutate()}>+ Registrar factura</Button></div>
+    <div className="mt-5">
+      <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Facturas del caso</p>
+      {invoices.length === 0 ? <p className="text-sm text-muted-foreground">Sin facturas registradas.</p> : <ul className="space-y-2">{invoices.map((invoice) => <li key={invoice.id} className="flex flex-wrap justify-between gap-2 rounded-2xl border border-border/60 px-4 py-3 text-sm"><span>{invoice.receiptNumber} - {invoice.receiverBusinessName}</span><strong>{formatCurrency(invoice.total)}</strong></li>)}</ul>}
     </div>
   </Card>
-);
+  );
+};
 
 const Field = ({ label, children }) => {
   const id = useId();

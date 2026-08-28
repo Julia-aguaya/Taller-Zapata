@@ -74,8 +74,6 @@ const baseProps = {
 };
 
 const createCleasPaymentsUi = () => ({
-  billing: { insuranceCompany: '', claimNumber: '', agreementDate: '', invoiceNumber: '', businessName: '', totalAmount: '', taxableNet: '', vat: '', customerSigned: 'NO', passedToPayments: 'NO', estimatedPaymentDate: '' },
-  invoiceAcknowledged: false,
   paymentDraft: { paidAt: '', status: 'PENDIENTE', depositedAmount: '', hasRetentions: 'NO', vatRetention: '', earningsRetention: '', patrimonialContribution: '', iibbRetention: '', dreiRetention: '', otherRetention: '' },
   paymentDocument: { file: null, name: '' },
   franchiseClientPayment: { status: 'PENDIENTE', paidAt: '', amount: '', paymentMethod: 'TRANSFERENCIA', externalReference: '', notes: '', document: { file: null, name: '' }, registered: false },
@@ -293,18 +291,22 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.queryByRole('button', { name: /registrar pago de franquicia/i })).toBeNull();
   });
 
-  it('renders the visual-only CLEAS billing card with shared calculated amount and fallback', () => {
-    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }, nroCleas: '', cleasAgreedAmount: '125000' });
+  it('persists a CLEAS invoice using the agreed amount and lists invoices from the case', async () => {
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'cleas', 'summary'])]: { caseId: 42, companyId: 7, agreedAmount: 125000, paidAmount: 0, pendingAmount: 125000 },
+      [JSON.stringify(['cases', '42', 'receipts'])]: [{ id: 9, receiptTypeCode: 'FACTURA', receiptNumber: '0001-9', receiverBusinessName: 'Aseguradora SA', total: 125000 }],
+    };
+    render(<CleasPaymentsHarness {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }} />);
 
-    expect(screen.getByText('Facturación')).toBeTruthy();
-    expect(screen.getByLabelText('N.º de CLEAS')).toHaveValue('Sin número de CLEAS cargado');
-    expect(screen.getByLabelText('N.º de CLEAS')).toHaveAttribute('readonly');
-    expect(screen.getByLabelText('A facturar Cía.')).toHaveValue('125000');
-    expect(screen.getByLabelText('A facturar Cía.')).toHaveAttribute('readonly');
-    ['Cía. aseguradora', 'N.º de siniestro', 'Fecha de acuerdo', 'N.º de factura', 'Razón social', 'Importe total', 'Neto gravado', 'IVA', 'Cliente firma conforme', 'Pasado a pagos', 'Fecha estimada de pago'].forEach((label) => expect(screen.getByLabelText(label)).toBeTruthy());
+    expect(screen.getByLabelText('Monto acordado')).toHaveValue('$ 125.000');
+    expect(screen.getByText('0001-9 - Aseguradora SA')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('N.º de factura'), { target: { value: '0001-10' } });
+    fireEvent.change(screen.getByLabelText('Razón social'), { target: { value: 'Aseguradora SA' } });
+    fireEvent.click(screen.getByRole('button', { name: /registrar factura/i }));
 
-    fireEvent.click(screen.getByRole('button', { name: /agregar factura/i }));
-    expect(screen.getByText('Factura agregada visualmente.')).toBeTruthy();
+    await waitFor(() => expect(mockCreateReceipt).toHaveBeenCalledWith(42, expect.objectContaining({
+      receiptTypeCode: 'FACTURA', receiptNumber: '0001-10', receiverBusinessName: 'Aseguradora SA', taxableNet: 125000, vatAmount: 0, total: 125000,
+    })));
   });
 
   it('hides CLEAS billing and payment registration only after exact adverse-total closure', () => {
@@ -315,9 +317,10 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.queryByLabelText('Monto depositado')).toBeNull();
   });
 
-  it('uses the CLEAS summary and registers an eligible company payment through its dedicated endpoint', async () => {
+  it('uses the CLEAS summary and registers an eligible company payment with its selected invoice', async () => {
     useQueryData = {
       [JSON.stringify(['cases', '42', 'cleas', 'summary'])]: { caseId: 42, companyId: 7, agreedAmount: 100000, paidAmount: 25000, pendingAmount: 75000 },
+      [JSON.stringify(['cases', '42', 'receipts'])]: [{ id: 44, receiptTypeCode: 'FACTURA', receiptNumber: '0001-44', receiverBusinessName: 'Aseguradora SA', total: 100000 }],
     };
     render(<CleasPaymentsHarness {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }} />);
 
@@ -327,6 +330,7 @@ describe('PaymentsEditorPanel', () => {
     expect(within(companyPanel).getByText('Pagado').parentElement).toHaveTextContent('25.000');
     expect(within(companyPanel).getByText('Pendiente').parentElement).toHaveTextContent('75.000');
     fireEvent.change(within(companyPanel).getByLabelText('Monto de compañía'), { target: { value: '75000' } });
+    fireEvent.change(within(companyPanel).getByLabelText('Factura asociada (opcional)'), { target: { value: '44' } });
     fireEvent.change(within(companyPanel).getByLabelText('Referencia externa'), { target: { value: 'CLEAS-OP-1' } });
     fireEvent.change(within(companyPanel).getByLabelText('Notas'), { target: { value: 'Transferencia recibida' } });
     fireEvent.click(within(companyPanel).getByRole('button', { name: /^Registrar pago de compañía$/i }));
@@ -334,6 +338,7 @@ describe('PaymentsEditorPanel', () => {
     await waitFor(() => expect(mockRegisterCleasCompanyPayment).toHaveBeenCalledWith(42, expect.objectContaining({
       amount: 75000,
       paymentMethodCode: 'TRANSFERENCIA',
+      receiptId: 44,
       externalReference: 'CLEAS-OP-1',
       reason: 'Transferencia recibida',
     })));
@@ -355,14 +360,14 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.queryByRole('button', { name: /^Registrar pago de compañía$/i })).toBeNull();
   });
 
-  it('keeps billing and payment registration available for non-exact CLEAS with a closure timestamp', () => {
+  it('keeps payment registration available for non-exact CLEAS with a closure timestamp', () => {
     mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }, cleasOver: 'liability', cleasOpinion: 'unfavorable', cleasClosedAt: '2026-08-20T10:00:00.000Z' });
 
-    expect(screen.getByText('Facturación')).toBeTruthy();
+    expect(screen.queryByText('Facturación')).toBeNull();
     expect(screen.getAllByRole('button', { name: /registrar pago/i }).length).toBeGreaterThan(0);
   });
 
-  it('keeps CLEAS billing and payment registration enabled for a favorable franchise', () => {
+  it('does not expose CLEAS billing for a favorable franchise', () => {
     mount({
       caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' },
       cleasOver: 'franchise',
@@ -370,9 +375,7 @@ describe('PaymentsEditorPanel', () => {
       cleasAgreedAmount: '125000',
     });
 
-    expect(screen.getByText('Facturación')).toBeTruthy();
-    expect(screen.getByLabelText('A facturar Cía.')).toHaveValue('125000');
-    expect(screen.getByLabelText('A facturar Cía.')).toHaveAttribute('readonly');
+    expect(screen.queryByText('Facturación')).toBeNull();
     expect(screen.getAllByRole('button', { name: /registrar pago/i }).length).toBeGreaterThan(0);
     openPaymentForm();
     expect(screen.getByRole('button', { name: /^registrar pago$/i })).toBeEnabled();
@@ -387,7 +390,7 @@ describe('PaymentsEditorPanel', () => {
       cleasFranchiseDistribution: { franchiseAmount: '1000000', companyRequirement: 'PARCIAL', companyRequiredAmount: '500000', companyPaymentStatus: 'PENDIENTE', companyPaymentDate: '' },
     });
 
-    expect(screen.getByLabelText('A facturar Cía.')).toHaveValue('1500000');
+    expect(screen.queryByText('Facturación')).toBeNull();
     expect(screen.getByText('Pago de franquicia a cargo del cliente')).toBeTruthy();
     expect(screen.getByLabelText('A cargo del cliente')).toHaveValue('500000');
     fireEvent.click(screen.getByRole('button', { name: '+ Registrar pago del cliente' }));
@@ -408,7 +411,7 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.queryByLabelText('Ganancias')).toBeNull();
 
     fireEvent.change(screen.getByLabelText('Retenciones'), { target: { value: 'SI' } });
-    expect(screen.getAllByLabelText('IVA').length).toBeGreaterThan(1);
+    expect(screen.getAllByLabelText('IVA')).toHaveLength(1);
     ['Ganancias', 'Contribución patrimonial', 'IIBB', 'DReI', 'Otra'].forEach((label) => expect(screen.getByLabelText(label)).toBeTruthy());
   });
 
