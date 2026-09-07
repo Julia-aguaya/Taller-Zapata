@@ -65,7 +65,10 @@ class TodoRiesgoEffectiveStateIntegrationTest {
         assertProjection(caseId, "PASADO_A_PAGOS", "DAR_TURNO");
         assertThat(jdbcTemplate.queryForObject("SELECT fecha_acuerdo FROM todo_riesgo_state_facts WHERE caso_id = ?", String.class, caseId)).isEqualTo("2026-08-10");
         assertThat(jdbcTemplate.queryForObject("SELECT fecha_pasado_a_pagos FROM todo_riesgo_state_facts WHERE caso_id = ?", String.class, caseId)).isEqualTo("2026-08-11");
-        createInsurancePayment(caseId, "2026-08-12T12:00:00");
+        // El estado PAGADO exige un acuerdo positivo cubierto por pagos de la compania
+        // (el pago con acuerdo en cero nunca cierra).
+        upsertAgreedAmount(caseId, "50000");
+        createInsurancePayment(caseId, "2026-08-12T12:00:00", "50000");
         assertProjection(caseId, "PAGADO", "DAR_TURNO");
         assertThat(jdbcTemplate.queryForObject("SELECT fecha_pago FROM todo_riesgo_state_facts WHERE caso_id = ?", String.class, caseId)).isEqualTo("2026-08-12");
     }
@@ -91,9 +94,10 @@ class TodoRiesgoEffectiveStateIntegrationTest {
         recalculator.recalculate(caseId);
         assertProjection(caseId, "SIN_PRESENTAR", "DAR_TURNO");
 
-        createReceipt(caseId, "NOTA_CREDITO");
+        // Las notas de credito requieren una factura del mismo caso (regla fiscal V83).
+        long invoiceId = createReceiptId(caseId, "FACTURA");
         assertProjection(caseId, "SIN_PRESENTAR", "DAR_TURNO");
-        createReceipt(caseId, "FACTURA");
+        createLinkedCreditNote(caseId, invoiceId);
         assertProjection(caseId, "SIN_PRESENTAR", "DAR_TURNO");
     }
 
@@ -227,13 +231,25 @@ class TodoRiesgoEffectiveStateIntegrationTest {
 
     private void upsertInsuranceProcessing(long caseId, String presentedAt, String quotationStatusCode, String quotationDate, String agreementDate, String passedToPaymentsDate) throws Exception {
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/v1/cases/{caseId}/insurance-processing", caseId).header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"presentedAt\":\"" + presentedAt + "\",\"inspectionForwardedAt\":null,\"modalityCode\":\"PRESENCIAL\",\"opinionCode\":null,\"quotationStatusCode\":" + nullableJson(quotationStatusCode) + ",\"quotationDate\":" + nullableJson(quotationDate) + ",\"agreedAmount\":null,\"agreementDate\":" + nullableJson(agreementDate) + ",\"passedToPaymentsDate\":" + nullableJson(passedToPaymentsDate) + ",\"minimumCloseAmount\":50000,\"includesParts\":false,\"partsAuthorizationCode\":null,\"partsSupplierText\":null,\"amountToBillCompany\":null,\"finalAmountForWorkshop\":null,\"noRepair\":false,\"adminOverrideAppointment\":false}"))
+                        .content("{\"presentedAt\":\"" + presentedAt + "\",\"inspectionForwardedAt\":null,\"modalityCode\":\"PRESENCIAL\",\"opinionCode\":null,\"quotationStatusCode\":" + nullableJson(quotationStatusCode) + ",\"quotationDate\":" + nullableJson(quotationDate) + ",\"agreedAmount\":null,\"agreementDate\":" + nullableJson(agreementDate) + ",\"passedToPaymentsAt\":" + nullableJson(passedToPaymentsDate) + ",\"minimumCloseAmount\":50000,\"includesParts\":false,\"partsAuthorizationCode\":null,\"partsSupplierText\":null,\"amountToBillCompany\":null,\"finalAmountForWorkshop\":null,\"noRepair\":false,\"adminOverrideAppointment\":false}"))
                 .andExpect(status().isOk());
     }
 
     private void createInsurancePayment(long caseId, String movementAt) throws Exception {
         mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId).header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"ASEGURADORA\",\"counterpartyTypeCode\":\"PERSONA\",\"counterpartyPersonId\":10,\"movementAt\":\"" + movementAt + "\",\"grossAmount\":100,\"netAmount\":100,\"paymentMethodCode\":\"TRANSFERENCIA\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[],\"applications\":[]}"))
+                .andExpect(status().isOk());
+    }
+
+    private void createInsurancePayment(long caseId, String movementAt, String amount) throws Exception {
+        mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId).header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"ASEGURADORA\",\"counterpartyTypeCode\":\"PERSONA\",\"counterpartyPersonId\":10,\"movementAt\":\"" + movementAt + "\",\"grossAmount\":" + amount + ",\"netAmount\":" + amount + ",\"paymentMethodCode\":\"TRANSFERENCIA\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[],\"applications\":[]}"))
+                .andExpect(status().isOk());
+    }
+
+    private void upsertAgreedAmount(long caseId, String agreedAmount) throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch("/api/v1/cases/{caseId}/insurance-processing", caseId).header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"agreedAmount\":" + agreedAmount + ",\"minimumCloseAmount\":50000}"))
                 .andExpect(status().isOk());
     }
 
@@ -254,6 +270,21 @@ class TodoRiesgoEffectiveStateIntegrationTest {
         mockMvc.perform(post("/api/v1/cases/{caseId}/receipts", caseId).header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"receiptTypeCode\":\"" + type + "\",\"receiptNumber\":\"R-" + type + "-" + caseId + "\",\"receiverBusinessName\":\"Carlos Cliente\",\"issuedDate\":\"2026-08-09\",\"taxableNet\":100,\"vatAmount\":0,\"total\":100}"))
                 .andExpect(status().isOk());
+    }
+
+    /** Las notas de credito requieren una factura del mismo caso (regla fiscal V83). */
+    private long createReceiptId(long caseId, String type) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/cases/{caseId}/receipts", caseId).header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"receiptTypeCode\":\"" + type + "\",\"receiptNumber\":\"R-" + type + "-" + caseId + "\",\"receiverBusinessName\":\"Carlos Cliente\",\"issuedDate\":\"2026-08-09\",\"taxableNet\":100,\"vatAmount\":0,\"total\":100}"))
+                .andExpect(status().isOk()).andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
+    }
+
+    private long createLinkedCreditNote(long caseId, long invoiceId) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/cases/{caseId}/receipts", caseId).header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"receiptTypeCode\":\"NOTA_CREDITO\",\"receiptNumber\":\"R-NC-" + caseId + "\",\"receiverBusinessName\":\"Carlos Cliente\",\"issuedDate\":\"2026-08-09\",\"taxableNet\":100,\"vatAmount\":0,\"total\":100,\"originalReceiptId\":" + invoiceId + "}"))
+                .andExpect(status().isOk()).andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
     }
 
     private long createAppointment(long caseId, String statusCode, boolean reentry) throws Exception {

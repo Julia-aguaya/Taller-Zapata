@@ -76,6 +76,8 @@ class AuthIntegrationTest {
 
     @Test
     void shouldReturnSessionBootstrap() throws Exception {
+        // V45 semilla notificaciones demo para el admin: arrancamos limpio para contar solo la de este test.
+        jdbcTemplate.update("DELETE FROM notificaciones WHERE usuario_id = 1");
         jdbcTemplate.update(
                 "INSERT INTO notificaciones (id, usuario_id, tipo_codigo, titulo, mensaje, leida, created_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
                 1L,
@@ -103,7 +105,7 @@ class AuthIntegrationTest {
                 .andExpect(jsonPath("$.user.displayName").value("Admin Bootstrap"))
                 .andExpect(jsonPath("$.navigation.defaultRoute").value("/panel"))
                 .andExpect(jsonPath("$.navigation.items[0].code").value("PANEL"))
-                .andExpect(jsonPath("$.navigation.items[1].code").value("NEW_CASE"))
+                .andExpect(jsonPath("$.navigation.items[1].code").value("CASES"))
                 .andExpect(jsonPath("$.authorities").isArray())
                 .andExpect(jsonPath("$.capabilities.canAccessPanel").value(true))
                 .andExpect(jsonPath("$.capabilities.canCreateCase").value(true))

@@ -237,10 +237,10 @@ class InsuranceIntegrationTest {
         mockMvc.perform(put("/api/v1/cases/100/cleas")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(new CaseCleasUpsertRequest("PARCIAL", "FAVORABLE", new BigDecimal("800.00"), new BigDecimal("200.00"), "PENDIENTE", null, new BigDecimal("800.00"), "PENDIENTE", null))))
+                        .content(objectMapper.writeValueAsBytes(new CaseCleasUpsertRequest("DANIO_TOTAL", "A_FAVOR", new BigDecimal("800.00"), new BigDecimal("200.00"), "PENDIENTE", null, new BigDecimal("800.00"), "PENDIENTE", null))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.scopeCode").value("PARCIAL"))
-                .andExpect(jsonPath("$.opinionCode").value("FAVORABLE"));
+                .andExpect(jsonPath("$.scopeCode").value("DANIO_TOTAL"))
+                .andExpect(jsonPath("$.opinionCode").value("A_FAVOR"));
 
         mockMvc.perform(get("/api/v1/cases/100/cleas")
                         .header("X-User-Id", "3"))

@@ -24,6 +24,8 @@ class CaseListFiltersIntegrationTest {
     @Autowired private MockMvc mockMvc;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private TestDatabaseCleaner cleaner;
+    @Autowired private com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
+    @Autowired private com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
 
     @BeforeEach
     void setUp() {
@@ -36,6 +38,11 @@ class CaseListFiltersIntegrationTest {
         seedRecovery();
         seedTasks();
         seedFinancialMovements();
+        // El resolver lee las proyecciones de estado efectivo: los casos sembrados por
+        // SQL necesitan recalcularse para reflejar los hechos cargados.
+        todoRiesgoEffectiveStateRecalculator.recalculate(101L);
+        todoRiesgoEffectiveStateRecalculator.recalculate(102L);
+        particularEffectiveStateRecalculator.recalculate(100L);
     }
 
     @Test
@@ -142,7 +149,7 @@ class CaseListFiltersIntegrationTest {
         );
         jdbcTemplate.update(
                 "INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, estado_tramite_actual_id, estado_reparacion_actual_id, estado_pago_actual_id, estado_documentacion_actual_id, estado_legal_actual_id, prioridad_codigo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                101L, "00000000-0000-0000-0000-000000003101", "0101TZ", 101L, 2L, 1L, 1L, 2L, 2L, false, 1L, 2L, 5L, 7L, 9L, 11L, "ALTA"
+                101L, "00000000-0000-0000-0000-000000003101", "0101TZ", 101L, 2L, 1L, 1L, 2L, 2L, false, 1L, 2L, 5L, 7L, 10L, 11L, "ALTA"
         );
         jdbcTemplate.update(
                 "INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, estado_tramite_actual_id, estado_reparacion_actual_id, estado_pago_actual_id, estado_documentacion_actual_id, estado_legal_actual_id, prioridad_codigo, fecha_cierre) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -169,6 +176,11 @@ class CaseListFiltersIntegrationTest {
         jdbcTemplate.update(
                 "INSERT INTO caso_tramitacion_seguro (caso_id, fecha_presentacion, dictamen_codigo, cotizacion_estado_codigo, lleva_repuestos, no_repara, admin_override_turno) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 101L, java.sql.Date.valueOf("2026-02-11"), "APROBADO", "ENVIADA", true, false, false
+        );
+        // Repuesto sin autorizar: la proyeccion de reparacion cae en EN_TRAMITE.
+        jdbcTemplate.update(
+                "INSERT INTO repuestos_caso (caso_id, descripcion, estado_codigo, usado, devuelto, source_type) VALUES (?, ?, ?, ?, ?, ?)",
+                101L, "Optica", "PENDIENTE", false, false, "MANUAL"
         );
     }
 

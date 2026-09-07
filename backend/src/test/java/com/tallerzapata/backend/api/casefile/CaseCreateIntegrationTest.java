@@ -71,12 +71,27 @@ class CaseCreateIntegrationTest {
                 "PRINCIPAL"
         );
 
-        mockMvc.perform(post("/api/v1/cases")
+        MvcResult result = mockMvc.perform(post("/api/v1/cases")
                         .header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(request)))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.message").value("No existe la sucursal 999"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.folderCode").isNotEmpty())
+                .andExpect(jsonPath("$.caseTypeCode").value("PARTICULAR"))
+                .andExpect(jsonPath("$.principalVehicleId").value(10))
+                .andExpect(jsonPath("$.principalCustomerPersonId").value(10))
+                .andReturn();
+        Long caseId = objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
+
+        // Relaciones core persistidas
+        assertThat(jdbcTemplate.queryForObject("SELECT tipo_tramite_id FROM casos WHERE id = ?", Long.class, caseId)).isEqualTo(1L);
+        assertThat(jdbcTemplate.queryForObject("SELECT vehiculo_principal_id FROM casos WHERE id = ?", Long.class, caseId)).isEqualTo(10L);
+        assertThat(jdbcTemplate.queryForObject("SELECT cliente_principal_persona_id FROM casos WHERE id = ?", Long.class, caseId)).isEqualTo(10L);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM caso_personas WHERE caso_id = ? AND persona_id = 10 AND rol_caso_codigo = 'CLIENTE' AND es_principal = 1", Integer.class, caseId)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM caso_vehiculos WHERE caso_id = ? AND vehiculo_id = 10 AND rol_vehiculo_codigo = 'PRINCIPAL' AND es_principal = 1", Integer.class, caseId)).isEqualTo(1);
+
+        // Historial: estados iniciales de los cinco dominios
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM caso_estado_historial WHERE caso_id = ?", Integer.class, caseId)).isEqualTo(5);
     }
 
     @Test

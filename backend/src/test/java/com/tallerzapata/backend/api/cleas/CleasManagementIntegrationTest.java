@@ -173,6 +173,11 @@ class CleasManagementIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalQuoted").value(0));
 
+        // La tramitacion exige fecha de presentacion antes de montos.
+        mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-08-02\"}"))
+                .andExpect(status().isOk());
+
         mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"agreedAmount\":100000}"))
                 .andExpect(status().isOk())
@@ -185,7 +190,7 @@ class CleasManagementIntegrationTest {
         mockMvc.perform(get("/api/v1/cases/100/cleas/summary").header("X-User-Id", "3"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.agreedAmount").value(100000))
-                .andExpect(jsonPath("$.amountToBillCompany").value(100000));
+                .andExpect(jsonPath("$.pendingAmount").value(100000));
     }
 
     @Test
@@ -269,7 +274,7 @@ class CleasManagementIntegrationTest {
     @Test
     void shouldRejectCompanyPaymentLinkedToReceiptFromAnotherCase() throws Exception {
         prepareEligibleCompanyPayment();
-        jdbcTemplate.update("INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, estado_tramite_actual_id, estado_reparacion_actual_id, estado_pago_actual_id, estado_documentacion_actual_id, estado_legal_actual_id, prioridad_codigo) VALUES (101, '00000000-0000-0000-0000-000000003101', '0101CL', 101, 4, 1, 1, 10, 10, false, 1, 1, 4, 7, 9, 11, 'MEDIA')");
+        jdbcTemplate.update("INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, estado_tramite_actual_id, estado_reparacion_actual_id, estado_pago_actual_id, estado_documentacion_actual_id, estado_legal_actual_id, prioridad_codigo) VALUES (101, '00000000-0000-0000-0000-000000003101', '0101T', 101, 2, 1, 1, 10, 10, false, 1, 1, 4, 7, 9, 11, 'MEDIA')");
 
         String receiptResponse = mockMvc.perform(post("/api/v1/cases/101/receipts").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"receiptTypeCode\":\"FACTURA\",\"receiptNumber\":\"A-0001-00000101\",\"receiverBusinessName\":\"Rivadavia\",\"issuedDate\":\"2026-08-03\",\"taxableNet\":1000,\"vatAmount\":210,\"total\":1210,\"comprobanteFiscal\":\"A\"}"))
@@ -542,7 +547,7 @@ class CleasManagementIntegrationTest {
         mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scopeCode\":\"FRANQUICIA\",\"opinionCode\":\"EN_CONTRA\",\"franchiseAmount\":1000}"))
                 .andExpect(status().isOk());
-        jdbcTemplate.update("INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, estado_tramite_actual_id, estado_reparacion_actual_id, estado_pago_actual_id, estado_documentacion_actual_id, estado_legal_actual_id, prioridad_codigo) VALUES (101, '00000000-0000-0000-0000-000000003101', '0101CL', 101, 4, 1, 1, 10, 10, false, 1, 1, 4, 7, 9, 11, 'MEDIA')");
+        jdbcTemplate.update("INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, estado_tramite_actual_id, estado_reparacion_actual_id, estado_pago_actual_id, estado_documentacion_actual_id, estado_legal_actual_id, prioridad_codigo) VALUES (101, '00000000-0000-0000-0000-000000003101', '0101T', 101, 2, 1, 1, 10, 10, false, 1, 1, 4, 7, 9, 11, 'MEDIA')");
         jdbcTemplate.update("INSERT INTO documento_relaciones (documento_id, caso_id, entidad_tipo, entidad_id, modulo_codigo, principal, visible_cliente, orden_visual) VALUES (202, 101, 'CASO', 101, 'CLEAS', false, false, 0)");
 
         mockMvc.perform(post("/api/v1/cases/100/cleas/franchise-company-payment").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)

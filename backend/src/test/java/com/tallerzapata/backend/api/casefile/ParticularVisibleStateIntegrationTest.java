@@ -119,9 +119,8 @@ class ParticularVisibleStateIntegrationTest {
     void recalculatesForReceiptTypesAndPartsLifecycle() throws Exception {
         long caseId = createCase("PARTICULAR");
 
-        createReceipt(caseId, "NOTA_CREDITO");
-        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
-        createReceipt(caseId, "FACTURA");
+        // Las notas de credito requieren una factura del mismo caso (regla fiscal V83).
+        createLinkedCreditNote(caseId, createReceiptId(caseId, "FACTURA"));
         assertProjection(caseId, "INGRESADO", "DAR_TURNO");
 
         long firstPart = createPart(caseId, "PENDIENTE");
@@ -349,7 +348,7 @@ class ParticularVisibleStateIntegrationTest {
         assertThat(countHistory(caseId)).isEqualTo(historyBeforeNonStateFinancialMutations);
 
         // A PARTICULAR budget also derives canonical parts from REEMPLAZAR lines;
-        // this must not alter the visible repair-state projection.
+        // an unreceived part moves the projection to FALTAN_REPUESTOS per policy.
         mockMvc.perform(post("/api/v1/cases/{caseId}/budget/items", caseId).header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"visualOrder\":1,\"affectedPiece\":\"Optica\",\"taskCode\":\"ELECTRICIDAD\",\"damageLevelCode\":\"LEVE\",\"partDecisionCode\":\"REEMPLAZAR\",\"actionCode\":\"REEMPLAZAR\",\"requiresReplacement\":true,\"partValue\":10,\"estimatedHours\":1,\"laborAmount\":1}"))
@@ -357,12 +356,12 @@ class ParticularVisibleStateIntegrationTest {
         mockMvc.perform(post("/api/v1/cases/{caseId}/parts/sync-from-budget", caseId).header("X-User-Id", "1"))
                 .andExpect(status().isOk());
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM repuestos_caso WHERE caso_id = ? AND source_type = 'BUDGET_ITEM' AND non_canonical = 0", Integer.class, caseId)).isEqualTo(1);
-        assertProjection(caseId, "PAGADO", "EN_TRAMITE");
+        assertProjection(caseId, "PAGADO", "FALTAN_REPUESTOS");
 
         mockMvc.perform(post("/api/v1/cases/{caseId}/budget/close", caseId).header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON).content("{\"reportStatusCode\":\"CERRADO\",\"observations\":\"Cierre de matriz\"}"))
                 .andExpect(status().isOk());
-        assertProjection(caseId, "PAGADO", "EN_TRAMITE");
+        assertProjection(caseId, "PAGADO", "FALTAN_REPUESTOS");
     }
 
     @Test
@@ -455,6 +454,21 @@ class ParticularVisibleStateIntegrationTest {
         mockMvc.perform(post("/api/v1/cases/{caseId}/receipts", caseId).header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"receiptTypeCode\":\"" + type + "\",\"receiptNumber\":\"R-" + type + "-" + caseId + "\",\"receiverBusinessName\":\"Carlos Cliente\",\"issuedDate\":\"2026-08-09\",\"taxableNet\":100,\"vatAmount\":0,\"total\":100}"))
+                .andExpect(status().isOk());
+    }
+
+    private long createReceiptId(long caseId, String type) throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/cases/{caseId}/receipts", caseId).header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"receiptTypeCode\":\"" + type + "\",\"receiptNumber\":\"R-" + type + "-" + caseId + "\",\"receiverBusinessName\":\"Carlos Cliente\",\"issuedDate\":\"2026-08-09\",\"taxableNet\":100,\"vatAmount\":0,\"total\":100}"))
+                .andExpect(status().isOk()).andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
+    }
+
+    private void createLinkedCreditNote(long caseId, long invoiceId) throws Exception {
+        mockMvc.perform(post("/api/v1/cases/{caseId}/receipts", caseId).header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"receiptTypeCode\":\"NOTA_CREDITO\",\"receiptNumber\":\"R-NC-" + caseId + "\",\"receiverBusinessName\":\"Carlos Cliente\",\"issuedDate\":\"2026-08-09\",\"taxableNet\":100,\"vatAmount\":0,\"total\":100,\"originalReceiptId\":" + invoiceId + "}"))
                 .andExpect(status().isOk());
     }
 

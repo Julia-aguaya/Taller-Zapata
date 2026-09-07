@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PaymentsEditorPanel } from './payments-editor-panel';
 import { ExtraBudgetPaymentsPanel } from './extra-budget-payments-panel';
 
@@ -111,6 +111,14 @@ const openPaymentForm = () => {
 };
 
 describe('PaymentsEditorPanel', () => {
+  // Aislamiento: sin este reset, el useQueryData de un test filtra al siguiente
+  // (el spread de mount() preserva entradas viejas) y un summary CLEAS remanente
+  // hace que openPaymentForm() clique "Registrar pago de compañía" en vez de
+  // "+ Registrar pago", impidiendo que el modal genérico se abra.
+  beforeEach(() => {
+    useQueryData = {};
+  });
+
   it('shows cliente and vehiculo from case detail', () => {
     mount();
     expect(screen.getByText('Juan')).toBeTruthy();
@@ -468,9 +476,13 @@ describe('PaymentsEditorPanel', () => {
     };
     render(<CleasPaymentsHarness {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }} />);
 
-    expect(screen.getByText('Total acreditado: $ 25.000')).toBeInTheDocument();
-    expect(screen.getByText('Saldo vigente: $ 100.000')).toBeInTheDocument();
-    expect(screen.getByText('NC asociadas: NC-0001')).toBeInTheDocument();
+    // La lista de facturas del caso se completa en un render posterior al mount.
+    await waitFor(() => {
+      expect(screen.getByText('Total acreditado: $ 25.000')).toBeInTheDocument();
+      expect(screen.getByText('Saldo vigente: $ 100.000')).toBeInTheDocument();
+      expect(screen.getByText('NC asociadas: NC-0001')).toBeInTheDocument();
+    });
+
     fireEvent.change(screen.getByLabelText('Factura a acreditar'), { target: { value: '9' } });
     fireEvent.change(screen.getByLabelText('Número fiscal nota de crédito'), { target: { value: '00000002' } });
     fireEvent.change(screen.getByLabelText('Monto nota de crédito'), { target: { value: '10000' } });

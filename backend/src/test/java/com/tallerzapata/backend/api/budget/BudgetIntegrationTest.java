@@ -587,7 +587,9 @@ class BudgetIntegrationTest {
     void shouldSynchronizeExactlyOnceAcrossConcurrentRetriesWithoutCreatingComparisonParts() throws Exception {
         Long snapshotId = objectMapper.readTree(generateComparison("comparison-key-concurrent", List.of(comparisonItem(1, "Optica", "REEMPLAZAR", 250)))).path("comparisonSnapshot").path("id").asLong();
         Long budgetItemId = jdbcTemplate.queryForObject("SELECT id FROM presupuesto_items WHERE presupuesto_id = (SELECT presupuesto_id FROM comparacion_presupuesto_snapshot WHERE id = ?)", Long.class, snapshotId);
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM repuestos_caso WHERE caso_id = 100", Integer.class)).isZero();
+        // Desde 58eddec la generacion reconcilia repuestos canonicos tambien para
+        // PARTICULAR: crea exactamente uno, sin vinculo a piezas de comparacion.
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM repuestos_caso WHERE caso_id = 100 AND source_type = 'BUDGET_ITEM' AND non_canonical = 0", Integer.class)).isEqualTo(1);
         executeConcurrently("/api/v1/cases/100/parts/sync-from-budget");
         executeConcurrently("/api/v1/cases/100/parts/sync-from-budget");
 
@@ -597,7 +599,7 @@ class BudgetIntegrationTest {
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM repuestos_caso WHERE caso_id = 100 AND source_comparison_piece_id IS NOT NULL", Integer.class)).isZero();
 
         mockMvc.perform(post("/api/v1/cases/100/parts/import-from-comparison").header("X-User-Id", "3"))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isMethodNotAllowed());
     }
 
     @Test
@@ -707,7 +709,10 @@ class BudgetIntegrationTest {
         String regenerated = generateComparison("comparison-key-referenced-item-v2", List.of(comparisonItem(1, "Optica actualizada", "REEMPLAZAR", 300)));
 
         assertThat(objectMapper.readTree(regenerated).path("budget").path("items").get(0).path("id").asLong()).isEqualTo(originalItemId);
-        assertThat(jdbcTemplate.queryForObject("SELECT presupuesto_item_id FROM repuestos_caso WHERE caso_id = ?", Long.class, 100L)).isEqualTo(originalItemId);
+        // Conviven el repuesto canonico (creado por la generacion, linkeado al item) y el
+        // manual (la API ya no linkea items en creaciones manuales); el item sobrevive.
+        assertThat(jdbcTemplate.queryForList("SELECT presupuesto_item_id FROM repuestos_caso WHERE caso_id = 100 ORDER BY id", Long.class))
+                .containsExactly(originalItemId, null);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM comparacion_pieza WHERE presupuesto_item_origen_id = ?", Integer.class, originalItemId)).isEqualTo(2);
         assertThat(jdbcTemplate.queryForList("SELECT valor_repuesto_fuente FROM comparacion_pieza WHERE presupuesto_item_origen_id = ? ORDER BY id", BigDecimal.class, originalItemId))
                 .containsExactly(new BigDecimal("250.00"), new BigDecimal("300.00"));

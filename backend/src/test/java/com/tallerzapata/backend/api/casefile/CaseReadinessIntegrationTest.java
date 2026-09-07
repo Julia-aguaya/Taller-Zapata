@@ -116,6 +116,10 @@ class CaseReadinessIntegrationTest {
         );
 
         prepareClosedBudget(caseId);
+        // La proyeccion de reparacion requiere un comprobante calificado (FACTURA/RECIBO) para DAR_TURNO.
+        mockMvc.perform(post("/api/v1/cases/{caseId}/receipts", caseId).header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"receiptTypeCode\":\"RECIBO\",\"receiptNumber\":\"R-VIS-" + caseId + "\",\"receiverBusinessName\":\"Carlos Cliente\",\"issuedDate\":\"2026-06-27\",\"taxableNet\":1000,\"vatAmount\":0,\"total\":1000}"))
+                .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/cases/{caseId}", caseId)
                         .header("X-User-Id", "1"))
@@ -171,10 +175,11 @@ class CaseReadinessIntegrationTest {
 
         Long intakeId = objectMapper.readTree(intakeResult.getResponse().getContentAsByteArray()).get("id").asLong();
 
+        // La policy de proyeccion no contempla el ingreso: el turno vigente sostiene CON_TURNO.
         mockMvc.perform(get("/api/v1/cases/{caseId}", caseId)
                         .header("X-User-Id", "1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.visibleRepairState.code").value("EN_TRAMITE"));
+                .andExpect(jsonPath("$.visibleRepairState.code").value("CON_TURNO"));
 
         VehicleOutcomeCreateRequest outcomeRequest = new VehicleOutcomeCreateRequest(
                 intakeId,
@@ -558,6 +563,7 @@ class CaseReadinessIntegrationTest {
         Long caseId = createTodoRiesgoCase();
         completeVehicle(caseId);
         seedTodoRiesgoBudgetAccessData(caseId);
+        jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_presentacion) VALUES (?, ?)", caseId, LocalDate.of(2026, 1, 5));
 
         mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
                         .header("X-User-Id", "1"))
@@ -573,6 +579,7 @@ class CaseReadinessIntegrationTest {
     void shouldBlockTodoRiesgoBudgetWhenCompleteInsuranceDataIsMissing() throws Exception {
         Long caseId = createTodoRiesgoCase();
         seedTodoRiesgoBudgetAccessData(caseId);
+        jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_presentacion) VALUES (?, ?)", caseId, LocalDate.of(2026, 1, 5));
         jdbcTemplate.update("UPDATE caso_seguro SET numero_siniestro = NULL WHERE caso_id = ?", caseId);
 
         mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
@@ -761,7 +768,8 @@ class CaseReadinessIntegrationTest {
     void shouldBlockPaymentsWhenFranchisePendingForTodoRiesgo() throws Exception {
         Long caseId = createTodoRiesgoCase();
         seedInsuranceData(caseId);
-        // Crear franquicia PENDIENTE
+        // La cotizacion acordada habilita la evaluacion de pagos; la franquicia pendiente es el bloqueo esperado.
+        jdbcTemplate.update("UPDATE caso_tramitacion_seguro SET fecha_presentacion = ?, cotizacion_estado_codigo = ? WHERE caso_id = ?", LocalDate.of(2026, 1, 2), "ACEPTADA", caseId);
         jdbcTemplate.update("INSERT INTO caso_franquicia (caso_id, estado_franquicia_codigo, monto_franquicia, tipo_recupero_codigo) VALUES (?, ?, ?, ?)",
                 caseId, "PENDIENTE", new BigDecimal("50000"), "TERCERO");
 
@@ -776,6 +784,7 @@ class CaseReadinessIntegrationTest {
     void shouldAllowPaymentsWhenFranchiseResolvedForTodoRiesgo() throws Exception {
         Long caseId = createTodoRiesgoCase();
         seedInsuranceData(caseId);
+        jdbcTemplate.update("UPDATE caso_tramitacion_seguro SET fecha_presentacion = ?, cotizacion_estado_codigo = ?, monto_acordado = ? WHERE caso_id = ?", LocalDate.of(2026, 1, 2), "ACEPTADA", new BigDecimal("50000"), caseId);
         jdbcTemplate.update("INSERT INTO caso_franquicia (caso_id, estado_franquicia_codigo, monto_franquicia, tipo_recupero_codigo) VALUES (?, ?, ?, ?)",
                 caseId, "CERRADA", new BigDecimal("50000"), "TERCERO");
 
@@ -850,8 +859,7 @@ class CaseReadinessIntegrationTest {
 
     private void seedInitialTodoRiesgoTramite(Long caseId) {
         seedTodoRiesgoBudgetAccessData(caseId);
-        jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_presentacion) VALUES (?,?)",
-                caseId, LocalDate.of(2026, 1, 2));
+        jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_presentacion) VALUES (?, ?)", caseId, LocalDate.of(2026, 1, 2));
     }
 
     private void seedTodoRiesgoBudgetAccessData(Long caseId) {
@@ -869,6 +877,7 @@ class CaseReadinessIntegrationTest {
                 caseId, 1L, "4-2541587", 101L, 102L, "Todo riesgo");
         jdbcTemplate.update("UPDATE caso_siniestro SET fecha_siniestro = ?, hora_siniestro = ?, lugar = ?, dinamica = ? WHERE caso_id = ?",
                 LocalDate.of(2026, 1, 1), LocalTime.of(10, 30), "Mitre 400, Rosario", "Colision trasera", caseId);
+
     }
 
     private void seedPendingTaskAndPart(Long caseId) {

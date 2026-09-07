@@ -33,10 +33,17 @@ class PanelGeneralIntegrationTest {
     @Autowired
     private TestDatabaseCleaner cleaner;
 
+    @Autowired
+    private com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
+
     @BeforeEach
     void setUp() {
         cleaner.cleanAll();
         seedPanelCases();
+        // El resolver lee la proyeccion de estado efectivo: los casos sembrados por SQL
+        // necesitan su recálculo para reflejar los hechos cargados.
+        particularEffectiveStateRecalculator.recalculate(100L);
+        particularEffectiveStateRecalculator.recalculate(101L);
     }
 
     @Test
@@ -106,6 +113,12 @@ class PanelGeneralIntegrationTest {
         jdbcTemplate.update(
                 "INSERT INTO egresos_vehiculo (id, public_id, caso_id, ingreso_id, fecha_egreso, entregado_por_usuario_id, egreso_definitivo, debe_reingresar, fotos_reparado_cargadas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 1L, "00000000-0000-0000-0000-000000007001", 101L, 1L, Timestamp.valueOf(LocalDateTime.of(2026, 6, 11, 18, 0)), 1L, true, false, true
+        );
+
+        // Comprobante calificado: habilita DAR_TURNO para el caso 100 en la proyeccion.
+        jdbcTemplate.update(
+                "INSERT INTO comprobantes_emitidos (id, public_id, caso_id, tipo_comprobante_codigo, numero_comprobante, razon_social_receptor, fecha_emision, neto_gravado, iva, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                501L, "00000000-0000-0000-0000-000000007501", 100L, "RECIBO", "R-100", "Carlos Cliente", LocalDate.of(2026, 6, 7), new BigDecimal("1210.00"), new BigDecimal("0.00"), new BigDecimal("1210.00")
         );
     }
 
