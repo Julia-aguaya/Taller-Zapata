@@ -413,7 +413,14 @@ public class BudgetService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCaseForUpdate(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "presupuesto.crear");
-        return canonicalPartReconciliationService.reconcile(caseId, currentUser, httpRequest).stream().map(this::toCasePartResponse).toList();
+        List<CasePartResponse> result = canonicalPartReconciliationService.reconcile(caseId, currentUser, httpRequest).stream().map(this::toCasePartResponse).toList();
+        // El sync crea, actualiza o elimina repuestos: igual que en el alta/edicion manual,
+        // la proyeccion de estado efectivo debe recalcularse para no quedar desincronizada.
+        if (!result.isEmpty()) {
+            particularEffectiveStateRecalculator.recalculate(caseId);
+            todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+        }
+        return result;
     }
 
     @Transactional

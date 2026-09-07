@@ -352,6 +352,10 @@ public class CaseReadinessService {
     }
 
     private CaseReadinessTabResponse buildTodoRiesgoPresupuestoReadiness(Long caseId, VehicleEntity vehicle, boolean tramiteCompleted) {
+        List<String> accessBlocking = collectInsuranceRepairBudgetAccessBlockingReasons(caseId);
+        if (!accessBlocking.isEmpty()) {
+            return toTab("PRESUPUESTO", false, accessBlocking, List.of());
+        }
         return buildTramiteGatedPresupuestoReadiness(caseId, vehicle, tramiteCompleted);
     }
 

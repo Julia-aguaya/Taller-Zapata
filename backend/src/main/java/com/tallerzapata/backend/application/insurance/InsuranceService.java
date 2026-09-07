@@ -87,6 +87,7 @@ public class InsuranceService {
     private final BudgetItemRepository budgetItemRepository;
     private final CasePartRepository casePartRepository;
     private final FranchiseRecoveryService franchiseRecoveryService;
+    private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
 
     public InsuranceService(InsuranceCompanyRepository companyRepository, InsuranceCompanyContactRepository companyContactRepository, InsuranceRoleContactRepository roleContactRepository, PersonRepository personRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CasePersonRepository casePersonRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, CaseFranchiseRepository caseFranchiseRepository, InsuranceModalityRepository modalityRepository, InsuranceOpinionRepository opinionRepository, InsuranceQuotationStatusRepository quotationStatusRepository, InsurancePartsAuthorizationRepository partsAuthorizationRepository, FranchiseStatusRepository franchiseStatusRepository, FranchiseRecoveryTypeRepository franchiseRecoveryTypeRepository, FranchiseOpinionRepository franchiseOpinionRepository, CaseCleasRepository caseCleasRepository, CaseThirdPartyRepository caseThirdPartyRepository, CleasScopeRepository cleasScopeRepository, CleasOpinionRepository cleasOpinionRepository, PaymentStatusRepository paymentStatusRepository, ThirdPartyDocumentationStatusRepository thirdPartyDocumentationStatusRepository, PartsProvisionModeRepository partsProvisionModeRepository, CaseLegalRepository caseLegalRepository, LegalNewsRepository legalNewsRepository, LegalExpenseRepository legalExpenseRepository, LegalProcessorRepository legalProcessorRepository, LegalClaimantRepository legalClaimantRepository, LegalInstanceRepository legalInstanceRepository, LegalClosureReasonRepository legalClosureReasonRepository, LegalExpensePayerRepository legalExpensePayerRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, TodoRiesgoStateFactsRepository todoRiesgoStateFactsRepository, ProviderRepository providerRepository, BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CasePartRepository casePartRepository, FranchiseRecoveryService franchiseRecoveryService) {
         this.companyRepository = companyRepository;
@@ -130,6 +131,7 @@ public class InsuranceService {
         this.budgetItemRepository = budgetItemRepository;
         this.casePartRepository = casePartRepository;
         this.franchiseRecoveryService = franchiseRecoveryService;
+        this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
     }
 
     @Transactional(readOnly = true)
@@ -289,7 +291,8 @@ public class InsuranceService {
         }
 
         ProcessingDerivatives derivatives = processingDerivatives(caseId, entity.getAgreedAmount());
-        if (request.has("partsAuthorizationCode") && !derivatives.includesParts()) {
+        // Un null explicito limpia la autorizacion: el guard solo aplica cuando se ENVIA un valor.
+        if (request.has("partsAuthorizationCode") && request.partsAuthorizationCode() != null && !request.partsAuthorizationCode().isNull() && !derivatives.includesParts()) {
             throw new DomainConflictException("PROCESSING_PARTS_AUTHORIZATION_REQUIRES_PARTS", "La autorizacion de repuestos requiere que el caso lleve repuestos", Map.of());
         }
         Map<String, Object> belowMinimumAudit = null;
@@ -312,6 +315,17 @@ public class InsuranceService {
             auditSnapshot.putAll(belowMinimumAudit);
         }
         caseAuditService.register(currentUser.id(), caseId, "caso_tramitacion_seguro", entity.getId(), "patch_tramitacion_seguro", caseAuditService.toJson(auditBefore), caseAuditService.toJson(auditSnapshot), caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
+        // El cambio de tramitacion alimenta la proyeccion de estado efectivo. El PATCH es parcial
+        // (el front solo envia campos cambiados): se merguea con los facts vigentes para no pisar
+        // fechas que este request no trae.
+        if (request.has("agreementDate") || request.has("passedToPaymentsAt")) {
+            var facts = todoRiesgoStateFactsRepository.findById(caseId).orElse(null);
+            LocalDate agreementDate = request.has("agreementDate") ? dateValue(request.agreementDate(), "agreementDate") : (facts == null ? null : facts.getAgreementDate());
+            LocalDate passedToPaymentsAt = request.has("passedToPaymentsAt") ? dateValue(request.passedToPaymentsAt(), "passedToPaymentsAt") : (facts == null ? null : facts.getPassedToPaymentsDate());
+            todoRiesgoEffectiveStateRecalculator.recordInsuranceProcedureFacts(caseId, agreementDate, passedToPaymentsAt, currentUser.id());
+        } else {
+            todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+        }
         return toInsuranceProcessingResponse(entity);
     }
 

@@ -12,6 +12,7 @@ public record InsuranceProcessingPatchRequest(
         JsonNode opinionCode,
         JsonNode quotationStatusCode,
         JsonNode quotationDate,
+        JsonNode agreementDate,
         JsonNode agreedAmount,
         JsonNode partsAuthorizationCode,
         JsonNode partsSupplierText,
@@ -30,6 +31,7 @@ public record InsuranceProcessingPatchRequest(
             case "opinionCode" -> opinionCode != null;
             case "quotationStatusCode" -> quotationStatusCode != null;
             case "quotationDate" -> quotationDate != null;
+            case "agreementDate" -> agreementDate != null;
             case "agreedAmount" -> agreedAmount != null;
             case "partsAuthorizationCode" -> partsAuthorizationCode != null;
             case "partsSupplierText" -> partsSupplierText != null;
