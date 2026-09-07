@@ -21,7 +21,8 @@ spring:
         format_sql: true
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    # MySQL (prod/local). Las migraciones incompatibles con H2 viven en db/migration-mysql.
+    locations: classpath:db/migration,classpath:db/migration-mysql
 
 server:
   servlet:

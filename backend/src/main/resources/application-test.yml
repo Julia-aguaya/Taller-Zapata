@@ -9,6 +9,8 @@ spring:
       ddl-auto: none
   flyway:
     enabled: true
+    # H2 en modo MySQL. Las variantes compatibles con H2 de V85/V87 viven en db/migration-h2.
+    locations: classpath:db/migration,classpath:db/migration-h2
 
 app:
   storage:
