@@ -37,6 +37,7 @@ vi.mock('@/shared/api/http-client', () => ({ requestJson: vi.fn().mockResolvedVa
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const validBudget = { items: [{ id: 1, visualOrder: 1, affectedPiece: 'Puerta', taskCode: 'CHAPA', damageLevelCode: 'LEVE', partDecisionCode: 'REPARAR', actionCode: 'REPARAR', partValue: 0, laborAmount: 0, estimatedHours: 0, active: true }] };
+const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const controlFor = (label) => screen.getByText(label).parentElement.querySelector('input, select');
 const particularCaseDetail = { caseTypeCode: 'PARTICULAR', principalCustomerName: 'Juan', principalVehiclePlate: 'ABC123' };
 const insuranceCaseDetail = { caseTypeCode: 'TODO_RIESGO', principalCustomerName: 'Juan', principalVehiclePlate: 'ABC123' };
@@ -67,6 +68,9 @@ describe('BudgetEditorPanel comparison tabs', () => {
     expect(screen.getByRole('tabpanel', { name: 'Comparación' })).not.toHaveAttribute('hidden');
     fireEvent.click(screen.getByRole('button', { name: /generar presupuesto/i }));
     await waitFor(() => expect(screen.getByText(/se importaron 1 piezas/i)).toBeInTheDocument());
+    // Regresión: la Idempotency-Key debe ser un UUID v4 válido incluso en
+    // contextos inseguros (HTTP), donde crypto.randomUUID no existe.
+    expect(mockGenerateCaseBudget).toHaveBeenCalledWith('42', expect.anything(), expect.stringMatching(UUID_V4));
   });
 
   it('does not expose comparison data or actions without presupuesto.ver', () => {
