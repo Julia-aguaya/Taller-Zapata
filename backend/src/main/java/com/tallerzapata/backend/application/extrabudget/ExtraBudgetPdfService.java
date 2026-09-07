@@ -98,7 +98,9 @@ public class ExtraBudgetPdfService {
     }
 
     private String currency(BigDecimal amount) {
-        return "$" + new DecimalFormat("#,##0.00").format(amount == null ? BigDecimal.ZERO : amount);
+        // Formato determinista: el PDF no debe depender del locale del servidor.
+        java.text.DecimalFormatSymbols symbols = new java.text.DecimalFormatSymbols(new java.util.Locale("es", "AR"));
+        return "$" + new DecimalFormat("#,##0.00", symbols).format(amount == null ? BigDecimal.ZERO : amount);
     }
 
     public record Snapshot(Long issuedNumber, Integer versionNumber, String status, String customerConfirmation,

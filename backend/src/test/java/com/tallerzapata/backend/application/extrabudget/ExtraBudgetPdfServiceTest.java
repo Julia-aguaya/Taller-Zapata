@@ -21,7 +21,7 @@ class ExtraBudgetPdfServiceTest {
         PdfReader reader = new PdfReader(content);
         String text = new PdfTextExtractor(reader).getTextFromPage(1);
 
-        assertThat(text).contains("PRESUPUESTO EXTRA 42 - REVISION 3", "Puerta", "REEMPLAZAR", "LEVE", "PENDIENTE", "Nota congelada", "160.50");
+        assertThat(text).contains("PRESUPUESTO EXTRA 42 - REVISION 3", "Puerta", "REEMPLAZAR", "LEVE", "PENDIENTE", "Nota congelada", "160,50");
         assertThat(text).doesNotContain("Cliente congelado", "Ford Focus", "CARP-2026-7", "ASEGURADORA", "PRESUPUESTO PRINCIPAL", "TALLER ZAPATA");
     }
 }

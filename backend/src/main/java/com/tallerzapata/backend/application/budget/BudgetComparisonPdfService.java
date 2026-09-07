@@ -37,7 +37,9 @@ public class BudgetComparisonPdfService {
 
     public byte[] generate(Detail detail) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        Document document = new Document(PageSize.A4.rotate(), 28, 28, 34, 36);
+        // PageSize.A4.rotate() devuelve un RectangleReadOnly que esta version de OpenPDF
+        // escribe como A4 vertical en el MediaBox; el Rectangle mutable si respeta el apaisado.
+        Document document = new Document(new Rectangle(PageSize.A4.getHeight(), PageSize.A4.getWidth()), 28, 28, 34, 36);
         try {
             PdfWriter writer = PdfWriter.getInstance(document, out);
             writer.setPageEvent(new ComparisonFooter(detail.snapshot().generation()));
