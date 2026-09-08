@@ -1,6 +1,7 @@
 import { normalizeLookupText } from './caseNormalizers';
 import { formatDocumentAudience } from '../../panel/lib/panelPreviewHelpers';
 import { createTodoRiskDefaults, createLawyerDefaults, createThirdPartyDefaults } from './caseFactories';
+import { thirdPartyDocumentationStatusLabel, thirdPartyPartsProviderLabel } from './thirdPartyClaimCatalogs';
 import {
   createBudgetLine,
   createRepairPart,
@@ -287,9 +288,11 @@ export function patchCaseWithBackendDetail(localCase, detailState) {
   if (thirdParty && Object.keys(thirdParty).length > 0) {
     localCase.thirdParty = localCase.thirdParty || createThirdPartyDefaults({ claim: { documents: [] } });
     localCase.thirdParty.claim.claimReference = pickFirstNonEmpty(localCase.thirdParty.claim.claimReference, thirdParty.claimReference);
-    localCase.thirdParty.claim.documentationStatus = pickFirstNonEmpty(localCase.thirdParty.claim.documentationStatus, thirdParty.documentationStatusCode, 'Incompleta');
+    // El backend es la fuente de verdad: se traduce el codigo de catalogo al label de UI
+    // (si llega un valor no reconocible, se conserva el valor local y sino el default).
+    localCase.thirdParty.claim.documentationStatus = pickFirstNonEmpty(thirdPartyDocumentationStatusLabel(thirdParty.documentationStatusCode), localCase.thirdParty.claim.documentationStatus, 'Incompleta');
     localCase.thirdParty.claim.documentationAccepted = Boolean(thirdParty.documentationAccepted);
-    localCase.thirdParty.claim.partsProviderMode = pickFirstNonEmpty(localCase.thirdParty.claim.partsProviderMode, thirdParty.partsProvisionModeCode, 'Provee Cía.');
+    localCase.thirdParty.claim.partsProviderMode = pickFirstNonEmpty(thirdPartyPartsProviderLabel(thirdParty.partsProvisionModeCode), localCase.thirdParty.claim.partsProviderMode, 'Provee Cía.');
   }
 
   if (legal && Object.keys(legal).length > 0) {

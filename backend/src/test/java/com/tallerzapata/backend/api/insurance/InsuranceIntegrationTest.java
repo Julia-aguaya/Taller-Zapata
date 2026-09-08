@@ -274,6 +274,68 @@ class InsuranceIntegrationTest {
     }
 
     @Test
+    void shouldDeriveFinalAmountForWorkshopWhenThirdPartyPartsProvidedByWorkshop() throws Exception {
+        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, cuit, requiere_fotos_reparado, dias_pago_esperados, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 2L, "00000000-0000-0000-0000-000000004002", "SANCOR", "Sancor", "30711222335", false, 20, true);
+        createBudgetWithReplacementPart(100L);
+
+        // El valor enviado para finalAmountForWorkshop (9999) se ignora: el backend lo recalcula.
+        CaseThirdPartyUpsertRequest request = new CaseThirdPartyUpsertRequest(2L, "REC-111", "ACEPTADA", true, "TALLER",
+                new BigDecimal("1500.00"), new BigDecimal("800.00"), new BigDecimal("2100.00"),
+                new BigDecimal("2100.00"), new BigDecimal("3800.00"), new BigDecimal("9999.00"));
+        mockMvc.perform(put("/api/v1/cases/100/third-party")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk())
+                // A facturar Cia. (3800) - Total final repuestos (2100) = 1700
+                .andExpect(jsonPath("$.finalAmountForWorkshop").value(1700.00))
+                .andExpect(jsonPath("$.finalPartsTotal").value(2100.00));
+    }
+
+    @Test
+    void shouldNormalizePartsFieldsWhenThirdPartyPartsAreNotProvidedByWorkshop() throws Exception {
+        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, cuit, requiere_fotos_reparado, dias_pago_esperados, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 2L, "00000000-0000-0000-0000-000000004002", "SANCOR", "Sancor", "30711222335", false, 20, true);
+
+        // Provee la Cia.: el total final repuestos no aplica y Final a favor Taller = A facturar Cia.
+        CaseThirdPartyUpsertRequest request = new CaseThirdPartyUpsertRequest(2L, "REC-222", "ACEPTADA", true, "COMPANIA",
+                new BigDecimal("1500.00"), new BigDecimal("800.00"), new BigDecimal("2100.00"),
+                new BigDecimal("2100.00"), new BigDecimal("3800.00"), new BigDecimal("9999.00"));
+        mockMvc.perform(put("/api/v1/cases/100/third-party")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.finalPartsTotal").doesNotExist())
+                .andExpect(jsonPath("$.finalAmountForWorkshop").value(3800.00));
+    }
+
+    @Test
+    void shouldKeepAgreedAmountAsFinalWhenWorkshopProvidesPartsWithoutReplacementItems() throws Exception {
+        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, cuit, requiere_fotos_reparado, dias_pago_esperados, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 2L, "00000000-0000-0000-0000-000000004002", "SANCOR", "Sancor", "30711222335", false, 20, true);
+
+        // Provee Taller pero el presupuesto no tiene repuestos a reemplazar:
+        // Final a favor Taller = A facturar Cia. (regla "si no hay repuestos, no se descuenta").
+        CaseThirdPartyUpsertRequest request = new CaseThirdPartyUpsertRequest(2L, "REC-333", "ACEPTADA", true, "TALLER",
+                new BigDecimal("1500.00"), new BigDecimal("800.00"), new BigDecimal("2100.00"),
+                new BigDecimal("2100.00"), new BigDecimal("3800.00"), new BigDecimal("9999.00"));
+        mockMvc.perform(put("/api/v1/cases/100/third-party")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.finalPartsTotal").value(2100.00))
+                .andExpect(jsonPath("$.finalAmountForWorkshop").value(3800.00));
+    }
+
+    private void createBudgetWithReplacementPart(Long caseId) throws Exception {
+        mockMvc.perform(put("/api/v1/cases/{caseId}/budget", caseId)
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"budgetDate\":\"2026-01-01\",\"reportStatusCode\":\"BORRADOR\",\"laborWithoutVat\":50000,\"vatRate\":21,\"partsTotal\":2100,\"estimatedDays\":2,\"items\":[{\"visualOrder\":1,\"affectedPiece\":\"Puerta\",\"taskCode\":\"CHAPA\",\"damageLevelCode\":\"LEVE\",\"partDecisionCode\":\"REEMPLAZAR\",\"actionCode\":\"REEMPLAZAR\",\"requiresReplacement\":true,\"partValue\":2100,\"estimatedHours\":2,\"laborAmount\":50000,\"active\":true}]}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void shouldRejectGranizoFranchiseCleasAndThirdPartyWrites() throws Exception {
         jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = ? WHERE id = ?", 3L, 100L);
 
@@ -311,13 +373,13 @@ class InsuranceIntegrationTest {
         mockMvc.perform(put("/api/v1/cases/100/legal")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(new CaseLegalUpsertRequest("ABOGADO", "CLIENTE", "JUDICIAL", LocalDate.of(2026, 1, 15), "CIUJ-12345", "Juzgado Civil 42", "Autos 1234/2026", "Dr. Gomez", "1144445555", "gomez@estudio.com", true, "ACUERDO", LocalDate.of(2026, 6, 1), new BigDecimal("150000.00"), "Observaciones iniciales", "Notas de cierre"))))
+                        .content(objectMapper.writeValueAsBytes(new CaseLegalUpsertRequest("CON_PODER", "DANIO_MATERIAL", "JUDICIAL", LocalDate.of(2026, 1, 15), "CIUJ-12345", "Juzgado Civil 42", "Autos 1234/2026", "Dr. Gomez", "1144445555", "gomez@estudio.com", true, "CONCILIACION", LocalDate.of(2026, 6, 1), new BigDecimal("150000.00"), "Observaciones iniciales", "Notas de cierre"))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.processorCode").value("ABOGADO"))
-                .andExpect(jsonPath("$.claimantCode").value("CLIENTE"))
+                .andExpect(jsonPath("$.processorCode").value("CON_PODER"))
+                .andExpect(jsonPath("$.claimantCode").value("DANIO_MATERIAL"))
                 .andExpect(jsonPath("$.instanceCode").value("JUDICIAL"))
                 .andExpect(jsonPath("$.repairsVehicle").value(true))
-                .andExpect(jsonPath("$.closedByCode").value("ACUERDO"))
+                .andExpect(jsonPath("$.closedByCode").value("CONCILIACION"))
                 .andExpect(jsonPath("$.totalProceedsAmount").value(150000.00));
 
         mockMvc.perform(get("/api/v1/cases/100/legal")
@@ -334,7 +396,7 @@ class InsuranceIntegrationTest {
         mockMvc.perform(put("/api/v1/cases/100/legal")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(new CaseLegalUpsertRequest("TALLER", "TERCERO", "ADMINISTRATIVA", null, null, null, null, null, null, null, false, null, null, null, null, null))))
+                        .content(objectMapper.writeValueAsBytes(new CaseLegalUpsertRequest("CON_PATROCINIO", "FRANQUICIA", "ADMINISTRATIVA", null, null, null, null, null, null, null, false, null, null, null, null, null))))
                 .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/v1/cases/100/legal-news")
@@ -360,13 +422,13 @@ class InsuranceIntegrationTest {
         mockMvc.perform(put("/api/v1/cases/100/legal")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(new CaseLegalUpsertRequest("CLIENTE", "COMPANIA", "MEDIACION", null, null, null, null, null, null, null, false, null, null, null, null, null))))
+                        .content(objectMapper.writeValueAsBytes(new CaseLegalUpsertRequest("CON_PODER", "DANIO_MATERIAL", "ADMINISTRATIVA", null, null, null, null, null, null, null, false, null, null, null, null, null))))
                 .andExpect(status().isOk());
 
         mockMvc.perform(post("/api/v1/cases/100/legal-expenses")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(new LegalExpenseCreateRequest("Honorarios abogado", new BigDecimal("50000.00"), LocalDate.of(2026, 2, 20), "CLIENTE", null))))
+                        .content(objectMapper.writeValueAsBytes(new LegalExpenseCreateRequest("Honorarios abogado", new BigDecimal("50000.00"), LocalDate.of(2026, 2, 20), "CLIENTE", null, null))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.concept").value("Honorarios abogado"))
                 .andExpect(jsonPath("$.amount").value(50000.00))
@@ -391,7 +453,8 @@ class InsuranceIntegrationTest {
                 .andExpect(jsonPath("$.legalClaimantCodes.length()").isNumber())
                 .andExpect(jsonPath("$.legalInstanceCodes.length()").isNumber())
                 .andExpect(jsonPath("$.legalClosureReasonCodes.length()").isNumber())
-                .andExpect(jsonPath("$.legalExpensePayerCodes.length()").isNumber());
+                .andExpect(jsonPath("$.legalExpensePayerCodes.length()").isNumber())
+                .andExpect(jsonPath("$.legalInjuredPartyTypeCodes.length()").isNumber());
     }
 
     @Test
@@ -497,7 +560,8 @@ class InsuranceIntegrationTest {
         assertThat(auditCount).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject("SELECT despues_json FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'patch_tramitacion_seguro'", String.class, 100L))
                 .contains("\"agreedAmount\":90.00", "\"minimumCloseAmount\":100.00", "\"difference\":10.00", "\"accepted\":true");
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM notificaciones WHERE caso_id = ?", Integer.class, 100L)).isZero();
+        // Con el acuerdo aceptado por debajo del minimo, el admin de la organizacion recibe el aviso
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM notificaciones WHERE caso_id = ? AND tipo_codigo = 'MONTO_BAJO_MINIMO' AND usuario_id = 1", Integer.class, 100L)).isEqualTo(1);
     }
 
     @Test
@@ -606,6 +670,80 @@ class InsuranceIntegrationTest {
     }
 
     @Test
+    void shouldCreateAndListLegalLesionados() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = ? WHERE id = ?", 6L, 100L);
+
+        mockMvc.perform(put("/api/v1/cases/100/legal")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL_LESIONES\",\"instanceCode\":\"JUDICIAL\",\"entryDate\":\"2026-01-15\",\"repairsVehicle\":true}"))
+                .andExpect(status().isOk());
+
+        // Lesionado = el cliente: se vincula por persona
+        mockMvc.perform(post("/api/v1/cases/100/legal/lesionados")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"lesionadoEsCode\":\"CLIENTE\",\"personId\":10,\"provesIncome\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lesionadoEsCode").value("CLIENTE"))
+                .andExpect(jsonPath("$.personId").value(10))
+                .andExpect(jsonPath("$.provesIncome").value(true));
+
+        // Lesionado "otro": datos manuales
+        mockMvc.perform(post("/api/v1/cases/100/legal/lesionados")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"lesionadoEsCode\":\"OTRO\",\"fullName\":\"Juan Perez\",\"documentNumber\":\"30111222\",\"provesIncome\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fullName").value("Juan Perez"));
+
+        mockMvc.perform(get("/api/v1/cases/100/legal/lesionados")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2));
+
+        // Sin persona ni datos manuales → conflicto
+        mockMvc.perform(post("/api/v1/cases/100/legal/lesionados")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"lesionadoEsCode\":\"OTRO\"}"))
+                .andExpect(status().isConflict());
+
+        // Código de catálogo inválido → conflicto
+        mockMvc.perform(post("/api/v1/cases/100/legal/lesionados")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"lesionadoEsCode\":\"INVALIDO\",\"fullName\":\"X\"}"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldPersistLegalExpenseWithSumaTaller() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/legal")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL\",\"instanceCode\":\"ADMINISTRATIVA\",\"entryDate\":\"2026-01-15\",\"repairsVehicle\":true}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/cases/100/legal-expenses")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"concept\":\"Honorarios\",\"amount\":50000,\"expenseDate\":\"2026-02-20\",\"paidByCode\":\"ABOGADO\",\"sumsToWorkshop\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sumsToWorkshop").value(true));
+
+        mockMvc.perform(post("/api/v1/cases/100/legal-expenses")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"concept\":\"Certificados\",\"amount\":8000,\"expenseDate\":\"2026-02-21\",\"paidByCode\":\"TALLER\",\"sumsToWorkshop\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sumsToWorkshop").value(false));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM legal_gastos WHERE caso_legal_id = (SELECT id FROM caso_legal WHERE caso_id = 100) AND suma_taller = 1", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM legal_gastos WHERE caso_legal_id = (SELECT id FROM caso_legal WHERE caso_id = 100) AND suma_taller = 0", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
     void shouldRequireInsuranceCreatePermissionToUpdateProcessingPartsAuthorization() throws Exception {
         jdbcTemplate.update("INSERT INTO usuarios (id, public_id, username, email, password_hash, nombre, apellido, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 4L, "00000000-0000-0000-0000-000000000400", "sin-permiso", "sin-permiso@tallerzapata.local", "hash", "Sin", "Permiso", true);
 
@@ -614,6 +752,85 @@ class InsuranceIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"partsAuthorizationCode\":\"TOTAL\"}"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void shouldNotifyAdminsWhenAgreedAmountIsAcceptedBelowMinimum() throws Exception {
+        // Admin extra de la organizacion 1 (rol 1 = ROLE_ADMIN). El admin base (usuario 1) ya existe.
+        jdbcTemplate.update("INSERT INTO usuarios (id, public_id, username, email, password_hash, nombre, apellido, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 2L, "00000000-0000-0000-0000-000000000200", "admin-test", "admin-test@tallerzapata.local", "hash", "Ana", "Admin", true);
+        // Sin id explicito: otros tests siembran usuario_roles con ids fijos para el usuario base
+        jdbcTemplate.update("INSERT INTO usuario_roles (usuario_id, rol_id, organizacion_id, sucursal_id, activo) VALUES (?, ?, ?, ?, ?)", 2L, 1L, 1L, 1L, true);
+        // Presupuesto con minimo de cierre fijado en 1000
+        jdbcTemplate.update("INSERT INTO presupuestos (id, caso_id, organizacion_id, sucursal_id, fecha_presupuesto, informe_estado_codigo, monto_minimo_cierre_mo, version_actual) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 500L, 100L, 1L, 1L, LocalDate.of(2026, 1, 1), "BORRADOR", new BigDecimal("1000"), 1);
+
+        // Sin confirmacion explicita, el monto por debajo del minimo se rechaza y no notifica
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-01-02\",\"agreedAmount\":800}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PROCESSING_AMOUNT_BELOW_MINIMUM_CONFIRMATION_REQUIRED"));
+
+        Integer notificationsBefore = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM notificaciones WHERE caso_id = 100 AND tipo_codigo = 'MONTO_BAJO_MINIMO'", Integer.class);
+        assertThat(notificationsBefore).isEqualTo(0);
+
+        // Con confirmacion: el acuerdo queda registrado y los admins reciben el aviso
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-01-02\",\"agreedAmount\":800,\"allowBelowMinimum\":true}"))
+                .andExpect(status().isOk());
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM notificaciones WHERE caso_id = 100 AND tipo_codigo = 'MONTO_BAJO_MINIMO' AND usuario_id = 2", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM notificaciones WHERE caso_id = 100 AND tipo_codigo = 'MONTO_BAJO_MINIMO' AND usuario_id = 1", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT titulo FROM notificaciones WHERE caso_id = 100 AND tipo_codigo = 'MONTO_BAJO_MINIMO' AND usuario_id = 2", String.class)).isEqualTo("Monto acordado por debajo del minimo");
+    }
+
+    @Test
+    void shouldSuppressRepairWhenLawyerMarksRepairsVehicleNoForThirdParty() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = ? WHERE id = ?", 6L, 100L);
+
+        mockMvc.perform(get("/api/v1/cases/100").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.visibleRepairState.code").value("EN_TRAMITE"));
+
+        mockMvc.perform(put("/api/v1/cases/100/legal")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL\",\"instanceCode\":\"ADMINISTRATIVA\",\"entryDate\":\"2026-01-15\",\"repairsVehicle\":false}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.visibleRepairState.code").value("NO_DEBE_REPARARSE"));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT no_repara FROM caso_tramitacion_seguro WHERE caso_id = 100", Boolean.class)).isTrue();
+
+        // Volver a "repara" revierte el estado al flujo automatico
+        mockMvc.perform(put("/api/v1/cases/100/legal")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL\",\"instanceCode\":\"ADMINISTRATIVA\",\"entryDate\":\"2026-01-15\",\"repairsVehicle\":true}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.visibleRepairState.code").value("EN_TRAMITE"));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT no_repara FROM caso_tramitacion_seguro WHERE caso_id = 100", Boolean.class)).isFalse();
+    }
+
+    @Test
+    void shouldNotSuppressRepairForOtherCaseTypesWhenLegalSavesRepairsVehicle() throws Exception {
+        // El caso 100 es TODO_RIESGO (fixture): el vinculo legal->no repara solo aplica a reclamos de terceros
+        mockMvc.perform(put("/api/v1/cases/100/legal")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL\",\"instanceCode\":\"JUDICIAL\",\"entryDate\":\"2026-01-15\",\"repairsVehicle\":false}"))
+                .andExpect(status().isOk());
+
+        Integer processingRows = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM caso_tramitacion_seguro WHERE caso_id = 100", Integer.class);
+        assertThat(processingRows).isEqualTo(0);
     }
 
     private void seedBaseData() {

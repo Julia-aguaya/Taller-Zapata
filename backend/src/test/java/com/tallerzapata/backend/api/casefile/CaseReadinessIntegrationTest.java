@@ -812,6 +812,258 @@ class CaseReadinessIntegrationTest {
                 .andExpect(jsonPath("$.tabs[4].allowed").value(false));
     }
 
+    // ── RECLAMO_TERCEROS (taller y abogado) readiness tests ─────
+
+    @Test
+    void shouldExposeInitialReadinessForThirdPartyWorkshopCase() throws Exception {
+        Long caseId = createThirdPartyWorkshopCase();
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.caseTypeCode").value("RECLAMO_TERCEROS"))
+                .andExpect(jsonPath("$.tabs[0].tabCode").value("FICHA_TECNICA"))
+                .andExpect(jsonPath("$.tabs[1].tabCode").value("GESTION_TRAMITE"))
+                .andExpect(jsonPath("$.tabs[1].allowed").value(true))
+                .andExpect(jsonPath("$.tabs[1].completed").value(false))
+                .andExpect(jsonPath("$.tabs[1].blockingReasons[0]").value("Falta seleccionar la compania de la contraparte"))
+                .andExpect(jsonPath("$.tabs[1].blockingReasons[1]").value("Falta registrar fecha de presentacion del tramite"))
+                .andExpect(jsonPath("$.tabs[1].warningReasons[0]").value("Carpeta con documentacion pendiente"))
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(true))
+                .andExpect(jsonPath("$.tabs[2].blockingReasons[0]").value("Falta cargar el presupuesto"))
+                .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
+                .andExpect(jsonPath("$.tabs[3].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))
+                .andExpect(jsonPath("$.tabs[4].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("Falta acordar cotizacion con la Cia. antes de registrar pagos"));
+    }
+
+    @Test
+    void shouldCompleteThirdPartyGestionTramiteWithCompanyAndPresentation() throws Exception {
+        Long caseId = createThirdPartyWorkshopCase();
+        seedThirdPartyClaim(caseId, "ACEPTADA");
+        seedThirdPartyPresentacion(caseId);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[1].tabCode").value("GESTION_TRAMITE"))
+                .andExpect(jsonPath("$.tabs[1].completed").value(true))
+                .andExpect(jsonPath("$.tabs[1].colorHint").value("BLUE"))
+                .andExpect(jsonPath("$.tabs[1].warningReasons[0]").doesNotExist())
+                // El presupuesto NO queda gateado por la gestion del tramite en terceros
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(true))
+                .andExpect(jsonPath("$.tabs[2].blockingReasons[0]").value("Falta cargar el presupuesto"));
+    }
+
+    @Test
+    void shouldWarnButNotBlockWhenThirdPartyDocumentationIsPending() throws Exception {
+        Long caseId = createThirdPartyWorkshopCase();
+        seedThirdPartyClaim(caseId, "PENDIENTE");
+        seedThirdPartyPresentacion(caseId);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[1].tabCode").value("GESTION_TRAMITE"))
+                .andExpect(jsonPath("$.tabs[1].completed").value(true))
+                .andExpect(jsonPath("$.tabs[1].warningReasons[0]").value("Carpeta con documentacion pendiente"));
+    }
+
+    @Test
+    void shouldCompleteThirdPartyPagosWhenCompanyPaysAgreedAmount() throws Exception {
+        Long caseId = createThirdPartyWorkshopCase();
+        completeVehicle(caseId);
+        seedThirdPartyClaim(caseId, "ACEPTADA");
+        jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_presentacion, cotizacion_estado_codigo, fecha_cotizacion, monto_acordado) VALUES (?,?,?,?,?)",
+                caseId, LocalDate.of(2026, 1, 2), "ACEPTADA", LocalDate.of(2026, 1, 3), new BigDecimal("100000"));
+        createAndCloseBudget(caseId);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
+                .andExpect(jsonPath("$.tabs[2].completed").value(true))
+                .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
+                .andExpect(jsonPath("$.tabs[3].allowed").value(true))
+                .andExpect(jsonPath("$.tabs[3].completed").value(false))
+                .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))
+                .andExpect(jsonPath("$.tabs[4].allowed").value(true))
+                .andExpect(jsonPath("$.tabs[4].completed").value(false))
+                .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("La Cia. aun no completo el pago"));
+
+        mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId)
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"ASEGURADORA\",\"counterpartyTypeCode\":\"PERSONA\",\"counterpartyPersonId\":10,\"movementAt\":\"2026-02-01T12:00:00\",\"grossAmount\":100000,\"netAmount\":100000,\"paymentMethodCode\":\"EFECTIVO\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[],\"applications\":[]}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))
+                .andExpect(jsonPath("$.tabs[4].completed").value(true))
+                .andExpect(jsonPath("$.tabs[4].colorHint").value("BLUE"));
+    }
+
+    @Test
+    void shouldExposeInitialReadinessForThirdPartyLawyerCase() throws Exception {
+        Long caseId = createThirdPartyLawyerCase();
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.caseTypeCode").value("RECLAMO_TERCEROS_ABOGADO"))
+                .andExpect(jsonPath("$.tabs[0].tabCode").value("FICHA_TECNICA"))
+                .andExpect(jsonPath("$.tabs[1].tabCode").value("GESTION_TRAMITE"))
+                .andExpect(jsonPath("$.tabs[1].allowed").value(true))
+                .andExpect(jsonPath("$.tabs[1].completed").value(false))
+                .andExpect(jsonPath("$.tabs[1].blockingReasons[0]").value("Falta seleccionar la compania de la contraparte"))
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("ABOGADO"))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(true))
+                .andExpect(jsonPath("$.tabs[2].completed").value(false))
+                .andExpect(jsonPath("$.tabs[2].blockingReasons[0]").value("Falta cargar la gestion del abogado"))
+                .andExpect(jsonPath("$.tabs[3].tabCode").value("PRESUPUESTO"))
+                .andExpect(jsonPath("$.tabs[4].tabCode").value("GESTION_REPARACION"))
+                .andExpect(jsonPath("$.tabs[5].tabCode").value("PAGOS"))
+                .andExpect(jsonPath("$.tabs[5].blockingReasons[0]").value("Falta cargar la gestion del abogado"));
+    }
+
+    @Test
+    void shouldRequireCourtDataOnlyForJudicialInstance() throws Exception {
+        Long caseId = createThirdPartyLawyerCase();
+
+        mockMvc.perform(put("/api/v1/cases/{caseId}/legal", caseId)
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL\",\"instanceCode\":\"JUDICIAL\",\"entryDate\":\"2026-01-15\",\"repairsVehicle\":true}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("ABOGADO"))
+                .andExpect(jsonPath("$.tabs[2].completed").value(false))
+                .andExpect(jsonPath("$.tabs[2].blockingReasons").value(org.hamcrest.Matchers.hasItem("Falta el CUIJ")))
+                .andExpect(jsonPath("$.tabs[2].blockingReasons").value(org.hamcrest.Matchers.hasItem("Falta el juzgado")))
+                .andExpect(jsonPath("$.tabs[2].blockingReasons").value(org.hamcrest.Matchers.hasItem("Falta la caratula (autos)")));
+
+        mockMvc.perform(put("/api/v1/cases/{caseId}/legal", caseId)
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL\",\"instanceCode\":\"JUDICIAL\",\"entryDate\":\"2026-01-15\",\"cuij\":\"4856123-42\",\"court\":\"Juzgado Civil y Comercial 8\",\"caseNumber\":\"Zapata c/ Perez s/ danos y perjuicios\",\"repairsVehicle\":true}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("ABOGADO"))
+                .andExpect(jsonPath("$.tabs[2].completed").value(true))
+                .andExpect(jsonPath("$.tabs[2].colorHint").value("BLUE"));
+    }
+
+    @Test
+    void shouldNotRequireCourtDataForAdministrativeInstance() throws Exception {
+        Long caseId = createThirdPartyLawyerCase();
+
+        mockMvc.perform(put("/api/v1/cases/{caseId}/legal", caseId)
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL\",\"instanceCode\":\"ADMINISTRATIVA\",\"entryDate\":\"2026-01-15\",\"repairsVehicle\":true}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("ABOGADO"))
+                .andExpect(jsonPath("$.tabs[2].completed").value(true))
+                .andExpect(jsonPath("$.tabs[2].colorHint").value("BLUE"));
+    }
+
+    @Test
+    void shouldCompleteRepairTabWhenLawyerMarksVehicleNotRepaired() throws Exception {
+        Long caseId = createThirdPartyLawyerCase();
+
+        mockMvc.perform(put("/api/v1/cases/{caseId}/legal", caseId)
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL\",\"instanceCode\":\"ADMINISTRATIVA\",\"entryDate\":\"2026-01-15\",\"repairsVehicle\":false}"))
+                .andExpect(status().isOk());
+
+        // Sin presupuesto cargado y con repara_vehiculo = NO, la solapa queda anulada y completa
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[4].tabCode").value("GESTION_REPARACION"))
+                .andExpect(jsonPath("$.tabs[4].allowed").value(true))
+                .andExpect(jsonPath("$.tabs[4].completed").value(true))
+                .andExpect(jsonPath("$.tabs[4].colorHint").value("BLUE"));
+    }
+
+    @Test
+    void shouldRequireLesionadosWhenClaimIncludesInjuries() throws Exception {
+        Long caseId = createThirdPartyLawyerCase();
+
+        mockMvc.perform(put("/api/v1/cases/{caseId}/legal", caseId)
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL_LESIONES\",\"instanceCode\":\"ADMINISTRATIVA\",\"entryDate\":\"2026-01-15\",\"repairsVehicle\":true}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("ABOGADO"))
+                .andExpect(jsonPath("$.tabs[2].completed").value(false))
+                .andExpect(jsonPath("$.tabs[2].blockingReasons").value(org.hamcrest.Matchers.hasItem("Falta cargar los datos del lesionado")));
+
+        mockMvc.perform(post("/api/v1/cases/{caseId}/legal/lesionados", caseId)
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"lesionadoEsCode\":\"CLIENTE\",\"personId\":10,\"provesIncome\":true}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("ABOGADO"))
+                .andExpect(jsonPath("$.tabs[2].completed").value(true))
+                .andExpect(jsonPath("$.tabs[2].colorHint").value("BLUE"));
+    }
+
+    @Test
+    void shouldCompleteLawyerPagosWithImporteAndCierre() throws Exception {        Long caseId = createThirdPartyLawyerCase();
+
+        mockMvc.perform(put("/api/v1/cases/{caseId}/legal", caseId)
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL\",\"instanceCode\":\"ADMINISTRATIVA\",\"entryDate\":\"2026-01-15\",\"repairsVehicle\":true,\"closedByCode\":\"CONCILIACION\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[5].tabCode").value("PAGOS"))
+                .andExpect(jsonPath("$.tabs[5].completed").value(false))
+                .andExpect(jsonPath("$.tabs[5].blockingReasons").value(org.hamcrest.Matchers.hasItem("Falta registrar el importe total del expediente")))
+                .andExpect(jsonPath("$.tabs[5].blockingReasons").value(org.hamcrest.Matchers.hasItem("Falta la fecha de cierre del expediente")));
+
+        mockMvc.perform(put("/api/v1/cases/{caseId}/legal", caseId)
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL\",\"instanceCode\":\"ADMINISTRATIVA\",\"entryDate\":\"2026-01-15\",\"repairsVehicle\":true,\"closedByCode\":\"CONCILIACION\",\"legalCloseDate\":\"2026-06-01\",\"totalProceedsAmount\":150000.00}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[5].tabCode").value("PAGOS"))
+                .andExpect(jsonPath("$.tabs[5].completed").value(true))
+                .andExpect(jsonPath("$.tabs[5].colorHint").value("BLUE"));
+    }
+
     // ── Helpers ──────────────────────────────────────────────────
 
     private Long createTodoRiesgoCase() throws Exception {
@@ -840,6 +1092,45 @@ class CaseReadinessIntegrationTest {
                 .andExpect(status().isOk())
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsByteArray()).get("id").asLong();
+    }
+
+    // ── RECLAMO_TERCEROS helpers ─────────────────────────────────
+
+    private Long createThirdPartyWorkshopCase() throws Exception {
+        return createTypedCase(5L);
+    }
+
+    private Long createThirdPartyLawyerCase() throws Exception {
+        return createTypedCase(6L);
+    }
+
+    private Long createTypedCase(Long caseTypeId) throws Exception {
+        CaseCreateRequest request = new CaseCreateRequest(
+                caseTypeId, 1L, 1L, 10L, 10L, false, null, null, null, null, null, LocalDate.of(2026, 1, 1),
+                null, null, null, null, null, null, "CLIENTE", "PRINCIPAL"
+        );
+        MvcResult result = mockMvc.perform(post("/api/v1/cases")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk())
+                .andReturn();
+        return objectMapper.readTree(result.getResponse().getContentAsByteArray()).get("id").asLong();
+    }
+
+    private void seedThirdPartyCompany() {
+        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, activo) VALUES (?,?,?,?,?)",
+                1L, "00000000-0000-0000-0000-000000000101", "LA_SEGUNDA", "La Segunda", true);
+    }
+
+    private void seedThirdPartyClaim(Long caseId, String documentationStatusCode) {
+        seedThirdPartyCompany();
+        jdbcTemplate.update("INSERT INTO caso_terceros (caso_id, compania_tercero_id, referencia_reclamo, documentacion_estado_codigo, documentacion_aceptada, modo_provision_repuestos_codigo) VALUES (?, ?, ?, ?, ?, ?)",
+                caseId, 1L, "Reclamo contraparte 1234", documentationStatusCode, "ACEPTADA".equals(documentationStatusCode), "TALLER");
+    }
+
+    private void seedThirdPartyPresentacion(Long caseId) {
+        jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_presentacion) VALUES (?, ?)", caseId, LocalDate.of(2026, 1, 2));
     }
 
     private void seedInsuranceData(Long caseId) {

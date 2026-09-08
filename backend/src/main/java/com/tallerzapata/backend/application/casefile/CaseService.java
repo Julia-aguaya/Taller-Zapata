@@ -402,7 +402,9 @@ public class CaseService {
             incidentEntity.setObservaciones(blankToNull(request.incidentObservations()));
             incidentEntity.setPrescriptionDate(insuranceRepairCasePolicy.requiresGranizoBackendIncident(caseType.getCode()) && request.incidentDate() != null
                     ? request.incidentDate().plusYears(1)
-                    : request.prescriptionDate());
+                    : insuranceRepairCasePolicy.isThirdPartyClaim(caseType.getCode()) && request.incidentDate() != null
+                            ? request.incidentDate().plusYears(insuranceRepairCasePolicy.prescriptionYears(caseType.getCode()))
+                            : request.prescriptionDate());
             incidentEntity.setDaysInProcess(request.daysInProcess());
             caseIncidentRepository.save(incidentEntity);
         }

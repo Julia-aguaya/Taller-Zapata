@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/v1")
 @Tag(name = "Gestion de Casos", description = "Operaciones de gestion de personas, vehiculos e incidentes dentro de un caso")
@@ -34,6 +36,13 @@ public class CaseManagementController {
             HttpServletRequest httpRequest
     ) {
         caseManagementService.addPersonToCase(caseId, request, httpRequest);
+    }
+
+    @Operation(summary = "Listar personas del caso", description = "Devuelve las personas asociadas al caso con su rol y porcentaje de titularidad registral")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @GetMapping("/cases/{caseId}/persons")
+    public List<CasePersonResponse> listCasePersons(@PathVariable Long caseId) {
+        return caseManagementService.listCasePersons(caseId);
     }
 
     @Operation(summary = "Agregar vehiculo a caso", description = "Asocia un vehiculo existente a un caso")

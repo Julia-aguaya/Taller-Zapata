@@ -32,6 +32,9 @@ public class CasePersonEntity {
 
     private String notas;
 
+    @Column(name = "porcentaje_titularidad")
+    private Integer registryOwnershipPercentage;
+
     public Long getId() { return id; }
     public Long getCaseId() { return caseId; }
     public Long getPersonId() { return personId; }
@@ -39,10 +42,12 @@ public class CasePersonEntity {
     public Long getVehicleId() { return vehicleId; }
     public Boolean getPrincipal() { return principal; }
     public String getNotas() { return notas; }
+    public Integer getRegistryOwnershipPercentage() { return registryOwnershipPercentage; }
     public void setCaseId(Long caseId) { this.caseId = caseId; }
     public void setPersonId(Long personId) { this.personId = personId; }
     public void setCaseRoleCode(String caseRoleCode) { this.caseRoleCode = caseRoleCode; }
     public void setVehicleId(Long vehicleId) { this.vehicleId = vehicleId; }
     public void setPrincipal(Boolean principal) { this.principal = principal; }
     public void setNotas(String notas) { this.notas = notas; }
+    public void setRegistryOwnershipPercentage(Integer registryOwnershipPercentage) { this.registryOwnershipPercentage = registryOwnershipPercentage; }
 }

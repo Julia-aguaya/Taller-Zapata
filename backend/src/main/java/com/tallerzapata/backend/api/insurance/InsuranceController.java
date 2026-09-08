@@ -172,6 +172,18 @@ public class InsuranceController {
     @PostMapping("/cases/{caseId}/legal-expenses")
     public LegalExpenseResponse createCaseLegalExpense(@PathVariable Long caseId, @RequestBody LegalExpenseCreateRequest request, HttpServletRequest httpRequest) { return insuranceService.createCaseLegalExpense(caseId, request, httpRequest); }
 
+    @Operation(summary = "Listar lesionados del expediente", description = "Devuelve los lesionados cargados en la gestion legal del caso")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PreAuthorize("hasAuthority('seguro.ver')")
+    @GetMapping("/cases/{caseId}/legal/lesionados")
+    public List<LegalLesionadoResponse> listCaseLegalLesionados(@PathVariable Long caseId) { return insuranceService.listCaseLegalLesionados(caseId); }
+
+    @Operation(summary = "Registrar lesionado", description = "Agrega un lesionado al expediente legal del caso")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PreAuthorize("hasAuthority('seguro.crear')")
+    @PostMapping("/cases/{caseId}/legal/lesionados")
+    public LegalLesionadoResponse createCaseLegalLesionado(@PathVariable Long caseId, @RequestBody LegalLesionadoCreateRequest request, HttpServletRequest httpRequest) { return insuranceService.createCaseLegalLesionado(caseId, request, httpRequest); }
+
     @Operation(summary = "Generar PDF de gestion del tramite", description = "Genera un PDF con todos los datos del tramite del caso")
     @ApiResponse(responseCode = "200", description = "PDF generado")
     @PreAuthorize("hasAuthority('seguro.ver')")

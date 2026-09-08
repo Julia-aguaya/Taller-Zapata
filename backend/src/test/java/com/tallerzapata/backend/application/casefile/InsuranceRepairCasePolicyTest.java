@@ -33,6 +33,27 @@ class InsuranceRepairCasePolicyTest {
     }
 
     @Test
+    void recognizesThirdPartyClaimTypesInBothVariants() {
+        assertTrue(policy.isThirdPartyClaim("reclamo_terceros"));
+        assertTrue(policy.isThirdPartyClaim(" RECLAMO_TERCEROS_ABOGADO "));
+        assertFalse(policy.isThirdPartyClaim("TODO_RIESGO"));
+        assertFalse(policy.isThirdPartyClaim("RECUPERO_FRANQUICIA"));
+        assertFalse(policy.isThirdPartyClaim(null));
+        assertFalse(policy.isThirdPartyClaim(""));
+    }
+
+    @Test
+    void prescribesThreeYearsForThirdPartyClaimsAndOneYearForTheRest() {
+        assertEquals(3, policy.prescriptionYears("RECLAMO_TERCEROS"));
+        assertEquals(3, policy.prescriptionYears("reclamo_terceros_abogado"));
+        assertEquals(1, policy.prescriptionYears("TODO_RIESGO"));
+        assertEquals(1, policy.prescriptionYears("GRANIZO"));
+        assertEquals(1, policy.prescriptionYears("PARTICULAR"));
+        assertEquals(1, policy.prescriptionYears("CLEAS"));
+        assertEquals(1, policy.prescriptionYears("RECUPERO_FRANQUICIA"));
+    }
+
+    @Test
     void keepsFullAgreementForGranizoDespiteStaleFranchise() {
         CaseFranchiseEntity staleFranchise = new CaseFranchiseEntity();
         staleFranchise.setFranchiseAmount(new BigDecimal("200"));

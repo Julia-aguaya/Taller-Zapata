@@ -29,10 +29,11 @@ public class InsuranceCatalogService {
     private final LegalInstanceRepository legalInstanceRepository;
     private final LegalClosureReasonRepository legalClosureReasonRepository;
     private final LegalExpensePayerRepository legalExpensePayerRepository;
+    private final LesionadoEsTypeRepository lesionadoEsTypeRepository;
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService accessControlService;
 
-    public InsuranceCatalogService(InsuranceRoleContactRepository roleContactRepository, InsuranceModalityRepository modalityRepository, InsuranceOpinionRepository opinionRepository, InsuranceQuotationStatusRepository quotationStatusRepository, InsurancePartsAuthorizationRepository partsAuthorizationRepository, FranchiseStatusRepository franchiseStatusRepository, FranchiseRecoveryTypeRepository franchiseRecoveryTypeRepository, FranchiseOpinionRepository franchiseOpinionRepository, CleasScopeRepository cleasScopeRepository, CleasOpinionRepository cleasOpinionRepository, PaymentStatusRepository paymentStatusRepository, ThirdPartyDocumentationStatusRepository thirdPartyDocumentationStatusRepository, PartsProvisionModeRepository partsProvisionModeRepository, LegalProcessorRepository legalProcessorRepository, LegalClaimantRepository legalClaimantRepository, LegalInstanceRepository legalInstanceRepository, LegalClosureReasonRepository legalClosureReasonRepository, LegalExpensePayerRepository legalExpensePayerRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService) {
+    public InsuranceCatalogService(InsuranceRoleContactRepository roleContactRepository, InsuranceModalityRepository modalityRepository, InsuranceOpinionRepository opinionRepository, InsuranceQuotationStatusRepository quotationStatusRepository, InsurancePartsAuthorizationRepository partsAuthorizationRepository, FranchiseStatusRepository franchiseStatusRepository, FranchiseRecoveryTypeRepository franchiseRecoveryTypeRepository, FranchiseOpinionRepository franchiseOpinionRepository, CleasScopeRepository cleasScopeRepository, CleasOpinionRepository cleasOpinionRepository, PaymentStatusRepository paymentStatusRepository, ThirdPartyDocumentationStatusRepository thirdPartyDocumentationStatusRepository, PartsProvisionModeRepository partsProvisionModeRepository, LegalProcessorRepository legalProcessorRepository, LegalClaimantRepository legalClaimantRepository, LegalInstanceRepository legalInstanceRepository, LegalClosureReasonRepository legalClosureReasonRepository, LegalExpensePayerRepository legalExpensePayerRepository, LesionadoEsTypeRepository lesionadoEsTypeRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService) {
         this.roleContactRepository = roleContactRepository;
         this.modalityRepository = modalityRepository;
         this.opinionRepository = opinionRepository;
@@ -51,6 +52,7 @@ public class InsuranceCatalogService {
         this.legalInstanceRepository = legalInstanceRepository;
         this.legalClosureReasonRepository = legalClosureReasonRepository;
         this.legalExpensePayerRepository = legalExpensePayerRepository;
+        this.lesionadoEsTypeRepository = lesionadoEsTypeRepository;
         this.currentUserService = currentUserService;
         this.accessControlService = accessControlService;
     }
@@ -77,7 +79,8 @@ public class InsuranceCatalogService {
                 legalClaimantRepository.findAll().stream().filter(i -> Boolean.TRUE.equals(i.getActive())).map(i -> new CodeCatalogResponse(i.getCode(), i.getName())).toList(),
                 legalInstanceRepository.findAll().stream().filter(i -> Boolean.TRUE.equals(i.getActive())).map(i -> new CodeCatalogResponse(i.getCode(), i.getName())).toList(),
                 legalClosureReasonRepository.findAll().stream().filter(i -> Boolean.TRUE.equals(i.getActive())).map(i -> new CodeCatalogResponse(i.getCode(), i.getName())).toList(),
-                legalExpensePayerRepository.findAll().stream().filter(i -> Boolean.TRUE.equals(i.getActive())).map(i -> new CodeCatalogResponse(i.getCode(), i.getName())).toList()
+                legalExpensePayerRepository.findAll().stream().filter(i -> Boolean.TRUE.equals(i.getActive())).map(i -> new CodeCatalogResponse(i.getCode(), i.getName())).toList(),
+                lesionadoEsTypeRepository.findAll().stream().filter(i -> Boolean.TRUE.equals(i.getActive())).map(i -> new CodeCatalogResponse(i.getCode(), i.getName())).toList()
         );
     }
 }

@@ -8,6 +8,7 @@ public record LegalExpenseCreateRequest(
         BigDecimal amount,
         LocalDate expenseDate,
         String paidByCode,
-        Long financialMovementId
+        Long financialMovementId,
+        Boolean sumsToWorkshop
 ) {
 }

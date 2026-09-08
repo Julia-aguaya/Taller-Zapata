@@ -65,6 +65,7 @@ import { useBackendSession } from './features/auth/hooks/useBackendSession';
 import { useAuthenticatedCases } from './features/cases/hooks/useAuthenticatedCases';
 import { filterCases, getBranchOptions, getStateOptions, calculateCaseMetrics, getCaseSearchHaystack, getBackendBranchLabel, getCaseIdentifierLabel, getBackendStatusTone } from './features/cases/lib/caseFilters';
 import { getCatalogEntries, getCatalogOptionNames, getCatalogSelectOptions, resolveCatalogCode } from './features/cases/lib/caseCatalogHelpers';
+import { thirdPartyDocumentationStatusCode, thirdPartyPartsProviderCode, resolveThirdPartyCompanyId } from './features/cases/lib/thirdPartyClaimCatalogs';
 import { inferTramiteTypeFromBackendCase, resolveFrontendCaseTypeCatalogEntry } from './features/cases/lib/caseTypeResolvers';
 import { formatProbeCheckedAt, maskToken, resolveInsuranceCompanyIdByName } from './features/cases/lib/caseAppUtils';
 import {
@@ -4249,11 +4250,12 @@ function App() {
 
         if ((isThirdPartyWorkshopCase(selectedCase) || isThirdPartyLawyerCase(selectedCase)) && shouldSync('tramite')) {
           pushSyncOp('tramite', updateAuthenticatedCaseThirdParty(accessToken, caseId, {
-              thirdPartyCompanyId: null,
+              thirdPartyCompanyId: resolveThirdPartyCompanyId(selectedCase.thirdParty?.claim?.thirdCompany, authenticatedInsuranceCompaniesState.items),
               claimReference: selectedCase.thirdParty?.claim?.claimReference || null,
-              documentationStatusCode: selectedCase.thirdParty?.claim?.documentationStatus || null,
+              // La UI maneja labels ('Completa'/'Provee Taller'); el backend valida codigos de catalogo.
+              documentationStatusCode: thirdPartyDocumentationStatusCode(selectedCase.thirdParty?.claim?.documentationStatus),
               documentationAccepted: Boolean(selectedCase.thirdParty?.claim?.documentationAccepted),
-              partsProvisionModeCode: selectedCase.thirdParty?.claim?.partsProviderMode || null,
+              partsProvisionModeCode: thirdPartyPartsProviderCode(selectedCase.thirdParty?.claim?.partsProviderMode),
               minimumLaborAmount: toDecimal(selectedCase.computed?.thirdParty?.minimumLabor),
               minimumPartsAmount: toDecimal(selectedCase.computed?.thirdParty?.minimumParts),
               bestQuotationSubtotal: toDecimal(selectedCase.computed?.thirdParty?.subtotalBestQuote),

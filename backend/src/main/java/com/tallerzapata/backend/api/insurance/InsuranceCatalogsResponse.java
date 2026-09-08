@@ -22,6 +22,7 @@ public record InsuranceCatalogsResponse(
         List<CodeCatalogResponse> legalClaimantCodes,
         List<CodeCatalogResponse> legalInstanceCodes,
         List<CodeCatalogResponse> legalClosureReasonCodes,
-        List<CodeCatalogResponse> legalExpensePayerCodes
+        List<CodeCatalogResponse> legalExpensePayerCodes,
+        List<CodeCatalogResponse> legalInjuredPartyTypeCodes
 ) {
 }

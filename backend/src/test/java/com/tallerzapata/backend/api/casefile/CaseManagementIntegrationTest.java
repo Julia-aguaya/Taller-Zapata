@@ -53,6 +53,68 @@ class CaseManagementIntegrationTest {
     }
 
     @Test
+    void shouldAddTitularWithOwnershipPercentage() throws Exception {
+        mockMvc.perform(post("/api/v1/cases/100/persons")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CasePersonAddRequest(11L, "TITULAR", 10L, false, null, 100))))
+                .andExpect(status().isOk());
+
+        Integer percentage = jdbcTemplate.queryForObject("SELECT porcentaje_titularidad FROM caso_personas WHERE caso_id = 100 AND persona_id = 11", Integer.class);
+        assertThat(percentage).isEqualTo(100);
+    }
+
+    @Test
+    void shouldListCasePersonsWithOwnershipPercentage() throws Exception {
+        jdbcTemplate.update("INSERT INTO caso_personas (id, caso_id, persona_id, rol_caso_codigo, vehiculo_id, es_principal, notas, porcentaje_titularidad) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 5L, 100L, 11L, "TITULAR", 10L, false, null, 50);
+
+        mockMvc.perform(get("/api/v1/cases/100/persons")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                // La persona CLIENTE del fixture (id 1) encabeza el listado; el titular sembrado es el segundo
+                .andExpect(jsonPath("$[1].caseRoleCode").value("TITULAR"))
+                .andExpect(jsonPath("$[1].registryOwnershipPercentage").value(50))
+                .andExpect(jsonPath("$[1].displayName").value("Ana Test"));
+    }
+
+    @Test
+    void shouldRejectInvalidOwnershipPercentage() throws Exception {
+        mockMvc.perform(post("/api/v1/cases/100/persons")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CasePersonAddRequest(11L, "TITULAR", 10L, false, null, 70))))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldRejectOwnershipPercentageForNonTitularRole() throws Exception {
+        mockMvc.perform(post("/api/v1/cases/100/persons")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CasePersonAddRequest(11L, "TERCERO", 10L, false, null, 100))))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldRejectOwnershipSumAbove100() throws Exception {
+        jdbcTemplate.update("INSERT INTO caso_personas (id, caso_id, persona_id, rol_caso_codigo, vehiculo_id, es_principal, notas, porcentaje_titularidad) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 5L, 100L, 11L, "TITULAR", 10L, false, null, 50);
+
+        // 50 + 50 = 100: el segundo titular entra
+        mockMvc.perform(post("/api/v1/cases/100/persons")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CasePersonAddRequest(10L, "TITULAR", 10L, false, null, 50))))
+                .andExpect(status().isOk());
+
+        // 100 ya cubierto: un tercer titular al 50% no entra
+        mockMvc.perform(post("/api/v1/cases/100/persons")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CasePersonAddRequest(11L, "TITULAR", 10L, false, null, 50))))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
     void shouldAddVehicleToCase() throws Exception {
         mockMvc.perform(post("/api/v1/cases/100/vehicles")
                         .header("X-User-Id", "3")
@@ -147,6 +209,68 @@ class CaseManagementIntegrationTest {
                         .header("X-User-Id", "3"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.incidentDate").doesNotExist())
+                .andExpect(jsonPath("$.prescriptionDate").value("2029-04-20"));
+    }
+
+    @Test
+    void shouldKeepOneYearDefaultPrescriptionForTodoRiesgoWithIncidentDate() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = ? WHERE id = ?", 2L, 100L);
+
+        mockMvc.perform(put("/api/v1/cases/100/incident")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"incidentDate\":\"2026-04-20\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100/incident")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.prescriptionDate").value("2027-04-20"));
+    }
+
+    @Test
+    void shouldComputeThirdPartyPrescriptionAsThreeYearsFromIncident() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = ? WHERE id = ?", 5L, 100L);
+
+        // Sin fecha de siniestro no hay prescripcion calculable: el valor del cliente se descarta.
+        mockMvc.perform(put("/api/v1/cases/100/incident")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"prescriptionDate\":\"2027-04-20\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100/incident")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.prescriptionDate").doesNotExist());
+
+        // Con siniestro: 3 anios automaticos; el valor enviado por el cliente se recalcula.
+        mockMvc.perform(put("/api/v1/cases/100/incident")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"incidentDate\":\"2026-04-20\",\"prescriptionDate\":\"2027-04-20\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100/incident")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.incidentDate").value("2026-04-20"))
+                .andExpect(jsonPath("$.prescriptionDate").value("2029-04-20"));
+    }
+
+    @Test
+    void shouldComputeLawyerThirdPartyPrescriptionAsThreeYearsFromIncident() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = ? WHERE id = ?", 6L, 100L);
+
+        mockMvc.perform(put("/api/v1/cases/100/incident")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"incidentDate\":\"2026-04-20\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100/incident")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
                 .andExpect(jsonPath("$.prescriptionDate").value("2029-04-20"));
     }
 

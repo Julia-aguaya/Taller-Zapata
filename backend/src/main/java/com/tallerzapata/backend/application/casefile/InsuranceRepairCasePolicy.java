@@ -17,6 +17,20 @@ public final class InsuranceRepairCasePolicy {
         return "GRANIZO".equals(normalize(caseTypeCode));
     }
 
+    public boolean isThirdPartyClaim(String caseTypeCode) {
+        String normalized = normalize(caseTypeCode);
+        return "RECLAMO_TERCEROS".equals(normalized) || "RECLAMO_TERCEROS_ABOGADO".equals(normalized);
+    }
+
+    /**
+     * Anios de prescripcion desde la fecha del siniestro.
+     * Reclamo de terceros (taller o abogado) prescribe a los 3 anios; el resto de los
+     * tramites con tramitacion conserva el plazo de 1 anio vigente.
+     */
+    public int prescriptionYears(String caseTypeCode) {
+        return isThirdPartyClaim(caseTypeCode) ? 3 : 1;
+    }
+
     public boolean allowsFranchise(String caseTypeCode) {
         return isInsuranceRepair(caseTypeCode) && !isGranizo(caseTypeCode);
     }

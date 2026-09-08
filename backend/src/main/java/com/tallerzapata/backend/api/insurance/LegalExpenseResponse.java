@@ -10,6 +10,7 @@ public record LegalExpenseResponse(
         BigDecimal amount,
         LocalDate expenseDate,
         String paidByCode,
-        Long financialMovementId
+        Long financialMovementId,
+        Boolean sumsToWorkshop
 ) {
 }

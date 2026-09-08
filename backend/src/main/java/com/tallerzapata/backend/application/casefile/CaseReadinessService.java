@@ -14,6 +14,8 @@ import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartReposi
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseIncidentEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseIncidentRepository;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CasePersonEntity;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CasePersonRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeRepository;
@@ -25,8 +27,14 @@ import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseInsuran
 import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseInsuranceRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseCleasEntity;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseCleasRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseLegalEntity;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseLegalRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseThirdPartyEntity;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseThirdPartyRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingEntity;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.LegalLesionadoEntity;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.LegalLesionadoRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.RepairAppointmentEntity;
 import com.tallerzapata.backend.infrastructure.persistence.operation.RepairAppointmentRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleIntakeEntity;
@@ -52,9 +60,13 @@ import java.util.List;
 @Service
 public class CaseReadinessService {
 
+    /** Reclamos que exigen lesionados cargados (catalogo quienes_reclaman_legal). */
+    private static final java.util.Set<String> CLAIMS_WITH_INJURIES = java.util.Set.of("DANIO_MATERIAL_LESIONES", "FRANQUICIA_LESIONES");
+
     private final CaseRepository caseRepository;
     private final CaseTypeRepository caseTypeRepository;
     private final CaseIncidentRepository caseIncidentRepository;
+    private final CasePersonRepository casePersonRepository;
     private final PersonRepository personRepository;
     private final VehicleRepository vehicleRepository;
     private final BudgetRepository budgetRepository;
@@ -69,14 +81,19 @@ public class CaseReadinessService {
     private final CaseFranchiseRepository caseFranchiseRepository;
     private final FranchiseRecoveryRepository franchiseRecoveryRepository;
     private final CaseCleasRepository caseCleasRepository;
+    private final CaseThirdPartyRepository caseThirdPartyRepository;
+    private final CaseLegalRepository caseLegalRepository;
+    private final LegalLesionadoRepository legalLesionadoRepository;
     private final CleasClosurePolicy cleasClosurePolicy;
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService caseAccessControlService;
+    private final InsuranceRepairCasePolicy insuranceRepairCasePolicy = new InsuranceRepairCasePolicy();
 
     public CaseReadinessService(
             CaseRepository caseRepository,
             CaseTypeRepository caseTypeRepository,
             CaseIncidentRepository caseIncidentRepository,
+            CasePersonRepository casePersonRepository,
             PersonRepository personRepository,
             VehicleRepository vehicleRepository,
             BudgetRepository budgetRepository,
@@ -91,6 +108,9 @@ public class CaseReadinessService {
             CaseFranchiseRepository caseFranchiseRepository,
             FranchiseRecoveryRepository franchiseRecoveryRepository,
             CaseCleasRepository caseCleasRepository,
+            CaseThirdPartyRepository caseThirdPartyRepository,
+            CaseLegalRepository caseLegalRepository,
+            LegalLesionadoRepository legalLesionadoRepository,
             CleasClosurePolicy cleasClosurePolicy,
             CurrentUserService currentUserService,
             CaseAccessControlService caseAccessControlService
@@ -98,6 +118,7 @@ public class CaseReadinessService {
         this.caseRepository = caseRepository;
         this.caseTypeRepository = caseTypeRepository;
         this.caseIncidentRepository = caseIncidentRepository;
+        this.casePersonRepository = casePersonRepository;
         this.personRepository = personRepository;
         this.vehicleRepository = vehicleRepository;
         this.budgetRepository = budgetRepository;
@@ -112,6 +133,9 @@ public class CaseReadinessService {
         this.caseFranchiseRepository = caseFranchiseRepository;
         this.franchiseRecoveryRepository = franchiseRecoveryRepository;
         this.caseCleasRepository = caseCleasRepository;
+        this.caseThirdPartyRepository = caseThirdPartyRepository;
+        this.caseLegalRepository = caseLegalRepository;
+        this.legalLesionadoRepository = legalLesionadoRepository;
         this.cleasClosurePolicy = cleasClosurePolicy;
         this.currentUserService = currentUserService;
         this.caseAccessControlService = caseAccessControlService;
@@ -176,6 +200,26 @@ public class CaseReadinessService {
                 tabs.add(buildTodoRiesgoReparacionReadiness(caseId, budgetTab.completed(), tramiteTab.completed()));
             }
             tabs.add(buildFranchiseRecoveryPagosReadiness(tramiteTab.completed()));
+        } else if (insuranceRepairCasePolicy.isThirdPartyClaim(caseType.getCode())) {
+            boolean lawyerManaged = "RECLAMO_TERCEROS_ABOGADO".equals(caseType.getCode());
+            CaseLegalEntity legal = caseLegalRepository.findByCaseId(caseId).orElse(null);
+            tabs.add(buildTercerosGestionTramiteReadiness(caseId, !lawyerManaged));
+            if (lawyerManaged) {
+                List<LegalLesionadoEntity> lesionados = legal == null ? List.of() : legalLesionadoRepository.findByCaseLegalIdOrderByIdAsc(legal.getId());
+                tabs.add(buildAbogadoReadiness(legal, lesionados));
+            }
+            // En terceros el presupuesto no queda gateado por la gestion del tramite:
+            // la tramitacion toma sus montos desde el presupuesto, no al reves.
+            CaseReadinessTabResponse budgetTab = buildBudgetCompletionReadiness(caseId, principalVehicle);
+            tabs.add(budgetTab);
+            tabs.add(buildTercerosReparacionReadiness(caseId, budgetTab.completed(), legal));
+            if (lawyerManaged) {
+                tabs.add(buildLegalPagosReadiness(legal));
+            } else {
+                tabs.add(buildInsuranceRepairPagosReadiness(caseId, false));
+            }
+            // Ficha tecnica de terceros: la titularidad registral del vehiculo es obligatoria
+            mergeThirdPartyRegistryOwnershipReasons(tabs, caseId, caseEntity);
         }
 
         return new CaseReadinessResponse(caseId, caseType.getCode(), tabs);
@@ -505,6 +549,142 @@ public class CaseReadinessService {
             return toTab("PAGOS", false, blocking, List.of());
         }
         return toTab("PAGOS", true, blocking, List.of());
+    }
+
+    // ── RECLAMO_TERCEROS (taller y abogado) ──────────────────────
+
+    private CaseReadinessTabResponse buildTercerosGestionTramiteReadiness(Long caseId, boolean requiresPresentacion) {
+        List<String> blocking = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        CaseIncidentEntity incident = caseIncidentRepository.findByCaseId(caseId).orElse(null);
+        CaseThirdPartyEntity thirdParty = caseThirdPartyRepository.findByCaseId(caseId).orElse(null);
+
+        if (incident == null || incident.getIncidentDate() == null) {
+            blocking.add("Falta la fecha del siniestro");
+        }
+        if (thirdParty == null || thirdParty.getThirdPartyCompanyId() == null) {
+            blocking.add("Falta seleccionar la compania de la contraparte");
+        }
+        if (requiresPresentacion) {
+            InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
+            if (processing == null || processing.getPresentedAt() == null) {
+                blocking.add("Falta registrar fecha de presentacion del tramite");
+            }
+        }
+        if (thirdParty == null || !"ACEPTADA".equals(normalizeCode(thirdParty.getDocumentationStatusCode()))) {
+            warnings.add("Carpeta con documentacion pendiente");
+        }
+        return new CaseReadinessTabResponse(
+                "GESTION_TRAMITE",
+                true,
+                blocking.isEmpty(),
+                blocking.isEmpty() ? "BLUE" : "RED",
+                List.copyOf(blocking),
+                List.copyOf(warnings)
+        );
+    }
+
+    private CaseReadinessTabResponse buildTercerosReparacionReadiness(Long caseId, boolean budgetCompleted, CaseLegalEntity legal) {
+        // "No repara vehiculo" anula la gestion de reparacion: la solapa queda completa en azul.
+        if (legal != null && Boolean.FALSE.equals(legal.getRepairsVehicle())) {
+            return new CaseReadinessTabResponse("GESTION_REPARACION", true, true, "BLUE", List.of(), List.of());
+        }
+        return buildTodoRiesgoReparacionReadiness(caseId, budgetCompleted, true);
+    }
+
+    /**
+     * Reclamo de terceros (taller y abogado): la ficha tecnica exige declarar la titularidad
+     * registral del vehiculo principal (cliente titular o titulares con porcentaje al 100%).
+     * Se agrega sobre la ficha tecnica comun sin modificar la regla de los demas tramites.
+     */
+    private void mergeThirdPartyRegistryOwnershipReasons(List<CaseReadinessTabResponse> tabs, Long caseId, CaseEntity caseEntity) {
+        List<String> ownershipReasons = collectRegistryOwnershipBlockingReasons(caseId, caseEntity);
+        if (ownershipReasons.isEmpty()) {
+            return;
+        }
+        CaseReadinessTabResponse ficha = tabs.get(0);
+        List<String> merged = new ArrayList<>(ficha.blockingReasons());
+        merged.addAll(ownershipReasons);
+        tabs.set(0, new CaseReadinessTabResponse(ficha.tabCode(), ficha.allowed(), false, "RED", List.copyOf(merged), ficha.warningReasons()));
+    }
+
+    private List<String> collectRegistryOwnershipBlockingReasons(Long caseId, CaseEntity caseEntity) {
+        List<String> reasons = new ArrayList<>();
+        if (caseEntity.getPrincipalVehicleId() == null) {
+            // Ya bloqueado por la ficha tecnica comun (falta vehiculo principal)
+            return reasons;
+        }
+        List<CasePersonEntity> titulares = casePersonRepository.findByCaseIdAndCaseRoleCodeOrderByIdAsc(caseId, "TITULAR").stream()
+                .filter(titular -> caseEntity.getPrincipalVehicleId().equals(titular.getVehicleId()))
+                .toList();
+        if (titulares.isEmpty()) {
+            reasons.add("Falta indicar al titular registral del vehiculo");
+            return reasons;
+        }
+        int registered = titulares.stream()
+                .map(titular -> titular.getRegistryOwnershipPercentage() == null ? 0 : titular.getRegistryOwnershipPercentage())
+                .reduce(0, Integer::sum);
+        if (registered < 100) {
+            reasons.add("La titularidad registral del vehiculo suma menos del 100%");
+        }
+        return reasons;
+    }
+
+    private CaseReadinessTabResponse buildAbogadoReadiness(CaseLegalEntity legal, List<LegalLesionadoEntity> lesionados) {
+        if (legal == null) {
+            return new CaseReadinessTabResponse("ABOGADO", true, false, "RED", List.of("Falta cargar la gestion del abogado"), List.of());
+        }
+        List<String> blocking = new ArrayList<>();
+        if (legal.getEntryDate() == null) {
+            blocking.add("Falta registrar la fecha de ingreso del expediente");
+        }
+        if (legal.getProcessorCode() == null) {
+            blocking.add("Falta indicar con que instrumento tramita el abogado");
+        }
+        if (legal.getClaimantCode() == null) {
+            blocking.add("Falta indicar que se reclama");
+        } else if (CLAIMS_WITH_INJURIES.contains(normalizeCode(legal.getClaimantCode())) && lesionados.isEmpty()) {
+            blocking.add("Falta cargar los datos del lesionado");
+        }
+        if (legal.getInstanceCode() == null) {
+            blocking.add("Falta seleccionar la instancia");
+        } else if ("JUDICIAL".equals(normalizeCode(legal.getInstanceCode()))) {
+            // Solo la instancia judicial exige CUIJ/juzgado/autos; en administrativa no aplican.
+            if (isBlank(legal.getCuij())) blocking.add("Falta el CUIJ");
+            if (isBlank(legal.getCourt())) blocking.add("Falta el juzgado");
+            if (isBlank(legal.getCaseNumber())) blocking.add("Falta la caratula (autos)");
+        }
+        return new CaseReadinessTabResponse(
+                "ABOGADO",
+                true,
+                blocking.isEmpty(),
+                blocking.isEmpty() ? "BLUE" : "RED",
+                List.copyOf(blocking),
+                List.of()
+        );
+    }
+
+    private CaseReadinessTabResponse buildLegalPagosReadiness(CaseLegalEntity legal) {
+        if (legal == null) {
+            return new CaseReadinessTabResponse("PAGOS", true, false, "RED", List.of("Falta cargar la gestion del abogado"), List.of());
+        }
+        List<String> blocking = new ArrayList<>();
+        if (legal.getTotalProceedsAmount() == null) {
+            blocking.add("Falta registrar el importe total del expediente");
+        }
+        if (legal.getClosedByCode() == null) {
+            blocking.add("Falta registrar el cierre del expediente");
+        } else if (legal.getLegalCloseDate() == null) {
+            blocking.add("Falta la fecha de cierre del expediente");
+        }
+        return new CaseReadinessTabResponse(
+                "PAGOS",
+                true,
+                blocking.isEmpty(),
+                blocking.isEmpty() ? "BLUE" : "RED",
+                List.copyOf(blocking),
+                List.of()
+        );
     }
 
     // ── Helpers ──────────────────────────────────────────────────

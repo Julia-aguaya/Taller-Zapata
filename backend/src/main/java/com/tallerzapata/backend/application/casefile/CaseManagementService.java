@@ -3,6 +3,7 @@ package com.tallerzapata.backend.application.casefile;
 import com.tallerzapata.backend.api.casefile.CaseIncidentUpdateRequest;
 import com.tallerzapata.backend.api.casefile.CaseIncidentResponse;
 import com.tallerzapata.backend.api.casefile.CasePersonAddRequest;
+import com.tallerzapata.backend.api.casefile.CasePersonResponse;
 import com.tallerzapata.backend.api.casefile.CaseVehicleAddRequest;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
@@ -31,6 +32,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -90,6 +92,9 @@ public class CaseManagementService {
             throw new ResourceNotFoundException("No existe el vehiculo " + request.vehicleId());
         }
 
+        String caseRoleCode = normalizeCode(request.caseRoleCode());
+        Integer ownershipPercentage = validateRegistryOwnershipPercentage(caseId, caseRoleCode, request.vehicleId(), request.porcentajeTitularidad());
+
         boolean isMain = Boolean.TRUE.equals(request.isMain());
         if (isMain && casePersonRepository.existsByCaseIdAndPrincipalTrue(caseId)) {
             throw new ConflictException("El caso ya tiene una persona principal");
@@ -98,10 +103,11 @@ public class CaseManagementService {
         CasePersonEntity entity = new CasePersonEntity();
         entity.setCaseId(caseId);
         entity.setPersonId(request.personId());
-        entity.setCaseRoleCode(normalizeCode(request.caseRoleCode()));
+        entity.setCaseRoleCode(caseRoleCode);
         entity.setVehicleId(request.vehicleId());
         entity.setPrincipal(isMain);
         entity.setNotas(blankToNull(request.notes()));
+        entity.setRegistryOwnershipPercentage(ownershipPercentage);
         entity = casePersonRepository.save(entity);
 
         caseAuditService.register(
@@ -111,9 +117,59 @@ public class CaseManagementService {
                 entity.getId(),
                 "agregar_persona_caso",
                 null,
-                caseAuditService.toJson(Map.of("personId", entity.getPersonId(), "caseRoleCode", entity.getCaseRoleCode(), "isMain", isMain)),
+                caseAuditService.toJson(CaseAuditService.auditMap("personId", entity.getPersonId(), "caseRoleCode", entity.getCaseRoleCode(), "isMain", isMain, "porcentajeTitularidad", ownershipPercentage)),
                 caseAuditService.toJson(Map.of("domain", "casefile")),
                 httpRequest
+        );
+    }
+
+    /**
+     * Reclamo de terceros: la titularidad registral se declara por vehiculo con porcentaje
+     * 100 o 50. Con 50 se habilita un segundo titular hasta cubrir el 100% del vehiculo.
+     */
+    private Integer validateRegistryOwnershipPercentage(Long caseId, String caseRoleCode, Long vehicleId, Integer percentage) {
+        if (percentage == null) {
+            return null;
+        }
+        if (!"TITULAR".equals(caseRoleCode)) {
+            throw new ConflictException("El porcentaje de titularidad solo aplica a titulares registrales");
+        }
+        if (percentage != 100 && percentage != 50) {
+            throw new ConflictException("El porcentaje de titularidad solo puede ser 100 o 50");
+        }
+        List<CasePersonEntity> existingTitulares = casePersonRepository.findByCaseIdAndCaseRoleCodeOrderByIdAsc(caseId, caseRoleCode);
+        int registered = existingTitulares.stream()
+                .filter(titular -> vehicleId == null ? titular.getVehicleId() == null : vehicleId.equals(titular.getVehicleId()))
+                .map(CasePersonEntity::getRegistryOwnershipPercentage)
+                .filter(existing -> existing != null)
+                .reduce(0, Integer::sum);
+        if (registered + percentage > 100) {
+            throw new ConflictException("La titularidad registrada del vehiculo supera el 100%");
+        }
+        return percentage;
+    }
+
+    @Transactional(readOnly = true)
+    public List<CasePersonResponse> listCasePersons(Long caseId) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "caso.ver");
+        return casePersonRepository.findByCaseIdOrderByIdAsc(caseId).stream()
+                .map(this::toCasePersonResponse)
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    private CasePersonResponse toCasePersonResponse(CasePersonEntity entity) {
+        String displayName = personRepository.findById(entity.getPersonId()).map(p -> p.getNombreMostrar()).orElse(null);
+        return new CasePersonResponse(
+                entity.getId(),
+                entity.getPersonId(),
+                displayName,
+                entity.getCaseRoleCode(),
+                entity.getVehicleId(),
+                entity.getPrincipal(),
+                entity.getRegistryOwnershipPercentage(),
+                entity.getNotas()
         );
     }
 
@@ -183,6 +239,12 @@ public class CaseManagementService {
         LocalDate prescriptionDate = request.prescriptionDate();
         if (backendOwnedPrescription) {
             prescriptionDate = entity.getIncidentDate().plusYears(1);
+        } else if (insuranceRepairCasePolicy.isThirdPartyClaim(caseType.getCode())) {
+            // Reclamo de terceros: la prescripcion se calcula automaticamente a 3 anios desde el siniestro.
+            // Sin fecha de siniestro no hay prescripcion calculable.
+            prescriptionDate = entity.getIncidentDate() == null
+                    ? null
+                    : entity.getIncidentDate().plusYears(insuranceRepairCasePolicy.prescriptionYears(caseType.getCode()));
         } else if (prescriptionDate == null && entity.getIncidentDate() != null && requiresProcessing(caseEntity)) {
             prescriptionDate = entity.getIncidentDate().plusYears(1);
         }
