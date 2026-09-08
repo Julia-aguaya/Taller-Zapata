@@ -31,6 +31,12 @@ public class CanonicalPartReconciliationService {
         this.cases = cases; this.caseTypes = caseTypes; this.budgets = budgets; this.items = items; this.accessoryWorks = accessoryWorks; this.parts = parts; this.quotes = quotes; this.warnings = warnings; this.audit = audit;
     }
 
+    // Toda accion de la familia REEMPLAZAR (REEMPLAZAR, REEMPLAZAR_Y_PINTAR, REEMPLAZAR_Y_CARGAR)
+    // implica conseguir el repuesto fisico y genera un repuesto canonico en gestion de reparacion.
+    private static boolean isReplacementAction(String actionCode) {
+        return actionCode != null && actionCode.startsWith("REEMPLAZAR");
+    }
+
     @Transactional
     public List<CasePartEntity> reconcile(Long caseId, AuthenticatedUser user, HttpServletRequest request) {
         CaseEntity caseEntity = cases.findByIdForUpdate(caseId).orElseThrow();
@@ -41,7 +47,7 @@ public class CanonicalPartReconciliationService {
         Set<Long> activeItems = new HashSet<>();
         List<CasePartEntity> changed = new ArrayList<>();
         for (BudgetItemEntity item : items.findByBudgetIdOrderByVisualOrderAsc(budget.getId())) {
-            if (!Boolean.TRUE.equals(item.getActive()) || !"REEMPLAZAR".equals(item.getActionCode())) continue;
+            if (!Boolean.TRUE.equals(item.getActive()) || !isReplacementAction(item.getActionCode())) continue;
             activeItems.add(item.getId());
             Optional<CasePartEntity> existing = parts.findByCaseIdAndBudgetItemIdAndSourceTypeAndNonCanonicalFalse(caseId, item.getId(), CasePartSourceType.BUDGET_ITEM);
             if (existing.isEmpty() && parts.existsByCaseIdAndBudgetItemId(caseId, item.getId())) continue;
@@ -55,7 +61,7 @@ public class CanonicalPartReconciliationService {
 
         Set<Long> activeAccessoryWorks = new HashSet<>();
         for (BudgetAccessoryWorkEntity work : accessoryWorks.findByBudgetIdOrderByIdAsc(budget.getId())) {
-            if (!Boolean.TRUE.equals(work.getActive()) || !"REEMPLAZAR".equals(work.getActionCode())) continue;
+            if (!Boolean.TRUE.equals(work.getActive()) || !isReplacementAction(work.getActionCode())) continue;
             activeAccessoryWorks.add(work.getId());
             Optional<CasePartEntity> existing = parts.findByCaseIdAndAccessoryWorkIdAndSourceTypeAndNonCanonicalFalse(caseId, work.getId(), CasePartSourceType.ACCESSORY_WORK);
             if (existing.isEmpty() && parts.findByCaseIdAndAccessoryWorkId(caseId, work.getId()).isPresent()) continue;

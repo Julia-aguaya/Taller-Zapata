@@ -49,6 +49,22 @@ class BudgetIntegrationTest {
     }
 
     @Test
+    void derivesCanonicalPartsForEveryReplacementActionFamily() throws Exception {
+        generateComparison("replacement-family-actions", List.of(
+                comparisonItem(1, "Optica delantera", "REEMPLAZAR", 250),
+                comparisonItem(2, "Paragolpes", "REEMPLAZAR_Y_PINTAR", 300),
+                comparisonItem(3, "Guardabarros", "REEMPLAZAR_Y_CARGAR", 400),
+                comparisonItem(4, "Puerta", "REPARAR_Y_PINTAR", 500)));
+
+        // Toda accion de la familia REEMPLAZAR deriva repuesto canonico a gestion de
+        // reparacion; las acciones de reparacion no generan repuesto fisico.
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM repuestos_caso r JOIN presupuesto_items i ON r.presupuesto_item_id = i.id WHERE r.caso_id = 100 AND r.source_type = 'BUDGET_ITEM' AND r.non_canonical = 0 AND i.accion_codigo LIKE 'REEMPLAZAR%'", Integer.class)).isEqualTo(3);
+        assertThat(jdbcTemplate.queryForList("SELECT i.accion_codigo FROM repuestos_caso r JOIN presupuesto_items i ON r.presupuesto_item_id = i.id WHERE r.caso_id = 100 AND r.source_type = 'BUDGET_ITEM' AND r.non_canonical = 0 ORDER BY i.accion_codigo", String.class))
+                .containsExactly("REEMPLAZAR", "REEMPLAZAR_Y_CARGAR", "REEMPLAZAR_Y_PINTAR");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM repuestos_caso r JOIN presupuesto_items i ON r.presupuesto_item_id = i.id WHERE r.caso_id = 100 AND r.source_type = 'BUDGET_ITEM' AND i.accion_codigo LIKE 'REPARAR%'", Integer.class)).isZero();
+    }
+
+    @Test
     void shouldUpsertBudget() throws Exception {
         mockMvc.perform(put("/api/v1/cases/100/budget")
                         .header("X-User-Id", "3")
