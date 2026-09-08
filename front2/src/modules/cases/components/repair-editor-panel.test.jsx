@@ -4,9 +4,9 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { invalidateCaseProjection } from './repair-editor-panel';
 
-const partsApi = { list: vi.fn(), sync: vi.fn(), resolveWarning: vi.fn(), catalogs: vi.fn() };
+const partsApi = { list: vi.fn(), sync: vi.fn(), resolveWarning: vi.fn(), catalogs: vi.fn(), update: vi.fn() };
 vi.mock('@/modules/cases/api/parts-api', () => ({
-  createCasePart: vi.fn(), deleteCasePart: vi.fn(), updateCasePart: vi.fn(),
+  createCasePart: vi.fn(), deleteCasePart: vi.fn(), updateCasePart: (...args) => partsApi.update(...args),
   listCaseParts: (...args) => partsApi.list(...args), syncPartsFromBudget: (...args) => partsApi.sync(...args), resolvePartReconciliationWarning: (...args) => partsApi.resolveWarning(...args), getPartsCatalogs: (...args) => partsApi.catalogs(...args),
 }));
 vi.mock('@/modules/cases/api/operations-api', () => ({ createRepairAppointment: vi.fn(), createVehicleIntake: vi.fn(), createVehicleOutcome: vi.fn(), getOperationCatalogs: vi.fn().mockResolvedValue({}), listRepairAppointments: vi.fn().mockResolvedValue([]), listVehicleIntakes: vi.fn().mockResolvedValue([]), listVehicleOutcomes: vi.fn().mockResolvedValue([]), updateRepairAppointment: vi.fn() }));
@@ -100,18 +100,56 @@ describe('invalidateCaseProjection', () => {
     expect(screen.getByRole('button', { name: /Casa\s*Norte/ })).toBeInTheDocument();
   });
 
-  it.each(['TODO_RIESGO', 'GRANIZO'])('shows the authorization selector for insured repair parts: %s', async (caseTypeCode) => {
-    partsApi.list.mockResolvedValue([{ id: 7, description: 'Paragolpes', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' }]);
+  it.each(['TODO_RIESGO', 'GRANIZO'])('shows authorization as read-only text for insured repair parts until editing: %s', async (caseTypeCode) => {
+    partsApi.list.mockResolvedValue([{ id: 7, description: 'Paragolpes', authorizationCode: 'AUTORIZADO', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' }]);
     partsApi.catalogs.mockResolvedValue({ authorizationCodes: [{ code: 'AUTORIZADO', name: 'Autorizado' }] });
     const { RepairEditorPanel } = await import('./repair-editor-panel');
 
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode, visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
 
-    expect(await screen.findByLabelText('Autorización Paragolpes')).toBeInTheDocument();
+    expect(await screen.findByText('Autorizado')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Autorización Paragolpes')).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Inventario' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Autorizado' })).toBeNull();
     expect(screen.queryByTitle('Autorizar repuesto')).toBeNull();
     expect(screen.queryByTitle('Rechazar repuesto')).toBeNull();
+  });
+
+  it('keeps authorization changes in the draft and saves them in the consolidated part update', async () => {
+    const user = userEvent.setup();
+    partsApi.update.mockClear();
+    partsApi.list.mockResolvedValue([{ id: 7, description: 'Paragolpes', authorizationCode: null, statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' }]);
+    partsApi.catalogs.mockResolvedValue({ authorizationCodes: [{ code: 'AUTORIZADO', name: 'Autorizado' }] });
+    partsApi.update.mockResolvedValue({});
+    const { RepairEditorPanel } = await import('./repair-editor-panel');
+
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'TODO_RIESGO', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
+
+    expect(await screen.findByText('Paragolpes')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Autorización Paragolpes')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Editar' }));
+    await user.selectOptions(screen.getByLabelText('Autorización Paragolpes'), 'AUTORIZADO');
+    expect(partsApi.update).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() => expect(partsApi.update).toHaveBeenCalledWith('42', 7, expect.objectContaining({ authorizationCode: 'AUTORIZADO' })));
+  });
+
+  it('discards draft authorization changes when editing is cancelled', async () => {
+    const user = userEvent.setup();
+    partsApi.update.mockClear();
+    partsApi.list.mockResolvedValue([{ id: 7, description: 'Paragolpes', authorizationCode: null, statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' }]);
+    partsApi.catalogs.mockResolvedValue({ authorizationCodes: [{ code: 'AUTORIZADO', name: 'Autorizado' }] });
+    const { RepairEditorPanel } = await import('./repair-editor-panel');
+
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'TODO_RIESGO', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
+
+    await user.click(await screen.findByRole('button', { name: 'Editar' }));
+    await user.selectOptions(screen.getByLabelText('Autorización Paragolpes'), 'AUTORIZADO');
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    expect(screen.queryByLabelText('Autorización Paragolpes')).toBeNull();
+    expect(partsApi.update).not.toHaveBeenCalled();
   });
 
   it.each(['PARTICULAR', 'TODO_RIESGO', 'GRANIZO'])('runs the canonical entry sync for supported repair cases: %s', async (caseTypeCode) => {

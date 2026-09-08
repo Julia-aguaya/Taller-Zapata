@@ -247,32 +247,6 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     onError: (error) => toast.error(error.message || 'No pude resolver la advertencia.'),
   });
 
-  const updatePartMutation = useMutation({
-    mutationFn: ({ partId, payload }) => updateCasePart(caseId, partId, payload),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'parts'] }); await refreshWorkspace('Repuesto actualizado.'); },
-    onError: (error) => toast.error(error.message || 'No pude actualizar el repuesto.'),
-  });
-
-  const updatePartAuthorization = (part, authorizationCode) => updatePartMutation.mutate({
-    partId: part.id,
-    payload: {
-      budgetItemId: part.budgetItemId || null,
-      description: part.description,
-      partCode: part.partCode || null,
-      finalSupplier: part.finalSupplier || null,
-      providerId: part.providerId || null,
-      authorizationCode: authorizationCode || null,
-      statusCode: part.statusCode || null,
-      purchasedByCode: part.purchasedByCode || null,
-      paymentStatusCode: part.paymentStatusCode || null,
-      budgetedPrice: Number(part.budgetedPrice) || 0,
-      finalPrice: Number(part.finalPrice) || 0,
-      receivedDate: part.receivedDate || null,
-      used: Boolean(part.used),
-      returned: Boolean(part.returned),
-    },
-  });
-
   const [deletePartConfirm, setDeletePartConfirm] = useState(null);
   const deletePartMutation = useMutation({
     mutationFn: (partId) => deleteCasePart(caseId, partId),
@@ -336,6 +310,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
         if (draft.statusCode !== original.statusCode) changes.statusCode = draft.statusCode;
         if (draft.purchasedByCode !== original.purchasedByCode) changes.purchasedByCode = draft.purchasedByCode;
         if (draft.paymentStatusCode !== original.paymentStatusCode) changes.paymentStatusCode = draft.paymentStatusCode || null;
+        if ((draft.authorizationCode || null) !== (original.authorizationCode || null)) changes.authorizationCode = draft.authorizationCode || null;
         if (Object.keys(changes).length > 0) {
           promises.push(updateCasePart(caseId, draft.id, {
             budgetItemId: original.budgetItemId || null,
@@ -580,16 +555,19 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                     </td>
                     {isInsuranceRepair ? (
                       <td className="px-3 py-3">
-                        <select
-                          aria-label={`Autorización ${part.description || part.id}`}
-                          className="h-9 w-full min-w-[130px] rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-                          value={part.authorizationCode || ''}
-                          disabled={editMode || updatePartMutation.isPending}
-                          onChange={(event) => updatePartAuthorization(part, event.target.value)}
-                        >
-                          <option value="">Pendiente</option>
-                          {authorizationCodeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                        </select>
+                        {editMode ? (
+                          <select
+                            aria-label={`Autorización ${part.description || part.id}`}
+                            className="h-9 w-full min-w-[130px] rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                            value={part.authorizationCode || ''}
+                            onChange={(event) => updateDraftField(part._tempId || part.id, 'authorizationCode', event.target.value)}
+                          >
+                            <option value="">Pendiente</option>
+                            {authorizationCodeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                          </select>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/50 px-2.5 py-0.5 text-xs font-medium">{authorizationCodeOptions.find((option) => option.value === part.authorizationCode)?.label || part.authorizationCode || 'Pendiente'}</span>
+                        )}
                       </td>
                     ) : null}
                     <td className="px-3 py-3">
