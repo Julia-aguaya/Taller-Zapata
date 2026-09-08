@@ -54,7 +54,8 @@ export const CleasInsuranceDataSection = ({ caseId, onHydrated, initialCleasNumb
       <Field label="N.º de CLEAS"><Input value={draft.cleasNumber || initialCleasNumber} onChange={change('cleasNumber')} /></Field>
       <Field label="Tramitador/a"><select value={draft.processorPersonId} onChange={change('processorPersonId')} disabled={!draft.insuranceCompanyId} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"><option value="">Sin informar</option>{contactsFor('TRAMITADOR').map((contact) => <option key={contact.id} value={contact.personId}>{contact.personName || `#${contact.personId}`}</option>)}</select></Field>
       <Field label="Inspector/a"><select value={draft.inspectorPersonId} onChange={change('inspectorPersonId')} disabled={!draft.insuranceCompanyId} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"><option value="">Sin informar</option>{contactsFor('INSPECTOR').map((contact) => <option key={contact.id} value={contact.personId}>{contact.personName || `#${contact.personId}`}</option>)}</select></Field>
-      <Field label="Detalle de cobertura" className="md:col-span-2"><Input value={draft.coverageDetail} onChange={change('coverageDetail')} /></Field>
+      {/* El detalle de cobertura es propio de Todo Riesgo: no se edita en CLEAS. El payload
+          conserva el valor existente para no borrar datos si el caso lo tuvo. */}
     </div>
   </Card>;
 };
