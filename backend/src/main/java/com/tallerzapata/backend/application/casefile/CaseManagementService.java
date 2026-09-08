@@ -18,6 +18,8 @@ import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeEnti
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseVehicleEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseVehicleRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseLegalEntity;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseLegalRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingEntity;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingRepository;
 import com.tallerzapata.backend.infrastructure.persistence.person.PersonRepository;
@@ -52,6 +54,7 @@ public class CaseManagementService {
     private final CaseAuditService caseAuditService;
     private final CaseTypeRepository caseTypeRepository;
     private final InsuranceProcessingRepository insuranceProcessingRepository;
+    private final CaseLegalRepository caseLegalRepository;
 
     public CaseManagementService(
             CaseRepository caseRepository,
@@ -64,7 +67,8 @@ public class CaseManagementService {
             CurrentUserService currentUserService,
             CaseAuditService caseAuditService,
             CaseTypeRepository caseTypeRepository,
-            InsuranceProcessingRepository insuranceProcessingRepository
+            InsuranceProcessingRepository insuranceProcessingRepository,
+            CaseLegalRepository caseLegalRepository
     ) {
         this.caseRepository = caseRepository;
         this.casePersonRepository = casePersonRepository;
@@ -77,6 +81,7 @@ public class CaseManagementService {
         this.caseAuditService = caseAuditService;
         this.caseTypeRepository = caseTypeRepository;
         this.insuranceProcessingRepository = insuranceProcessingRepository;
+        this.caseLegalRepository = caseLegalRepository;
     }
 
     @Transactional
@@ -275,12 +280,20 @@ public class CaseManagementService {
             return new CaseIncidentResponse(null, null, null, null, null, null, null);
         }
 
-        // Calcular días tramitando desde fecha de presentación (para trámites con seguro)
+        // Calcular dias tramitando: el reclamo de terceros por abogado corre desde el ingreso del
+        // expediente (legal); el resto de los tramites con seguro, desde la fecha de presentacion.
         Integer daysInProcess = entity.getDaysInProcess();
         if (requiresProcessing(caseEntity)) {
-            InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
-            if (processing != null && processing.getPresentedAt() != null) {
-                daysInProcess = (int) ChronoUnit.DAYS.between(processing.getPresentedAt(), LocalDate.now());
+            CaseTypeEntity caseType = caseTypeRepository.findById(caseEntity.getCaseTypeId()).orElse(null);
+            CaseLegalEntity legal = caseLegalRepository.findByCaseId(caseId).orElse(null);
+            if (caseType != null && insuranceRepairCasePolicy.isThirdPartyLawyerClaim(caseType.getCode())
+                    && legal != null && legal.getEntryDate() != null) {
+                daysInProcess = (int) ChronoUnit.DAYS.between(legal.getEntryDate(), LocalDate.now());
+            } else {
+                InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
+                if (processing != null && processing.getPresentedAt() != null) {
+                    daysInProcess = (int) ChronoUnit.DAYS.between(processing.getPresentedAt(), LocalDate.now());
+                }
             }
         }
 

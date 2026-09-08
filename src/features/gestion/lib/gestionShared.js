@@ -187,6 +187,55 @@ export function createLawyerInjured(overrides = {}) {
   };
 }
 
+// ── Lesionados: mapeo UI <-> catalogo backend (tipos_lesionado_legal) ──
+
+const LAWYER_INJURED_ROLE_CODE_BY_LABEL = {
+  'titular registral': 'TITULAR_REGISTRAL',
+  'cliente': 'CLIENTE',
+  'otro': 'OTRO',
+};
+
+const LAWYER_INJURED_ROLE_LABEL_BY_CODE = {
+  TITULAR_REGISTRAL: 'titular registral',
+  CLIENTE: 'cliente',
+  OTRO: 'otro',
+};
+
+/** Label de UI (o codigo legado) -> codigo del catalogo de lesionados. */
+export function lawyerInjuredRoleCode(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized) return null;
+  const byLabel = LAWYER_INJURED_ROLE_CODE_BY_LABEL[normalized];
+  if (byLabel) return byLabel;
+  const asCode = normalized.toUpperCase();
+  return LAWYER_INJURED_ROLE_LABEL_BY_CODE[asCode] ? asCode : null;
+}
+
+/** Codigo de catalogo -> label de UI de la solapa abogado. */
+export function lawyerInjuredRoleLabel(code) {
+  const normalized = String(code || '').trim().toUpperCase();
+  return LAWYER_INJURED_ROLE_LABEL_BY_CODE[normalized] || null;
+}
+
+export function hasLawyerInjuredData(injured) {
+  return Boolean(injured && (String(injured.firstName || '').trim() || String(injured.lastName || '').trim() || String(injured.document || '').trim()));
+}
+
+export function buildLawyerInjuredFullName(injured) {
+  return [injured?.lastName, injured?.firstName].map((part) => String(part || '').trim()).filter(Boolean).join(' ') || null;
+}
+
+/** Firma de un lesionado para detectar los que todavia no se sincronizaron al backend. */
+export function buildLegalLesionadoSignature(entry) {
+  const role = lawyerInjuredRoleCode(entry?.lesionadoEsCode || entry?.injuredRole) || '';
+  const fullName = String(entry?.fullName || buildLawyerInjuredFullName(entry) || '').trim().toLowerCase();
+  const document = String(entry?.documentNumber || entry?.document || '').trim().toLowerCase();
+  const proves = entry?.provesIncome == null
+    ? (entry?.accreditsIncome === 'NO' ? '0' : entry?.accreditsIncome === 'SI' ? '1' : '')
+    : (entry.provesIncome ? '1' : '0');
+  return `${role}|${fullName}|${document}|${proves}`;
+}
+
 // ══════════════════════════════════════════════════════════
 // BUDGET / REPAIR HELPERS
 // ══════════════════════════════════════════════════════════

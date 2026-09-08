@@ -572,6 +572,47 @@ public class InsuranceService {
         CaseEntity caseEntity = requireCase(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
         CaseLegalEntity caseLegal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
+        LegalLesionadoEntity entity = new LegalLesionadoEntity();
+        entity.setCaseLegalId(caseLegal.getId());
+        applyLesionadoRequest(entity, request);
+        entity = legalLesionadoRepository.save(entity);
+        caseAuditService.register(currentUser.id(), caseId, "caso_legal_lesionados", entity.getId(), "crear_legal_lesionado", null,
+                caseAuditService.toJson(lesionadoAuditSnapshot(entity)),
+                caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
+        return toLegalLesionadoResponse(entity);
+    }
+
+    @Transactional
+    public LegalLesionadoResponse updateCaseLegalLesionado(Long caseId, Long lesionadoId, LegalLesionadoCreateRequest request, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
+        CaseLegalEntity caseLegal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
+        LegalLesionadoEntity entity = requireLesionado(caseLegal.getId(), lesionadoId);
+        Map<String, Object> before = lesionadoAuditSnapshot(entity);
+        applyLesionadoRequest(entity, request);
+        entity = legalLesionadoRepository.save(entity);
+        caseAuditService.register(currentUser.id(), caseId, "caso_legal_lesionados", entity.getId(), "actualizar_legal_lesionado",
+                caseAuditService.toJson(before), caseAuditService.toJson(lesionadoAuditSnapshot(entity)),
+                caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
+        return toLegalLesionadoResponse(entity);
+    }
+
+    @Transactional
+    public void deleteCaseLegalLesionado(Long caseId, Long lesionadoId, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
+        CaseLegalEntity caseLegal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
+        LegalLesionadoEntity entity = requireLesionado(caseLegal.getId(), lesionadoId);
+        caseAuditService.register(currentUser.id(), caseId, "caso_legal_lesionados", entity.getId(), "eliminar_legal_lesionado",
+                caseAuditService.toJson(lesionadoAuditSnapshot(entity)), null,
+                caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
+        legalLesionadoRepository.delete(entity);
+    }
+
+    /** Validaciones y aplicacion compartidas entre alta y edicion de lesionados. */
+    private void applyLesionadoRequest(LegalLesionadoEntity entity, LegalLesionadoCreateRequest request) {
         if (request.personId() == null && isBlank(request.fullName())) {
             throw new ConflictException("Indique los datos del lesionado o seleccione cliente/titular registral");
         }
@@ -582,18 +623,29 @@ public class InsuranceService {
         if (request.personId() != null && !personRepository.existsById(request.personId())) {
             throw new ResourceNotFoundException("No existe la persona " + request.personId());
         }
-        LegalLesionadoEntity entity = new LegalLesionadoEntity();
-        entity.setCaseLegalId(caseLegal.getId());
         entity.setLesionadoEsCode(lesionadoEsCode);
         entity.setPersonId(request.personId());
         entity.setFullName(blankToNull(request.fullName()));
         entity.setDocumentNumber(blankToNull(request.documentNumber()));
         entity.setProvesIncome(request.provesIncome());
-        entity = legalLesionadoRepository.save(entity);
-        caseAuditService.register(currentUser.id(), caseId, "caso_legal_lesionados", entity.getId(), "crear_legal_lesionado", null,
-                caseAuditService.toJson(CaseAuditService.auditMap("lesionadoEsCode", entity.getLesionadoEsCode(), "personId", entity.getPersonId(), "provesIncome", entity.getProvesIncome())),
-                caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
-        return toLegalLesionadoResponse(entity);
+    }
+
+    private LegalLesionadoEntity requireLesionado(Long caseLegalId, Long lesionadoId) {
+        LegalLesionadoEntity entity = legalLesionadoRepository.findById(lesionadoId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el lesionado " + lesionadoId));
+        if (!entity.getCaseLegalId().equals(caseLegalId)) {
+            throw new ResourceNotFoundException("El lesionado " + lesionadoId + " no pertenece a este expediente");
+        }
+        return entity;
+    }
+
+    private Map<String, Object> lesionadoAuditSnapshot(LegalLesionadoEntity entity) {
+        return CaseAuditService.auditMap(
+                "lesionadoEsCode", entity.getLesionadoEsCode(),
+                "personId", entity.getPersonId(),
+                "fullName", entity.getFullName(),
+                "documentNumber", entity.getDocumentNumber(),
+                "provesIncome", entity.getProvesIncome());
     }
 
     private LegalLesionadoResponse toLegalLesionadoResponse(LegalLesionadoEntity e) {

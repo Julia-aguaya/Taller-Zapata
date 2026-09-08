@@ -184,6 +184,18 @@ public class InsuranceController {
     @PostMapping("/cases/{caseId}/legal/lesionados")
     public LegalLesionadoResponse createCaseLegalLesionado(@PathVariable Long caseId, @RequestBody LegalLesionadoCreateRequest request, HttpServletRequest httpRequest) { return insuranceService.createCaseLegalLesionado(caseId, request, httpRequest); }
 
+    @Operation(summary = "Actualizar lesionado", description = "Modifica los datos de un lesionado del expediente legal")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PreAuthorize("hasAuthority('seguro.crear')")
+    @PutMapping("/cases/{caseId}/legal/lesionados/{lesionadoId}")
+    public LegalLesionadoResponse updateCaseLegalLesionado(@PathVariable Long caseId, @PathVariable Long lesionadoId, @RequestBody LegalLesionadoCreateRequest request, HttpServletRequest httpRequest) { return insuranceService.updateCaseLegalLesionado(caseId, lesionadoId, request, httpRequest); }
+
+    @Operation(summary = "Eliminar lesionado", description = "Quita un lesionado del expediente legal")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PreAuthorize("hasAuthority('seguro.crear')")
+    @DeleteMapping("/cases/{caseId}/legal/lesionados/{lesionadoId}")
+    public void deleteCaseLegalLesionado(@PathVariable Long caseId, @PathVariable Long lesionadoId, HttpServletRequest httpRequest) { insuranceService.deleteCaseLegalLesionado(caseId, lesionadoId, httpRequest); }
+
     @Operation(summary = "Generar PDF de gestion del tramite", description = "Genera un PDF con todos los datos del tramite del caso")
     @ApiResponse(responseCode = "200", description = "PDF generado")
     @PreAuthorize("hasAuthority('seguro.ver')")

@@ -2,6 +2,7 @@ import { normalizeLookupText } from './caseNormalizers';
 import { formatDocumentAudience } from '../../panel/lib/panelPreviewHelpers';
 import { createTodoRiskDefaults, createLawyerDefaults, createThirdPartyDefaults } from './caseFactories';
 import { thirdPartyDocumentationStatusLabel, thirdPartyPartsProviderLabel } from './thirdPartyClaimCatalogs';
+import { lawyerInjuredRoleLabel } from '../../gestion/lib/gestionShared';
 import {
   createBudgetLine,
   createRepairPart,
@@ -138,6 +139,8 @@ export function patchCaseWithBackendDetail(localCase, detailState) {
   const legal = detailState?.legalState?.data || {};
   const legalNews = Array.isArray(detailState?.legalNewsState?.items) ? detailState.legalNewsState.items : [];
   const legalExpenses = Array.isArray(detailState?.legalExpensesState?.items) ? detailState.legalExpensesState.items : [];
+  const legalLesionados = Array.isArray(detailState?.legalLesionadosState?.items) ? detailState.legalLesionadosState.items : [];
+  const casePersons = Array.isArray(detailState?.casePersonsState?.items) ? detailState.casePersonsState.items : [];
   const financeSummary = detailState?.financeSummaryState?.data || {};
   const receipts = Array.isArray(detailState?.receiptsState?.items) ? detailState.receiptsState.items : [];
   const financialMovements = Array.isArray(detailState?.financialMovementsState?.items) ? detailState.financialMovementsState.items : [];
@@ -295,6 +298,23 @@ export function patchCaseWithBackendDetail(localCase, detailState) {
     localCase.thirdParty.claim.partsProviderMode = pickFirstNonEmpty(thirdPartyPartsProviderLabel(thirdParty.partsProvisionModeCode), localCase.thirdParty.claim.partsProviderMode, 'Provee Cía.');
   }
 
+  // Titularidad registral persistida: los titulares del caso definen el registro del cliente.
+  const titulares = casePersons.filter((entry) => String(entry?.caseRoleCode || '').trim().toUpperCase() === 'TITULAR');
+  if (titulares.length) {
+    localCase.thirdParty = localCase.thirdParty || createThirdPartyDefaults({ claim: { documents: [] } });
+    const clientIsOwner = titulares.some((entry) => String(entry.personId) === String(detail.principalCustomerPersonId));
+    localCase.thirdParty.clientRegistry.isOwner = clientIsOwner ? 'SI' : 'NO';
+    localCase.thirdParty.clientRegistry.ownershipPercentage = titulares.some((entry) => Number(entry.registryOwnershipPercentage) === 50) ? '50%' : '100%';
+    localCase.thirdParty.clientRegistry.owners = titulares.map((entry) => ({
+      id: entry.id ? `backend-${entry.id}` : null,
+      backendPersonId: entry.personId ?? null,
+      firstName: entry.displayName || '',
+      lastName: '',
+      document: '',
+      synced: true,
+    }));
+  }
+
   if (legal && Object.keys(legal).length > 0) {
     localCase.lawyer = localCase.lawyer || createLawyerDefaults({ agenda: [], statusUpdates: [], closure: { expenses: [], items: [] } });
     localCase.lawyer.tramita = pickFirstNonEmpty(localCase.lawyer.tramita, legal.processorCode, 'Con Poder');
@@ -312,6 +332,24 @@ export function patchCaseWithBackendDetail(localCase, detailState) {
     localCase.lawyer.closure.closeBy = pickFirstNonEmpty(localCase.lawyer.closure.closeBy, legal.closedByCode, 'pendiente');
     localCase.lawyer.closure.closeDate = pickFirstNonEmpty(localCase.lawyer.closure.closeDate, legal.legalCloseDate).slice(0, 10);
     localCase.lawyer.closure.totalAmount = pickFirstNonEmpty(localCase.lawyer.closure.totalAmount, legal.totalProceedsAmount);
+  }
+
+  // Lesionados persistidos del expediente: el backend manda, se reconstruyen como filas de la solapa abogado.
+  if (legalLesionados.length) {
+    localCase.lawyer = localCase.lawyer || createLawyerDefaults({ agenda: [], statusUpdates: [], closure: { expenses: [], items: [] } });
+    localCase.lawyer.injuredParties = legalLesionados.map((entry) => {
+      const fullName = String(entry.fullName || '').trim();
+      const [lastName = '', ...restName] = fullName.split(' ');
+      return {
+        id: entry.id ? `backend-${entry.id}` : undefined,
+        backendId: entry.id || null,
+        injuredRole: lawyerInjuredRoleLabel(entry.lesionadoEsCode) || 'otro',
+        lastName,
+        firstName: restName.join(' '),
+        document: entry.documentNumber || '',
+        accreditsIncome: entry.provesIncome == null ? 'SI' : (entry.provesIncome ? 'SI' : 'NO'),
+      };
+    });
   }
 
   if (legalNews.length) {

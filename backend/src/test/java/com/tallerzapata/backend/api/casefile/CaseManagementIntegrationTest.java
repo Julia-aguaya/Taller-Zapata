@@ -275,6 +275,32 @@ class CaseManagementIntegrationTest {
     }
 
     @Test
+    void shouldComputeLawyerDaysInProcessFromExpedienteEntryDate() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = ? WHERE id = ?", 6L, 100L);
+        jdbcTemplate.update("INSERT INTO caso_siniestro (id, caso_id, fecha_siniestro, fecha_prescripcion) VALUES (?, ?, ?, ?)", 1L, 100L, LocalDate.of(2026, 4, 20), LocalDate.of(2029, 4, 20));
+        jdbcTemplate.update("INSERT INTO caso_legal (caso_id, fecha_ingreso, instancia_codigo) VALUES (?, ?, ?)", 100L, LocalDate.now().minusDays(5), "ADMINISTRATIVA");
+        // La presentacion ante compania no corre los dias del expediente del abogado
+        jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_presentacion) VALUES (?, ?)", 100L, LocalDate.now().minusDays(40));
+
+        mockMvc.perform(get("/api/v1/cases/100/incident")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.daysInProcess").value(5));
+    }
+
+    @Test
+    void shouldComputeThirdPartyWorkshopDaysInProcessFromPresentationDate() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = ? WHERE id = ?", 5L, 100L);
+        jdbcTemplate.update("INSERT INTO caso_siniestro (id, caso_id, fecha_siniestro) VALUES (?, ?, ?)", 1L, 100L, LocalDate.of(2026, 4, 20));
+        jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_presentacion) VALUES (?, ?)", 100L, LocalDate.now().minusDays(3));
+
+        mockMvc.perform(get("/api/v1/cases/100/incident")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.daysInProcess").value(3));
+    }
+
+    @Test
     void shouldRejectDuplicateMainPerson() throws Exception {
         mockMvc.perform(post("/api/v1/cases/100/persons")
                         .header("X-User-Id", "3")

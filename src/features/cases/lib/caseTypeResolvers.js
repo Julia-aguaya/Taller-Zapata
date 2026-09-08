@@ -5,6 +5,9 @@ const FRONTEND_CASE_TYPES = {
   PARTICULAR: 'Particular',
   TODO_RIESGO: 'Todo Riesgo',
   CLEAS: 'CLEAS / Terceros / Franquicia',
+  // El catalogo del backend llama 'Reclamo de Terceros' al tramite del taller:
+  // sin esta clave la creacion y el reconocimiento de casos taller no resuelven.
+  RECLAMO_TERCEROS: 'Reclamo de Tercero - Taller',
   RECLAMO_TERCEROS_TALLER: 'Reclamo de Tercero - Taller',
   RECLAMO_TERCEROS_ABOGADO: 'Reclamo de Tercero - Abogado',
   RECUPERO_FRANQUICIA: FRANCHISE_RECOVERY_TRAMITE,

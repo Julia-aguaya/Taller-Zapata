@@ -131,6 +131,10 @@ import {
   createAuthenticatedCaseFinancialMovement,
   createAuthenticatedCaseLegalExpense,
   createAuthenticatedCaseLegalNews,
+  createAuthenticatedCaseLegalLesionado,
+  updateAuthenticatedCaseLegalLesionado,
+  deleteAuthenticatedCaseLegalLesionado,
+  createAuthenticatedCasePerson,
   createAuthenticatedCasePart,
   createAuthenticatedCaseReceipt,
   createAuthenticatedPartSupplierQuote,
@@ -165,6 +169,8 @@ import {
   readAuthenticatedCaseLegal,
   readAuthenticatedCaseLegalNews,
   readAuthenticatedCaseLegalExpenses,
+  readAuthenticatedCaseLegalLesionados,
+  readAuthenticatedCasePersons,
   readAuthenticatedCaseFranchiseRecovery,
   readAuthenticatedCaseVehicleIntakes,
   readAuthenticatedCaseVehicleOutcomes,
@@ -317,7 +323,7 @@ import { patchCaseWithBackendDetail, ensureCaseStructure, pickFirstNonEmpty } fr
 import { hydrateBackendCaseDetail } from './features/cases/lib/backendCaseHydration';
 import { applyBackendVisibleStatesToCase } from './features/cases/lib/backendVisibleStates';
 import { money, numberValue, maxDate } from './features/gestion/lib/gestionUtils';
-import { lineIsComplete, lineNeedsReplacementDecision, buildBudgetParts, buildThirdPartyBudgetParts, triggerBlobDownload, triggerDownload, escapeHtml } from './features/gestion/lib/gestionShared';
+import { lineIsComplete, lineNeedsReplacementDecision, buildBudgetParts, buildThirdPartyBudgetParts, triggerBlobDownload, triggerDownload, escapeHtml, lawyerInjuredRoleCode, hasLawyerInjuredData, buildLawyerInjuredFullName, buildLegalLesionadoSignature } from './features/gestion/lib/gestionShared';
 import { escapeCsvValue, buildPanelExportRows, buildLegalNewsSignature, buildLegalExpenseSignature, buildFinancialMovementSignature, buildPartSignature, buildReceiptSignature, buildBudgetLineSignature } from './lib/utils/exportHelpers';
 import { addYears } from './features/cases/lib/caseComputedHelpers';
 import { getComputedCase } from './features/cases/computed/getComputedCase';
@@ -2920,6 +2926,16 @@ function App() {
         detail: 'Estamos revisando los gastos legales de esta carpeta.',
         endpoint: legalExpensesEndpoint,
       },
+      legalLesionadosState: {
+        status: 'loading',
+        items: [],
+        detail: 'Estamos revisando los lesionados del expediente.',
+      },
+      casePersonsState: {
+        status: 'loading',
+        items: [],
+        detail: 'Estamos revisando las personas de esta carpeta.',
+      },
       franchiseRecoveryState: {
         status: 'loading',
         data: null,
@@ -3004,7 +3020,7 @@ function App() {
     });
 
     try {
-      const [detailResult, historyResult, actionsResult, auditEventsResult, relationsResult, insuranceResult, insuranceProcessingResult, insuranceProcessingDocumentsResult, cleasResult, thirdPartyResult, legalResult, legalNewsResult, legalExpensesResult, franchiseRecoveryResult, franchiseResult, budgetResult, partsResult, appointmentsResult, documentsResult, financeSummaryResult, particularFinanceSummaryResult, financialMovementsResult, receiptsResult, vehicleIntakesResult, vehicleOutcomesResult, personResult, vehicleResult] = await Promise.allSettled([
+      const [detailResult, historyResult, actionsResult, auditEventsResult, relationsResult, insuranceResult, insuranceProcessingResult, insuranceProcessingDocumentsResult, cleasResult, thirdPartyResult, legalResult, legalNewsResult, legalExpensesResult, franchiseRecoveryResult, franchiseResult, budgetResult, partsResult, appointmentsResult, documentsResult, financeSummaryResult, particularFinanceSummaryResult, financialMovementsResult, receiptsResult, vehicleIntakesResult, vehicleOutcomesResult, personResult, vehicleResult, lesionadosResult, casePersonsResult] = await Promise.allSettled([
         readAuthenticatedCaseDetail(backendSession.accessToken, item.id),
         readAuthenticatedCaseWorkflowHistory(backendSession.accessToken, item.id),
         readAuthenticatedCaseWorkflowActions(backendSession.accessToken, item.id),
@@ -3036,6 +3052,8 @@ function App() {
         summaryItem?.principalVehicleId
           ? readAuthenticatedVehicle(backendSession.accessToken, summaryItem.principalVehicleId)
           : Promise.resolve(null),
+        readAuthenticatedCaseLegalLesionados(backendSession.accessToken, item.id),
+        readAuthenticatedCasePersons(backendSession.accessToken, item.id),
       ]);
 
       if (detailResult.status === 'rejected') {
@@ -3087,6 +3105,20 @@ function App() {
       const legalExpensesState = legalExpensesResult.status === 'fulfilled'
         ? buildCaseLegalExpensesState(legalExpensesResult.value.data)
         : buildRejectedCaseLegalExpensesState(legalExpensesResult.reason);
+      const legalLesionadosState = lesionadosResult.status === 'fulfilled'
+        ? { status: 'success', items: Array.isArray(lesionadosResult.value.data) ? lesionadosResult.value.data : [], detail: 'Lesionados del expediente actualizados.' }
+        : {
+            status: lesionadosResult.reason?.httpStatus === 404 ? 'empty' : 'error',
+            items: [],
+            detail: lesionadosResult.reason?.httpStatus === 404 ? 'El expediente todavia no registra lesionados.' : getFriendlyErrorMessage(lesionadosResult.reason),
+          };
+      const casePersonsState = casePersonsResult.status === 'fulfilled'
+        ? { status: 'success', items: Array.isArray(casePersonsResult.value.data) ? casePersonsResult.value.data : [], detail: 'Personas del caso actualizadas.' }
+        : {
+            status: casePersonsResult.reason?.httpStatus === 404 ? 'empty' : 'error',
+            items: [],
+            detail: casePersonsResult.reason?.httpStatus === 404 ? 'Sin personas vinculadas todavia.' : getFriendlyErrorMessage(casePersonsResult.reason),
+          };
       const franchiseRecoveryState = franchiseRecoveryResult.status === 'fulfilled'
         ? buildCaseFranchiseRecoveryState(franchiseRecoveryResult.value.data)
         : buildRejectedCaseFranchiseRecoveryState(franchiseRecoveryResult.reason);
@@ -3254,6 +3286,8 @@ function App() {
         legalState,
         legalNewsState,
         legalExpensesState,
+        legalLesionadosState,
+        casePersonsState,
         franchiseRecoveryState,
         budgetState,
         partsState,
@@ -3358,6 +3392,16 @@ function App() {
           status: 'error',
           items: [],
           total: 0,
+          detail: '',
+        },
+        legalLesionadosState: {
+          status: 'error',
+          items: [],
+          detail: '',
+        },
+        casePersonsState: {
+          status: 'error',
+          items: [],
           detail: '',
         },
         franchiseRecoveryState: {
@@ -4133,7 +4177,11 @@ function App() {
               location: selectedCase.todoRisk?.incident?.location || null,
               dynamics: selectedCase.todoRisk?.incident?.dynamics || null,
               observations: selectedCase.todoRisk?.incident?.observations || null,
-              prescriptionDate: toDate(addYears(selectedCase.todoRisk?.incident?.date || '', 3)),
+              // Solo terceros declara prescripcion desde la UI (3 anios); el backend calcula/valida
+              // el resto (granizo rechaza valores ajenos y todo riesgo cae al default de 1 anio).
+              prescriptionDate: isThirdPartyClaimCase(selectedCase)
+                ? toDate(addYears(selectedCase.todoRisk?.incident?.date || '', 3))
+                : null,
             }, { changeNote }));
         }
 
@@ -4354,6 +4402,139 @@ function App() {
                 financialMovementId: null,
               }, { changeNote }));
             }
+          }
+
+          // Lesionados: reconciliacion completa con el expediente.
+          // Altas por firma, ediciones por backendId y bajas de lo que ya no esta en la solapa.
+          const injuredParties = (selectedCase.lawyer?.injuredParties || []).filter(hasLawyerInjuredData);
+          const backendLesionados = authenticatedCaseDetailState.legalLesionadosState?.items || [];
+          if (injuredParties.length > 0 || backendLesionados.length > 0) {
+            const buildLesionadoPayload = (injured) => ({
+              lesionadoEsCode: lawyerInjuredRoleCode(injured.injuredRole),
+              personId: null,
+              fullName: buildLawyerInjuredFullName(injured),
+              documentNumber: String(injured.document || '').trim() || null,
+              provesIncome: injured.accreditsIncome === 'NO' ? false : injured.accreditsIncome === 'SI' ? true : null,
+            });
+
+            const localByBackendId = new Map();
+            const newInjured = [];
+            for (const injured of injuredParties) {
+              if (injured.backendId) localByBackendId.set(String(injured.backendId), injured);
+              else newInjured.push(injured);
+            }
+            const backendBySignature = new Map(backendLesionados.map((entry) => [buildLegalLesionadoSignature(entry), entry]));
+
+            // Altas: nuevos que todavia no existen en el expediente (por firma)
+            for (const injured of newInjured) {
+              const payload = buildLesionadoPayload(injured);
+              if (backendBySignature.has(buildLegalLesionadoSignature(payload))) continue;
+              pushSyncOp('abogado', createAuthenticatedCaseLegalLesionado(accessToken, caseId, payload, { changeNote }));
+            }
+
+            // Ediciones: los que tienen id de backend y cambiaron
+            for (const [lesionadoId, injured] of localByBackendId) {
+              const backendRow = backendLesionados.find((entry) => String(entry.id) === lesionadoId);
+              if (!backendRow) continue;
+              const payload = buildLesionadoPayload(injured);
+              if (buildLegalLesionadoSignature(backendRow) !== buildLegalLesionadoSignature(payload)) {
+                pushSyncOp('abogado', updateAuthenticatedCaseLegalLesionado(accessToken, caseId, Number(lesionadoId), payload, { changeNote }));
+              }
+            }
+
+            // Bajas: los que el backend tiene pero la solapa ya no muestra
+            for (const backendRow of backendLesionados) {
+              if (!localByBackendId.has(String(backendRow.id))) {
+                pushSyncOp('abogado', deleteAuthenticatedCaseLegalLesionado(accessToken, caseId, backendRow.id, { changeNote }));
+              }
+            }
+          }
+        }
+
+        // Titularidad registral del reclamo de terceros: el registro de titulares de la ficha
+        // se materializa como personas del caso (rol TITULAR) con su porcentaje (100/50).
+        if (isThirdPartyClaimCase(selectedCase) && shouldSync('ficha')) {
+          const registry = selectedCase.thirdParty?.clientRegistry || {};
+          const ownershipPercentage = registry.ownershipPercentage === '50%' ? 50 : 100;
+          const desiredTitulares = [];
+          if (registry.isOwner === 'SI') {
+            const customerPersonId = Number(authenticatedCaseDetailState.item?.principalCustomerPersonId);
+            if (!Number.isFinite(customerPersonId)) {
+              const validationError = new Error('No pudimos identificar al cliente principal para marcarlo como titular registral.');
+              validationError.tabId = 'ficha';
+              throw validationError;
+            }
+            desiredTitulares.push({ personId: customerPersonId, percentage: 100 });
+          } else {
+            for (const owner of registry.owners || []) {
+              if (!hasLawyerInjuredData(owner) && !String(owner?.document || '').trim()) continue;
+              const document = normalizeDocument(owner.document);
+              if (!document) {
+                const ownerName = [owner?.lastName, owner?.firstName].filter(Boolean).join(' ') || 'sin nombre';
+                const validationError = new Error(`Falta el documento del titular registral (${ownerName}) para registrar la titularidad.`);
+                validationError.tabId = 'ficha';
+                throw validationError;
+              }
+              desiredTitulares.push({ document, percentage: ownershipPercentage, ownerName: [owner?.lastName, owner?.firstName].filter(Boolean).join(' '), firstName: owner?.firstName || null, lastName: owner?.lastName || null });
+            }
+          }
+
+          if (desiredTitulares.length > 0) {
+            const principalVehicleId = Number(authenticatedCaseDetailState.item?.principalVehicleId);
+            if (!Number.isFinite(principalVehicleId)) {
+              const validationError = new Error('No pudimos identificar el vehiculo principal del caso para registrar la titularidad.');
+              validationError.tabId = 'ficha';
+              throw validationError;
+            }
+            pushSyncOp('ficha', (async () => {
+              const resolved = [];
+              for (const entry of desiredTitulares) {
+                if (entry.personId) {
+                  resolved.push(entry);
+                  continue;
+                }
+                const found = await searchAuthenticatedPersons(accessToken, { document: entry.document });
+                let person = Array.isArray(found.data)
+                  ? found.data.find((item) => normalizeDocument(item?.numeroDocumento) === entry.document)
+                  : null;
+                if (!person) {
+                  const created = await createAuthenticatedPerson(accessToken, {
+                    tipoPersona: 'fisica',
+                    nombre: entry.firstName || null,
+                    apellido: entry.lastName || entry.ownerName || null,
+                    razonSocial: null,
+                    tipoDocumentoCodigo: 'DNI',
+                    numeroDocumento: entry.document,
+                    cuitCuil: null,
+                    fechaNacimiento: null,
+                    telefonoPrincipal: null,
+                    emailPrincipal: null,
+                    ocupacion: null,
+                    observaciones: 'Titular registral del reclamo de terceros',
+                    activo: true,
+                  });
+                  person = created.data;
+                }
+                resolved.push({ personId: person.id, percentage: entry.percentage });
+              }
+              const existing = await readAuthenticatedCasePersons(accessToken, caseId);
+              const alreadyLinked = new Set(
+                (Array.isArray(existing.data) ? existing.data : [])
+                  .filter((entry) => String(entry?.caseRoleCode || '').trim().toUpperCase() === 'TITULAR')
+                  .map((entry) => String(entry.personId)),
+              );
+              for (const entry of resolved) {
+                if (alreadyLinked.has(String(entry.personId))) continue;
+                await createAuthenticatedCasePerson(accessToken, caseId, {
+                  personId: entry.personId,
+                  caseRoleCode: 'TITULAR',
+                  vehicleId: principalVehicleId,
+                  isMain: false,
+                  notes: null,
+                  porcentajeTitularidad: entry.percentage,
+                });
+              }
+            })());
           }
         }
 

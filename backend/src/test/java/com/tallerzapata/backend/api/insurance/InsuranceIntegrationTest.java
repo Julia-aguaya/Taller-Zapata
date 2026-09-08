@@ -18,6 +18,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -715,6 +716,57 @@ class InsuranceIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"lesionadoEsCode\":\"INVALIDO\",\"fullName\":\"X\"}"))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldUpdateAndDeleteLegalLesionado() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = ? WHERE id = ?", 6L, 100L);
+
+        mockMvc.perform(put("/api/v1/cases/100/legal")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL_LESIONES\",\"instanceCode\":\"JUDICIAL\",\"entryDate\":\"2026-01-15\",\"repairsVehicle\":true}"))
+                .andExpect(status().isOk());
+
+        String createResponse = mockMvc.perform(post("/api/v1/cases/100/legal/lesionados")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"lesionadoEsCode\":\"OTRO\",\"fullName\":\"Juan Perez\",\"documentNumber\":\"30111222\",\"provesIncome\":false}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        Long lesionadoId = objectMapper.readTree(createResponse).get("id").asLong();
+
+        // Edicion: cambia nombre, documento y acredita ingresos
+        mockMvc.perform(put("/api/v1/cases/100/legal/lesionados/{lesionadoId}", lesionadoId)
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"lesionadoEsCode\":\"OTRO\",\"fullName\":\"Juan Perez Gimenez\",\"documentNumber\":\"35555666\",\"provesIncome\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.fullName").value("Juan Perez Gimenez"))
+                .andExpect(jsonPath("$.documentNumber").value("35555666"))
+                .andExpect(jsonPath("$.provesIncome").value(true));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = 100 AND accion_codigo = 'actualizar_legal_lesionado'", Integer.class)).isEqualTo(1);
+
+        // El lesionado de otro caso no se toca
+        mockMvc.perform(put("/api/v1/cases/100/legal/lesionados/{lesionadoId}", lesionadoId + 1)
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"lesionadoEsCode\":\"OTRO\",\"fullName\":\"X\"}"))
+                .andExpect(status().isNotFound());
+
+        // Baja
+        mockMvc.perform(delete("/api/v1/cases/100/legal/lesionados/{lesionadoId}", lesionadoId)
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk());
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM caso_legal_lesionados WHERE id = ?", Integer.class, lesionadoId)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = 100 AND accion_codigo = 'eliminar_legal_lesionado'", Integer.class)).isEqualTo(1);
+
+        mockMvc.perform(get("/api/v1/cases/100/legal/lesionados")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
     }
 
     @Test

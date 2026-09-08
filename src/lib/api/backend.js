@@ -2279,6 +2279,105 @@ export async function createAuthenticatedCaseLegalExpense(accessToken, caseId, b
   return postAuthenticatedCaseResource(accessToken, endpoint, body, 'No pude crear el gasto legal del caso.', options);
 }
 
+function buildCaseLegalLesionadosPath(caseId) {
+  return `/cases/${caseId}/legal/lesionados`;
+}
+
+export function getCaseLegalLesionadosUrl(caseId) {
+  return buildApiUrl(buildCaseLegalLesionadosPath(caseId));
+}
+
+export async function readAuthenticatedCaseLegalLesionados(accessToken, caseId, options = {}) {
+  const endpoint = getCaseLegalLesionadosUrl(caseId);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer los lesionados del expediente.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function createAuthenticatedCaseLegalLesionado(accessToken, caseId, body, options = {}) {
+  const endpoint = getCaseLegalLesionadosUrl(caseId);
+  return postAuthenticatedCaseResource(accessToken, endpoint, body, 'No pude registrar el lesionado del expediente.', options);
+}
+
+export async function updateAuthenticatedCaseLegalLesionado(accessToken, caseId, lesionadoId, body, options = {}) {
+  const endpoint = `${getCaseLegalLesionadosUrl(caseId)}/${lesionadoId}`;
+  return putAuthenticatedCaseResource(accessToken, endpoint, body, 'No pude actualizar el lesionado del expediente.', options);
+}
+
+export async function deleteAuthenticatedCaseLegalLesionado(accessToken, caseId, lesionadoId, options = {}) {
+  const endpoint = `${getCaseLegalLesionadosUrl(caseId)}/${lesionadoId}`;
+  const headers = {
+    Accept: 'application/json',
+    Authorization: `Bearer ${accessToken}`,
+  };
+  if (options.changeNote?.trim()) {
+    headers['X-Change-Note'] = options.changeNote.trim();
+  }
+  const response = await fetch(endpoint, {
+    method: 'DELETE',
+    headers,
+    signal: options.signal,
+  });
+
+  if (response.status === 404) {
+    return { data: null, endpoint: endpoint.toString(), httpStatus: 404 };
+  }
+
+  const payload = await readJson(response);
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude quitar el lesionado del expediente.', payload);
+  }
+  return { data: payload, endpoint: endpoint.toString(), httpStatus: response.status };
+}
+
+function buildCasePersonsPath(caseId) {
+  return `/cases/${caseId}/persons`;
+}
+
+export async function readAuthenticatedCasePersons(accessToken, caseId, options = {}) {
+  const endpoint = buildApiUrl(buildCasePersonsPath(caseId));
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer las personas del caso.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
+export async function createAuthenticatedCasePerson(accessToken, caseId, body, options = {}) {
+  const endpoint = buildApiUrl(buildCasePersonsPath(caseId));
+  return postAuthenticatedCaseResource(accessToken, endpoint, body, 'No pude registrar la titularidad del caso.', options);
+}
+
 export async function upsertAuthenticatedCaseBudget(accessToken, caseId, body, options = {}) {
   const endpoint = getCaseBudgetUrl(caseId);
   return putAuthenticatedCaseResource(accessToken, endpoint, body, 'No pude guardar el presupuesto del caso.', options);
