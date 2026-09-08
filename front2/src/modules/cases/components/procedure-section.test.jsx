@@ -21,7 +21,7 @@ vi.mock('@tanstack/react-query', () => ({
 }));
 vi.mock('@/shared/api/http-client', () => ({ requestJson: (...args) => requestJson(...args) }));
 vi.mock('@/modules/cases/components/provider-selector', () => ({
-  ProviderSelector: ({ onChange }) => <button type="button" onClick={() => onChange({ providerId: 702, snapshot: 'Proveedor Seguro' })}>Seleccionar proveedor</button>,
+  ProviderSelector: ({ value, onChange }) => <><input aria-label="Proveedor manual" value={value || ''} onChange={(event) => onChange({ providerId: null, snapshot: event.target.value })} /><button type="button" onClick={() => onChange({ providerId: 702, snapshot: 'Proveedor Seguro' })}>Seleccionar proveedor</button></>,
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -29,7 +29,7 @@ describe('ProcedureSection processing contract', () => {
   beforeEach(() => {
     requestJson.mockReset();
     invalidateQueries.mockClear();
-    Object.assign(processing, { id: 1, version: 4, presentedAt: '2026-08-01', inspectionForwardedAt: null, inspectionDate: null, agreedAmount: 100, minimumCloseAmount: 120, includesParts: false, partsAuthorizationCode: null });
+    Object.assign(processing, { id: 1, version: 4, presentedAt: '2026-08-01', inspectionForwardedAt: null, inspectionDate: null, agreedAmount: 100, minimumCloseAmount: 120, includesParts: false, partsAuthorizationCode: null, partsSupplierText: null, providerId: null });
   });
 
   it('sends only edited operational fields plus the expected version', () => {
@@ -67,6 +67,27 @@ describe('ProcedureSection processing contract', () => {
       providerId: 702,
       partsSupplierText: 'Proveedor Seguro',
     });
+  });
+
+  it('persists a manual parts supplier without creating a provider', async () => {
+    requestJson.mockResolvedValue({ providerId: null, partsSupplierText: 'Casa Norte' });
+    render(<ProcedureSection caseId="42" />);
+
+    fireEvent.change(screen.getByLabelText('Proveedor manual'), { target: { value: 'Casa Norte' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    await waitFor(() => expect(requestJson).toHaveBeenCalledTimes(1));
+    expect(requestJson).toHaveBeenCalledWith('/cases/42/insurance-processing', expect.objectContaining({ method: 'PATCH' }));
+    expect(JSON.parse(requestJson.mock.calls[0][1].body)).toEqual({ expectedVersion: 4, providerId: null, partsSupplierText: 'Casa Norte' });
+  });
+
+  it('hydrates a persisted manual parts supplier after reload', () => {
+    processing.partsSupplierText = 'Repuestos del Sur';
+    processing.providerId = null;
+
+    render(<ProcedureSection caseId="42" />);
+
+    expect(screen.getByLabelText('Proveedor manual')).toHaveValue('Repuestos del Sur');
   });
 
   it('only opens the low-minimum confirmation flow for the canonical code', () => {

@@ -36,6 +36,7 @@ export const buildProcessingPatch = (form, processing) => {
     const previous = processing?.[field] ?? null;
     if (value !== previous) patch[field] = value;
   }
+  if (patch.partsSupplierText !== undefined && form.providerId === '') patch.providerId = null;
   return patch;
 };
 
