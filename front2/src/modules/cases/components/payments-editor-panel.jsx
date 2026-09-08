@@ -266,8 +266,8 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
            <MiniCard label="Cliente" value={caseDetail.principalCustomerName || '—'} />
            <MiniCard label="Vehículo" value={caseDetail.principalVehiclePlate || '—'} />
            {isCleas ? <MiniCard label="N.º de CLEAS" value={cleasNumberDisplay} /> : null}
-           <MiniCard label="Cotizado (según cpte.)" value={formatCurrency(cotizadoConIva)} highlight />
-          <MiniCard label="Pendiente" value={formatCurrency(pendiente)} highlight={pendiente > 0} variant={pendiente <= 0 ? 'success' : 'warning'} />
+            {!isTodoRiesgo ? <MiniCard label="Cotizado (según cpte.)" value={formatCurrency(cotizadoConIva)} highlight /> : null}
+           {!isTodoRiesgo ? <MiniCard label="Pendiente" value={formatCurrency(pendiente)} highlight={pendiente > 0} variant={pendiente <= 0 ? 'success' : 'warning'} /> : null}
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
           <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/50 px-3 py-1 text-xs">Pagado: {formatCurrency(pagado)}</span>
@@ -332,11 +332,10 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
          </div>
        ) : null}
 
-         {isTodoRiesgo && toAmount(paymentBreakdownQuery.data?.client?.franchisePending) > 0 ? <div className="rounded-3xl border border-border/70 bg-card p-5" aria-label="Pagos del cliente">
-          <div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Cliente</p><h4 className="mt-1 text-lg font-semibold">Pagos del cliente</h4><p className="mt-1 text-sm text-muted-foreground">Franquicia canónica pendiente, sin afectar extras ni la liquidación de la compañía.</p></div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2"><MiniCard label="Franquicia pendiente" value={formatCurrency(paymentBreakdownQuery.data.client.franchisePending)} highlight /><MiniCard label="Total pendiente cliente" value={formatCurrency(paymentBreakdownQuery.data.client.franchisePending)} highlight /></div>
-         {Number(paymentBreakdownQuery.data.client.franchisePending) > 0 ? <div className="mt-4"><Button variant="outline" onClick={() => setLocalClientPaymentRequest({ concept: 'FRANQUICIA', amount: String(paymentBreakdownQuery.data.client.franchisePending) })}>Registrar pago de franquicia</Button></div> : null}
-       </div> : null}
+          {isTodoRiesgo ? <div className="rounded-3xl border border-border/70 bg-card p-5" aria-label="Pagos del cliente">
+           <div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Cliente</p><h4 className="mt-1 text-lg font-semibold">Franquicia del cliente</h4><p className="mt-1 text-sm text-muted-foreground">Este saldo canónico corresponde solo a la franquicia. Los trabajos adicionales se gestionan por separado en Pagos adicionales del cliente.</p></div>
+           {toAmount(paymentBreakdownQuery.data?.client?.franchisePending) > 0 ? <><div className="mt-4 grid gap-3 md:grid-cols-2"><MiniCard label="Franquicia pendiente del cliente" value={formatCurrency(paymentBreakdownQuery.data.client.franchisePending)} highlight /><MiniCard label="Acción disponible" value="Registrar pago de franquicia" /></div><div className="mt-4"><Button variant="outline" onClick={() => setLocalClientPaymentRequest({ concept: 'FRANQUICIA', amount: String(paymentBreakdownQuery.data.client.franchisePending) })}>Registrar pago de franquicia</Button></div></> : <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">No hay franquicia pendiente de pago a cargo del cliente.</div>}
+        </div> : null}
 
         {isUnfavorableFranchise && franchiseSummaryQuery.data ? (
           <Card className="rounded-3xl border-border/70 p-5">

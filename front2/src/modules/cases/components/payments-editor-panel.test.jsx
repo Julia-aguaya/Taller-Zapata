@@ -301,6 +301,34 @@ describe('PaymentsEditorPanel', () => {
     })));
   });
 
+  it('clearly shows that a TODO_RIESGO client has no payable franchise without exposing a payment action', () => {
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'insurance'])]: { insuranceCompanyId: 7 },
+      [JSON.stringify(['cases', '42', 'finance', 'payment-breakdown'])]: { client: { franchisePending: 0, acceptedExtras: 30, extrasPending: 61, pending: 61 }, insurer: { companyId: 7, total: 100, paid: 0, pending: 100 } },
+    };
+    render(<PaymentsEditorPanel {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'TODO_RIESGO' }} />);
+
+    expect(screen.getByLabelText('Pagos del cliente')).toHaveTextContent('No hay franquicia pendiente de pago a cargo del cliente.');
+    expect(screen.getByLabelText('Pagos del cliente')).toHaveTextContent('Los trabajos adicionales se gestionan por separado');
+    expect(screen.queryByRole('button', { name: /^Registrar pago de franquicia$/i })).toBeNull();
+    expect(screen.queryByText('Cotizado (según cpte.)')).toBeNull();
+    expect(screen.getByText('Facturación y Pago — Compañía')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Guardar pago de la compañía$/i })).toBeInTheDocument();
+  });
+
+  it('keeps TODO_RIESGO franchise and company balances separately labeled', () => {
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'insurance'])]: { insuranceCompanyId: 7 },
+      [JSON.stringify(['cases', '42', 'finance', 'payment-breakdown'])]: { client: { franchisePending: 91, acceptedExtras: 30, extrasPending: 61, pending: 152 }, insurer: { companyId: 7, total: 100, paid: 0, pending: 100 } },
+    };
+    render(<PaymentsEditorPanel {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'TODO_RIESGO' }} />);
+
+    expect(screen.getByText('Franquicia pendiente del cliente').parentElement).toHaveTextContent('91');
+    expect(screen.getByText('Pendiente Cía.').parentElement).toHaveTextContent('100');
+    expect(screen.getByRole('button', { name: /^Registrar pago de franquicia$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Guardar pago de la compañía$/i })).toBeInTheDocument();
+  });
+
   it.each(['PARTICULAR', 'GRANIZO'])('does not render the TODO_RIESGO franchise section for %s', (caseTypeCode) => {
     useQueryData = { [JSON.stringify(['cases', '42', 'finance', 'payment-breakdown'])]: { client: { franchisePending: 91 } } };
     render(<PaymentsEditorPanel {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode }} />);
