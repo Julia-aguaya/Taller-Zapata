@@ -199,6 +199,28 @@ class CleasManagementIntegrationTest {
     }
 
     @Test
+    void shouldPersistManualProcessingMinimumAndPartsForCleas() throws Exception {
+        mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\":0,\"presentedAt\":\"2026-08-02\",\"minimumCloseAmount\":850.50,\"includesParts\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.minimumCloseAmount").value(850.50))
+                .andExpect(jsonPath("$.includesParts").value(true));
+
+        mockMvc.perform(get("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.minimumCloseAmount").value(850.50))
+                .andExpect(jsonPath("$.includesParts").value(true));
+        assertThat(jdbcTemplate.queryForObject("SELECT monto_minimo_cierre FROM caso_tramitacion_seguro WHERE caso_id = ?", java.math.BigDecimal.class, 100L)).isEqualByComparingTo("850.50");
+        assertThat(jdbcTemplate.queryForObject("SELECT lleva_repuestos FROM caso_tramitacion_seguro WHERE caso_id = ?", Boolean.class, 100L)).isTrue();
+
+        mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\":1,\"includesParts\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.minimumCloseAmount").value(850.50))
+                .andExpect(jsonPath("$.includesParts").value(false));
+    }
+
+    @Test
     void shouldKeepSharedFaultCleasOpenRegardlessOfScope() throws Exception {
         mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scopeCode\":\"DANIO_TOTAL\",\"opinionCode\":\"CULPA_COMPARTIDA\"}"))

@@ -25,6 +25,8 @@ public class InsuranceProcessingEntity {
     @Column(name = "cotizacion_estado_codigo") private String quotationStatusCode;
     @Column(name = "fecha_cotizacion") private LocalDate quotationDate;
     @Column(name = "monto_acordado") private BigDecimal agreedAmount;
+    @Column(name = "monto_minimo_cierre") private BigDecimal minimumCloseAmount;
+    @Column(name = "lleva_repuestos", nullable = false) private Boolean includesParts = false;
     @Column(name = "autorizacion_repuestos_codigo") private String partsAuthorizationCode;
     @Column(name = "proveedor_repuestos_texto") private String partsSupplierText;
     @Column(name = "proveedor_id") private Long providerId;
@@ -53,6 +55,10 @@ public class InsuranceProcessingEntity {
     public void setQuotationDate(LocalDate quotationDate) { this.quotationDate = quotationDate; }
     public BigDecimal getAgreedAmount() { return agreedAmount; }
     public void setAgreedAmount(BigDecimal agreedAmount) { this.agreedAmount = agreedAmount; }
+    public BigDecimal getMinimumCloseAmount() { return minimumCloseAmount; }
+    public void setMinimumCloseAmount(BigDecimal minimumCloseAmount) { this.minimumCloseAmount = minimumCloseAmount; }
+    public Boolean getIncludesParts() { return includesParts; }
+    public void setIncludesParts(Boolean includesParts) { this.includesParts = includesParts; }
     public String getPartsAuthorizationCode() { return partsAuthorizationCode; }
     public void setPartsAuthorizationCode(String partsAuthorizationCode) { this.partsAuthorizationCode = partsAuthorizationCode; }
     public String getPartsSupplierText() { return partsSupplierText; }

@@ -1,69 +1,474 @@
-import { useEffect, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ClipboardList, Save, Trash2 } from 'lucide-react';
-import { toast } from 'sonner';
-import { createCleasOrder, deleteCleasOrder, getCleasProcessing, listCleasOrders, saveCleasDefinition, saveCleasProcessing } from '@/modules/cases/api/cleas-api';
-import { requestJson } from '@/shared/api/http-client';
-import { Button } from '@/shared/ui/button';
-import { Card } from '@/shared/ui/card';
-import { Input } from '@/shared/ui/input';
-import { Select } from '@/shared/ui/select';
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ClipboardList, Save, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import {
+  createCleasOrder,
+  deleteCleasOrder,
+  getCleasProcessing,
+  listCleasOrders,
+  saveCleasDefinition,
+  saveCleasProcessing,
+} from "@/modules/cases/api/cleas-api";
+import { requestJson } from "@/shared/api/http-client";
+import { Button } from "@/shared/ui/button";
+import { Card } from "@/shared/ui/card";
+import { Input } from "@/shared/ui/input";
+import { Select } from "@/shared/ui/select";
 
-const processingFields = ['presentedAt', 'inspectionForwardedAt', 'inspectionDate', 'modalityCode', 'quotationStatusCode', 'quotationDate', 'agreedAmount', 'partsAuthorizationCode', 'partsSupplierText'];
-const emptyProcessing = Object.fromEntries(processingFields.map((field) => [field, '']));
-const Field = ({ label, children, className = '' }) => <label className={`min-w-0 ${className}`}><span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</span>{children}</label>;
-const toNumberOrNull = (value) => value === '' || value == null ? null : Number(value);
+const processingFields = [
+  "presentedAt",
+  "inspectionForwardedAt",
+  "inspectionDate",
+  "modalityCode",
+  "quotationStatusCode",
+  "quotationDate",
+  "agreedAmount",
+  "minimumCloseAmount",
+  "includesParts",
+  "partsAuthorizationCode",
+  "partsSupplierText",
+];
+const emptyProcessing = Object.fromEntries(
+  processingFields.map((field) => [field, ""]),
+);
+const Field = ({ label, children, className = "" }) => (
+  <label className={`min-w-0 ${className}`}>
+    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+      {label}
+    </span>
+    {children}
+  </label>
+);
+const toNumberOrNull = (value) =>
+  value === "" || value == null ? null : Number(value);
 
-export const CleasProcedureSection = ({ caseId, cleasOver, opinion, cleasAgreedAmount, setCleasAgreedAmount, cleasFranchiseDistribution = {}, onCleasFranchiseDistributionChange }) => {
+export const buildCleasProcessingPatch = (form, processing) => {
+  const payload = { expectedVersion: processing?.version ?? 0 };
+  processingFields.forEach((field) => {
+    const rawValue = form[field] ?? "";
+    const value = ["agreedAmount", "minimumCloseAmount"].includes(field)
+      ? toNumberOrNull(rawValue)
+      : field === "includesParts"
+        ? rawValue === "" ? null : rawValue === "SI"
+        : rawValue === "" ? null : rawValue;
+    if (value !== (processing?.[field] ?? null)) payload[field] = value;
+  });
+  if (payload.minimumCloseAmount != null && payload.minimumCloseAmount < 0) {
+    throw new Error("El mínimo para cierre no puede ser negativo.");
+  }
+  return payload;
+};
+
+export const CleasProcedureSection = ({
+  caseId,
+  cleasOver,
+  opinion,
+  cleasAgreedAmount,
+  setCleasAgreedAmount,
+  cleasFranchiseDistribution = {},
+  onCleasFranchiseDistributionChange,
+  closed = false,
+}) => {
   const queryClient = useQueryClient();
   const [form, setForm] = useState(emptyProcessing);
-  const [orderDocumentId, setOrderDocumentId] = useState('');
-  const processingQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'processing'], queryFn: () => getCleasProcessing(caseId) });
-  const definitionQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'definition'], queryFn: () => requestJson(`/cases/${caseId}/cleas/definition`) });
-  const ordersQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'orders'], queryFn: () => listCleasOrders(caseId) });
-  const catalogsQuery = useQuery({ queryKey: ['insurance', 'catalogs'], queryFn: () => requestJson('/insurance/catalogs') });
+  const [orderDocumentId, setOrderDocumentId] = useState("");
+  const processingQuery = useQuery({
+    queryKey: ["cases", String(caseId), "cleas", "processing"],
+    queryFn: () => getCleasProcessing(caseId),
+  });
+  const definitionQuery = useQuery({
+    queryKey: ["cases", String(caseId), "cleas", "definition"],
+    queryFn: () => requestJson(`/cases/${caseId}/cleas/definition`),
+  });
+  const ordersQuery = useQuery({
+    queryKey: ["cases", String(caseId), "cleas", "orders"],
+    queryFn: () => listCleasOrders(caseId),
+  });
+  const catalogsQuery = useQuery({
+    queryKey: ["insurance", "catalogs"],
+    queryFn: () => requestJson("/insurance/catalogs"),
+  });
 
   useEffect(() => {
     if (!processingQuery.data) return;
-    setForm(Object.fromEntries(processingFields.map((field) => [field, processingQuery.data[field] ?? ''])));
-    setCleasAgreedAmount?.(processingQuery.data.agreedAmount == null ? '' : String(processingQuery.data.agreedAmount));
+    setForm(
+      Object.fromEntries(processingFields.map((field) => [field, field === "includesParts" ? processingQuery.data[field] == null ? "" : processingQuery.data[field] ? "SI" : "NO" : processingQuery.data[field] ?? ""])),
+    );
+    setCleasAgreedAmount?.(
+      processingQuery.data.agreedAmount == null
+        ? ""
+        : String(processingQuery.data.agreedAmount),
+    );
   }, [processingQuery.data]);
 
-  const invalidateProcessing = () => Promise.all([queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'processing'] }), queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'definition'] }), queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }), queryClient.invalidateQueries({ queryKey: ['cases'] })]);
+  const invalidateProcessing = () =>
+    Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: ["cases", String(caseId), "cleas", "processing"],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["cases", String(caseId), "cleas", "definition"],
+      }),
+      queryClient.invalidateQueries({
+        queryKey: ["cases", String(caseId), "workspace"],
+      }),
+      queryClient.invalidateQueries({ queryKey: ["cases"] }),
+    ]);
   const processingMutation = useMutation({
     mutationFn: () => {
-      const payload = { expectedVersion: processingQuery.data?.version ?? 0 };
-      processingFields.forEach((field) => { const value = field === 'agreedAmount' ? toNumberOrNull(form[field]) : (form[field] === '' ? null : form[field]); if (value !== (processingQuery.data?.[field] ?? null)) payload[field] = value; });
-      const saveProcessing = Object.keys(payload).length === 1 ? Promise.resolve(processingQuery.data) : saveCleasProcessing(caseId, payload);
+      const payload = buildCleasProcessingPatch(form, processingQuery.data);
+      const saveProcessing =
+        Object.keys(payload).length === 1
+          ? Promise.resolve(processingQuery.data)
+          : saveCleasProcessing(caseId, payload);
       const currentDefinition = definitionQuery.data;
-      if (cleasOver !== 'franchise' || !currentDefinition) return saveProcessing;
+      if (cleasOver !== "franchise" || !currentDefinition)
+        return saveProcessing;
       const nextDefinition = {
         ...currentDefinition,
-        franchiseAmount: toNumberOrNull(cleasFranchiseDistribution.franchiseAmount),
-        customerChargeAmount: isUnfavorableFranchise ? agreedAmount - amountToBill : null,
-        customerPaymentStatusCode: cleasFranchiseDistribution.companyPaymentStatus || null,
-        customerPaymentDate: cleasFranchiseDistribution.companyPaymentDate || null,
-        companyFranchisePaymentAmount: isUnfavorableFranchise ? toNumberOrNull(cleasFranchiseDistribution.companyRequiredAmount) : null,
-        companyFranchisePaymentStatusCode: cleasFranchiseDistribution.companyPaymentStatus || null,
-        companyFranchisePaymentDate: cleasFranchiseDistribution.companyPaymentDate || null,
+        franchiseAmount: toNumberOrNull(
+          cleasFranchiseDistribution.franchiseAmount,
+        ),
+        customerChargeAmount: isUnfavorableFranchise
+          ? agreedAmount - amountToBill
+          : null,
+        customerPaymentStatusCode:
+          cleasFranchiseDistribution.companyPaymentStatus || null,
+        customerPaymentDate:
+          cleasFranchiseDistribution.companyPaymentDate || null,
+        companyFranchisePaymentAmount: isUnfavorableFranchise
+          ? toNumberOrNull(cleasFranchiseDistribution.companyRequiredAmount)
+          : null,
+        companyFranchisePaymentStatusCode:
+          cleasFranchiseDistribution.companyPaymentStatus || null,
+        companyFranchisePaymentDate:
+          cleasFranchiseDistribution.companyPaymentDate || null,
       };
-      const definitionChanged = Object.keys(nextDefinition).some((field) => String(nextDefinition[field] ?? '') !== String(currentDefinition[field] ?? ''));
-      return definitionChanged ? Promise.all([saveProcessing, saveCleasDefinition(caseId, nextDefinition)]) : saveProcessing;
+      const definitionChanged = Object.keys(nextDefinition).some(
+        (field) =>
+          String(nextDefinition[field] ?? "") !==
+          String(currentDefinition[field] ?? ""),
+      );
+      return definitionChanged
+        ? Promise.all([
+            saveProcessing,
+            saveCleasDefinition(caseId, nextDefinition),
+          ])
+        : saveProcessing;
     },
-    onSuccess: async () => { await invalidateProcessing(); toast.success('Tramitación CLEAS guardada.'); },
-    onError: (error) => toast.error(error.message || 'No se pudo guardar la tramitación CLEAS.'),
+    onSuccess: async () => {
+      await invalidateProcessing();
+      toast.success("Tramitación CLEAS guardada.");
+    },
+    onError: (error) =>
+      toast.error(error.message || "No se pudo guardar la tramitación CLEAS."),
   });
-  const createOrderMutation = useMutation({ mutationFn: () => { if (!orderDocumentId) throw new Error('Elegí una orden desde Documentación.'); return createCleasOrder(caseId, { documentId: Number(orderDocumentId), principal: false, visibleToCustomer: false, visualOrder: (ordersQuery.data ?? []).length }); }, onSuccess: async () => { setOrderDocumentId(''); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'orders'] }); toast.success('Orden CLEAS vinculada.'); }, onError: (error) => toast.error(error.message || 'No se pudo vincular la orden.') });
-  const deleteOrderMutation = useMutation({ mutationFn: (relationId) => deleteCleasOrder(caseId, relationId), onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'orders'] }); toast.success('Orden CLEAS desvinculada.'); }, onError: (error) => toast.error(error.message || 'No se pudo desvincular la orden.') });
+  const createOrderMutation = useMutation({
+    mutationFn: () => {
+      if (!orderDocumentId)
+        throw new Error("Elegí una orden desde Documentación.");
+      return createCleasOrder(caseId, {
+        documentId: Number(orderDocumentId),
+        principal: false,
+        visibleToCustomer: false,
+        visualOrder: (ordersQuery.data ?? []).length,
+      });
+    },
+    onSuccess: async () => {
+      setOrderDocumentId("");
+      await queryClient.invalidateQueries({
+        queryKey: ["cases", String(caseId), "cleas", "orders"],
+      });
+      toast.success("Orden CLEAS vinculada.");
+    },
+    onError: (error) =>
+      toast.error(error.message || "No se pudo vincular la orden."),
+  });
+  const deleteOrderMutation = useMutation({
+    mutationFn: (relationId) => deleteCleasOrder(caseId, relationId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["cases", String(caseId), "cleas", "orders"],
+      });
+      toast.success("Orden CLEAS desvinculada.");
+    },
+    onError: (error) =>
+      toast.error(error.message || "No se pudo desvincular la orden."),
+  });
   const agreedAmount = Number(cleasAgreedAmount || form.agreedAmount) || 0;
-  const isUnfavorableFranchise = cleasOver === 'franchise' && opinion === 'unfavorable';
-  const franchiseAmount = Number(cleasFranchiseDistribution.franchiseAmount) || 0;
-  const companyRequiredAmount = Number(cleasFranchiseDistribution.companyRequiredAmount) || 0;
-  const amountToBill = isUnfavorableFranchise ? agreedAmount - (franchiseAmount - companyRequiredAmount) : agreedAmount;
-  const setField = (field) => (event) => { setForm((current) => ({ ...current, [field]: event.target.value })); if (field === 'agreedAmount') setCleasAgreedAmount?.(event.target.value); };
-  const setDistribution = (field) => (event) => onCleasFranchiseDistributionChange?.((current) => ({ ...current, [field]: event.target.value, ...(field === 'franchiseAmount' && current.companyRequirement === 'TOTAL' ? { companyRequiredAmount: event.target.value } : {}) }));
-  const setCompanyRequirement = (event) => onCleasFranchiseDistributionChange?.((current) => ({ ...current, companyRequirement: event.target.value, companyRequiredAmount: event.target.value === 'NO' ? '0' : event.target.value === 'TOTAL' ? current.franchiseAmount : current.companyRequiredAmount }));
+  const isUnfavorableFranchise =
+    cleasOver === "franchise" && opinion === "unfavorable";
+  const franchiseAmount =
+    Number(cleasFranchiseDistribution.franchiseAmount) || 0;
+  const companyRequiredAmount =
+    Number(cleasFranchiseDistribution.companyRequiredAmount) || 0;
+  const amountToBill = isUnfavorableFranchise
+    ? agreedAmount - (franchiseAmount - companyRequiredAmount)
+    : agreedAmount;
+  const setField = (field) => (event) => {
+    setForm((current) => ({ ...current, [field]: event.target.value }));
+    if (field === "agreedAmount") setCleasAgreedAmount?.(event.target.value);
+  };
+  const setDistribution = (field) => (event) =>
+    onCleasFranchiseDistributionChange?.((current) => ({
+      ...current,
+      [field]: event.target.value,
+      ...(field === "franchiseAmount" && current.companyRequirement === "TOTAL"
+        ? { companyRequiredAmount: event.target.value }
+        : {}),
+    }));
+  const setCompanyRequirement = (event) =>
+    onCleasFranchiseDistributionChange?.((current) => ({
+      ...current,
+      companyRequirement: event.target.value,
+      companyRequiredAmount:
+        event.target.value === "NO"
+          ? "0"
+          : event.target.value === "TOTAL"
+            ? current.franchiseAmount
+            : current.companyRequiredAmount,
+    }));
   const catalogOptions = (key) => catalogsQuery.data?.[key] ?? [];
 
-  return <Card className="rounded-3xl border-border/70 p-5"><div className="flex items-center justify-between"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary"><ClipboardList className="h-5 w-5" /></div><h4 className="text-sm font-semibold">Tramitación</h4></div><Button type="button" size="sm" onClick={() => processingMutation.mutate()} disabled={processingMutation.isPending}><Save className="mr-1.5 h-3.5 w-3.5" />Guardar</Button></div><div className="mt-4 grid gap-x-6 gap-y-3 md:grid-cols-3"><Field label="Fecha presentado"><Input type="date" value={form.presentedAt} onChange={setField('presentedAt')} /></Field><Field label="Derivado a inspección"><Input type="date" value={form.inspectionForwardedAt} onChange={setField('inspectionForwardedAt')} /></Field><Field label="Fecha de inspección"><Input type="date" value={form.inspectionDate} onChange={setField('inspectionDate')} /></Field><Field label="Modalidad"><Select value={form.modalityCode} onChange={setField('modalityCode')}><option value="">Seleccionar...</option>{catalogOptions('modalityCodes').map((item) => <option key={item.code} value={item.code}>{item.name || item.code}</option>)}</Select></Field><Field label="Dictamen"><Input value={opinion === 'pending' ? 'Pendiente' : opinion === 'favorable' ? 'A favor' : opinion === 'unfavorable' ? 'En contra' : 'Culpa compartida'} readOnly /></Field><Field label="Cotización"><Select value={form.quotationStatusCode} onChange={setField('quotationStatusCode')}><option value="">Seleccionar...</option>{catalogOptions('quotationStatusCodes').map((item) => <option key={item.code} value={item.code}>{item.name || item.code}</option>)}</Select></Field><Field label="Fecha de cotización"><Input type="date" value={form.quotationDate} onChange={setField('quotationDate')} /></Field><Field label="Monto de cotización acordada"><Input type="number" min="0" value={cleasAgreedAmount ?? form.agreedAmount} onChange={setField('agreedAmount')} /></Field><Field label="A facturar Cía."><Input value={amountToBill} readOnly /></Field><Field label="Proveedor de repuestos"><Input value={form.partsSupplierText} onChange={setField('partsSupplierText')} /></Field><Field label="Autorización de repuestos"><Select value={form.partsAuthorizationCode} onChange={setField('partsAuthorizationCode')}><option value="">Seleccionar...</option>{catalogOptions('partsAuthorizationCodes').map((item) => <option key={item.code} value={item.code}>{item.name || item.code}</option>)}</Select></Field></div>{cleasOver === 'franchise' ? <div className="mt-5 grid gap-3 rounded-2xl border border-border/70 p-4 md:grid-cols-2">{isUnfavorableFranchise ? <p className="md:col-span-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Distribución de la franquicia</p> : null}<Field label="Monto de franquicia"><Input type="number" value={cleasFranchiseDistribution.franchiseAmount ?? ''} onChange={setDistribution('franchiseAmount')} /></Field>{isUnfavorableFranchise ? <><Field label="¿La Cía. exige pago de franquicia?"><Select value={cleasFranchiseDistribution.companyRequirement ?? 'NO'} onChange={setCompanyRequirement}><option value="NO">No</option><option value="TOTAL">Sí, total</option><option value="PARCIAL">Sí, parcial</option></Select></Field><Field label="Monto que la Cía. exige al cliente"><Input type="number" value={cleasFranchiseDistribution.companyRequiredAmount ?? ''} onChange={setDistribution('companyRequiredAmount')} disabled={(cleasFranchiseDistribution.companyRequirement ?? 'NO') === 'NO'} readOnly={['NO', 'TOTAL'].includes(cleasFranchiseDistribution.companyRequirement ?? 'NO')} /></Field><Field label="A cargo del cliente"><Input value={agreedAmount - amountToBill} readOnly /></Field>{amountToBill < 0 ? <p role="alert" className="md:col-span-2 text-xs text-destructive">El importe a facturar a la compañía es negativo. Este caso requiere revisión manual antes de continuar.</p> : null}</> : null}</div> : null}<div className="mt-5 rounded-2xl border border-border/60 bg-background/50 p-4"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Órdenes</p><p className="mt-1 text-xs text-muted-foreground">Vinculá un documento existente con categoría ORDEN_CLEAS.</p><div className="mt-3 flex flex-wrap gap-2"><Input aria-label="ID del documento ORDEN_CLEAS" type="number" min="1" value={orderDocumentId} onChange={(event) => setOrderDocumentId(event.target.value)} className="max-w-xs" /><Button type="button" variant="outline" onClick={() => createOrderMutation.mutate()} disabled={createOrderMutation.isPending}>Vincular orden</Button></div>{(ordersQuery.data ?? []).map((order) => <div key={order.relationId} className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-border/60 px-3 py-2 text-sm"><span>{order.fileName || `Documento #${order.documentId}`}</span><Button type="button" size="sm" variant="ghost" onClick={() => deleteOrderMutation.mutate(order.relationId)} disabled={deleteOrderMutation.isPending}><Trash2 className="mr-1 h-3.5 w-3.5" />Desvincular</Button></div>)}</div></Card>;
+  return (
+    <Card className="rounded-3xl border-border/70 p-5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+            <ClipboardList className="h-5 w-5" />
+          </div>
+          <h4 className="text-sm font-semibold">Tramitación</h4>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => processingMutation.mutate()}
+          disabled={closed || processingMutation.isPending}
+        >
+          <Save className="mr-1.5 h-3.5 w-3.5" />
+          Guardar
+        </Button>
+      </div>
+      <div className="mt-4 grid gap-x-6 gap-y-3 md:grid-cols-3">
+        <Field label="Fecha presentado">
+          <Input
+            type="date"
+            value={form.presentedAt}
+            onChange={setField("presentedAt")}
+          />
+        </Field>
+        <Field label="Derivado a inspección">
+          <Input
+            type="date"
+            value={form.inspectionForwardedAt}
+            onChange={setField("inspectionForwardedAt")}
+          />
+        </Field>
+        <Field label="Fecha de inspección">
+          <Input
+            type="date"
+            value={form.inspectionDate}
+            onChange={setField("inspectionDate")}
+          />
+        </Field>
+        <Field label="Modalidad">
+          <Select value={form.modalityCode} onChange={setField("modalityCode")}>
+            <option value="">Seleccionar...</option>
+            {catalogOptions("modalityCodes").map((item) => (
+              <option key={item.code} value={item.code}>
+                {item.name || item.code}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Dictamen">
+          <Input
+            value={
+              opinion === "pending"
+                ? "Pendiente"
+                : opinion === "favorable"
+                  ? "A favor"
+                  : opinion === "unfavorable"
+                    ? "En contra"
+                    : "Culpa compartida"
+            }
+            readOnly
+          />
+        </Field>
+        <Field label="Cotización">
+          <Select
+            value={form.quotationStatusCode}
+            onChange={setField("quotationStatusCode")}
+          >
+            <option value="">Seleccionar...</option>
+            {catalogOptions("quotationStatusCodes").map((item) => (
+              <option key={item.code} value={item.code}>
+                {item.name || item.code}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Fecha de cotización">
+          <Input
+            type="date"
+            value={form.quotationDate}
+            onChange={setField("quotationDate")}
+          />
+        </Field>
+        <Field label="Monto de cotización acordada">
+          <Input
+            type="number"
+            min="0"
+            value={cleasAgreedAmount ?? form.agreedAmount}
+            onChange={setField("agreedAmount")}
+          />
+        </Field>
+        <Field label="Mínimo para cierre">
+          <Input
+            type="number"
+            min="0"
+            aria-label="Mínimo para cierre"
+            value={form.minimumCloseAmount}
+            onChange={setField("minimumCloseAmount")}
+            disabled={closed}
+          />
+        </Field>
+        <Field label="Lleva repuestos">
+          <Select
+            aria-label="Lleva repuestos"
+            value={form.includesParts}
+            onChange={setField("includesParts")}
+            disabled={closed}
+          >
+            <option value="">Seleccionar...</option>
+            <option value="SI">SI</option>
+            <option value="NO">NO</option>
+          </Select>
+        </Field>
+        <Field label="A facturar Cía.">
+          <Input value={amountToBill} readOnly />
+        </Field>
+        <Field label="Proveedor de repuestos">
+          <Input
+            value={form.partsSupplierText}
+            onChange={setField("partsSupplierText")}
+          />
+        </Field>
+        <Field label="Autorización de repuestos">
+          <Select
+            value={form.partsAuthorizationCode}
+            onChange={setField("partsAuthorizationCode")}
+          >
+            <option value="">Seleccionar...</option>
+            {catalogOptions("partsAuthorizationCodes").map((item) => (
+              <option key={item.code} value={item.code}>
+                {item.name || item.code}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </div>
+      {cleasOver === "franchise" ? (
+        <div className="mt-5 grid gap-3 rounded-2xl border border-border/70 p-4 md:grid-cols-2">
+          {isUnfavorableFranchise ? (
+            <p className="md:col-span-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Distribución de la franquicia
+            </p>
+          ) : null}
+          <Field label="Monto de franquicia">
+            <Input
+              type="number"
+              value={cleasFranchiseDistribution.franchiseAmount ?? ""}
+              onChange={setDistribution("franchiseAmount")}
+            />
+          </Field>
+          {isUnfavorableFranchise ? (
+            <>
+              <Field label="¿La Cía. exige pago de franquicia?">
+                <Select
+                  value={cleasFranchiseDistribution.companyRequirement ?? "NO"}
+                  onChange={setCompanyRequirement}
+                >
+                  <option value="NO">No</option>
+                  <option value="TOTAL">Sí, total</option>
+                  <option value="PARCIAL">Sí, parcial</option>
+                </Select>
+              </Field>
+              <Field label="Monto que la Cía. exige al cliente">
+                <Input
+                  type="number"
+                  value={cleasFranchiseDistribution.companyRequiredAmount ?? ""}
+                  onChange={setDistribution("companyRequiredAmount")}
+                  disabled={
+                    (cleasFranchiseDistribution.companyRequirement ?? "NO") ===
+                    "NO"
+                  }
+                  readOnly={["NO", "TOTAL"].includes(
+                    cleasFranchiseDistribution.companyRequirement ?? "NO",
+                  )}
+                />
+              </Field>
+              <Field label="A cargo del cliente">
+                <Input value={agreedAmount - amountToBill} readOnly />
+              </Field>
+              {amountToBill < 0 ? (
+                <p
+                  role="alert"
+                  className="md:col-span-2 text-xs text-destructive"
+                >
+                  El importe a facturar a la compañía es negativo. Este caso
+                  requiere revisión manual antes de continuar.
+                </p>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="mt-5 rounded-2xl border border-border/60 bg-background/50 p-4">
+        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          Órdenes
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Vinculá un documento existente con categoría ORDEN_CLEAS.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Input
+            aria-label="ID del documento ORDEN_CLEAS"
+            type="number"
+            min="1"
+            value={orderDocumentId}
+            onChange={(event) => setOrderDocumentId(event.target.value)}
+            className="max-w-xs"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => createOrderMutation.mutate()}
+            disabled={createOrderMutation.isPending}
+          >
+            Vincular orden
+          </Button>
+        </div>
+        {(ordersQuery.data ?? []).map((order) => (
+          <div
+            key={order.relationId}
+            className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-border/60 px-3 py-2 text-sm"
+          >
+            <span>{order.fileName || `Documento #${order.documentId}`}</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => deleteOrderMutation.mutate(order.relationId)}
+              disabled={deleteOrderMutation.isPending}
+            >
+              <Trash2 className="mr-1 h-3.5 w-3.5" />
+              Desvincular
+            </Button>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
 };

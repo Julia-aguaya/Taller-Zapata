@@ -284,15 +284,16 @@ public class InsuranceService {
             throw new DomainConflictException("PROCESSING_VERSION_CONFLICT", "La tramitacion fue modificada por otro usuario", Map.of("expectedVersion", request.expectedVersion(), "actualVersion", entity.getVersion() == null ? 0L : entity.getVersion()));
         }
         entity.setCaseId(caseId);
+        boolean cleas = "CLEAS".equals(caseTypeCode(caseEntity));
         String previousPartsAuthorizationCode = entity.getPartsAuthorizationCode();
-        applyPatch(entity, request);
+        applyPatch(entity, request, cleas);
         if (entity.getPresentedAt() == null && hasOperationalPatch(request)) {
             throw new DomainConflictException("PROCESSING_PRESENTATION_DATE_REQUIRED", "Debe registrar la fecha de presentacion antes de continuar la tramitacion", Map.of());
         }
 
-        ProcessingDerivatives derivatives = processingDerivatives(caseId, entity.getAgreedAmount());
+        ProcessingDerivatives derivatives = cleas ? cleasProcessingDerivatives(entity) : processingDerivatives(caseId, entity.getAgreedAmount());
         // Un null explicito limpia la autorizacion: el guard solo aplica cuando se ENVIA un valor.
-        if (request.has("partsAuthorizationCode") && request.partsAuthorizationCode() != null && !request.partsAuthorizationCode().isNull() && !derivatives.includesParts()) {
+        if (request.has("partsAuthorizationCode") && request.partsAuthorizationCode() != null && !request.partsAuthorizationCode().isNull() && !Boolean.TRUE.equals(derivatives.includesParts())) {
             throw new DomainConflictException("PROCESSING_PARTS_AUTHORIZATION_REQUIRES_PARTS", "La autorizacion de repuestos requiere que el caso lleve repuestos", Map.of());
         }
         Map<String, Object> belowMinimumAudit = null;
@@ -591,11 +592,11 @@ public class InsuranceService {
     }
     private InsuranceProcessingResponse toInsuranceProcessingResponse(InsuranceProcessingEntity e) {
         var facts = todoRiesgoStateFactsRepository.findById(e.getCaseId()).orElse(null);
-        ProcessingDerivatives derivatives = processingDerivatives(e.getCaseId(), e.getAgreedAmount());
+        ProcessingDerivatives derivatives = "CLEAS".equals(caseTypeCode(requireCase(e.getCaseId()))) ? cleasProcessingDerivatives(e) : processingDerivatives(e.getCaseId(), e.getAgreedAmount());
         return new InsuranceProcessingResponse(e.getId(), e.getCaseId(), e.getPresentedAt(), e.getInspectionForwardedAt(), e.getModalityCode(), e.getOpinionCode(), e.getQuotationStatusCode(), e.getQuotationDate(), e.getAgreedAmount(), facts == null ? null : facts.getAgreementDate(), facts == null ? null : facts.getPassedToPaymentsDate(), derivatives.minimumCloseAmount(), derivatives.includesParts(), derivatives.includesParts() ? e.getPartsAuthorizationCode() : null, e.getPartsSupplierText(), e.getProviderId(), derivatives.amountToBillCompany(), e.getFinalAmountForWorkshop(), e.getNoRepair(), e.getAdminOverrideAppointment(), e.getPassedToPaymentsAt(), e.getEstimatedPaymentDate(), null, e.getInspectionDate(), e.getVersion());
     }
     private InsuranceProcessingResponse toInsuranceProcessingProjection(Long caseId) {
-        ProcessingDerivatives derivatives = processingDerivatives(caseId, null);
+        ProcessingDerivatives derivatives = "CLEAS".equals(caseTypeCode(requireCase(caseId))) ? new ProcessingDerivatives(null, null, null) : processingDerivatives(caseId, null);
         return new InsuranceProcessingResponse(null, caseId, null, null, null, null, null, null, null, null, null, derivatives.minimumCloseAmount(), derivatives.includesParts(), null, null, null, derivatives.amountToBillCompany(), null, null, null, null, null, null, null, 0L);
     }
     private CaseFranchiseResponse toCaseFranchiseResponse(CaseFranchiseEntity e) { return new CaseFranchiseResponse(e.getId(), e.getCaseId(), e.getFranchiseStatusCode(), e.getFranchiseAmount(), e.getRecoveryTypeCode(), e.getRelatedCaseId(), e.getFranchiseOpinionCode(), e.getExceedsFranchise(), e.getRecoveryAmount(), e.getNotes()); }
@@ -616,7 +617,7 @@ public class InsuranceService {
     private String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
     private BigDecimal scale(BigDecimal value) { return value == null ? null : value.setScale(2, RoundingMode.HALF_UP); }
 
-    private void applyPatch(InsuranceProcessingEntity entity, InsuranceProcessingPatchRequest request) {
+    private void applyPatch(InsuranceProcessingEntity entity, InsuranceProcessingPatchRequest request, boolean cleas) {
         if (request.has("presentedAt")) entity.setPresentedAt(dateValue(request.presentedAt(), "presentedAt"));
         if (request.has("inspectionForwardedAt")) entity.setInspectionForwardedAt(dateValue(request.inspectionForwardedAt(), "inspectionForwardedAt"));
         if (request.has("inspectionDate")) entity.setInspectionDate(dateValue(request.inspectionDate(), "inspectionDate"));
@@ -625,6 +626,8 @@ public class InsuranceService {
         if (request.has("quotationStatusCode")) entity.setQuotationStatusCode(codeValue(request.quotationStatusCode(), "quotationStatusCode", quotationStatusRepository::existsByCodeAndActiveTrue));
         if (request.has("quotationDate")) entity.setQuotationDate(dateValue(request.quotationDate(), "quotationDate"));
         if (request.has("agreedAmount")) entity.setAgreedAmount(decimalValue(request.agreedAmount(), "agreedAmount"));
+        if (cleas && request.has("minimumCloseAmount")) entity.setMinimumCloseAmount(nonNegativeDecimalValue(request.minimumCloseAmount(), "minimumCloseAmount"));
+        if (cleas && request.has("includesParts")) entity.setIncludesParts(booleanValue(request.includesParts(), "includesParts"));
         if (request.has("partsAuthorizationCode")) entity.setPartsAuthorizationCode(partsAuthorizationCodeValue(request.partsAuthorizationCode()));
         if (request.has("partsSupplierText")) entity.setPartsSupplierText(textValue(request.partsSupplierText()));
         if (request.has("providerId")) applyProvider(entity, longValue(request.providerId(), "providerId"));
@@ -636,6 +639,7 @@ public class InsuranceService {
     private boolean hasOperationalPatch(InsuranceProcessingPatchRequest request) {
         return request.has("inspectionForwardedAt") || request.has("inspectionDate") || request.has("modalityCode") || request.has("opinionCode")
                 || request.has("quotationStatusCode") || request.has("quotationDate") || request.has("agreedAmount") || request.has("partsAuthorizationCode") || request.has("partsSupplierText")
+                || request.has("minimumCloseAmount") || request.has("includesParts")
                 || request.has("providerId") || request.has("finalAmountForWorkshop") || request.has("passedToPaymentsAt") || request.has("estimatedPaymentDate");
     }
 
@@ -657,6 +661,10 @@ public class InsuranceService {
         return new ProcessingDerivatives(budget == null ? null : scale(budget.getMinimumCloseAmount()), includesParts, amountToBill);
     }
 
+    private ProcessingDerivatives cleasProcessingDerivatives(InsuranceProcessingEntity entity) {
+        return new ProcessingDerivatives(scale(entity.getMinimumCloseAmount()), Boolean.TRUE.equals(entity.getIncludesParts()), entity.getAgreedAmount());
+    }
+
     private void applyProvider(InsuranceProcessingEntity entity, Long providerId) {
         if (providerId == null) { entity.setProviderId(null); return; }
         var provider = providerRepository.findById(providerId).orElseThrow(() -> new ResourceNotFoundException("No existe el proveedor " + providerId));
@@ -667,6 +675,8 @@ public class InsuranceService {
 
     private LocalDate dateValue(JsonNode node, String field) { return node.isNull() ? null : LocalDate.parse(node.asText()); }
     private BigDecimal decimalValue(JsonNode node, String field) { if (node.isNull()) return null; if (!node.isNumber()) throw new ConflictException(field + " debe ser numerico"); return scale(node.decimalValue()); }
+    private BigDecimal nonNegativeDecimalValue(JsonNode node, String field) { BigDecimal value = decimalValue(node, field); if (value != null && value.signum() < 0) throw new ConflictException(field + " no puede ser negativo"); return value; }
+    private Boolean booleanValue(JsonNode node, String field) { if (node.isNull()) return false; if (!node.isBoolean()) throw new ConflictException(field + " debe ser booleano"); return node.booleanValue(); }
     private Long longValue(JsonNode node, String field) { if (node.isNull()) return null; if (!node.canConvertToLong()) throw new ConflictException(field + " debe ser un identificador valido"); return node.longValue(); }
     private String textValue(JsonNode node) { return node.isNull() ? null : blankToNull(node.asText()); }
     private String codeValue(JsonNode node, String field, java.util.function.Predicate<String> exists) { if (node.isNull()) return null; String code = normalizeCode(node.asText()); if (!exists.test(code)) throw new ConflictException(field + " no permitido: " + node.asText()); return code; }
@@ -679,5 +689,5 @@ public class InsuranceService {
         }
         return code;
     }
-    private record ProcessingDerivatives(BigDecimal minimumCloseAmount, boolean includesParts, BigDecimal amountToBillCompany) {}
+    private record ProcessingDerivatives(BigDecimal minimumCloseAmount, Boolean includesParts, BigDecimal amountToBillCompany) {}
 }
