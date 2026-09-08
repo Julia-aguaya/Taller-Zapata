@@ -778,7 +778,7 @@ describe('PresupuestoTab', () => {
     render(<PresupuestoTab {...baseProps} />);
 
     expect(screen.getByText('Servicios adicionales')).toBeInTheDocument();
-    expect(screen.getByText('Estiraje en bancada')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Estiraje en bancada')).toBeInTheDocument();
   });
 
   it('renderiza totales y botón de generar presupuesto', () => {
