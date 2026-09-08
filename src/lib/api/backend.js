@@ -1901,6 +1901,28 @@ export async function readAuthenticatedReferrers(accessToken, filters = {}, opti
 
   return { data: payload, endpoint: endpoint.toString(), httpStatus: response.status };
 }
+
+export async function createAuthenticatedReferrer(accessToken, body, options = {}) {
+  const endpoint = buildApiUrlObject(REFERRERS_PATH);
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify(body),
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude crear el referenciador.', payload);
+  }
+
+  return { data: payload, endpoint: endpoint.toString(), httpStatus: response.status };
+}
+
 export async function searchAuthenticatedVehicles(accessToken, filters = {}, options = {}) {
   const endpoint = buildApiUrlObject(buildVehiclesPath());
 

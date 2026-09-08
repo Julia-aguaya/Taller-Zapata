@@ -5128,14 +5128,15 @@ function App() {
     }
   };
 
-  const createCase = async () => {
+  const createCase = async (createdReferrer) => {
     if (isCreatingCase) {
       return;
     }
 
     setShowNewCaseValidation(true);
 
-    if (folderMissing.length) {
+    const formForCreation = { ...newCaseForm, ...createdReferrer };
+    if (getFolderMissing(formForCreation).length) {
       flash({ tone: 'danger', title: 'Validación', message: 'Faltan campos obligatorios' });
       return;
     }
@@ -5227,10 +5228,10 @@ function App() {
           branchId,
           principalVehicleId: vehicle.id,
           principalCustomerPersonId: person.id,
-          referenced: newCaseForm.referenced === 'SI',
+          referenced: formForCreation.referenced === 'SI',
           referredByPersonId: null,
-          referenciadorId: newCaseForm.referenced === 'SI' ? Number(newCaseForm.referenciadorId) : null,
-          referredByText: newCaseForm.referencedName.trim() || null,
+          referenciadorId: formForCreation.referenced === 'SI' ? Number(formForCreation.referenciadorId) : null,
+          referredByText: formForCreation.referencedName.trim() || null,
           priorityCode: 'ALTA',
           generalObservations: null,
           incidentDate: null,

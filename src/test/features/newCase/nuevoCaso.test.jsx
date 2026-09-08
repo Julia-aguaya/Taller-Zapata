@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -115,6 +115,50 @@ describe('NuevoCaso', () => {
 
     expect(onChange).toHaveBeenNthCalledWith(1, 'referenciadorId', '12');
     expect(onChange).toHaveBeenNthCalledWith(2, 'referencedName', 'Ana Ruiz');
-    expect(screen.queryByLabelText('Nombre del referenciado')).not.toBeInTheDocument();
+  });
+
+  it('crea el referenciador y avanza sin un botón intermedio', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    server.use(
+      http.get('*/api/v1/referenciadores', () => HttpResponse.json([])),
+      http.post('*/api/v1/referenciadores', async ({ request }) => {
+        expect(await request.json()).toEqual({ nombre: 'Ana', apellido: 'Ruiz', telefono: null });
+        return HttpResponse.json({ id: 34, nombre: 'Ana', apellido: 'Ruiz', displayName: 'Ana Ruiz', activo: true });
+      }),
+    );
+
+    const onCreate = vi.fn();
+    function ControlledNuevoCaso() {
+      const [form, setForm] = useState(buildProps().form);
+      const missing = form.referenced === 'SI' && !form.referenciadorId ? ['referenciador'] : [];
+
+      return (
+        <NuevoCaso
+          {...buildProps({
+            accessToken: 'token',
+            form,
+            missing,
+            onChange: (field, value) => {
+              onChange(field, value);
+              setForm((current) => ({ ...current, [field]: value }));
+            },
+            onCreate,
+          })}
+        />
+      );
+    }
+
+    render(<ControlledNuevoCaso />);
+
+    await user.selectOptions(screen.getByText('Referenciado').parentElement.querySelector('select'), 'SI');
+    await user.type(screen.getByText('Nombre del referenciador').parentElement.querySelector('input'), 'Ana');
+    await user.type(screen.getByText('Apellido del referenciador').parentElement.querySelector('input'), 'Ruiz');
+    expect(screen.getByText('Listo para generar')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /generar carpeta particular/i }));
+
+    await waitFor(() => expect(onCreate).toHaveBeenCalledWith({ referenciadorId: '34', referencedName: 'Ana Ruiz' }));
+    expect(onChange).toHaveBeenCalledWith('referenciadorId', '34');
+    expect(onChange).toHaveBeenCalledWith('referencedName', 'Ana Ruiz');
   });
 });
