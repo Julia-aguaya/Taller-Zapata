@@ -76,6 +76,12 @@ Header: `Authorization: Bearer <token>`
 | PUT | /api/v1/cases/{caseId} | Actualizar caso | Autenticado |
 | GET | /api/v1/cases/{caseId}/relations | Listar relaciones | Autenticado |
 | POST | /api/v1/cases/{caseId}/relations | Crear relacion | Autenticado |
+| GET | /api/v1/cases/{caseId}/readiness | Estado de habilitacion, completitud y bloqueos por solapa | Autenticado |
+| GET | /api/v1/cases/{caseId}/workspace | Datos consolidados de gestion del caso | Autenticado |
+| PUT | /api/v1/cases/{caseId}/visible-states | Forzar estado visible (tramite/reparacion) | Autenticado |
+| POST | /api/v1/cases/{caseId}/todo-riesgo/no-repair | Marcar no debe repararse | Autenticado |
+| POST | /api/v1/cases/{caseId}/todo-riesgo/no-repair/revert | Revertir no debe repararse | Autenticado |
+| POST | /api/v1/cases/{caseId}/notes | Agregar nota al caso | Autenticado |
 | POST | /api/v1/cases/{caseId}/workflow/transitions | Transicionar workflow | Autenticado |
 | GET | /api/v1/cases/{caseId}/workflow/history | Historial de workflow | Autenticado |
 | GET | /api/v1/cases/{caseId}/workflow/actions | Listar acciones de workflow | Autenticado |
@@ -85,8 +91,10 @@ Header: `Authorization: Bearer <token>`
 | Metodo | Endpoint | Descripcion | Permiso |
 |--------|----------|-------------|---------|
 | POST | /api/v1/cases/{caseId}/persons | Agregar persona a caso | Autenticado |
+| GET | /api/v1/cases/{caseId}/persons | Listar personas del caso con rol y porcentaje de titularidad | Autenticado |
 | POST | /api/v1/cases/{caseId}/vehicles | Agregar vehiculo a caso | Autenticado |
 | PUT | /api/v1/cases/{caseId}/incident | Actualizar incidente | Autenticado |
+| GET | /api/v1/cases/{caseId}/incident | Obtener incidente | Autenticado |
 
 ### Turnos
 | Metodo | Endpoint | Descripcion | Permiso |
@@ -196,6 +204,11 @@ Header: `Authorization: Bearer <token>`
 | POST | /api/v1/cases/{caseId}/legal-news | Crear novedad | seguro.crear |
 | GET | /api/v1/cases/{caseId}/legal-expenses | Listar gastos | seguro.ver |
 | POST | /api/v1/cases/{caseId}/legal-expenses | Crear gasto | seguro.crear |
+| GET | /api/v1/cases/{caseId}/legal/lesionados | Listar lesionados del expediente | seguro.ver |
+| POST | /api/v1/cases/{caseId}/legal/lesionados | Registrar lesionado | seguro.crear |
+| PUT | /api/v1/cases/{caseId}/legal/lesionados/{lesionadoId} | Actualizar lesionado | seguro.crear |
+| DELETE | /api/v1/cases/{caseId}/legal/lesionados/{lesionadoId} | Eliminar lesionado | seguro.crear |
+| GET | /api/v1/cases/{caseId}/tramite/pdf | Generar PDF de gestion del tramite | seguro.ver |
 
 ### Recuperos
 | Metodo | Endpoint | Descripcion | Permiso |

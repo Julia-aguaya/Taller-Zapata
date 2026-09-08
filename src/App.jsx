@@ -1304,9 +1304,8 @@ export function shouldOpenDocumentationGate({
     return false;
   }
 
-  if (isThirdPartyLawyerCase(selectedCase)) {
-    return false;
-  }
+  // El aviso bloqueante aplica a todo reclamo de terceros (taller y abogado por igual):
+  // la documentacion pendiente vive en la solapa de gestion del tramite de ambos.
 
   if (!isThirdPartyDocumentationIncomplete(selectedCase)) {
     return false;
@@ -4467,7 +4466,9 @@ function App() {
             desiredTitulares.push({ personId: customerPersonId, percentage: 100 });
           } else {
             for (const owner of registry.owners || []) {
-              if (!hasLawyerInjuredData(owner) && !String(owner?.document || '').trim()) continue;
+              // Los titulares ya vinculados al backend (hidratados) no requieren re-sync ni documento.
+              if (owner?.backendPersonId) continue;
+              if (!hasLawyerInjuredData(owner)) continue;
               const document = normalizeDocument(owner.document);
               if (!document) {
                 const ownerName = [owner?.lastName, owner?.firstName].filter(Boolean).join(' ') || 'sin nombre';

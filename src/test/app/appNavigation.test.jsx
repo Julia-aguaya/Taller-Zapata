@@ -175,7 +175,7 @@ describe('App navigation helpers', () => {
     })).toBe(false);
   });
 
-  it('excluye abogado del doc-gate y mantiene bloqueo para no abogado', () => {
+  it('aplica el doc-gate tambien al reclamo de abogado y mantiene el bloqueo para taller', () => {
     const pendingDocLawyerCase = {
       id: '451',
       tramiteType: 'Reclamo de Tercero - Abogado',
@@ -201,7 +201,7 @@ describe('App navigation helpers', () => {
       docGateAcceptedCaseId: '',
       repairAccessPrompt: null,
       activeTab: 'tramite',
-    })).toBe(false);
+    })).toBe(true);
 
     expect(shouldOpenDocumentationGate({
       activeView: 'gestion',
