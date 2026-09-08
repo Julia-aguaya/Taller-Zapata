@@ -162,4 +162,20 @@ describe('patchCaseWithBackendDetail', () => {
       observations: 'Presupuesto ejecutado y cerrado.',
     });
   });
+
+  it('hidrata el proveedor manual de repuestos desde la gestión del seguro', () => {
+    const localCase = {
+      customer: {},
+      vehicle: {},
+      budget: { amount: '', lines: [], services: [] },
+    };
+
+    patchCaseWithBackendDetail(localCase, {
+      insuranceProcessingState: {
+        data: { providerId: null, partsSupplierText: 'Repuestos del Centro' },
+      },
+    });
+
+    expect(localCase.todoRisk.processing.partsSupplierText).toBe('Repuestos del Centro');
+  });
 });

@@ -203,6 +203,7 @@ export function createTodoRiskDefaults(overrides = {}) {
       quoteStatus: 'Pendiente',
       quoteDate: '',
       agreedAmount: '',
+      partsSupplierText: '',
       cleasScope: '',
       dictamen: 'Pendiente',
       franchiseAmount: '',

@@ -198,6 +198,7 @@ export function patchCaseWithBackendDetail(localCase, detailState) {
   localCase.todoRisk.processing.quoteDate = pickFirstNonEmpty(localCase.todoRisk.processing.quoteDate, insuranceProcessing.quotationDate).slice(0, 10);
   localCase.todoRisk.processing.quoteStatus = mapQuoteStatus(pickFirstNonEmpty(localCase.todoRisk.processing.quoteStatus, insuranceProcessing.quotationStatusCode));
   localCase.todoRisk.processing.agreedAmount = pickFirstNonEmpty(localCase.todoRisk.processing.agreedAmount, insuranceProcessing.agreedAmount);
+  localCase.todoRisk.processing.partsSupplierText = pickFirstNonEmpty(localCase.todoRisk.processing.partsSupplierText, insuranceProcessing.partsSupplierText);
   localCase.todoRisk.processing.adminTurnOverride = Boolean(insuranceProcessing.adminOverrideAppointment);
   localCase.todoRisk.processing.agreementDate = pickFirstNonEmpty(localCase.todoRisk.processing.agreementDate, insuranceProcessing.agreementDate).slice(0, 10);
   localCase.payments.passedToPaymentsDate = pickFirstNonEmpty(localCase.payments.passedToPaymentsDate, insuranceProcessing.passedToPaymentsDate).slice(0, 10);

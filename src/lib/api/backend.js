@@ -2097,6 +2097,34 @@ async function putAuthenticatedCaseResource(accessToken, endpoint, body, fallbac
   };
 }
 
+async function patchAuthenticatedCaseResource(accessToken, endpoint, body, fallbackMessage, options = {}) {
+  const headers = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${accessToken}`,
+  };
+  if (options.changeNote?.trim()) {
+    headers['X-Change-Note'] = options.changeNote.trim();
+  }
+  const response = await fetch(endpoint, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(body),
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, fallbackMessage, payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
+}
+
 async function postAuthenticatedCaseResource(accessToken, endpoint, body, fallbackMessage, options = {}) {
   const headers = {
     Accept: 'application/json',
@@ -2160,7 +2188,7 @@ export async function updateAuthenticatedCaseVisibleStates(accessToken, caseId, 
 
 export async function updateAuthenticatedCaseInsuranceProcessing(accessToken, caseId, body, options = {}) {
   const endpoint = getCaseInsuranceProcessingUrl(caseId);
-  return putAuthenticatedCaseResource(accessToken, endpoint, body, 'No pude actualizar la gestión del trámite del caso.', options);
+  return patchAuthenticatedCaseResource(accessToken, endpoint, body, 'No pude actualizar la gestión del trámite del caso.', options);
 }
 
 export async function updateAuthenticatedCaseInsurance(accessToken, caseId, body, options = {}) {

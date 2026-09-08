@@ -3,6 +3,7 @@
  * Los componentes reciben props directas y, cuando hace falta,
  * se mockean lecturas puntuales al backend con MSW.
  */
+import { useState } from 'react';
 import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
@@ -673,6 +674,32 @@ describe('GestionTramiteTab', () => {
     expect(screen.getAllByRole('option', { name: 'Pendiente' }).length).toBeGreaterThan(0);
     expect(screen.getByRole('option', { name: 'Cobrada' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Bonificada' })).toBeInTheDocument();
+  });
+
+  it('permite registrar el proveedor manual de repuestos en el estado de tramitación', async () => {
+    const user = userEvent.setup();
+    const updateCase = vi.fn();
+    function ControlledGestionTramiteTab() {
+      const [item, setItem] = useState(todoRiskCase);
+
+      const handleUpdateCase = (updater) => {
+        updateCase(updater);
+        setItem((current) => {
+          const draft = structuredClone(current);
+          updater(draft);
+          return draft;
+        });
+      };
+
+      return <GestionTramiteTab {...baseProps} item={item} updateCase={handleUpdateCase} />;
+    }
+
+    render(<ControlledGestionTramiteTab />);
+
+    await user.type(screen.getByLabelText('Provee repuestos'), 'Repuestos del Centro');
+
+    expect(updateCase).toHaveBeenCalled();
+    expect(screen.getByLabelText('Provee repuestos')).toHaveValue('Repuestos del Centro');
   });
 
   it('fuerza 4 opciones de Franquicia y Recupero cuando catálogo backend no matchea', () => {

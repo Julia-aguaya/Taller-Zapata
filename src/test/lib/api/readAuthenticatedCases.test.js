@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { readAuthenticatedCases } from '../../../lib/api/backend';
+import { readAuthenticatedCases, updateAuthenticatedCaseInsuranceProcessing } from '../../../lib/api/backend';
 
 describe('readAuthenticatedCases', () => {
   afterEach(() => {
@@ -56,5 +56,34 @@ describe('readAuthenticatedCases', () => {
     expect(endpoint.searchParams.get('hasPendingTasks')).toBe('true');
     expect(endpoint.searchParams.get('pendingTaskAssignedUserId')).toBe('3');
     expect(requestOptions.headers.Authorization).toBe('Bearer token-demo');
+  });
+});
+
+describe('updateAuthenticatedCaseInsuranceProcessing', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('envía el proveedor manual con PATCH sin asociar un proveedor de catálogo', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await updateAuthenticatedCaseInsuranceProcessing('token-demo', '123', {
+      providerId: null,
+      partsSupplierText: 'Repuestos del Centro',
+    });
+
+    const [requestUrl, requestOptions] = fetchMock.mock.calls[0];
+    expect(new URL(String(requestUrl)).pathname).toBe('/api/v1/cases/123/insurance-processing');
+    expect(requestOptions.method).toBe('PATCH');
+    expect(JSON.parse(requestOptions.body)).toEqual({
+      providerId: null,
+      partsSupplierText: 'Repuestos del Centro',
+    });
   });
 });
