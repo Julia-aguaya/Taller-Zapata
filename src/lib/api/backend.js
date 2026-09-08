@@ -127,6 +127,10 @@ function buildCaseFinanceSummaryPath(caseId) {
   return `/cases/${caseId}/finance-summary`;
 }
 
+function buildCaseParticularFinanceSummaryPath(caseId) {
+  return `/cases/${caseId}/finance/particular-summary`;
+}
+
 function buildCaseFinancialMovementsPath(caseId) {
   return `/cases/${caseId}/financial-movements`;
 }
@@ -456,6 +460,10 @@ export function getCaseVehicleOutcomesUrl(caseId) {
 
 export function getCaseFinanceSummaryUrl(caseId) {
   return buildApiUrl(buildCaseFinanceSummaryPath(caseId));
+}
+
+export function getCaseParticularFinanceSummaryUrl(caseId) {
+  return buildApiUrl(buildCaseParticularFinanceSummaryPath(caseId));
 }
 
 export function getCaseFinancialMovementsUrl(caseId) {
@@ -1844,6 +1852,29 @@ export async function readAuthenticatedReferralContacts(accessToken, filters = {
   }
 
   return { data: payload, endpoint: endpoint.toString(), httpStatus: response.status };
+}
+
+export async function readAuthenticatedCaseParticularFinanceSummary(accessToken, caseId, options = {}) {
+  const endpoint = getCaseParticularFinanceSummaryUrl(caseId);
+  const response = await fetch(endpoint, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    signal: options.signal,
+  });
+  const payload = await readJson(response);
+
+  if (!response.ok) {
+    throw buildHttpError(response, 'No pude leer el saldo pendiente del cliente.', payload);
+  }
+
+  return {
+    data: payload,
+    endpoint: endpoint.toString(),
+    httpStatus: response.status,
+  };
 }
 
 export async function readAuthenticatedReferrers(accessToken, filters = {}, options = {}) {

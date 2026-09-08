@@ -95,6 +95,7 @@ import {
   getCasePartsUrl,
   getCaseDetailUrl,
   getCaseFinanceSummaryUrl,
+  getCaseParticularFinanceSummaryUrl,
   getCaseFinancialMovementsUrl,
   getCaseReceiptsUrl,
   getCaseRelationsUrl,
@@ -150,6 +151,7 @@ import {
   downloadAuthenticatedCaseDocument,
   downloadAuthenticatedCaseBudgetPdf,
   readAuthenticatedCaseFinanceSummary,
+  readAuthenticatedCaseParticularFinanceSummary,
   readAuthenticatedCaseFinancialMovements,
   readAuthenticatedCaseReceipts,
   readAuthenticatedCaseRelations,
@@ -2828,6 +2830,7 @@ function App() {
     const auditEventsEndpoint = getCaseAuditEventsUrl(item.id);
     const appointmentsEndpoint = getCaseAppointmentsUrl(item.id);
     const financeSummaryEndpoint = getCaseFinanceSummaryUrl(item.id);
+    const particularFinanceSummaryEndpoint = getCaseParticularFinanceSummaryUrl(item.id);
     const financialMovementsEndpoint = getCaseFinancialMovementsUrl(item.id);
     const receiptsEndpoint = getCaseReceiptsUrl(item.id);
     const vehicleIntakesEndpoint = getCaseVehicleIntakesUrl(item.id);
@@ -2959,6 +2962,12 @@ function App() {
         detail: 'Estamos revisando el resumen financiero disponible para esta carpeta.',
         endpoint: financeSummaryEndpoint,
       },
+      particularFinanceSummaryState: {
+        status: 'loading',
+        data: null,
+        detail: 'Estamos revisando el saldo pendiente del cliente.',
+        endpoint: particularFinanceSummaryEndpoint,
+      },
       financialMovementsState: {
         status: 'loading',
         items: [],
@@ -2994,7 +3003,7 @@ function App() {
     });
 
     try {
-      const [detailResult, historyResult, actionsResult, auditEventsResult, relationsResult, insuranceResult, insuranceProcessingResult, insuranceProcessingDocumentsResult, cleasResult, thirdPartyResult, legalResult, legalNewsResult, legalExpensesResult, franchiseRecoveryResult, franchiseResult, budgetResult, partsResult, appointmentsResult, documentsResult, financeSummaryResult, financialMovementsResult, receiptsResult, vehicleIntakesResult, vehicleOutcomesResult, personResult, vehicleResult] = await Promise.allSettled([
+      const [detailResult, historyResult, actionsResult, auditEventsResult, relationsResult, insuranceResult, insuranceProcessingResult, insuranceProcessingDocumentsResult, cleasResult, thirdPartyResult, legalResult, legalNewsResult, legalExpensesResult, franchiseRecoveryResult, franchiseResult, budgetResult, partsResult, appointmentsResult, documentsResult, financeSummaryResult, particularFinanceSummaryResult, financialMovementsResult, receiptsResult, vehicleIntakesResult, vehicleOutcomesResult, personResult, vehicleResult] = await Promise.allSettled([
         readAuthenticatedCaseDetail(backendSession.accessToken, item.id),
         readAuthenticatedCaseWorkflowHistory(backendSession.accessToken, item.id),
         readAuthenticatedCaseWorkflowActions(backendSession.accessToken, item.id),
@@ -3015,6 +3024,7 @@ function App() {
         readAuthenticatedCaseAppointments(backendSession.accessToken, item.id),
         readAuthenticatedCaseDocuments(backendSession.accessToken, item.id),
         readAuthenticatedCaseFinanceSummary(backendSession.accessToken, item.id),
+        readAuthenticatedCaseParticularFinanceSummary(backendSession.accessToken, item.id),
         readAuthenticatedCaseFinancialMovements(backendSession.accessToken, item.id),
         readAuthenticatedCaseReceipts(backendSession.accessToken, item.id),
         readAuthenticatedCaseVehicleIntakes(backendSession.accessToken, item.id),
@@ -3133,6 +3143,9 @@ function App() {
       const financeSummaryState = financeSummaryResult.status === 'fulfilled'
         ? buildCaseFinanceSummaryState(financeSummaryResult.value.data)
         : buildRejectedCaseFinanceSummaryState(financeSummaryResult.reason);
+      const particularFinanceSummaryState = particularFinanceSummaryResult.status === 'fulfilled'
+        ? { status: 'success', data: particularFinanceSummaryResult.value.data, detail: 'Saldo pendiente del cliente actualizado.' }
+        : { status: particularFinanceSummaryResult.reason?.httpStatus === 404 ? 'empty' : 'error', data: null, detail: getFriendlyErrorMessage(particularFinanceSummaryResult.reason) };
       const financialMovementsState = financialMovementsResult.status === 'fulfilled'
         ? buildCaseFinancialMovementsState(financialMovementsResult.value.data)
         : buildRejectedCaseFinancialMovementsState(financialMovementsResult.reason);
@@ -3247,6 +3260,7 @@ function App() {
         appointmentsState,
         documentsState,
         financeSummaryState,
+        particularFinanceSummaryState,
         financialMovementsState,
         receiptsState,
         vehicleIntakesState,
@@ -3374,6 +3388,11 @@ function App() {
           detail: '',
         },
         financeSummaryState: {
+          status: 'error',
+          data: null,
+          detail: '',
+        },
+        particularFinanceSummaryState: {
           status: 'error',
           data: null,
           detail: '',
@@ -3686,6 +3705,49 @@ function App() {
     setNotice(payload);
     window.clearTimeout(window.__demoNoticeTimer);
     window.__demoNoticeTimer = window.setTimeout(() => setNotice(null), 3200);
+  };
+
+  const registerClientPayment = async ({ amount, date, paymentMethodCode }) => {
+    const caseId = Number(selectedCase?.id);
+    const customerPersonId = Number(authenticatedCaseDetailState.item?.principalCustomerPersonId || selectedCase?.principalCustomerPersonId);
+    const financeCatalogs = authenticatedFinanceCatalogsState.catalogs || {};
+    const movementTypeCode = resolveCatalogCode('INGRESO', getCatalogEntries(financeCatalogs, 'movementTypeCodes'), ['INGRESO']);
+    const flowOriginCode = resolveCatalogCode('CLIENTE', getCatalogEntries(financeCatalogs, 'flowOriginCodes'), ['CLIENTE']);
+    const counterpartyTypeCode = resolveCatalogCode('PERSONA', getCatalogEntries(financeCatalogs, 'counterpartyTypeCodes'), ['PERSONA']);
+
+    if (!backendSession?.accessToken || !Number.isFinite(caseId) || !Number.isFinite(customerPersonId) || !movementTypeCode || !flowOriginCode || !counterpartyTypeCode) {
+      const error = new Error('No pudimos preparar el pago del cliente con los datos disponibles.');
+      flash({ tone: 'danger', title: 'Pago del cliente', message: error.message });
+      throw error;
+    }
+
+    try {
+      await createAuthenticatedCaseFinancialMovement(backendSession.accessToken, caseId, {
+        receiptId: null,
+        movementTypeCode,
+        flowOriginCode,
+        counterpartyTypeCode,
+        counterpartyPersonId: customerPersonId,
+        counterpartyCompanyId: null,
+        movementAt: `${date}T12:00:00`,
+        grossAmount: amount,
+        netAmount: amount,
+        paymentMethodCode,
+        paymentMethodDetail: null,
+        cancellationTypeCode: null,
+        advancePayment: false,
+        bonification: false,
+        reason: 'Pago de cliente registrado desde Pagos',
+        externalReference: selectedCase.code || null,
+        retentions: [],
+        applications: [],
+      });
+      await openAuthenticatedCaseDetail(selectedCase);
+      flash({ tone: 'success', title: 'Pago del cliente', message: 'Registramos el pago del cliente y actualizamos el saldo.' });
+    } catch (error) {
+      flash({ tone: 'danger', title: 'Pago del cliente', message: getFriendlyErrorMessage(error) });
+      throw error;
+    }
   };
 
   const updateNewCaseField = (field, value) => {
@@ -5539,6 +5601,7 @@ function App() {
           financeCatalogs={authenticatedFinanceCatalogsState.catalogs}
           onChangeRepairTab={setActiveRepairTab}
           onChangeTab={handleTabChange}
+          onRegisterClientPayment={registerClientPayment}
           onSyncCase={syncSelectedCaseToBackend}
           onRunWorkflowTransition={runWorkflowTransitionForCase}
           onPreviewBudgetPdf={previewCaseBudgetPdf}

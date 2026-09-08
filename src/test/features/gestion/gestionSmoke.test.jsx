@@ -5,7 +5,7 @@
  */
 import { useState } from 'react';
 import { beforeEach, describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import userEvent from '@testing-library/user-event';
 import { shouldPromptRepairAccess } from '../../../App';
@@ -1030,6 +1030,53 @@ describe('PagosTab', () => {
     // Verificamos que hay al menos uno mediante getAllByText.
     const matches = screen.getAllByText('Parcial');
     expect(matches.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('registra un pago del cliente, valida el monto y actualiza el saldo mostrado', async () => {
+    const user = userEvent.setup();
+    const onRegisterClientPayment = vi.fn(async () => {});
+
+    function ClientPaymentHarness() {
+      const [outstandingAmount, setOutstandingAmount] = useState(300);
+      return (
+        <PagosTab
+          {...baseProps}
+          clientOutstandingAmount={outstandingAmount}
+          onRegisterClientPayment={async (payload) => {
+            await onRegisterClientPayment(payload);
+            setOutstandingAmount(200);
+          }}
+        />
+      );
+    }
+
+    render(<ClientPaymentHarness />);
+
+    expect(screen.getByRole('button', { name: 'Registrar pago del cliente' })).toBeInTheDocument();
+    expect(screen.getByText(/Saldo pendiente:/)).toBeInTheDocument();
+
+    const clientPaymentAmount = screen.getByText('Monto a registrar').parentElement.querySelector('input');
+    const clientPaymentDate = screen.getByText('Fecha de pago del cliente').parentElement.querySelector('input');
+    const clientPaymentMethod = screen.getByText('Método de pago').parentElement.querySelector('select');
+    await user.type(clientPaymentAmount, '301');
+    await user.type(clientPaymentDate, '2026-09-07');
+    await user.selectOptions(clientPaymentMethod, 'Transferencia');
+    await user.click(screen.getByRole('button', { name: 'Registrar pago del cliente' }));
+
+    expect(screen.getByText('El monto supera el saldo pendiente del cliente.')).toBeInTheDocument();
+    expect(onRegisterClientPayment).not.toHaveBeenCalled();
+
+    await user.clear(clientPaymentAmount);
+    await user.type(clientPaymentAmount, '100');
+    await user.click(screen.getByRole('button', { name: 'Registrar pago del cliente' }));
+
+    await waitFor(() => expect(onRegisterClientPayment).toHaveBeenCalledWith({
+      amount: 100,
+      date: '2026-09-07',
+      paymentMethodCode: 'Transferencia',
+    }));
+    expect(screen.getByText('Pago del cliente registrado. Actualizamos el saldo.')).toBeInTheDocument();
+    expect(screen.getByText(/Saldo pendiente:.*200/)).toBeInTheDocument();
   });
 });
 

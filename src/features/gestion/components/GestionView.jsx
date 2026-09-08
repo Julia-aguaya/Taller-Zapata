@@ -30,7 +30,7 @@ function isAdminRole(role) {
   return ['admin', 'administrador', 'administrator', 'superadmin'].includes(normalized);
 }
 
-export default function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRepairTab, updateCase, flash, onSyncCase, onRunWorkflowTransition, onSetVisibleStateOverride, onPreviewBudgetPdf, onDownloadBudgetPdf, isSavingCase = false, hasUnsavedChanges = false, insuranceCatalogs = null, financeCatalogs = null, allCases = [], currentUserRole = '', detailState = null, isPreviewingBudgetPdf = false, isDownloadingBudgetPdf = false }) {
+export default function GestionView({ item, activeTab, onChangeTab, activeRepairTab, onChangeRepairTab, updateCase, flash, onSyncCase, onRegisterClientPayment, onRunWorkflowTransition, onSetVisibleStateOverride, onPreviewBudgetPdf, onDownloadBudgetPdf, isSavingCase = false, hasUnsavedChanges = false, insuranceCatalogs = null, financeCatalogs = null, allCases = [], currentUserRole = '', detailState = null, isPreviewingBudgetPdf = false, isDownloadingBudgetPdf = false }) {
   const [manualVisibleStateDraft, setManualVisibleStateDraft] = useState({ tramite: '', reparacion: '' });
   const [changeNoteDraft, setChangeNoteDraft] = useState('');
   const [visibleAuditCount, setVisibleAuditCount] = useState(3);
@@ -530,7 +530,7 @@ export default function GestionView({ item, activeTab, onChangeTab, activeRepair
               updateCase={updateCase}
             />
           ) : null}
-          {activeTab === 'pagos' ? <PagosTab financeCatalogs={financeCatalogs} flash={flash} insuranceCatalogs={insuranceCatalogs} item={item} updateCase={updateCase} /> : null}
+          {activeTab === 'pagos' ? <PagosTab clientOutstandingAmount={detailMatchesSelectedCase ? detailState?.particularFinanceSummaryState?.data?.pendingBalance : null} financeCatalogs={financeCatalogs} flash={flash} insuranceCatalogs={insuranceCatalogs} item={item} onRegisterClientPayment={onRegisterClientPayment} updateCase={updateCase} /> : null}
           {activeTab === 'abogado' ? <AbogadoTab flash={flash} insuranceCatalogs={insuranceCatalogs} item={item} updateCase={updateCase} /> : null}
         </div>
       </div>

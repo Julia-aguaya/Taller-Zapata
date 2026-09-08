@@ -38,11 +38,13 @@ function HonestPendingAction({ helperText, label }) {
   );
 }
 
-export default function PagosTab({ item, updateCase, financeCatalogs = null, insuranceCatalogs = null }) {
+export default function PagosTab({ item, updateCase, financeCatalogs = null, insuranceCatalogs = null, clientOutstandingAmount = null, onRegisterClientPayment }) {
   const receiptTypeOptions = getCatalogSelectOptions(financeCatalogs, 'receiptTypeCodes', COMPROBANTES);
   const paymentMethodOptions = getCatalogSelectOptions(financeCatalogs, 'paymentMethodCodes', PAYMENT_MODES);
   const insurancePaymentStatusOptions = getCatalogSelectOptions(insuranceCatalogs, 'paymentStatusCodes', CLEAS_PAYMENT_STATUS_OPTIONS);
   const [activePaymentTab, setActivePaymentTab] = useState('facturacion');
+  const [clientPayment, setClientPayment] = useState({ amount: '', date: '', paymentMethodCode: '' });
+  const [clientPaymentState, setClientPaymentState] = useState({ status: 'idle', message: '' });
 
   if (isFranchiseRecoveryCase(item)) {
     const franchiseComputed = item.computed.franchiseRecovery || {};
@@ -608,6 +610,36 @@ export default function PagosTab({ item, updateCase, financeCatalogs = null, ins
     });
   };
 
+  const submitClientPayment = async () => {
+    const amount = Number(String(clientPayment.amount).replace(',', '.'));
+    const outstandingAmount = Number(clientOutstandingAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setClientPaymentState({ status: 'error', message: 'Ingresá un monto positivo.' });
+      return;
+    }
+    if (!clientPayment.date) {
+      setClientPaymentState({ status: 'error', message: 'Ingresá la fecha de pago.' });
+      return;
+    }
+    if (!clientPayment.paymentMethodCode) {
+      setClientPaymentState({ status: 'error', message: 'Seleccioná el método de pago.' });
+      return;
+    }
+    if (Number.isFinite(outstandingAmount) && amount > outstandingAmount) {
+      setClientPaymentState({ status: 'error', message: 'El monto supera el saldo pendiente del cliente.' });
+      return;
+    }
+
+    setClientPaymentState({ status: 'saving', message: '' });
+    try {
+      await onRegisterClientPayment?.({ amount, date: clientPayment.date, paymentMethodCode: clientPayment.paymentMethodCode });
+      setClientPayment({ amount: '', date: '', paymentMethodCode: '' });
+      setClientPaymentState({ status: 'success', message: 'Pago del cliente registrado. Actualizamos el saldo.' });
+    } catch (error) {
+      setClientPaymentState({ status: 'error', message: error?.message || 'No pudimos registrar el pago del cliente.' });
+    }
+  };
+
   const paymentEvents = collectPaymentEvents([item]);
 
   return (
@@ -660,6 +692,29 @@ export default function PagosTab({ item, updateCase, financeCatalogs = null, ins
             <DataField label="Número factura" onChange={(value) => updateCase((draft) => { draft.payments.invoiceNumber = value; })} value={item.payments.invoiceNumber} />
           </div>
         ) : null}
+      </article>
+
+      <article className="card inner-card">
+        <div className="section-head small-gap">
+          <div>
+            <p className="eyebrow">Pago del cliente</p>
+            <h3>Registrar pago del cliente</h3>
+          </div>
+          <StatusBadge tone={Number(clientOutstandingAmount) === 0 ? 'success' : 'info'}>
+            Saldo pendiente: {Number.isFinite(Number(clientOutstandingAmount)) ? money(clientOutstandingAmount) : 'No disponible'}
+          </StatusBadge>
+        </div>
+        <div className="form-grid three-columns compact-grid">
+          <DataField label="Monto a registrar" onChange={(amount) => setClientPayment((current) => ({ ...current, amount }))} required type="number" value={clientPayment.amount} />
+          <DataField label="Fecha de pago del cliente" onChange={(date) => setClientPayment((current) => ({ ...current, date }))} required type="date" value={clientPayment.date} />
+          <SelectField label="Método de pago" onChange={(paymentMethodCode) => setClientPayment((current) => ({ ...current, paymentMethodCode }))} options={paymentMethodOptions} placeholder="Seleccioná" required value={clientPayment.paymentMethodCode} />
+        </div>
+        <div className="actions-row compact-actions">
+          <button className="primary-button" disabled={clientPaymentState.status === 'saving'} onClick={() => { void submitClientPayment(); }} type="button">
+            {clientPaymentState.status === 'saving' ? 'Registrando pago...' : 'Registrar pago del cliente'}
+          </button>
+          {clientPaymentState.message ? <small className={clientPaymentState.status === 'error' ? 'error-text' : 'muted'} role="status">{clientPaymentState.message}</small> : null}
+        </div>
       </article>
 
       <article className="card inner-card">

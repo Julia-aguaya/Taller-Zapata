@@ -116,6 +116,11 @@ export function createAuthenticatedCaseDetailInitialState() {
       data: null,
       detail: '',
     },
+    particularFinanceSummaryState: {
+      status: 'idle',
+      data: null,
+      detail: '',
+    },
     financialMovementsState: {
       status: 'idle',
       items: [],
