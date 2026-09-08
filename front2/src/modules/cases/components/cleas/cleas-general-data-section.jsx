@@ -1,28 +1,67 @@
-import { CalendarDays } from 'lucide-react';
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { CalendarDays, Edit2, Save, X } from 'lucide-react';
+import { toast } from 'sonner';
+import { getCleasIncident, getCleasProcessing, saveCleasIncident, saveCleasProcessing } from '@/modules/cases/api/cleas-api';
+import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
 
-const SummaryValue = ({ label, value }) => (
-  <div className="min-w-0">
-    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-    <p className="mt-1 truncate text-sm font-medium">{value || 'Sin informar'}</p>
-  </div>
-);
+const emptyDates = { incidentDate: '', prescriptionDate: '', presentedAt: '' };
 
-export const CleasGeneralDataSection = ({ caseDetail }) => (
-  <Card className="rounded-3xl border-border/70 p-5">
-    <div className="flex items-center gap-3">
-      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-        <CalendarDays className="h-5 w-5" />
-      </div>
-      <h4 className="text-sm font-semibold">Datos generales del trámite</h4>
+const DateField = ({ label, value, editing, onChange }) => <div className="min-w-0">
+  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+  {editing ? <input aria-label={label} type="date" value={value} onChange={onChange} className="mt-0.5 h-9 w-full rounded-lg border border-input bg-background px-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" /> : <p className="mt-1 text-sm font-medium">{value || 'Sin informar'}</p>}
+</div>;
+
+export const CleasGeneralDataSection = ({ caseId, closed = false }) => {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(emptyDates);
+  const incidentQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'incident'], queryFn: () => getCleasIncident(caseId) });
+  const processingQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'processing'], queryFn: () => getCleasProcessing(caseId) });
+  const incident = incidentQuery.data?.incident;
+  const processing = processingQuery.data;
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const incidentChanged = draft.incidentDate !== (incident?.incidentDate ?? '') || draft.prescriptionDate !== (incident?.prescriptionDate ?? '');
+      const presentedChanged = draft.presentedAt !== (processing?.presentedAt ?? '');
+      if (incidentChanged) {
+        await saveCleasIncident(caseId, {
+          incident: { ...incident, incidentDate: draft.incidentDate || null, prescriptionDate: draft.prescriptionDate || null },
+          thirdPartyVehicleId: incidentQuery.data?.thirdPartyVehicleId ?? null,
+        });
+      }
+      if (presentedChanged) await saveCleasProcessing(caseId, { expectedVersion: processing?.version ?? 0, presentedAt: draft.presentedAt || null });
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'incident'] }),
+        queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'processing'] }),
+        queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }),
+        queryClient.invalidateQueries({ queryKey: ['cases'] }),
+      ]);
+      setEditing(false);
+      toast.success('Datos generales CLEAS guardados.');
+    },
+    onError: (error) => toast.error(error?.httpStatus === 409 ? 'Los datos fueron modificados por otra persona. Recargá e intentá nuevamente.' : error.message || 'No se pudieron guardar los datos generales CLEAS.'),
+  });
+
+  const startEditing = () => {
+    setDraft({ incidentDate: incident?.incidentDate ?? '', prescriptionDate: incident?.prescriptionDate ?? '', presentedAt: processing?.presentedAt ?? '' });
+    setEditing(true);
+  };
+
+  return <Card className="rounded-3xl border-border/70 p-5">
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary"><CalendarDays className="h-5 w-5" /></div><h4 className="text-sm font-semibold">Datos generales del trámite</h4></div>
+      {!closed && (!editing ? <Button type="button" size="sm" variant="outline" onClick={startEditing}><Edit2 className="mr-1.5 h-3.5 w-3.5" />Editar</Button> : <div className="flex gap-2"><Button type="button" size="sm" variant="outline" onClick={() => setEditing(false)}><X className="mr-1.5 h-3.5 w-3.5" />Cancelar</Button><Button type="button" size="sm" onClick={() => mutation.mutate()} disabled={mutation.isPending}><Save className="mr-1.5 h-3.5 w-3.5" />Guardar</Button></div>)}
     </div>
-
-    {/* Ajuste visual CLEAS: cambiá grid-cols, gap, order o tamaños de estos bloques sin modificar lógica. */}
     <div className="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-4">
-      <SummaryValue label="Fecha del siniestro" value={caseDetail?.incidentDate} />
-      <SummaryValue label="Prescripción del trámite" value={caseDetail?.prescriptionDate} />
-      <SummaryValue label="Fecha presentado" value={caseDetail?.presentedAt} />
-      <SummaryValue label="Días tramitando" value={caseDetail?.daysInProcess} />
+      <DateField label="Fecha del siniestro" value={editing ? draft.incidentDate : incident?.incidentDate ?? ''} editing={editing} onChange={(event) => setDraft((current) => ({ ...current, incidentDate: event.target.value }))} />
+      <DateField label="Prescripción del trámite" value={editing ? draft.prescriptionDate : incident?.prescriptionDate ?? ''} editing={editing} onChange={(event) => setDraft((current) => ({ ...current, prescriptionDate: event.target.value }))} />
+      <DateField label="Fecha presentado" value={editing ? draft.presentedAt : processing?.presentedAt ?? ''} editing={editing} onChange={(event) => setDraft((current) => ({ ...current, presentedAt: event.target.value }))} />
+      <div className="min-w-0"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Días tramitando</p><p className="mt-1 text-sm font-medium">{incident?.daysInProcess ?? 'Sin informar'}</p></div>
     </div>
-  </Card>
-);
+  </Card>;
+};

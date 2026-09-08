@@ -135,14 +135,14 @@ public class CleasManagementService {
 
     @Transactional(readOnly = true)
     public CleasIncidentResponse getIncident(Long caseId) {
-        requireEditableCleasCase(caseId);
+        requireCleasCase(caseId);
         CaseIncidentResponse incident = caseManagementService.getCaseIncident(caseId);
         return new CleasIncidentResponse(incident, thirdPartyVehicleId(caseId));
     }
 
     @Transactional
     public CleasIncidentResponse upsertIncident(Long caseId, CleasIncidentUpsertRequest request, HttpServletRequest httpRequest) {
-        requireCleasCase(caseId);
+        requireEditableCleasCase(caseId);
         if (request.incident() == null) throw new ConflictException("incident es obligatorio");
         caseManagementService.updateCaseIncident(caseId, request.incident(), httpRequest);
         updateThirdPartyVehicle(caseId, request.thirdPartyVehicleId());

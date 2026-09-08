@@ -106,6 +106,11 @@ class CleasManagementIntegrationTest {
         mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scopeCode\":\"DANIO_TOTAL\",\"opinionCode\":\"A_FAVOR\"}"))
                 .andExpect(status().isConflict());
+        mockMvc.perform(get("/api/v1/cases/100/cleas/incident").header("X-User-Id", "3"))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/cases/100/cleas/incident").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"incident\":{\"incidentDate\":\"2026-08-01\"},\"thirdPartyVehicleId\":null}"))
+                .andExpect(status().isConflict());
         mockMvc.perform(get("/api/v1/cases/100/cleas/liquidation-pdf").header("X-User-Id", "3"))
                 .andExpect(status().isConflict());
     }
