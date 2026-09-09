@@ -200,24 +200,41 @@ class CleasManagementIntegrationTest {
 
     @Test
     void shouldPersistManualProcessingMinimumAndPartsForCleas() throws Exception {
+        // Contrato de version (mismo que el front usa): el cliente envia la version que vio por
+        // ultima vez. El INSERT inicial nace en 0; cada UPDATE posterior la incrementa.
         mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"expectedVersion\":0,\"presentedAt\":\"2026-08-02\",\"minimumCloseAmount\":850.50,\"includesParts\":true}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.minimumCloseAmount").value(850.50))
-                .andExpect(jsonPath("$.includesParts").value(true));
+                .andExpect(jsonPath("$.includesParts").value(true))
+                .andExpect(jsonPath("$.version").value(0));
 
         mockMvc.perform(get("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.minimumCloseAmount").value(850.50))
-                .andExpect(jsonPath("$.includesParts").value(true));
+                .andExpect(jsonPath("$.includesParts").value(true))
+                .andExpect(jsonPath("$.version").value(0));
         assertThat(jdbcTemplate.queryForObject("SELECT monto_minimo_cierre FROM caso_tramitacion_seguro WHERE caso_id = ?", java.math.BigDecimal.class, 100L)).isEqualByComparingTo("850.50");
         assertThat(jdbcTemplate.queryForObject("SELECT lleva_repuestos FROM caso_tramitacion_seguro WHERE caso_id = ?", Boolean.class, 100L)).isTrue();
 
+        // El cliente reenvia la version que vio (0): el UPDATE se aplica y queda commiteado en 1.
+        // La version de la respuesta refleja el estado pre-flush; la version confiable se lee del GET.
         mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"expectedVersion\":1,\"includesParts\":false}"))
+                        .content("{\"expectedVersion\":0,\"includesParts\":false}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.minimumCloseAmount").value(850.50))
                 .andExpect(jsonPath("$.includesParts").value(false));
+
+        mockMvc.perform(get("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.includesParts").value(false))
+                .andExpect(jsonPath("$.version").value(1));
+
+        // Una version vencida (0, ya consumida) no pisa cambios de otro usuario.
+        mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\":0,\"includesParts\":true}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PROCESSING_VERSION_CONFLICT"));
     }
 
     @Test

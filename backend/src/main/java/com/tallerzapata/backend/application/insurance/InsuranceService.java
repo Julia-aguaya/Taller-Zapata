@@ -300,7 +300,7 @@ public class InsuranceService {
         boolean cleas = "CLEAS".equals(caseTypeCode(caseEntity));
         String previousPartsAuthorizationCode = entity.getPartsAuthorizationCode();
         applyPatch(entity, request, cleas);
-        if (entity.getPresentedAt() == null && hasOperationalPatch(request)) {
+        if (entity.getPresentedAt() == null && hasOperationalPatch(request, cleas)) {
             throw new DomainConflictException("PROCESSING_PRESENTATION_DATE_REQUIRED", "Debe registrar la fecha de presentacion antes de continuar la tramitacion", Map.of());
         }
 
@@ -848,11 +848,13 @@ public class InsuranceService {
         if (request.has("estimatedPaymentDate")) entity.setEstimatedPaymentDate(dateValue(request.estimatedPaymentDate(), "estimatedPaymentDate"));
     }
 
-    private boolean hasOperationalPatch(InsuranceProcessingPatchRequest request) {
-        return request.has("inspectionForwardedAt") || request.has("inspectionDate") || request.has("modalityCode") || request.has("opinionCode")
+    private boolean hasOperationalPatch(InsuranceProcessingPatchRequest request, boolean cleas) {
+        boolean coreFields = request.has("inspectionForwardedAt") || request.has("inspectionDate") || request.has("modalityCode") || request.has("opinionCode")
                 || request.has("quotationStatusCode") || request.has("quotationDate") || request.has("agreedAmount") || request.has("partsAuthorizationCode") || request.has("partsSupplierText")
-                || request.has("minimumCloseAmount") || request.has("includesParts")
                 || request.has("providerId") || request.has("finalAmountForWorkshop") || request.has("passedToPaymentsAt") || request.has("estimatedPaymentDate");
+        // El minimo de cierre manual y el flag de repuestos solo son operativos en CLEAS;
+        // para el resto de los tramites el backend los deriva del presupuesto.
+        return coreFields || (cleas && (request.has("minimumCloseAmount") || request.has("includesParts")));
     }
 
     private ProcessingDerivatives processingDerivatives(Long caseId, BigDecimal agreedAmount) {
