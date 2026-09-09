@@ -1124,6 +1124,12 @@ public class CaseService {
     }
 
     private CreationScope resolveCreationScope(AuthenticatedUser currentUser, Long requestedOrganizationId, Long requestedBranchId) {
+        if (caseAccessControlService.hasGlobalScope(currentUser)) {
+            if (requestedOrganizationId == null || requestedBranchId == null) {
+                throw new ConflictException("organizationId y branchId son obligatorios para un administrador global");
+            }
+            return new CreationScope(requestedOrganizationId, requestedBranchId);
+        }
         List<UserRoleEntity> activeRoles = userRoleRepository.findByUserIdAndActiveTrue(currentUser.id());
         if (activeRoles.isEmpty()) {
             throw new ConflictException("El usuario no tiene roles activos para crear carpetas");

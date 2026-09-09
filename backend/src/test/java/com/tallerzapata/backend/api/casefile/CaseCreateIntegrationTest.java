@@ -95,16 +95,11 @@ class CaseCreateIntegrationTest {
     }
 
     @Test
-    void shouldCreateCaseUsingDefaultScopeAndDefaultRoleCodes() throws Exception {
-        jdbcTemplate.update(
-                "INSERT INTO usuario_roles (usuario_id, rol_id, organizacion_id, sucursal_id, activo) VALUES (?, ?, ?, ?, ?)",
-                1L, 1L, 1L, 1L, true
-        );
-
+    void shouldCreateCaseForGlobalAdminWithExplicitScope() throws Exception {
         CaseCreateRequest request = new CaseCreateRequest(
                 1L,
-                null,
-                null,
+                1L,
+                1L,
                 10L,
                 10L,
                 false,

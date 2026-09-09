@@ -34,7 +34,7 @@ class CleasManagementIntegrationTest {
     void setUp() {
         cleaner.cleanAll();
         jdbcTemplate.update("INSERT INTO usuarios (id, public_id, username, email, password_hash, nombre, apellido, activo) VALUES (3, '00000000-0000-0000-0000-000000000300', 'operador', 'operador@tallerzapata.local', 'hash', 'Olivia', 'Operadora', true)");
-        jdbcTemplate.update("INSERT INTO usuario_roles (id, usuario_id, rol_id, organizacion_id, sucursal_id, activo) VALUES (3, 3, 2, 1, 1, true)");
+        jdbcTemplate.update("INSERT INTO usuario_roles (id, usuario_id, rol_id, organizacion_id, sucursal_id, activo) VALUES (3, 3, 1, NULL, NULL, true)");
         jdbcTemplate.update("INSERT INTO personas (id, public_id, tipo_persona, nombre, apellido, nombre_mostrar, tipo_documento_codigo, numero_documento, numero_documento_normalizado, activo) VALUES (10, '00000000-0000-0000-0000-000000001010', 'fisica', 'Carlos', 'Cliente', 'Carlos Cliente', 'DNI', '30111222', '30111222', true)");
         jdbcTemplate.update("INSERT INTO vehiculos (id, public_id, dominio, dominio_normalizado, activo) VALUES (10, '00000000-0000-0000-0000-000000002010', 'AB123CD', 'AB123CD', true)");
         jdbcTemplate.update("INSERT INTO vehiculos (id, public_id, dominio, dominio_normalizado, activo) VALUES (11, '00000000-0000-0000-0000-000000002011', 'AC123DE', 'AC123DE', true)");

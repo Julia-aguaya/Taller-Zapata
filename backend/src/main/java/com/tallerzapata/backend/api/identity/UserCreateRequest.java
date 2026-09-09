@@ -13,7 +13,7 @@ public record UserCreateRequest(
         String lastName,
         Boolean active,
         @NotNull Long roleId,
-        @NotNull Long organizationId,
+        Long organizationId,
         Long branchId
 ) {
 }

@@ -99,7 +99,7 @@ public class DocumentController {
 
     @Operation(summary = "Eliminar relacion de documento", description = "Elimina la relacion de un documento con una entidad, desvinculandolo del caso")
     @ApiResponse(responseCode = "200", description = "OK")
-    @PreAuthorize("hasAuthority('documento.crear')")
+    @PreAuthorize("hasAuthority('documento.eliminar')")
     @DeleteMapping("/api/v1/document-relations/{relationId}")
     public void deleteRelation(@PathVariable Long relationId, HttpServletRequest httpRequest) {
         documentService.deleteRelation(relationId, httpRequest);
@@ -107,7 +107,7 @@ public class DocumentController {
 
     @Operation(summary = "Eliminar documento", description = "Elimina definitivamente un documento y su archivo del storage")
     @ApiResponse(responseCode = "200", description = "OK")
-    @PreAuthorize("hasAuthority('documento.crear')")
+    @PreAuthorize("hasAuthority('documento.eliminar')")
     @DeleteMapping("/api/v1/documents/{documentId}")
     public void deleteDocument(@PathVariable Long documentId, HttpServletRequest httpRequest) {
         documentService.deleteDocument(documentId, httpRequest);

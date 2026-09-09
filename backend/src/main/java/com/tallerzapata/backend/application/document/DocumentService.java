@@ -310,7 +310,7 @@ public class DocumentService {
     @Transactional
     public void deleteRelation(Long relationId, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
-        caseAccessControlService.requirePermission(currentUser, "documento.crear");
+        caseAccessControlService.requirePermission(currentUser, "documento.eliminar");
 
         DocumentRelationEntity entity = documentRelationRepository.findById(relationId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe la relacion documental " + relationId));
@@ -335,7 +335,7 @@ public class DocumentService {
     @Transactional
     public void deleteDocument(Long documentId, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
-        caseAccessControlService.requirePermission(currentUser, "documento.crear");
+        caseAccessControlService.requirePermission(currentUser, "documento.eliminar");
 
         DocumentEntity entity = documentRepository.findById(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el documento " + documentId));

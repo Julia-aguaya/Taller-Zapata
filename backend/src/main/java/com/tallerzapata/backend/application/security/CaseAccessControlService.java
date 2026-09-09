@@ -35,11 +35,20 @@ public class CaseAccessControlService {
     }
 
     public boolean hasOrganizationScope(AuthenticatedUser currentUser, Long organizationId, Long branchId) {
+        if (hasGlobalScope(currentUser)) {
+            return true;
+        }
         List<UserRoleEntity> roles = userRoleRepository.findByUserIdAndActiveTrue(currentUser.id());
         return roles.stream().anyMatch(role ->
-                role.getOrganizationId().equals(organizationId)
-                        && (role.getBranchId() == null || role.getBranchId().equals(branchId))
+                organizationId.equals(role.getOrganizationId())
+                        && branchId != null
+                        && branchId.equals(role.getBranchId())
         );
+    }
+
+    /** ROLE_ADMIN with no organization/branch is the explicitly global security mechanism. */
+    public boolean hasGlobalScope(AuthenticatedUser currentUser) {
+        return userRoleRepository.hasActiveGlobalAdminRole(currentUser.id());
     }
 
     public void requireCaseAccess(AuthenticatedUser currentUser, CaseEntity caseEntity, String permissionCode) {

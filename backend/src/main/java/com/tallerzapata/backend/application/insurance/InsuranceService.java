@@ -773,7 +773,7 @@ public class InsuranceService {
         if (difference.signum() <= 0) {
             return;
         }
-        List<Long> adminUserIds = userRoleRepository.findActiveUserIdsByRoleCodeAndOrganization(ADMIN_ROLE_CODE, caseEntity.getOrganizationId());
+        List<Long> adminUserIds = userRoleRepository.findActiveGlobalUserIdsByRoleCode(ADMIN_ROLE_CODE);
         for (Long adminUserId : adminUserIds) {
             NotificationEntity notification = new NotificationEntity();
             notification.setUserId(adminUserId);

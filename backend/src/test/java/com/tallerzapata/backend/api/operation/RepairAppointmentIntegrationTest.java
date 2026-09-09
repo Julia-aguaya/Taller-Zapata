@@ -154,7 +154,7 @@ class RepairAppointmentIntegrationTest {
         );
         jdbcTemplate.update(
                 "INSERT INTO usuario_roles (id, usuario_id, rol_id, organizacion_id, sucursal_id, activo) VALUES (?, ?, ?, ?, ?, ?)",
-                3L, 3L, 2L, 1L, 1L, true
+                3L, 3L, 1L, null, null, true
         );
     }
 }

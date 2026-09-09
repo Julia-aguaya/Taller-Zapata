@@ -110,7 +110,7 @@ class CaseWorkflowIntegrationTest {
         );
 
         mockMvc.perform(post("/api/v1/cases/100/workflow/transitions")
-                        .header("X-User-Id", "3")
+                        .header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(request)))
                 .andExpect(status().isOk());
@@ -133,7 +133,7 @@ class CaseWorkflowIntegrationTest {
         );
 
         mockMvc.perform(post("/api/v1/cases/100/workflow/transitions")
-                        .header("X-User-Id", "3")
+                        .header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(request)))
                 .andExpect(status().isConflict())
@@ -203,7 +203,7 @@ class CaseWorkflowIntegrationTest {
     @Test
     void shouldListAvailableWorkflowActionsForCurrentState() throws Exception {
         mockMvc.perform(get("/api/v1/cases/100/workflow/actions")
-                        .header("X-User-Id", "3"))
+                        .header("X-User-Id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.caseId").value(100))
                 .andExpect(jsonPath("$.actions.length()").value(3));

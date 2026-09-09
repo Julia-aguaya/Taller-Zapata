@@ -410,7 +410,7 @@ class PartSupplierQuoteIntegrationTest {
     @Test
     void shouldManageProviderLifecycleThroughApi() throws Exception {
         String response = mockMvc.perform(post("/api/v1/providers")
-                        .header("X-User-Id", "3")
+                        .header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Proveedor API\",\"phone\":\"123\",\"email\":\"api@example.com\"}"))
                 .andExpect(status().isOk())
@@ -419,17 +419,17 @@ class PartSupplierQuoteIntegrationTest {
         Long providerId = objectMapper.readTree(response).get("id").asLong();
 
         mockMvc.perform(put("/api/v1/providers/{providerId}", providerId)
-                        .header("X-User-Id", "3")
+                        .header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Proveedor Actualizado\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("Proveedor Actualizado"));
         mockMvc.perform(post("/api/v1/providers/{providerId}/deactivate", providerId)
-                        .header("X-User-Id", "3"))
+                        .header("X-User-Id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.active").value(false));
         mockMvc.perform(get("/api/v1/providers?q=Proveedor%20Actualizado")
-                        .header("X-User-Id", "3"))
+                        .header("X-User-Id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE entidad_tipo = 'proveedores' AND entidad_id = ?", Integer.class, providerId)).isEqualTo(3);

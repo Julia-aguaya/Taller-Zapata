@@ -12,8 +12,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.LocalDateTime;
+
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -80,6 +83,50 @@ class CaseSecurityIntegrationTest {
     }
 
     @Test
+    void shouldAllowGlobalAdminToListCasesAcrossBranches() throws Exception {
+        mockMvc.perform(get("/api/v1/cases")
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(3));
+    }
+
+    @Test
+    void shouldRejectOperatorFromIdentityAdministration() throws Exception {
+        mockMvc.perform(get("/api/v1/permissions")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void shouldRejectOperatorFromVisibleStateOverride() throws Exception {
+        CaseVisibleStateOverrideRequest request = new CaseVisibleStateOverrideRequest("tramite", "RECHAZADO", "No autorizado");
+
+        mockMvc.perform(put("/api/v1/cases/100/visible-states")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("El usuario no tiene el permiso requerido: workflow.estado.visible.override"));
+    }
+
+    @Test
+    void shouldIgnoreFutureDatedRoleAssignments() throws Exception {
+        jdbcTemplate.update(
+                "INSERT INTO usuarios (id, public_id, username, email, password_hash, nombre, apellido, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                9004L, "00000000-0000-0000-0000-000000000400", "operador-futuro", "operador-futuro@tallerzapata.local", "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy", "Operador", "Futuro", true
+        );
+        jdbcTemplate.update(
+                "INSERT INTO usuario_roles (id, usuario_id, rol_id, organizacion_id, sucursal_id, vigente_desde, activo) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                9004L, 9004L, 2L, 1L, 1L, LocalDateTime.now().plusDays(1), true
+        );
+
+        mockMvc.perform(get("/api/v1/cases")
+                        .header("X-User-Id", "9004"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("El usuario no tiene el permiso requerido: caso.ver"));
+    }
+
+    @Test
     void shouldReturnPaginationMetadataForCaseList() throws Exception {
         mockMvc.perform(get("/api/v1/cases")
                         .param("page", "0")
@@ -89,8 +136,8 @@ class CaseSecurityIntegrationTest {
                 .andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.page").value(0))
                 .andExpect(jsonPath("$.size").value(1))
-                .andExpect(jsonPath("$.totalElements").value(2))
-                .andExpect(jsonPath("$.totalPages").value(2));
+                .andExpect(jsonPath("$.totalElements").value(3))
+                .andExpect(jsonPath("$.totalPages").value(3));
     }
 
     @Test
@@ -154,6 +201,16 @@ class CaseSecurityIntegrationTest {
 
     private void seedCases() {
         jdbcTemplate.update(
+                "INSERT INTO organizaciones (id, public_id, codigo, nombre, activo) "
+                        + "SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM organizaciones WHERE id = ?)",
+                9001L, "00000000-0000-0000-0000-000000009001", "OTRA", "Otra organizacion", true, 9001L
+        );
+        jdbcTemplate.update(
+                "INSERT INTO sucursales (id, public_id, organizacion_id, codigo, nombre, activo) "
+                        + "SELECT ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM sucursales WHERE id = ?)",
+                9001L, "00000000-0000-0000-0000-000000009101", 9001L, "OTRA-01", "Sucursal otra", true, 9001L
+        );
+        jdbcTemplate.update(
                 "INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, estado_tramite_actual_id, estado_reparacion_actual_id, prioridad_codigo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 100L, "00000000-0000-0000-0000-000000003100", "0100PZ", 100L, 1L, 1L, 1L, 1L, 1L, false, 1L, 1L, 4L, "MEDIA"
         );
@@ -162,12 +219,20 @@ class CaseSecurityIntegrationTest {
                 101L, "00000000-0000-0000-0000-000000003101", "0101PC", 101L, 1L, 1L, 2L, 1L, 1L, false, 1L, 1L, 4L, "ALTA"
         );
         jdbcTemplate.update(
+                "INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, estado_tramite_actual_id, estado_reparacion_actual_id, prioridad_codigo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                102L, "00000000-0000-0000-0000-000000003102", "0102OT", 102L, 1L, 9001L, 9001L, 1L, 1L, false, 1L, 1L, 4L, "ALTA"
+        );
+        jdbcTemplate.update(
                 "INSERT INTO caso_estado_historial (caso_id, dominio_estado, estado_id, fecha_estado, usuario_id, automatico, motivo, detalle_json) VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?)",
                 100L, "tramite", 1L, 1L, false, "Estado inicial", "{}"
         );
         jdbcTemplate.update(
                 "INSERT INTO caso_estado_historial (caso_id, dominio_estado, estado_id, fecha_estado, usuario_id, automatico, motivo, detalle_json) VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?)",
                 101L, "tramite", 1L, 1L, false, "Estado inicial", "{}"
+        );
+        jdbcTemplate.update(
+                "INSERT INTO caso_estado_historial (caso_id, dominio_estado, estado_id, fecha_estado, usuario_id, automatico, motivo, detalle_json) VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?)",
+                102L, "tramite", 1L, 1L, false, "Estado inicial", "{}"
         );
     }
 
@@ -181,19 +246,19 @@ class CaseSecurityIntegrationTest {
                 3L, "00000000-0000-0000-0000-000000000300", "operador-zapata", "operador-zapata@tallerzapata.local", "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy", "Operador", "Sucursal", true
         );
         jdbcTemplate.update(
-                "INSERT INTO usuario_roles (id, usuario_id, rol_id, organizacion_id, sucursal_id, activo) VALUES (?, ?, ?, ?, ?, ?)",
-                3L, 3L, 2L, 1L, 1L, true
+            "INSERT INTO usuario_roles (id, usuario_id, rol_id, organizacion_id, sucursal_id, activo) VALUES (?, ?, ?, ?, ?, ?)",
+            3L, 3L, 2L, 1L, 1L, true
         );
     }
 
     private void seedWorkflowTransitions() {
         jdbcTemplate.update(
                 "INSERT INTO workflow_transiciones (id, dominio, tipo_tramite_id, estado_origen_id, estado_destino_id, accion_codigo, requiere_permiso_codigo, automatica, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                9001L, "tramite", null, 1L, 2L, "tramite.avanzar", "workflow.transicionar", false, true
+                9001L, "tramite", null, 1L, 2L, "tramite.avanzar", "workflow.tramite.avanzar", false, true
         );
         jdbcTemplate.update(
                 "INSERT INTO workflow_transiciones (id, dominio, tipo_tramite_id, estado_origen_id, estado_destino_id, accion_codigo, requiere_permiso_codigo, automatica, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                9002L, "tramite", null, 2L, 3L, "tramite.cerrar", "workflow.transicionar", false, true
+                9002L, "tramite", null, 2L, 3L, "tramite.cerrar", "workflow.tramite.cerrar", false, true
         );
     }
 }

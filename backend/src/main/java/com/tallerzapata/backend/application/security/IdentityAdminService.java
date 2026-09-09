@@ -49,6 +49,7 @@ public class IdentityAdminService {
     private final OrganizationRepository organizationRepository;
     private final BranchRepository branchRepository;
     private final PasswordEncoder passwordEncoder;
+    private final CaseAccessControlService accessControlService;
 
     public IdentityAdminService(
             CurrentUserService currentUserService,
@@ -58,7 +59,8 @@ public class IdentityAdminService {
             RoleRepository roleRepository,
             OrganizationRepository organizationRepository,
             BranchRepository branchRepository,
-            PasswordEncoder passwordEncoder
+            PasswordEncoder passwordEncoder,
+            CaseAccessControlService accessControlService
     ) {
         this.currentUserService = currentUserService;
         this.permissionRepository = permissionRepository;
@@ -68,12 +70,18 @@ public class IdentityAdminService {
         this.organizationRepository = organizationRepository;
         this.branchRepository = branchRepository;
         this.passwordEncoder = passwordEncoder;
+        this.accessControlService = accessControlService;
     }
 
     @Transactional(readOnly = true)
     public List<OrganizationResponse> listOrganizations() {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         requirePermission(currentUser, "identity.roles.manage");
+        if (accessControlService.hasGlobalScope(currentUser)) {
+            return organizationRepository.findAllByOrderByNameAsc().stream()
+                    .map(item -> new OrganizationResponse(item.getId(), item.getPublicId(), item.getCode(), item.getName(), item.getRazonSocial(), item.getCuit(), item.getCondicionIva(), item.getPhone(), item.getEmail(), item.getLogoDocumentId()))
+                    .toList();
+        }
         List<UserRoleEntity> scopedRoles = userRoleRepository.findByUserIdAndActiveTrue(currentUser.id());
         Set<Long> allowedOrganizationIds = scopedRoles.stream()
                 .map(UserRoleEntity::getOrganizationId)
@@ -93,11 +101,12 @@ public class IdentityAdminService {
     public List<BranchResponse> listBranches(Long organizationId) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         requirePermission(currentUser, "identity.roles.manage");
+        if (accessControlService.hasGlobalScope(currentUser)) {
+            return organizationId == null
+                    ? branchRepository.findAllByOrderByNameAsc().stream().map(this::toBranchResponse).toList()
+                    : branchRepository.findByOrganizationIdOrderByNameAsc(organizationId).stream().map(this::toBranchResponse).toList();
+        }
         List<UserRoleEntity> scopedRoles = userRoleRepository.findByUserIdAndActiveTrue(currentUser.id());
-        Set<Long> fullAccessOrganizationIds = scopedRoles.stream()
-                .filter(item -> item.getBranchId() == null)
-                .map(UserRoleEntity::getOrganizationId)
-                .collect(Collectors.toSet());
         Map<Long, Set<Long>> allowedBranchIdsByOrganizationId = scopedRoles.stream()
                 .filter(item -> item.getBranchId() != null)
                 .collect(Collectors.groupingBy(
@@ -107,14 +116,14 @@ public class IdentityAdminService {
 
         if (organizationId == null) {
             return branchRepository.findAllByOrderByNameAsc().stream()
-                    .filter(item -> canReadBranch(item.getOrganizationId(), item.getId(), fullAccessOrganizationIds, allowedBranchIdsByOrganizationId))
-                    .map(item -> new BranchResponse(item.getId(), item.getCode(), item.getName(), item.getOrganizationId(), item.getAddressLine1(), item.getCity(), item.getProvince(), item.getPhone(), item.getEmail()))
+                    .filter(item -> canReadBranch(item.getOrganizationId(), item.getId(), allowedBranchIdsByOrganizationId))
+                    .map(this::toBranchResponse)
                     .toList();
         }
 
         return branchRepository.findByOrganizationIdOrderByNameAsc(organizationId).stream()
-                .filter(item -> canReadBranch(item.getOrganizationId(), item.getId(), fullAccessOrganizationIds, allowedBranchIdsByOrganizationId))
-                .map(item -> new BranchResponse(item.getId(), item.getCode(), item.getName(), item.getOrganizationId(), item.getAddressLine1(), item.getCity(), item.getProvince(), item.getPhone(), item.getEmail()))
+                .filter(item -> canReadBranch(item.getOrganizationId(), item.getId(), allowedBranchIdsByOrganizationId))
+                .map(this::toBranchResponse)
                 .toList();
     }
 
@@ -154,14 +163,14 @@ public class IdentityAdminService {
     private boolean canReadBranch(
             Long organizationId,
             Long branchId,
-            Set<Long> fullAccessOrganizationIds,
             Map<Long, Set<Long>> allowedBranchIdsByOrganizationId
     ) {
-        if (fullAccessOrganizationIds.contains(organizationId)) {
-            return true;
-        }
         Set<Long> allowedBranchIds = allowedBranchIdsByOrganizationId.get(organizationId);
         return allowedBranchIds != null && allowedBranchIds.contains(branchId);
+    }
+
+    private BranchResponse toBranchResponse(BranchEntity item) {
+        return new BranchResponse(item.getId(), item.getCode(), item.getName(), item.getOrganizationId(), item.getAddressLine1(), item.getCity(), item.getProvince(), item.getPhone(), item.getEmail());
     }
 
     @Transactional(readOnly = true)
@@ -189,11 +198,12 @@ public class IdentityAdminService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         requirePermission(currentUser, "identity.roles.manage");
         List<UserRoleEntity> managerRoles = userRoleRepository.findByUserIdAndActiveTrue(currentUser.id());
+        boolean globalManager = accessControlService.hasGlobalScope(currentUser);
 
         return userRepository.findByActiveTrueOrderByFirstNameAscLastNameAsc().stream()
                 .filter(user -> {
                     List<UserRoleEntity> targetRoles = userRoleRepository.findByUserIdAndActiveTrue(user.getId());
-                    return targetRoles.isEmpty() || targetRoles.stream().allMatch(role -> canManageScope(managerRoles, role.getOrganizationId(), role.getBranchId()));
+                    return globalManager || targetRoles.isEmpty() || targetRoles.stream().allMatch(role -> canManageScope(managerRoles, role.getOrganizationId(), role.getBranchId()));
                 })
                 .map(user -> new UserSummaryResponse(
                         user.getId(),
@@ -214,7 +224,7 @@ public class IdentityAdminService {
         requireUser(userId);
         List<UserRoleEntity> managerRoles = userRoleRepository.findByUserIdAndActiveTrue(currentUser.id());
         List<UserRoleEntity> targetRoles = userRoleRepository.findByUserIdOrderByIdDesc(userId);
-        ensureCanManageAllTargetRoles(managerRoles, targetRoles);
+        ensureCanManageAllTargetRoles(currentUser, managerRoles, targetRoles);
 
         Map<Long, RoleEntity> rolesById = roleRepository.findAll().stream()
                 .collect(Collectors.toMap(RoleEntity::getId, Function.identity()));
@@ -237,7 +247,7 @@ public class IdentityAdminService {
         requireUser(userId);
         List<UserRoleEntity> managerRoles = userRoleRepository.findByUserIdAndActiveTrue(currentUser.id());
         List<UserRoleEntity> currentTargetRoles = userRoleRepository.findByUserIdAndActiveTrue(userId);
-        ensureCanManageAllTargetRoles(managerRoles, currentTargetRoles);
+        ensureCanManageAllTargetRoles(currentUser, managerRoles, currentTargetRoles);
 
         Map<Long, RoleEntity> rolesById = roleRepository.findAll().stream()
                 .collect(Collectors.toMap(RoleEntity::getId, Function.identity()));
@@ -248,7 +258,7 @@ public class IdentityAdminService {
             if (!rolesById.containsKey(assignment.roleId())) {
                 throw new ResourceNotFoundException("No existe el rol " + assignment.roleId());
             }
-            validateRequestedScope(managerRoles, assignment.organizationId(), assignment.branchId());
+            validateRequestedScope(currentUser, managerRoles, rolesById.get(assignment.roleId()), assignment.organizationId(), assignment.branchId());
             UserRoleEntity entity = new UserRoleEntity();
             entity.setUserId(userId);
             entity.setRoleId(assignment.roleId());
@@ -275,11 +285,10 @@ public class IdentityAdminService {
             throw new ConflictException("Ya existe un usuario con ese username");
         }
 
-        if (!roleRepository.existsById(request.roleId())) {
-            throw new ResourceNotFoundException("No existe el rol " + request.roleId());
-        }
+        RoleEntity role = roleRepository.findById(request.roleId())
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el rol " + request.roleId()));
 
-        validateRequestedScope(managerRoles, request.organizationId(), request.branchId());
+        validateRequestedScope(currentUser, managerRoles, role, request.organizationId(), request.branchId());
 
         UserEntity entity = new UserEntity();
         entity.setPublicId(UUID.randomUUID().toString());
@@ -315,7 +324,10 @@ public class IdentityAdminService {
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el usuario " + userId));
     }
 
-    private void ensureCanManageAllTargetRoles(List<UserRoleEntity> managerRoles, List<UserRoleEntity> targetRoles) {
+    private void ensureCanManageAllTargetRoles(AuthenticatedUser currentUser, List<UserRoleEntity> managerRoles, List<UserRoleEntity> targetRoles) {
+        if (accessControlService.hasGlobalScope(currentUser)) {
+            return;
+        }
         boolean hasOutsideScopeRoles = targetRoles.stream()
                 .anyMatch(item -> !canManageScope(managerRoles, item.getOrganizationId(), item.getBranchId()));
         if (hasOutsideScopeRoles) {
@@ -323,7 +335,19 @@ public class IdentityAdminService {
         }
     }
 
-    private void validateRequestedScope(List<UserRoleEntity> managerRoles, Long organizationId, Long branchId) {
+    private void validateRequestedScope(AuthenticatedUser currentUser, List<UserRoleEntity> managerRoles, RoleEntity role, Long organizationId, Long branchId) {
+        if ("ROLE_ADMIN".equals(role.getCode())) {
+            if (organizationId != null || branchId != null) {
+                throw new ConflictException("ROLE_ADMIN debe asignarse con alcance global");
+            }
+            if (!accessControlService.hasGlobalScope(currentUser)) {
+                throw new ForbiddenException("Solo un administrador global puede asignar ROLE_ADMIN");
+            }
+            return;
+        }
+        if (organizationId == null || branchId == null) {
+            throw new ConflictException("Los roles no administrativos requieren organizacion y sucursal");
+        }
         if (!organizationRepository.existsById(organizationId)) {
             throw new ResourceNotFoundException("No existe la organizacion " + organizationId);
         }
@@ -336,7 +360,7 @@ public class IdentityAdminService {
             }
         }
 
-        if (!canManageScope(managerRoles, organizationId, branchId)) {
+        if (!accessControlService.hasGlobalScope(currentUser) && !canManageScope(managerRoles, organizationId, branchId)) {
             throw new ForbiddenException("No tenes alcance para asignar ese scope de organizacion/sucursal");
         }
     }
@@ -349,8 +373,9 @@ public class IdentityAdminService {
 
     private boolean canManageScope(List<UserRoleEntity> managerRoles, Long organizationId, Long branchId) {
         return managerRoles.stream().anyMatch(role ->
-                role.getOrganizationId().equals(organizationId)
-                        && (role.getBranchId() == null || role.getBranchId().equals(branchId))
+                organizationId.equals(role.getOrganizationId())
+                        && branchId != null
+                        && branchId.equals(role.getBranchId())
         );
     }
 

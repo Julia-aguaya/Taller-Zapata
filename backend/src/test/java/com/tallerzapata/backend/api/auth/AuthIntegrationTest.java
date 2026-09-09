@@ -111,7 +111,7 @@ class AuthIntegrationTest {
                 .andExpect(jsonPath("$.capabilities.canCreateCase").value(true))
                 .andExpect(jsonPath("$.capabilities.canOverrideVisibleStates").value(true))
                 .andExpect(jsonPath("$.capabilities.canForceWorkflowTransition").value(true))
-                .andExpect(jsonPath("$.scopes[0].organizationId").value(1))
+                .andExpect(jsonPath("$.scopes[0].organizationId").isEmpty())
                 .andExpect(jsonPath("$.unreadNotifications").value(1));
     }
 

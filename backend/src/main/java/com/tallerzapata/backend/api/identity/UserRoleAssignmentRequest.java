@@ -4,7 +4,7 @@ import jakarta.validation.constraints.NotNull;
 
 public record UserRoleAssignmentRequest(
         @NotNull Long roleId,
-        @NotNull Long organizationId,
+        Long organizationId,
         Long branchId,
         Boolean active
 ) {

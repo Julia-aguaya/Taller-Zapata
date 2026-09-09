@@ -591,7 +591,7 @@ class InsuranceIntegrationTest {
         assertThat(auditCount).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject("SELECT despues_json FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'patch_tramitacion_seguro'", String.class, 100L))
                 .contains("\"agreedAmount\":90.00", "\"minimumCloseAmount\":100.00", "\"difference\":10.00", "\"accepted\":true");
-        // Con el acuerdo aceptado por debajo del minimo, el admin de la organizacion recibe el aviso
+        // Con el acuerdo aceptado por debajo del minimo, el admin global recibe el aviso.
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM notificaciones WHERE caso_id = ? AND tipo_codigo = 'MONTO_BAJO_MINIMO' AND usuario_id = 1", Integer.class, 100L)).isEqualTo(1);
     }
 
@@ -840,10 +840,10 @@ class InsuranceIntegrationTest {
 
     @Test
     void shouldNotifyAdminsWhenAgreedAmountIsAcceptedBelowMinimum() throws Exception {
-        // Admin extra de la organizacion 1 (rol 1 = ROLE_ADMIN). El admin base (usuario 1) ya existe.
+        // Admin global extra (rol 1 = ROLE_ADMIN). El admin base (usuario 1) ya existe.
         jdbcTemplate.update("INSERT INTO usuarios (id, public_id, username, email, password_hash, nombre, apellido, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 2L, "00000000-0000-0000-0000-000000000200", "admin-test", "admin-test@tallerzapata.local", "hash", "Ana", "Admin", true);
         // Sin id explicito: otros tests siembran usuario_roles con ids fijos para el usuario base
-        jdbcTemplate.update("INSERT INTO usuario_roles (usuario_id, rol_id, organizacion_id, sucursal_id, activo) VALUES (?, ?, ?, ?, ?)", 2L, 1L, 1L, 1L, true);
+        jdbcTemplate.update("INSERT INTO usuario_roles (usuario_id, rol_id, organizacion_id, sucursal_id, activo) VALUES (?, ?, ?, ?, ?)", 2L, 1L, null, null, true);
         // Presupuesto con minimo de cierre fijado en 1000
         jdbcTemplate.update("INSERT INTO presupuestos (id, caso_id, organizacion_id, sucursal_id, fecha_presupuesto, informe_estado_codigo, monto_minimo_cierre_mo, version_actual) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 500L, 100L, 1L, 1L, LocalDate.of(2026, 1, 1), "BORRADOR", new BigDecimal("1000"), 1);
 

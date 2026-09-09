@@ -168,20 +168,21 @@ class IdentityAdminIntegrationTest {
         mockMvc.perform(get("/api/v1/organizations")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].id").value(1))
                 .andExpect(jsonPath("$[0].code").value("TZ"));
 
         mockMvc.perform(get("/api/v1/branches")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$.length()").value(4))
                 .andExpect(jsonPath("$[0].organizationId").value(1));
 
         mockMvc.perform(get("/api/v1/branches")
                         .param("organizationId", "1")
                         .header("Authorization", "Bearer " + accessToken))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].organizationId").value(1));
     }
 
