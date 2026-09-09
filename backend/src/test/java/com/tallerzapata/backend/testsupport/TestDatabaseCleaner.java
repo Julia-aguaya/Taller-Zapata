@@ -33,6 +33,7 @@ public class TestDatabaseCleaner {
 
             // Notificaciones
             "notificaciones",
+            "aprobaciones_acuerdo_bajo_minimo",
 
             // Finanzas
             "presupuesto_extra_pago_aplicaciones",

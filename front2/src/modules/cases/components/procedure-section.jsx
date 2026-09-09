@@ -44,6 +44,7 @@ export const ProcedureSection = ({ caseId }) => {
   const queryClient = useQueryClient();
   const [form, setForm] = useState(() => processingForm(null));
   const [belowMinimum, setBelowMinimum] = useState(null);
+  const [belowMinimumReason, setBelowMinimumReason] = useState('');
   const processingQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance-processing'], queryFn: () => requestJson(`/cases/${caseId}/insurance-processing`) });
   const catalogsQuery = useQuery({ queryKey: ['insurance', 'catalogs'], queryFn: () => requestJson('/insurance/catalogs') });
   const processing = processingQuery.data;
@@ -66,6 +67,7 @@ export const ProcedureSection = ({ caseId }) => {
     mutationFn: (payload) => requestJson(`/cases/${caseId}/insurance-processing`, { method: 'PATCH', body: JSON.stringify(payload) }),
     onSuccess: async () => {
       setBelowMinimum(null);
+      setBelowMinimumReason('');
       await invalidateProcessing();
       toast.success('Tramitacion guardada.');
     },
@@ -79,16 +81,23 @@ export const ProcedureSection = ({ caseId }) => {
     },
   });
 
-  const save = (allowBelowMinimum = false) => {
+  const save = (reason = null) => {
     const patch = buildProcessingPatch(form, processing);
     if (!Object.keys(patch).length) return;
-    mutation.mutate({ expectedVersion: processing?.version ?? 0, ...patch, ...(allowBelowMinimum ? { allowBelowMinimum: true } : {}) });
+    mutation.mutate({ expectedVersion: processing?.version ?? 0, ...patch, ...(reason ? { belowMinimumReason: reason } : {}) });
   };
+
+  const approveMutation = useMutation({
+    mutationFn: () => requestJson(`/cases/${caseId}/insurance-processing/below-minimum-approval`, { method: 'POST' }),
+    onSuccess: async () => { await invalidateProcessing(); toast.success('Acuerdo por debajo del minimo aprobado.'); },
+    onError: (error) => toast.error(error.message || 'No se pudo aprobar el acuerdo.'),
+  });
 
   const setField = (field, value) => setForm((current) => ({ ...current, [field]: value }));
   const hasPresentedAt = Boolean(form.presentedAt);
   const hasInspectionForwarded = hasPresentedAt && Boolean(form.inspectionForwardedAt);
   const derived = processing ?? {};
+  const approval = derived.belowMinimumApproval;
 
   return (
     <div className="rounded-3xl border border-border/70 bg-card p-5">
@@ -96,7 +105,8 @@ export const ProcedureSection = ({ caseId }) => {
         <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary"><ClipboardList className="h-5 w-5" /></div><h4 className="text-sm font-semibold">Tramitacion</h4></div>
         <Button size="sm" onClick={() => save()} disabled={mutation.isPending}><Save className="mr-1.5 h-3.5 w-3.5" />Guardar</Button>
       </div>
-      {!hasPresentedAt ? <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700"><AlertTriangle className="h-3.5 w-3.5 shrink-0" />Registra la fecha de presentacion ante la compania para habilitar el resto de la tramitacion.</div> : null}
+       {!hasPresentedAt ? <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700"><AlertTriangle className="h-3.5 w-3.5 shrink-0" />Registra la fecha de presentacion ante la compania para habilitar el resto de la tramitacion.</div> : null}
+      {approval ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"><span>Acuerdo bajo minimo: {approval.status === 'PENDIENTE' ? 'pendiente de aprobacion de un administrador global.' : 'aprobado por un administrador global.'}</span>{approval.status === 'PENDIENTE' && approval.canApprove ? <Button type="button" size="sm" onClick={() => approveMutation.mutate()} disabled={approveMutation.isPending}>Aprobar acuerdo</Button> : null}</div> : null}
       <div className="mt-4 grid gap-x-6 gap-y-3 md:grid-cols-4">
         <Field label="Fecha de presentación"><Input aria-label="Fecha presentado" type="date" value={form.presentedAt} onChange={(event) => setField('presentedAt', event.target.value)} /></Field>
         <Field label="Derivado a inspeccion"><Input aria-label="Derivado a inspeccion" type="date" value={form.inspectionForwardedAt} disabled={!hasPresentedAt} onChange={(event) => setField('inspectionForwardedAt', event.target.value)} /></Field>
@@ -111,9 +121,11 @@ export const ProcedureSection = ({ caseId }) => {
         <Field label="Proveedor de repuestos"><ProviderSelector value={form.partsSupplierText} providerId={form.providerId || null} disabled={!hasPresentedAt} onChange={({ providerId, snapshot }) => setForm((current) => ({ ...current, providerId: providerId ?? '', partsSupplierText: snapshot ?? '' }))} /></Field>
         {derived.includesParts ? <Field label="Autorización de aseguradora - repuestos"><select aria-label="Autorización de aseguradora - repuestos" value={form.partsAuthorizationCode} disabled={!hasPresentedAt} onChange={(event) => setField('partsAuthorizationCode', event.target.value)} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm disabled:opacity-50"><option value="">Pendiente de respuesta</option>{partsAuthorizationOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></Field> : null}
       </div>
-      <Dialog open={Boolean(belowMinimum)} onClose={() => setBelowMinimum(null)} title="Monto acordado bajo el minimo" description="Confirmá explícitamente si querés guardar esta excepción.">
+      <Dialog open={Boolean(belowMinimum)} onClose={() => setBelowMinimum(null)} title="Monto acordado bajo el minimo" description="Solicitá la aprobación de un administrador global para guardar esta excepción.">
         <dl className="grid gap-2 text-sm"><div className="flex justify-between gap-4"><dt>Monto acordado</dt><dd>{formatCurrency(belowMinimum?.agreedAmount)}</dd></div><div className="flex justify-between gap-4"><dt>Minimo de cierre</dt><dd>{formatCurrency(belowMinimum?.minimumCloseAmount)}</dd></div><div className="flex justify-between gap-4 font-semibold"><dt>Diferencia</dt><dd>{formatCurrency(belowMinimum?.difference)}</dd></div></dl>
-        <div className="mt-5 flex justify-end gap-2"><Button type="button" variant="outline" data-dialog-initial-focus onClick={() => setBelowMinimum(null)}>Cancelar</Button><Button type="button" onClick={() => save(true)} disabled={mutation.isPending}>Confirmar y guardar</Button></div>
+        <label className="mt-4 block text-sm font-medium" htmlFor="below-minimum-reason">Motivo de la solicitud</label>
+        <textarea id="below-minimum-reason" className="mt-1 min-h-20 w-full rounded-xl border border-input bg-background p-2 text-sm" value={belowMinimumReason} onChange={(event) => setBelowMinimumReason(event.target.value)} />
+        <div className="mt-5 flex justify-end gap-2"><Button type="button" variant="outline" data-dialog-initial-focus onClick={() => setBelowMinimum(null)}>Cancelar</Button><Button type="button" onClick={() => save(belowMinimumReason.trim())} disabled={mutation.isPending || !belowMinimumReason.trim()}>Solicitar aprobacion</Button></div>
       </Dialog>
     </div>
   );

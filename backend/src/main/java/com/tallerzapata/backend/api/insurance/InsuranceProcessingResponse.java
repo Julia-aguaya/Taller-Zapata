@@ -28,6 +28,7 @@ public record InsuranceProcessingResponse(
         LocalDate estimatedPaymentDate,
         String paymentStatusCode,
         LocalDate inspectionDate,
-        Long version
+        Long version,
+        BelowMinimumAgreementApprovalResponse belowMinimumApproval
 ) {
 }

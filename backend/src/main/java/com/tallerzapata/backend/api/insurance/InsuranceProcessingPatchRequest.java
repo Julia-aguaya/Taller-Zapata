@@ -22,7 +22,7 @@ public record InsuranceProcessingPatchRequest(
         JsonNode finalAmountForWorkshop,
         JsonNode passedToPaymentsAt,
         JsonNode estimatedPaymentDate,
-        Boolean allowBelowMinimum
+        String belowMinimumReason
 ) {
     public boolean has(String field) {
         return switch (field) {

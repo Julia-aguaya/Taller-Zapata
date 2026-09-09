@@ -95,7 +95,7 @@ describe('ProcedureSection processing contract', () => {
     expect(isBelowMinimumConfirmationRequired({ payload: { code: 'AGREED_AMOUNT_BELOW_MINIMUM' } })).toBe(false);
   });
 
-  it('opens an accessible confirmation dialog only for the canonical error and retries explicitly', async () => {
+  it('requires a reason and submits an approval request for the canonical low-minimum error', async () => {
     const canonicalError = Object.assign(new Error('below minimum'), { payload: { code: 'PROCESSING_AMOUNT_BELOW_MINIMUM_CONFIRMATION_REQUIRED', data: { agreedAmount: 90, minimumCloseAmount: 120, difference: 30 } } });
     requestJson.mockRejectedValueOnce(canonicalError).mockResolvedValueOnce({});
     render(<ProcedureSection caseId="42" />);
@@ -105,9 +105,11 @@ describe('ProcedureSection processing contract', () => {
 
     expect(await screen.findByRole('dialog', { name: 'Monto acordado bajo el minimo' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancelar' })).toHaveFocus();
-    fireEvent.click(screen.getByRole('button', { name: 'Confirmar y guardar' }));
+    expect(screen.getByRole('button', { name: 'Solicitar aprobacion' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Motivo de la solicitud'), { target: { value: 'Oferta final' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Solicitar aprobacion' }));
 
-    await waitFor(() => expect(requestJson).toHaveBeenLastCalledWith('/cases/42/insurance-processing', expect.objectContaining({ method: 'PATCH', body: expect.stringContaining('"allowBelowMinimum":true') })));
+    await waitFor(() => expect(requestJson).toHaveBeenLastCalledWith('/cases/42/insurance-processing', expect.objectContaining({ method: 'PATCH', body: expect.stringContaining('"belowMinimumReason":"Oferta final"') })));
     expect(mutationConfig).toBeDefined();
   });
 

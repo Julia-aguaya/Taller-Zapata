@@ -41,6 +41,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -58,6 +59,7 @@ public class InsuranceService {
     private final CasePersonRepository casePersonRepository;
     private final CaseInsuranceRepository caseInsuranceRepository;
     private final InsuranceProcessingRepository insuranceProcessingRepository;
+    private final BelowMinimumAgreementApprovalRepository belowMinimumAgreementApprovalRepository;
     private final CaseFranchiseRepository caseFranchiseRepository;
     private final InsuranceModalityRepository modalityRepository;
     private final InsuranceOpinionRepository opinionRepository;
@@ -98,7 +100,7 @@ public class InsuranceService {
 
     private static final String ADMIN_ROLE_CODE = "ROLE_ADMIN";
 
-    public InsuranceService(InsuranceCompanyRepository companyRepository, InsuranceCompanyContactRepository companyContactRepository, InsuranceRoleContactRepository roleContactRepository, PersonRepository personRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CasePersonRepository casePersonRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, CaseFranchiseRepository caseFranchiseRepository, InsuranceModalityRepository modalityRepository, InsuranceOpinionRepository opinionRepository, InsuranceQuotationStatusRepository quotationStatusRepository, InsurancePartsAuthorizationRepository partsAuthorizationRepository, FranchiseStatusRepository franchiseStatusRepository, FranchiseRecoveryTypeRepository franchiseRecoveryTypeRepository, FranchiseOpinionRepository franchiseOpinionRepository, CaseCleasRepository caseCleasRepository, CaseThirdPartyRepository caseThirdPartyRepository, CleasScopeRepository cleasScopeRepository, CleasOpinionRepository cleasOpinionRepository, PaymentStatusRepository paymentStatusRepository, ThirdPartyDocumentationStatusRepository thirdPartyDocumentationStatusRepository, PartsProvisionModeRepository partsProvisionModeRepository, CaseLegalRepository caseLegalRepository, LegalNewsRepository legalNewsRepository, LegalExpenseRepository legalExpenseRepository, LegalProcessorRepository legalProcessorRepository, LegalClaimantRepository legalClaimantRepository, LegalInstanceRepository legalInstanceRepository, LegalClosureReasonRepository legalClosureReasonRepository, LegalExpensePayerRepository legalExpensePayerRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, TodoRiesgoStateFactsRepository todoRiesgoStateFactsRepository, ProviderRepository providerRepository, BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CasePartRepository casePartRepository, FranchiseRecoveryService franchiseRecoveryService, UserRoleRepository userRoleRepository, NotificationRepository notificationRepository, LegalLesionadoRepository legalLesionadoRepository, LesionadoEsTypeRepository lesionadoEsTypeRepository) {
+    public InsuranceService(InsuranceCompanyRepository companyRepository, InsuranceCompanyContactRepository companyContactRepository, InsuranceRoleContactRepository roleContactRepository, PersonRepository personRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CasePersonRepository casePersonRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, BelowMinimumAgreementApprovalRepository belowMinimumAgreementApprovalRepository, CaseFranchiseRepository caseFranchiseRepository, InsuranceModalityRepository modalityRepository, InsuranceOpinionRepository opinionRepository, InsuranceQuotationStatusRepository quotationStatusRepository, InsurancePartsAuthorizationRepository partsAuthorizationRepository, FranchiseStatusRepository franchiseStatusRepository, FranchiseRecoveryTypeRepository franchiseRecoveryTypeRepository, FranchiseOpinionRepository franchiseOpinionRepository, CaseCleasRepository caseCleasRepository, CaseThirdPartyRepository caseThirdPartyRepository, CleasScopeRepository cleasScopeRepository, CleasOpinionRepository cleasOpinionRepository, PaymentStatusRepository paymentStatusRepository, ThirdPartyDocumentationStatusRepository thirdPartyDocumentationStatusRepository, PartsProvisionModeRepository partsProvisionModeRepository, CaseLegalRepository caseLegalRepository, LegalNewsRepository legalNewsRepository, LegalExpenseRepository legalExpenseRepository, LegalProcessorRepository legalProcessorRepository, LegalClaimantRepository legalClaimantRepository, LegalInstanceRepository legalInstanceRepository, LegalClosureReasonRepository legalClosureReasonRepository, LegalExpensePayerRepository legalExpensePayerRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, TodoRiesgoStateFactsRepository todoRiesgoStateFactsRepository, ProviderRepository providerRepository, BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CasePartRepository casePartRepository, FranchiseRecoveryService franchiseRecoveryService, UserRoleRepository userRoleRepository, NotificationRepository notificationRepository, LegalLesionadoRepository legalLesionadoRepository, LesionadoEsTypeRepository lesionadoEsTypeRepository) {
         this.companyRepository = companyRepository;
         this.companyContactRepository = companyContactRepository;
         this.roleContactRepository = roleContactRepository;
@@ -108,6 +110,7 @@ public class InsuranceService {
         this.casePersonRepository = casePersonRepository;
         this.caseInsuranceRepository = caseInsuranceRepository;
         this.insuranceProcessingRepository = insuranceProcessingRepository;
+        this.belowMinimumAgreementApprovalRepository = belowMinimumAgreementApprovalRepository;
         this.caseFranchiseRepository = caseFranchiseRepository;
         this.modalityRepository = modalityRepository;
         this.opinionRepository = opinionRepository;
@@ -314,13 +317,28 @@ public class InsuranceService {
             throw new DomainConflictException("PROCESSING_PARTS_AUTHORIZATION_REQUIRES_PARTS", "La autorizacion de repuestos requiere que el caso lleve repuestos", Map.of());
         }
         Map<String, Object> belowMinimumAudit = null;
+        BelowMinimumAgreementApprovalEntity belowMinimumApproval = null;
         if (request.has("agreedAmount") && entity.getAgreedAmount() != null && derivatives.minimumCloseAmount() != null && entity.getAgreedAmount().compareTo(derivatives.minimumCloseAmount()) < 0) {
             BigDecimal difference = derivatives.minimumCloseAmount().subtract(entity.getAgreedAmount());
             Map<String, Object> amounts = CaseAuditService.auditMap("agreedAmount", entity.getAgreedAmount(), "minimumCloseAmount", derivatives.minimumCloseAmount(), "difference", difference);
-            if (!Boolean.TRUE.equals(request.allowBelowMinimum())) {
+            String reason = blankToNull(request.belowMinimumReason());
+            if (reason == null) {
                 throw new DomainConflictException("PROCESSING_AMOUNT_BELOW_MINIMUM_CONFIRMATION_REQUIRED", "El monto acordado es inferior al minimo de cierre", amounts);
             }
-            belowMinimumAudit = CaseAuditService.auditMap("agreedAmount", entity.getAgreedAmount(), "minimumCloseAmount", derivatives.minimumCloseAmount(), "difference", difference, "accepted", true);
+            belowMinimumApproval = belowMinimumAgreementApprovalRepository.findByCaseId(caseId).orElseGet(BelowMinimumAgreementApprovalEntity::new);
+            belowMinimumApproval.setCaseId(caseId);
+            belowMinimumApproval.setProposedAmount(entity.getAgreedAmount());
+            belowMinimumApproval.setExpectedMinimumAmount(derivatives.minimumCloseAmount());
+            belowMinimumApproval.setRequestedByUserId(currentUser.id());
+            belowMinimumApproval.setReason(reason);
+            belowMinimumApproval.setRequestedAt(LocalDateTime.now());
+            belowMinimumApproval.setStatus("PENDIENTE");
+            belowMinimumApproval.setDecidedAt(null);
+            belowMinimumApproval.setApprovedByAdminId(null);
+            belowMinimumAudit = CaseAuditService.auditMap("agreedAmount", entity.getAgreedAmount(), "minimumCloseAmount", derivatives.minimumCloseAmount(), "difference", difference, "status", "PENDIENTE", "reason", reason);
+        }
+        if ((request.has("agreementDate") || request.has("passedToPaymentsAt")) && hasPendingBelowMinimumApproval(caseId, entity.getAgreedAmount(), derivatives.minimumCloseAmount(), belowMinimumApproval)) {
+            throw new DomainConflictException("PROCESSING_AMOUNT_BELOW_MINIMUM_APPROVAL_PENDING", "El acuerdo por debajo del minimo requiere aprobacion de un administrador global antes de confirmar o avanzar", Map.of());
         }
         entity = insuranceProcessingRepository.save(entity);
         Map<String, Object> auditSnapshot = CaseAuditService.auditMap("modalityCode", entity.getModalityCode(), "quotationStatusCode", entity.getQuotationStatusCode());
@@ -334,7 +352,8 @@ public class InsuranceService {
         }
         caseAuditService.register(currentUser.id(), caseId, "caso_tramitacion_seguro", entity.getId(), "patch_tramitacion_seguro", caseAuditService.toJson(auditBefore), caseAuditService.toJson(auditSnapshot), caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
         if (belowMinimumAudit != null) {
-            notifyAdminsOfBelowMinimumAgreement(caseEntity, entity, derivatives.minimumCloseAmount());
+            belowMinimumAgreementApprovalRepository.save(belowMinimumApproval);
+            notifyAdminsOfBelowMinimumAgreement(caseEntity, entity, derivatives.minimumCloseAmount(), belowMinimumApproval.getReason());
         }
         // El cambio de tramitacion alimenta la proyeccion de estado efectivo. El PATCH es parcial
         // (el front solo envia campos cambiados): se merguea con los facts vigentes para no pisar
@@ -348,6 +367,31 @@ public class InsuranceService {
             todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
         }
         return toInsuranceProcessingResponse(entity);
+    }
+
+    @Transactional
+    public InsuranceProcessingResponse approveBelowMinimumAgreement(Long caseId, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        if (!accessControlService.hasGlobalScope(currentUser)) {
+            throw new com.tallerzapata.backend.application.common.ForbiddenException("Solo un administrador global puede aprobar acuerdos por debajo del minimo");
+        }
+        CaseEntity caseEntity = requireCaseForUpdate(caseId);
+        requireInsuranceAllowed(caseEntity);
+        BelowMinimumAgreementApprovalEntity approval = belowMinimumAgreementApprovalRepository.findByCaseId(caseId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe una solicitud de aprobacion pendiente"));
+        if (!"PENDIENTE".equals(approval.getStatus())) throw new ConflictException("La solicitud ya fue decidida");
+        InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId)
+                .orElseThrow(() -> new ConflictException("No existe una propuesta de acuerdo para aprobar"));
+        ProcessingDerivatives derivatives = "CLEAS".equals(caseTypeCode(caseEntity)) ? cleasProcessingDerivatives(processing) : processingDerivatives(caseId, processing.getAgreedAmount());
+        if (!sameAmount(processing.getAgreedAmount(), approval.getProposedAmount()) || !sameAmount(derivatives.minimumCloseAmount(), approval.getExpectedMinimumAmount()) || processing.getAgreedAmount().compareTo(derivatives.minimumCloseAmount()) >= 0) {
+            throw new ConflictException("La propuesta ya no coincide con el acuerdo por debajo del minimo pendiente");
+        }
+        approval.setStatus("APROBADO");
+        approval.setDecidedAt(LocalDateTime.now());
+        approval.setApprovedByAdminId(currentUser.id());
+        belowMinimumAgreementApprovalRepository.save(approval);
+        caseAuditService.register(currentUser.id(), caseId, "aprobaciones_acuerdo_bajo_minimo", approval.getId(), "aprobar_acuerdo_bajo_minimo", null, caseAuditService.toJson(CaseAuditService.auditMap("agreedAmount", approval.getProposedAmount(), "minimumCloseAmount", approval.getExpectedMinimumAmount(), "requestedByUserId", approval.getRequestedByUserId(), "reason", approval.getReason())), caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
+        return toInsuranceProcessingResponse(processing);
     }
 
     @Transactional(readOnly = true)
@@ -761,10 +805,10 @@ public class InsuranceService {
 
     /**
      * Aviso al administrador: el monto acordado con la Cia. quedo por debajo del minimo de cierre
-     * y el operador lo confirmo (allowBelowMinimum). Aplica a todos los tramites ante compania
+     * y un operador solicito su aprobacion. Aplica a todos los tramites ante compania
      * (todo riesgo, granizo, CLEAS y terceros comparten el PATCH de tramitacion).
      */
-    private void notifyAdminsOfBelowMinimumAgreement(CaseEntity caseEntity, InsuranceProcessingEntity processing, BigDecimal minimumCloseAmount) {
+    private void notifyAdminsOfBelowMinimumAgreement(CaseEntity caseEntity, InsuranceProcessingEntity processing, BigDecimal minimumCloseAmount, String reason) {
         BigDecimal agreedAmount = processing.getAgreedAmount();
         if (agreedAmount == null || minimumCloseAmount == null) {
             return;
@@ -782,7 +826,7 @@ public class InsuranceService {
             notification.setTitle("Monto acordado por debajo del minimo");
             notification.setMessage("Caso " + caseEntity.getFolderCode() + ": monto acordado " + agreedAmount.toPlainString()
                     + ", inferior al minimo de cierre " + minimumCloseAmount.toPlainString()
-                    + " (diferencia: " + difference.toPlainString() + ").");
+                    + " (diferencia: " + difference.toPlainString() + "). Motivo: " + reason);
             notification.setEntityType("caso_tramitacion_seguro");
             notification.setEntityId(processing.getId());
             notificationRepository.save(notification);
@@ -852,12 +896,18 @@ public class InsuranceService {
     private InsuranceProcessingResponse toInsuranceProcessingResponse(InsuranceProcessingEntity e) {
         var facts = todoRiesgoStateFactsRepository.findById(e.getCaseId()).orElse(null);
         ProcessingDerivatives derivatives = "CLEAS".equals(caseTypeCode(requireCase(e.getCaseId()))) ? cleasProcessingDerivatives(e) : processingDerivatives(e.getCaseId(), e.getAgreedAmount());
-        return new InsuranceProcessingResponse(e.getId(), e.getCaseId(), e.getPresentedAt(), e.getInspectionForwardedAt(), e.getModalityCode(), e.getOpinionCode(), e.getQuotationStatusCode(), e.getQuotationDate(), e.getAgreedAmount(), facts == null ? null : facts.getAgreementDate(), facts == null ? null : facts.getPassedToPaymentsDate(), derivatives.minimumCloseAmount(), derivatives.includesParts(), derivatives.includesParts() ? e.getPartsAuthorizationCode() : null, e.getPartsSupplierText(), e.getProviderId(), derivatives.amountToBillCompany(), e.getFinalAmountForWorkshop(), e.getNoRepair(), e.getAdminOverrideAppointment(), e.getPassedToPaymentsAt(), e.getEstimatedPaymentDate(), null, e.getInspectionDate(), e.getVersion());
+        return new InsuranceProcessingResponse(e.getId(), e.getCaseId(), e.getPresentedAt(), e.getInspectionForwardedAt(), e.getModalityCode(), e.getOpinionCode(), e.getQuotationStatusCode(), e.getQuotationDate(), e.getAgreedAmount(), facts == null ? null : facts.getAgreementDate(), facts == null ? null : facts.getPassedToPaymentsDate(), derivatives.minimumCloseAmount(), derivatives.includesParts(), derivatives.includesParts() ? e.getPartsAuthorizationCode() : null, e.getPartsSupplierText(), e.getProviderId(), derivatives.amountToBillCompany(), e.getFinalAmountForWorkshop(), e.getNoRepair(), e.getAdminOverrideAppointment(), e.getPassedToPaymentsAt(), e.getEstimatedPaymentDate(), null, e.getInspectionDate(), e.getVersion(), belowMinimumAgreementApprovalRepository.findByCaseId(e.getCaseId()).map(this::toBelowMinimumApprovalResponse).orElse(null));
     }
     private InsuranceProcessingResponse toInsuranceProcessingProjection(Long caseId) {
         ProcessingDerivatives derivatives = "CLEAS".equals(caseTypeCode(requireCase(caseId))) ? new ProcessingDerivatives(null, null, null) : processingDerivatives(caseId, null);
-        return new InsuranceProcessingResponse(null, caseId, null, null, null, null, null, null, null, null, null, derivatives.minimumCloseAmount(), derivatives.includesParts(), null, null, null, derivatives.amountToBillCompany(), null, null, null, null, null, null, null, 0L);
+        return new InsuranceProcessingResponse(null, caseId, null, null, null, null, null, null, null, null, null, derivatives.minimumCloseAmount(), derivatives.includesParts(), null, null, null, derivatives.amountToBillCompany(), null, null, null, null, null, null, null, 0L, null);
     }
+    private BelowMinimumAgreementApprovalResponse toBelowMinimumApprovalResponse(BelowMinimumAgreementApprovalEntity e) { return new BelowMinimumAgreementApprovalResponse(e.getStatus(), e.getProposedAmount(), e.getExpectedMinimumAmount(), e.getRequestedByUserId(), e.getReason(), e.getRequestedAt(), e.getDecidedAt(), e.getApprovedByAdminId(), accessControlService.hasGlobalScope(currentUserService.requireCurrentUser())); }
+    private boolean hasPendingBelowMinimumApproval(Long caseId, BigDecimal agreedAmount, BigDecimal minimumCloseAmount, BelowMinimumAgreementApprovalEntity newApproval) {
+        BelowMinimumAgreementApprovalEntity approval = newApproval != null ? newApproval : belowMinimumAgreementApprovalRepository.findByCaseId(caseId).orElse(null);
+        return approval != null && "PENDIENTE".equals(approval.getStatus()) && agreedAmount != null && minimumCloseAmount != null && agreedAmount.compareTo(minimumCloseAmount) < 0;
+    }
+    private boolean sameAmount(BigDecimal left, BigDecimal right) { return left != null && right != null && left.compareTo(right) == 0; }
     private CaseFranchiseResponse toCaseFranchiseResponse(CaseFranchiseEntity e) { return new CaseFranchiseResponse(e.getId(), e.getCaseId(), e.getFranchiseStatusCode(), e.getFranchiseAmount(), e.getRecoveryTypeCode(), e.getRelatedCaseId(), e.getFranchiseOpinionCode(), e.getExceedsFranchise(), e.getRecoveryAmount(), e.getNotes()); }
     private CaseCleasResponse toCaseCleasResponse(CaseCleasEntity e) { return new CaseCleasResponse(e.getId(), e.getCaseId(), e.getScopeCode(), e.getOpinionCode(), e.getFranchiseAmount(), e.getCustomerChargeAmount(), e.getCustomerPaymentStatusCode(), e.getCustomerPaymentDate(), e.getCompanyFranchisePaymentAmount(), e.getCompanyFranchisePaymentStatusCode(), e.getCompanyFranchisePaymentDate()); }
     private CaseThirdPartyResponse toCaseThirdPartyResponse(CaseThirdPartyEntity e) { return new CaseThirdPartyResponse(e.getId(), e.getCaseId(), e.getThirdPartyCompanyId(), e.getClaimReference(), e.getDocumentationStatusCode(), e.getDocumentationAccepted(), e.getPartsProvisionModeCode(), e.getMinimumLaborAmount(), e.getMinimumPartsAmount(), e.getBestQuotationSubtotal(), e.getFinalPartsTotal(), e.getAmountToBillCompany(), e.getFinalAmountForWorkshop()); }

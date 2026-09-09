@@ -567,7 +567,7 @@ class InsuranceIntegrationTest {
     }
 
     @Test
-    void shouldRequireConfirmationAndAuditAgreedAmountBelowDerivedMinimum() throws Exception {
+    void shouldKeepBelowMinimumAgreementPendingUntilGlobalAdminApprovesIt() throws Exception {
         jdbcTemplate.update("INSERT INTO presupuestos (id, caso_id, organizacion_id, sucursal_id, fecha_presupuesto, informe_estado_codigo, monto_minimo_cierre_mo, version_actual) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 500L, 100L, 1L, 1L, LocalDate.of(2026, 1, 1), "PENDIENTE", new BigDecimal("100.00"), 1);
 
         mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
@@ -582,17 +582,40 @@ class InsuranceIntegrationTest {
         mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"presentedAt\":\"2026-01-10\",\"agreedAmount\":90,\"allowBelowMinimum\":true}"))
+                        .content("{\"presentedAt\":\"2026-01-10\",\"agreedAmount\":90,\"belowMinimumReason\":\"La aseguradora no mejora su oferta\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.minimumCloseAmount").value(100))
-                .andExpect(jsonPath("$.amountToBillCompany").value(90));
+                .andExpect(jsonPath("$.amountToBillCompany").value(90))
+                .andExpect(jsonPath("$.belowMinimumApproval.status").value("PENDIENTE"))
+                .andExpect(jsonPath("$.belowMinimumApproval.reason").value("La aseguradora no mejora su oferta"));
 
-        Integer auditCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'patch_tramitacion_seguro'", Integer.class, 100L);
-        assertThat(auditCount).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT usuario_solicitante_id FROM aprobaciones_acuerdo_bajo_minimo WHERE caso_id = ?", Long.class, 100L)).isEqualTo(3L);
         assertThat(jdbcTemplate.queryForObject("SELECT despues_json FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'patch_tramitacion_seguro'", String.class, 100L))
-                .contains("\"agreedAmount\":90.00", "\"minimumCloseAmount\":100.00", "\"difference\":10.00", "\"accepted\":true");
-        // Con el acuerdo aceptado por debajo del minimo, el admin global recibe el aviso.
+                .contains("\"agreedAmount\":90.00", "\"minimumCloseAmount\":100.00", "\"status\":\"PENDIENTE\"");
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM notificaciones WHERE caso_id = ? AND tipo_codigo = 'MONTO_BAJO_MINIMO' AND usuario_id = 1", Integer.class, 100L)).isEqualTo(1);
+
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"agreementDate\":\"2026-01-11\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PROCESSING_AMOUNT_BELOW_MINIMUM_APPROVAL_PENDING"));
+
+        mockMvc.perform(post("/api/v1/cases/100/insurance-processing/below-minimum-approval").header("X-User-Id", "3"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/v1/cases/100/insurance-processing/below-minimum-approval").header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.belowMinimumApproval.status").value("APROBADO"))
+                .andExpect(jsonPath("$.belowMinimumApproval.approvedByAdminId").value(1));
+
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"agreementDate\":\"2026-01-11\"}"))
+                .andExpect(status().isOk());
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'aprobar_acuerdo_bajo_minimo'", Integer.class, 100L)).isEqualTo(1);
     }
 
     @Test
@@ -839,7 +862,7 @@ class InsuranceIntegrationTest {
     }
 
     @Test
-    void shouldNotifyAdminsWhenAgreedAmountIsAcceptedBelowMinimum() throws Exception {
+    void shouldNotifyEveryGlobalAdminWhenBelowMinimumApprovalIsRequested() throws Exception {
         // Admin global extra (rol 1 = ROLE_ADMIN). El admin base (usuario 1) ya existe.
         jdbcTemplate.update("INSERT INTO usuarios (id, public_id, username, email, password_hash, nombre, apellido, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 2L, "00000000-0000-0000-0000-000000000200", "admin-test", "admin-test@tallerzapata.local", "hash", "Ana", "Admin", true);
         // Sin id explicito: otros tests siembran usuario_roles con ids fijos para el usuario base
@@ -847,7 +870,7 @@ class InsuranceIntegrationTest {
         // Presupuesto con minimo de cierre fijado en 1000
         jdbcTemplate.update("INSERT INTO presupuestos (id, caso_id, organizacion_id, sucursal_id, fecha_presupuesto, informe_estado_codigo, monto_minimo_cierre_mo, version_actual) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 500L, 100L, 1L, 1L, LocalDate.of(2026, 1, 1), "BORRADOR", new BigDecimal("1000"), 1);
 
-        // Sin confirmacion explicita, el monto por debajo del minimo se rechaza y no notifica
+        // Sin motivo, el monto por debajo del minimo se rechaza y no notifica.
         mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -858,11 +881,11 @@ class InsuranceIntegrationTest {
         Integer notificationsBefore = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM notificaciones WHERE caso_id = 100 AND tipo_codigo = 'MONTO_BAJO_MINIMO'", Integer.class);
         assertThat(notificationsBefore).isEqualTo(0);
 
-        // Con confirmacion: el acuerdo queda registrado y los admins reciben el aviso
+        // La solicitud pendiente queda registrada y todos los admins globales reciben el aviso.
         mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"presentedAt\":\"2026-01-02\",\"agreedAmount\":800,\"allowBelowMinimum\":true}"))
+                        .content("{\"presentedAt\":\"2026-01-02\",\"agreedAmount\":800,\"belowMinimumReason\":\"Oferta final de la compania\"}"))
                 .andExpect(status().isOk());
 
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM notificaciones WHERE caso_id = 100 AND tipo_codigo = 'MONTO_BAJO_MINIMO' AND usuario_id = 2", Integer.class)).isEqualTo(1);

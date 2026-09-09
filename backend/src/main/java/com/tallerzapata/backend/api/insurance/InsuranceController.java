@@ -103,6 +103,10 @@ public class InsuranceController {
     @PatchMapping("/cases/{caseId}/insurance-processing")
     public InsuranceProcessingResponse patchCaseInsuranceProcessing(@PathVariable Long caseId, @RequestBody InsuranceProcessingPatchRequest request, HttpServletRequest httpRequest) { return insuranceService.patchCaseInsuranceProcessing(caseId, request, httpRequest); }
 
+    @PreAuthorize("hasAuthority('seguro.crear')")
+    @PostMapping("/cases/{caseId}/insurance-processing/below-minimum-approval")
+    public InsuranceProcessingResponse approveBelowMinimumAgreement(@PathVariable Long caseId, HttpServletRequest httpRequest) { return insuranceService.approveBelowMinimumAgreement(caseId, httpRequest); }
+
     @Operation(summary = "Obtener franquicia de caso", description = "Devuelve la informacion de franquicia de un caso")
     @ApiResponse(responseCode = "200", description = "OK")
     @PreAuthorize("hasAuthority('seguro.ver')")
