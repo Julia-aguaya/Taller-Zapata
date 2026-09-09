@@ -32,12 +32,12 @@ export const ClaimDataSection = ({ caseId }) => {
   const handleSave = () => {
     const form = document.getElementById('claim-form');
     const fd = new FormData(form);
-    mutation.mutate({
-      incidentDate: incident?.incidentDate ?? null,
+      mutation.mutate({
+       incidentDate: fd.get('incidentDate') || null,
       incidentTime: fd.get('incidentTime') || null,
       location: fd.get('location') || null,
       dynamics: fd.get('dynamics') || null,
-      observations: incident?.observations ?? null,
+       observations: fd.get('observations') || null,
     });
   };
 
@@ -55,6 +55,7 @@ export const ClaimDataSection = ({ caseId }) => {
 
       <form id="claim-form" key={incident?.location ?? 'new'} className="mt-4 space-y-3">
         <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
+          <Field label="Fecha del siniestro"><Input type="date" name="incidentDate" defaultValue={incident?.incidentDate ?? ''} /></Field>
           <Field label="Lugar de ocurrencia">
             <Input name="location" defaultValue={incident?.location ?? ''} placeholder="Ej: Mitre 400, Rosario" />
           </Field>
@@ -65,6 +66,7 @@ export const ClaimDataSection = ({ caseId }) => {
         <Field label="Dinámica del siniestro">
           <Textarea name="dynamics" defaultValue={incident?.dynamics ?? ''} placeholder="Describí cómo ocurrió el siniestro..." className="min-h-[80px] resize-y" />
         </Field>
+        <Field label="Observaciones"><Textarea name="observations" defaultValue={incident?.observations ?? ''} className="min-h-[80px] resize-y" /></Field>
       </form>
     </div>
   );

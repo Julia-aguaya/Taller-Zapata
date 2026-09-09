@@ -12,6 +12,7 @@ import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
 import { ProviderSelector } from '@/modules/cases/components/provider-selector';
 import { ProviderCreateDialog } from '@/modules/cases/components/provider-create-dialog';
+import { DocumentsSection } from '@/modules/cases/components/documents-section';
 import { Dialog } from '@/shared/ui/dialog';
 
 const addBusinessDays = (startDateStr, days) => {
@@ -81,6 +82,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const [intakeForm, setIntakeForm] = useState({ intakeAt: '', mileage: '0', hasObservations: 'NO', observationDetail: '' });
   const [egresoModal, setEgresoModal] = useState(null);
   const [egresoForm, setEgresoForm] = useState({ outcomeAt: '', definitive: 'SI', shouldReenter: 'NO', expectedReentryDate: '', estimatedReentryDays: '0', reentryStatusCode: '', repairedPhotosUploaded: 'NO', notes: '' });
+  const [pendingPartsConfirmationOpen, setPendingPartsConfirmationOpen] = useState(false);
 
   const refreshWorkspace = async (message) => {
     await invalidateCaseProjection(queryClient, caseId);
@@ -92,18 +94,24 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const reentryStatusOptions = (operationCatalogsQuery.data?.reentryStatusCodes ?? []).map((item) => ({ value: item.code, label: item.name }));
 
   const appointmentMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: (overridePendingParts = false) => {
       if (!appointment.appointmentDate) { toast.error('Falta la fecha del turno.'); throw new Error(); }
       if (!appointment.estimatedDays || Number(appointment.estimatedDays) <= 0) { toast.error('Faltan los días estimados.'); throw new Error(); }
       if (!appointment.statusCode) { toast.error('Falta el estado del turno.'); throw new Error(); }
       return createRepairAppointment(caseId, {
         appointmentDate: appointment.appointmentDate, appointmentTime: appointment.appointmentTime,
         estimatedDays: Number.parseInt(appointment.estimatedDays || '0', 10) || 0,
-        estimatedExitDate: appointment.estimatedExitDate || null, statusCode: appointment.statusCode, reentry: appointment.reentry === 'SI', notes: appointment.notes || null, userId,
+        estimatedExitDate: appointment.estimatedExitDate || null, statusCode: appointment.statusCode, reentry: appointment.reentry === 'SI', notes: appointment.notes || null, userId, overridePendingParts,
       });
     },
     onSuccess: async () => refreshWorkspace('Turno creado y workspace actualizado.'),
-    onError: (error) => toast.error(error.message || 'No pude crear el turno.'),
+    onError: (error) => {
+      if (error.httpStatus === 409 && error.message.includes('Hay repuestos pendientes de recepcion')) {
+        setPendingPartsConfirmationOpen(true);
+        return;
+      }
+      toast.error(error.message || 'No pude crear el turno.');
+    },
   });
 
   const updateAppointmentMutation = useMutation({
@@ -225,7 +233,6 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     mutationFn: () => syncPartsFromBudget(caseId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'parts'] });
-      toast.success('Repuestos canónicos sincronizados desde el presupuesto.');
     },
     onError: (error) => toast.error(error.message || 'No pude sincronizar los repuestos desde el presupuesto.'),
   });
@@ -402,11 +409,14 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const repairPhotosUploadMutation = useMutation({
     mutationFn: async (file) => {
       const stored = JSON.parse(window.localStorage.getItem('front2.session.v1') || '{}');
-      const form = new FormData(); form.append('file', file); form.append('categoryId', '2'); form.append('originCode', 'TALLER');
+      const catalogs = await requestJson('/documents/catalogs');
+      const categoryId = catalogs.categories?.find((category) => category.code === 'OTRO')?.id;
+      if (!categoryId) throw new Error('No está disponible la categoría documental Otro.');
+      const form = new FormData(); form.append('file', file); form.append('categoryId', String(categoryId)); form.append('originCode', 'TALLER');
       const r = await fetch('/api/v1/documents', { method: 'POST', headers: { Authorization: `Bearer ${stored.accessToken}` }, body: form });
       if (!r.ok) throw new Error('Error al subir');
       const doc = await r.json();
-      await requestJson(`/documents/${doc.id}/relations`, { method: 'POST', body: JSON.stringify({ caseId: Number(caseId), entityType: 'CASO', entityId: Number(caseId), moduleCode: 'OPERACION', principal: false, visibleToCustomer: false, visualOrder: 0 }) });
+      await requestJson(`/documents/${doc.id}/relations`, { method: 'POST', body: JSON.stringify({ caseId: Number(caseId), entityType: 'CASO', entityId: Number(caseId), moduleCode: 'EGRESO_DEFINITIVO', principal: false, visibleToCustomer: false, visualOrder: 0 }) });
       return doc;
     },
     onSuccess: async () => { await refreshWorkspace('Foto de reparado subida.'); if (repairPhotoRef.current) repairPhotoRef.current.value = ''; },
@@ -650,7 +660,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
             <div className="space-y-1"><Label className="text-xs">Días est.</Label><Input className="h-9 rounded-xl text-sm" type="number" min="0" value={appointment.estimatedDays} onChange={(e) => setAppointment((c) => ({ ...c, estimatedDays: e.target.value }))} /></div>
             <div className="space-y-1"><Label className="text-xs">Salida est.</Label><Input className="h-9 rounded-xl text-sm bg-muted/50 cursor-default" type="date" value={appointment.estimatedExitDate || ''} readOnly /></div>
             <div className="space-y-1"><Label className="text-xs">Notas</Label><Input className="h-9 rounded-xl text-sm" value={appointment.notes} onChange={(e) => setAppointment((c) => ({ ...c, notes: e.target.value }))} placeholder="Opcional" /></div>
-            <div className="flex items-end"><Button className="w-full" size="sm" onClick={() => appointmentMutation.mutate()} disabled={appointmentMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Agendar</Button></div>
+            <div className="flex items-end"><Button className="w-full" size="sm" onClick={() => appointmentMutation.mutate(false)} disabled={appointmentMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Agendar</Button></div>
           </div>
         </div>
         {appointments.length === 0 ? (
@@ -832,6 +842,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
             </div>
           </div>
         ) : null}
+        <DocumentsSection caseId={caseId} moduleCode="EGRESO_DEFINITIVO" includeHistorical={false} showCompleteAction={false} title="Documentación del egreso definitivo" />
       </div>
       ) : null}
 
@@ -847,6 +858,14 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
           </div>
         </div>
       ) : null}
+      <Dialog open={pendingPartsConfirmationOpen} onClose={() => setPendingPartsConfirmationOpen(false)} title="Hay repuestos pendientes de recibir" description="Podés agendar el turno igualmente. Confirmá para continuar con los repuestos aún pendientes.">
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={() => setPendingPartsConfirmationOpen(false)}>Cancelar</Button>
+          <Button type="button" disabled={appointmentMutation.isPending} onClick={() => { setPendingPartsConfirmationOpen(false); appointmentMutation.mutate(true); }}>
+            {appointmentMutation.isPending ? 'Agendando...' : 'Confirmar y agendar'}
+          </Button>
+        </div>
+      </Dialog>
     </div>
   );
 };

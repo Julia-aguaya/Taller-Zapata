@@ -31,7 +31,7 @@ const createEmptyItem = (visualOrder = 1, defaults = {}) => ({
 const toItemState = (item) => ({
   id: item.id, visualOrder: item.visualOrder, affectedPiece: item.affectedPiece || '',
   taskCode: item.taskCode || 'CHAPA', damageLevelCode: item.damageLevelCode || 'LEVE',
-  partDecisionCode: item.partDecisionCode || 'REPARAR', actionCode: item.actionCode || 'REPARAR',
+  partDecisionCode: item.partDecisionCode || 'A_VERIFICAR', actionCode: item.actionCode || 'REPARAR',
   requiresReplacement: Boolean(item.requiresReplacement),
   partValue: item.partValue?.toString?.() || '0', estimatedHours: item.estimatedHours?.toString?.() || '0',
   laborAmount: item.laborAmount?.toString?.() || '0', active: item.active ?? true, providerId: item.providerId || null, providerSnapshot: item.providerSnapshot || null,
@@ -160,7 +160,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
   const docsQuery = useQuery({
     queryKey: ['cases', caseId, 'documents'],
     queryFn: async () => {
-      const rels = await requestJson(`/cases/${caseId}/documents`);
+      const rels = (await requestJson(`/cases/${caseId}/documents`)).filter((relation) => relation.moduleCode === 'PRESUPUESTO');
       const stored = JSON.parse(window.localStorage.getItem('front2.session.v1') || '{}');
       const docs = await Promise.all(rels.map(async (rel) => {
         try {
@@ -179,11 +179,14 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
   const uploadMutation = useMutation({
     mutationFn: async (file) => {
       const stored = JSON.parse(window.localStorage.getItem('front2.session.v1') || '{}');
-      const form = new FormData(); form.append('file', file); form.append('categoryId', '2'); form.append('originCode', 'TALLER'); form.append('observations', file.name);
+      const catalogs = await requestJson('/documents/catalogs');
+      const categoryId = catalogs.categories?.find((category) => category.code === 'OTRO')?.id;
+      if (!categoryId) throw new Error('No está disponible la categoría documental Otro.');
+      const form = new FormData(); form.append('file', file); form.append('categoryId', String(categoryId)); form.append('originCode', 'TALLER'); form.append('observations', file.name);
       const r = await fetch('/api/v1/documents', { method: 'POST', headers: { Authorization: `Bearer ${stored.accessToken}` }, body: form });
       if (!r.ok) throw new Error('Error al subir');
       const doc = await r.json();
-      await requestJson(`/documents/${doc.id}/relations`, { method: 'POST', body: JSON.stringify({ caseId: Number(caseId), entityType: 'CASO', entityId: Number(caseId), moduleCode: 'OPERACION', principal: false, visibleToCustomer: false, visualOrder: 0 }) });
+      await requestJson(`/documents/${doc.id}/relations`, { method: 'POST', body: JSON.stringify({ caseId: Number(caseId), entityType: 'CASO', entityId: Number(caseId), moduleCode: 'PRESUPUESTO', principal: false, visibleToCustomer: false, visualOrder: 0 }) });
       return doc;
     },
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'documents'] }); toast.success('Subido.'); },

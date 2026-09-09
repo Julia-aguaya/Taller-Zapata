@@ -627,7 +627,7 @@ describe('CaseWorkspacePage UI', () => {
     expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases'] });
   });
 
-  it.each(['TODO_RIESGO', 'GRANIZO'])('no ofrece overrides manuales para el flujo asegurado: %s', async (caseTypeCode) => {
+  it.each(['TODO_RIESGO', 'GRANIZO'])('permite revertir el override de reparación, pero no alterar manualmente el trámite: %s', async (caseTypeCode) => {
     const user = userEvent.setup();
     await renderPage({
       ...baseWorkspace,
@@ -642,9 +642,11 @@ describe('CaseWorkspacePage UI', () => {
     const tramiteButton = screen.getByRole('button', { name: /trámite: pagado/i });
     const repairButton = screen.getByRole('button', { name: /reparación: no debe repararse/i });
     expect(tramiteButton).toBeDisabled();
-    expect(repairButton).toBeDisabled();
+    expect(repairButton).toBeEnabled();
     await user.click(tramiteButton);
     expect(screen.queryByText('Cambiar estado de Trámite')).not.toBeInTheDocument();
+    await user.click(repairButton);
+    expect(screen.getByText('Cambiar estado de Reparación')).toBeInTheDocument();
   });
 
   it('muestra el proximo paso operativo en resumen', async () => {

@@ -235,6 +235,8 @@ class InsuranceIntegrationTest {
 
     @Test
     void shouldUpsertCaseCleas() throws Exception {
+        setCaseType("CLEAS");
+
         mockMvc.perform(put("/api/v1/cases/100/cleas")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -254,6 +256,7 @@ class InsuranceIntegrationTest {
 
     @Test
     void shouldUpsertCaseThirdParty() throws Exception {
+        setCaseType("RECLAMO_TERCEROS");
         jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, cuit, requiere_fotos_reparado, dias_pago_esperados, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 2L, "00000000-0000-0000-0000-000000004002", "SANCOR", "Sancor", "30711222335", false, 20, true);
 
         CaseThirdPartyUpsertRequest thirdPartyRequest = new CaseThirdPartyUpsertRequest(2L, "REC-98765", "EN_REVISION", false, "TALLER", new BigDecimal("1500.00"), new BigDecimal("800.00"), new BigDecimal("2300.00"), new BigDecimal("2100.00"), new BigDecimal("3800.00"), new BigDecimal("3200.00"));
@@ -276,8 +279,10 @@ class InsuranceIntegrationTest {
 
     @Test
     void shouldDeriveFinalAmountForWorkshopWhenThirdPartyPartsProvidedByWorkshop() throws Exception {
+        setCaseType("RECLAMO_TERCEROS");
         jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, cuit, requiere_fotos_reparado, dias_pago_esperados, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 2L, "00000000-0000-0000-0000-000000004002", "SANCOR", "Sancor", "30711222335", false, 20, true);
         createBudgetWithReplacementPart(100L);
+        setThirdPartyAgreementAndPartPrices(new BigDecimal("3800.00"), new BigDecimal("2100.00"));
 
         // El valor enviado para finalAmountForWorkshop (9999) se ignora: el backend lo recalcula.
         CaseThirdPartyUpsertRequest request = new CaseThirdPartyUpsertRequest(2L, "REC-111", "ACEPTADA", true, "TALLER",
@@ -295,7 +300,9 @@ class InsuranceIntegrationTest {
 
     @Test
     void shouldNormalizePartsFieldsWhenThirdPartyPartsAreNotProvidedByWorkshop() throws Exception {
+        setCaseType("RECLAMO_TERCEROS");
         jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, cuit, requiere_fotos_reparado, dias_pago_esperados, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 2L, "00000000-0000-0000-0000-000000004002", "SANCOR", "Sancor", "30711222335", false, 20, true);
+        setThirdPartyAgreement(new BigDecimal("3800.00"));
 
         // Provee la Cia.: el total final repuestos no aplica y Final a favor Taller = A facturar Cia.
         CaseThirdPartyUpsertRequest request = new CaseThirdPartyUpsertRequest(2L, "REC-222", "ACEPTADA", true, "COMPANIA",
@@ -312,10 +319,12 @@ class InsuranceIntegrationTest {
 
     @Test
     void shouldKeepAgreedAmountAsFinalWhenWorkshopProvidesPartsWithoutReplacementItems() throws Exception {
+        setCaseType("RECLAMO_TERCEROS");
         jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, cuit, requiere_fotos_reparado, dias_pago_esperados, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 2L, "00000000-0000-0000-0000-000000004002", "SANCOR", "Sancor", "30711222335", false, 20, true);
 
         // Provee Taller pero el presupuesto no tiene repuestos a reemplazar:
-        // Final a favor Taller = A facturar Cia. (regla "si no hay repuestos, no se descuenta").
+        // Final a favor Taller = A facturar Cia. y el total final de repuestos es cero.
+        setThirdPartyAgreement(new BigDecimal("3800.00"));
         CaseThirdPartyUpsertRequest request = new CaseThirdPartyUpsertRequest(2L, "REC-333", "ACEPTADA", true, "TALLER",
                 new BigDecimal("1500.00"), new BigDecimal("800.00"), new BigDecimal("2100.00"),
                 new BigDecimal("2100.00"), new BigDecimal("3800.00"), new BigDecimal("9999.00"));
@@ -324,7 +333,7 @@ class InsuranceIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.finalPartsTotal").value(2100.00))
+                .andExpect(jsonPath("$.finalPartsTotal").value(0.00))
                 .andExpect(jsonPath("$.finalAmountForWorkshop").value(3800.00));
     }
 
@@ -334,6 +343,21 @@ class InsuranceIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"budgetDate\":\"2026-01-01\",\"reportStatusCode\":\"BORRADOR\",\"laborWithoutVat\":50000,\"vatRate\":21,\"partsTotal\":2100,\"estimatedDays\":2,\"items\":[{\"visualOrder\":1,\"affectedPiece\":\"Puerta\",\"taskCode\":\"CHAPA\",\"damageLevelCode\":\"LEVE\",\"partDecisionCode\":\"REEMPLAZAR\",\"actionCode\":\"REEMPLAZAR\",\"requiresReplacement\":true,\"partValue\":2100,\"estimatedHours\":2,\"laborAmount\":50000,\"active\":true}]}"))
                 .andExpect(status().isOk());
+    }
+
+    private void setThirdPartyAgreement(BigDecimal agreedAmount) throws Exception {
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-01-01\",\"agreedAmount\":" + agreedAmount + "}"))
+                .andExpect(status().isOk());
+    }
+
+    private void setThirdPartyAgreementAndPartPrices(BigDecimal agreedAmount, BigDecimal finalPartPrice) throws Exception {
+        setThirdPartyAgreement(agreedAmount);
+        Long budgetItemId = jdbcTemplate.queryForObject("SELECT id FROM presupuesto_items WHERE presupuesto_id = (SELECT id FROM presupuestos WHERE caso_id = ?)", Long.class, 100L);
+        jdbcTemplate.update("INSERT INTO repuestos_caso (id, caso_id, presupuesto_item_id, descripcion, autorizado_codigo, estado_codigo, precio_presupuestado, precio_final, usado, devuelto, source_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'BUDGET_ITEM')",
+                502L, 100L, budgetItemId, "Puerta", "AUTORIZADO", "PEDIDO", finalPartPrice, finalPartPrice, false, false);
     }
 
     @Test
@@ -371,6 +395,8 @@ class InsuranceIntegrationTest {
 
     @Test
     void shouldUpsertCaseLegal() throws Exception {
+        setCaseType("RECLAMO_TERCEROS_ABOGADO");
+
         mockMvc.perform(put("/api/v1/cases/100/legal")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -394,6 +420,8 @@ class InsuranceIntegrationTest {
 
     @Test
     void shouldCreateAndListLegalNews() throws Exception {
+        setCaseType("RECLAMO_TERCEROS_ABOGADO");
+
         mockMvc.perform(put("/api/v1/cases/100/legal")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -420,6 +448,8 @@ class InsuranceIntegrationTest {
 
     @Test
     void shouldCreateAndListLegalExpenses() throws Exception {
+        setCaseType("RECLAMO_TERCEROS_ABOGADO");
+
         mockMvc.perform(put("/api/v1/cases/100/legal")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -672,7 +702,7 @@ class InsuranceIntegrationTest {
 
     @Test
     void shouldCreateAndListLegalLesionados() throws Exception {
-        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = ? WHERE id = ?", 6L, 100L);
+        setCaseType("RECLAMO_TERCEROS_ABOGADO");
 
         mockMvc.perform(put("/api/v1/cases/100/legal")
                         .header("X-User-Id", "3")
@@ -720,7 +750,7 @@ class InsuranceIntegrationTest {
 
     @Test
     void shouldUpdateAndDeleteLegalLesionado() throws Exception {
-        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = ? WHERE id = ?", 6L, 100L);
+        setCaseType("RECLAMO_TERCEROS_ABOGADO");
 
         mockMvc.perform(put("/api/v1/cases/100/legal")
                         .header("X-User-Id", "3")
@@ -771,6 +801,8 @@ class InsuranceIntegrationTest {
 
     @Test
     void shouldPersistLegalExpenseWithSumaTaller() throws Exception {
+        setCaseType("RECLAMO_TERCEROS_ABOGADO");
+
         mockMvc.perform(put("/api/v1/cases/100/legal")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -840,7 +872,7 @@ class InsuranceIntegrationTest {
 
     @Test
     void shouldSuppressRepairWhenLawyerMarksRepairsVehicleNoForThirdParty() throws Exception {
-        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = ? WHERE id = ?", 6L, 100L);
+        setCaseType("RECLAMO_TERCEROS_ABOGADO");
 
         mockMvc.perform(get("/api/v1/cases/100").header("X-User-Id", "3"))
                 .andExpect(status().isOk())
@@ -873,13 +905,13 @@ class InsuranceIntegrationTest {
     }
 
     @Test
-    void shouldNotSuppressRepairForOtherCaseTypesWhenLegalSavesRepairsVehicle() throws Exception {
-        // El caso 100 es TODO_RIESGO (fixture): el vinculo legal->no repara solo aplica a reclamos de terceros
+    void shouldRejectLegalSavesForOtherCaseTypes() throws Exception {
+        // El caso 100 es TODO_RIESGO (fixture), por lo que el guard legal debe rechazarlo.
         mockMvc.perform(put("/api/v1/cases/100/legal")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL\",\"instanceCode\":\"JUDICIAL\",\"entryDate\":\"2026-01-15\",\"repairsVehicle\":false}"))
-                .andExpect(status().isOk());
+                .andExpect(status().isConflict());
 
         Integer processingRows = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM caso_tramitacion_seguro WHERE caso_id = 100", Integer.class);
         assertThat(processingRows).isEqualTo(0);
@@ -892,5 +924,13 @@ class InsuranceIntegrationTest {
         jdbcTemplate.update("INSERT INTO vehiculos (id, public_id, dominio, dominio_normalizado, activo) VALUES (?, ?, ?, ?, ?)", 10L, "00000000-0000-0000-0000-000000002010", "AB123CD", "AB123CD", true);
         jdbcTemplate.update("INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, estado_tramite_actual_id, estado_reparacion_actual_id, estado_pago_actual_id, estado_documentacion_actual_id, estado_legal_actual_id, prioridad_codigo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 100L, "00000000-0000-0000-0000-000000003100", "0100PZ", 100L, 2L, 1L, 1L, 10L, 10L, false, 1L, 1L, 4L, 7L, 9L, 11L, "MEDIA");
         jdbcTemplate.update("INSERT INTO caso_personas (id, caso_id, persona_id, rol_caso_codigo, vehiculo_id, es_principal, notas) VALUES (?, ?, ?, ?, ?, ?, ?)", 1L, 100L, 10L, "CLIENTE", null, true, null);
+    }
+
+    private void setCaseType(String caseTypeCode) {
+        jdbcTemplate.update("""
+                UPDATE casos
+                SET tipo_tramite_id = (SELECT id FROM tipos_tramite WHERE codigo = ?)
+                WHERE id = ?
+                """, caseTypeCode, 100L);
     }
 }

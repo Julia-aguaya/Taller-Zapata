@@ -1,4 +1,4 @@
-import { CarFront, ClipboardList, FileText, Receipt, ShieldCheck, UserCog, Wrench } from 'lucide-react';
+import { BriefcaseBusiness, CarFront, ClipboardList, FileText, Receipt, ShieldCheck, UserCog, Wrench } from 'lucide-react';
 
 /**
  * Registry of all possible operational tabs across tramite types.
@@ -10,7 +10,8 @@ export const TAB_REGISTRY = {
   GESTION_TRAMITE:       { icon: ClipboardList, label: 'Gestión del Trámite',   order: 2 },
   PRESUPUESTO:           { icon: FileText,      label: 'Presupuesto',           order: 3 },
   GESTION_REPARACION:    { icon: Wrench,        label: 'Gestión Reparación',    order: 4 },
-  PAGOS:                 { icon: Receipt,       label: 'Pagos',                 order: 5 },
+  ABOGADO:               { icon: BriefcaseBusiness, label: 'Abogado',           order: 5 },
+  PAGOS:                 { icon: Receipt,       label: 'Pagos',                 order: 6 },
 };
 
 export const CLEAS_TAB_CODES = ['FICHA_TECNICA', 'GESTION_TRAMITE', 'PRESUPUESTO', 'GESTION_REPARACION', 'PAGOS'];

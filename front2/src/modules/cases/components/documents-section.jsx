@@ -17,7 +17,7 @@ const currentLocalDate = () => {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 };
 
-export const DocumentsSection = ({ caseId, cleasOrderPicker = false }) => {
+export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode = null, includeHistorical = true, showCompleteAction = true, title = 'Documentación' }) => {
   const queryClient = useQueryClient();
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
@@ -25,6 +25,7 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false }) => {
   const [uploadDate, setUploadDate] = useState('');
   const [uploadObservations, setUploadObservations] = useState('');
   const [documentToDelete, setDocumentToDelete] = useState(null);
+  const [showCompleteDocumentation, setShowCompleteDocumentation] = useState(false);
   const invalidateCaseViews = () => Promise.all([
     queryClient.invalidateQueries({ queryKey: ['cases'] }),
     queryClient.invalidateQueries({ queryKey: ['cases', String(caseId)] }),
@@ -43,8 +44,12 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false }) => {
     queryFn: () => requestJson('/documents/catalogs'),
   });
 
-  const documents = docsQuery.data ?? [];
+  const documents = (docsQuery.data ?? []).filter((document) => {
+    if (!moduleCode) return true;
+    return document.moduleCode === moduleCode || (includeHistorical && document.moduleCode === 'OPERACION');
+  });
   const categories = categoriesQuery.data?.categories ?? [];
+  const visibleCategories = categories;
   const selectedCategory = categories.find((category) => String(category.id) === uploadCategory);
   const requiresDate = Boolean(selectedCategory?.requiresDate);
 
@@ -52,6 +57,12 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false }) => {
     mutationFn: (docId) => requestJson(`/documents/${docId}`, { method: 'DELETE' }),
     onSuccess: async () => { await invalidateCaseViews(); setDocumentToDelete(null); toast.success('Documento eliminado.'); },
     onError: (e) => toast.error(e.message),
+  });
+
+  const completeDocumentationMutation = useMutation({
+    mutationFn: () => requestJson(`/cases/${caseId}/workflow/transitions`, { method: 'POST', body: JSON.stringify({ domain: 'documentacion', actionCode: 'documentacion.completar', reason: 'Documentación revisada y completa', automatic: false }) }),
+    onSuccess: async () => { await invalidateCaseViews(); setShowCompleteDocumentation(false); toast.success('Documentación marcada como completa.'); },
+    onError: (error) => toast.error(error.message || 'No se pudo actualizar la documentación.'),
   });
 
   const linkCleasOrderMutation = useMutation({
@@ -82,7 +93,7 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false }) => {
           caseId: Number(caseId),
           entityType: 'CASO',
           entityId: Number(caseId),
-          moduleCode: 'OPERACION',
+          moduleCode: moduleCode || 'OPERACION',
           principal: false,
           visibleToCustomer: false,
           visualOrder: 0,
@@ -142,10 +153,11 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false }) => {
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
             <FileSearch className="h-5 w-5" />
           </div>
-          <h4 className="text-sm font-semibold">Documentación</h4>
+          <h4 className="text-sm font-semibold">{title}</h4>
         </div>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={() => setShowUpload(true)}><Plus className="mr-1.5 h-3.5 w-3.5" />Agregar items</Button>
+          {showCompleteAction ? <Button size="sm" variant="outline" onClick={() => setShowCompleteDocumentation(true)}>Marcar completa</Button> : null}
           {documents.length > 0 ? <Button size="sm" variant="outline" onClick={downloadAll}><Download className="mr-1.5 h-3.5 w-3.5" />Descargar todo</Button> : null}
         </div>
       </div>
@@ -158,7 +170,7 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false }) => {
                 <label htmlFor="document-category" className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Categoría</label>
                 <select id="document-category" value={uploadCategory} onChange={(e) => { const category = categories.find((item) => String(item.id) === e.target.value); setUploadCategory(e.target.value); setUploadDate(category?.requiresDate ? currentLocalDate() : ''); }} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
                   <option value="">Seleccionar...</option>
-                  {categories.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                   {visibleCategories.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
                 </select>
               </div>
                <div>
@@ -233,6 +245,9 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false }) => {
           </Button>
         </div>
       </Dialog>
+      {showCompleteAction ? <Dialog open={showCompleteDocumentation} onClose={() => setShowCompleteDocumentation(false)} title="¿Documentación completa?" description="Confirmá que la carpeta cuenta con toda la documentación necesaria. Esta acción actualiza el estado de la carpeta.">
+        <div className="flex gap-3"><Button variant="outline" className="flex-1" onClick={() => setShowCompleteDocumentation(false)} disabled={completeDocumentationMutation.isPending}>Cancelar</Button><Button className="flex-1" onClick={() => completeDocumentationMutation.mutate()} disabled={completeDocumentationMutation.isPending}>Confirmar</Button></div>
+      </Dialog> : null}
 
       {/* Status */}
       <div className="mt-4 flex items-center gap-3">

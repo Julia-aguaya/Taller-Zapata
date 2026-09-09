@@ -97,11 +97,19 @@ public class CaseWorkflowService {
             }
             particularEffectiveStateRecalculator.override(caseId, domain, stateCode, currentUser.id(), request.reason());
         } else if (isInsuranceRepair(caseEntity)) {
-            if (!"reparacion".equals(domain) || (stateCode != null && !"NO_DEBE_REPARARSE".equals(stateCode))) {
-                throw new ConflictException("La reparacion con seguro solo admite NO_DEBE_REPARARSE mediante la accion explicita");
+            if (!"reparacion".equals(domain) || (stateCode != null && !List.of("NO_DEBE_REPARARSE", "RECHAZADO", "DESISTIDO").contains(stateCode))) {
+                throw new ConflictException("La reparacion con seguro solo admite No debe repararse, Rechazado o Desistido mediante una acción con motivo");
             }
-            if (stateCode == null) {
-                todoRiesgoEffectiveStateRecalculator.revertNoRepair(caseId, request.reason(), currentUser.id());
+            if ("RECHAZADO".equals(stateCode) || "DESISTIDO".equals(stateCode)) {
+                caseEntity.setVisibleRepairStateOverrideCode(stateCode);
+                caseRepository.save(caseEntity);
+            } else if (stateCode == null) {
+                if (List.of("RECHAZADO", "DESISTIDO").contains(caseEntity.getVisibleRepairStateOverrideCode())) {
+                    caseEntity.setVisibleRepairStateOverrideCode(null);
+                    caseRepository.save(caseEntity);
+                } else {
+                    todoRiesgoEffectiveStateRecalculator.revertNoRepair(caseId, request.reason(), currentUser.id());
+                }
             } else {
                 todoRiesgoEffectiveStateRecalculator.markNoRepair(caseId, request.reason(), currentUser.id());
             }
@@ -236,6 +244,9 @@ public class CaseWorkflowService {
                 caseAuditService.toJson(metadata),
                 httpRequest
         );
+        // La documentación forma parte de los facts del estado efectivo de TODO_RIESGO/GRANIZO.
+        // Sin este recálculo, Presentado (PD) podía quedar visible aun con documentación completa.
+        todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
     }
 
     @Transactional(readOnly = true)

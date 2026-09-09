@@ -15,7 +15,7 @@ describe('TAB_REGISTRY', () => {
     expect(TAB_REGISTRY.GESTION_TRAMITE.order).toBe(2);
     expect(TAB_REGISTRY.PRESUPUESTO.order).toBe(3);
     expect(TAB_REGISTRY.GESTION_REPARACION.order).toBe(4);
-    expect(TAB_REGISTRY.PAGOS.order).toBe(5);
+    expect(TAB_REGISTRY.PAGOS.order).toBe(6);
   });
 });
 

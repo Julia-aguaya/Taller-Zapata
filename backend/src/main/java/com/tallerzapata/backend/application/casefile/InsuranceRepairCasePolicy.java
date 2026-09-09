@@ -13,6 +13,15 @@ public final class InsuranceRepairCasePolicy {
         return "TODO_RIESGO".equals(normalized) || "GRANIZO".equals(normalized);
     }
 
+    public boolean isInsuranceCase(String caseTypeCode) {
+        String normalized = normalize(caseTypeCode);
+        return isInsuranceRepair(normalized) || "CLEAS".equals(normalized) || isThirdPartyClaim(normalized);
+    }
+
+    public boolean isCleasCase(String caseTypeCode) {
+        return "CLEAS".equals(normalize(caseTypeCode));
+    }
+
     public boolean isGranizo(String caseTypeCode) {
         return "GRANIZO".equals(normalize(caseTypeCode));
     }

@@ -222,7 +222,19 @@ public class CaseReadinessService {
             mergeThirdPartyRegistryOwnershipReasons(tabs, caseId, caseEntity);
         }
 
+        ensureBudgetIsAvailableFromCreation(tabs, caseId, principalVehicle);
         return new CaseReadinessResponse(caseId, caseType.getCode(), tabs);
+    }
+
+    /** El presupuesto se puede abrir desde el alta; sus bloqueos sólo impiden avanzar a reparación/pagos. */
+    private void ensureBudgetIsAvailableFromCreation(List<CaseReadinessTabResponse> tabs, Long caseId, VehicleEntity principalVehicle) {
+        CaseReadinessTabResponse budget = tabs.stream().filter(tab -> "PRESUPUESTO".equals(tab.tabCode())).findFirst().orElse(null);
+        if (budget == null) {
+            tabs.add(buildBudgetCompletionReadiness(caseId, principalVehicle));
+            return;
+        }
+        int index = tabs.indexOf(budget);
+        tabs.set(index, new CaseReadinessTabResponse("PRESUPUESTO", true, budget.completed(), budget.colorHint(), budget.blockingReasons(), budget.warningReasons()));
     }
 
     private CaseReadinessTabResponse buildCleasGestionTramiteReadiness(CaseCleasEntity definition) {

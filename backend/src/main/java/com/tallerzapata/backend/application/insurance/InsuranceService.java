@@ -243,6 +243,7 @@ public class InsuranceService {
     public CaseInsuranceResponse getCaseInsurance(Long caseId) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
+        requireInsuranceAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.ver");
         return caseInsuranceRepository.findByCaseId(caseId)
                 .map(entity -> toCaseInsuranceResponse(entity, allowsCleasThirdParty(caseEntity))).orElse(null);
@@ -252,6 +253,7 @@ public class InsuranceService {
     public CaseInsuranceResponse upsertCaseInsurance(Long caseId, CaseInsuranceUpsertRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
+        requireInsuranceAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
         if (!allowsCleasThirdParty(caseEntity) && (request.thirdPartyCompanyId() != null || !isBlank(request.cleasNumber()))) {
             throw new ConflictException("Datos de CLEAS o tercero no aplican a casos GRANIZO");
@@ -281,6 +283,7 @@ public class InsuranceService {
     public InsuranceProcessingResponse getCaseInsuranceProcessing(Long caseId) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
+        requireInsuranceAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.ver");
         return insuranceProcessingRepository.findByCaseId(caseId)
                 .map(this::toInsuranceProcessingResponse)
@@ -291,6 +294,7 @@ public class InsuranceService {
     public InsuranceProcessingResponse patchCaseInsuranceProcessing(Long caseId, InsuranceProcessingPatchRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCaseForUpdate(caseId);
+        requireInsuranceAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
         InsuranceProcessingEntity entity = insuranceProcessingRepository.findByCaseId(caseId).orElseGet(InsuranceProcessingEntity::new);
         if (request.expectedVersion() != null && !request.expectedVersion().equals(entity.getVersion() == null ? 0L : entity.getVersion())) {
@@ -386,6 +390,7 @@ public class InsuranceService {
     public CaseCleasResponse getCaseCleas(Long caseId) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
+        requireCleasAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.ver");
         return allowsCleasThirdParty(caseEntity) ? caseCleasRepository.findByCaseId(caseId).map(this::toCaseCleasResponse).orElse(null) : null;
     }
@@ -394,6 +399,7 @@ public class InsuranceService {
     public CaseCleasResponse upsertCaseCleas(Long caseId, CaseCleasUpsertRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
+        requireCleasAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
         requireCleasThirdPartyAllowed(caseEntity);
         validateCleasRequest(request);
@@ -417,6 +423,7 @@ public class InsuranceService {
     public CaseThirdPartyResponse getCaseThirdParty(Long caseId) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
+        requireThirdPartyAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.ver");
         return allowsCleasThirdParty(caseEntity) ? caseThirdPartyRepository.findByCaseId(caseId).map(this::toCaseThirdPartyResponse).orElse(null) : null;
     }
@@ -425,6 +432,7 @@ public class InsuranceService {
     public CaseThirdPartyResponse upsertCaseThirdParty(Long caseId, CaseThirdPartyUpsertRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
+        requireThirdPartyAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
         requireCleasThirdPartyAllowed(caseEntity);
         validateThirdPartyRequest(request);
@@ -435,13 +443,7 @@ public class InsuranceService {
         entity.setDocumentationStatusCode(normalizedOptionalCode(request.documentationStatusCode()));
         entity.setDocumentationAccepted(Boolean.TRUE.equals(request.documentationAccepted()));
         entity.setPartsProvisionModeCode(normalizedOptionalCode(request.partsProvisionModeCode()));
-        entity.setMinimumLaborAmount(scale(request.minimumLaborAmount()));
-        entity.setMinimumPartsAmount(scale(request.minimumPartsAmount()));
-        entity.setBestQuotationSubtotal(scale(request.bestQuotationSubtotal()));
-        entity.setFinalPartsTotal(scale(request.finalPartsTotal()));
-        entity.setAmountToBillCompany(scale(request.amountToBillCompany()));
-        entity.setFinalAmountForWorkshop(scale(request.finalAmountForWorkshop()));
-        applyThirdPartyAmountRules(entity, caseId);
+        synchronizeThirdPartyAmounts(entity, caseId);
         entity = caseThirdPartyRepository.save(entity);
         caseAuditService.register(currentUser.id(), caseId, "caso_terceros", entity.getId(), "upsert_caso_terceros", null,
                 caseAuditService.toJson(CaseAuditService.auditMap(
@@ -462,9 +464,40 @@ public class InsuranceService {
      *     caso contrario (sin repuestos u otro modo de provision) -> A facturar Cia.
      * El valor enviado por el cliente para finalAmountForWorkshop se recalcula y se ignora.
      */
-    private void applyThirdPartyAmountRules(CaseThirdPartyEntity entity, Long caseId) {
+    /**
+     * Los importes de terceros son proyecciones del presupuesto, pedido de repuestos y acuerdo.
+     * Nunca se aceptan desde la pantalla: así se evita facturar con cifras que ya quedaron viejas.
+     */
+    private void synchronizeThirdPartyAmounts(CaseThirdPartyEntity entity, Long caseId) {
+        BudgetEntity budget = budgetRepository.findByCaseId(caseId).orElse(null);
+        List<BudgetItemEntity> items = budget == null ? List.of() : budgetItemRepository.findByBudgetIdOrderByVisualOrderAsc(budget.getId());
+        Set<Long> replacementItemIds = items.stream().filter(this::isReplacementBudgetItem).map(BudgetItemEntity::getId).collect(Collectors.toSet());
+        List<CasePartEntity> canonicalParts = casePartRepository.findByCaseIdOrderByIdAsc(caseId).stream()
+                .filter(part -> replacementItemIds.contains(part.getBudgetItemId()))
+                .filter(part -> !Boolean.TRUE.equals(part.getNonCanonical()) && !Boolean.TRUE.equals(part.getAccessory()))
+                .toList();
+
+        BigDecimal minimumLabor = items.stream().filter(item -> Boolean.TRUE.equals(item.getActive()))
+                .map(item -> scale(item.getLaborAmount()) == null ? BigDecimal.ZERO : scale(item.getLaborAmount()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal minimumParts = items.stream().filter(this::isReplacementBudgetItem)
+                .map(item -> scale(item.getPartValue()) == null ? BigDecimal.ZERO : scale(item.getPartValue()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal bestQuotation = canonicalParts.stream()
+                .map(part -> scale(part.getBudgetedPrice()) == null ? BigDecimal.ZERO : scale(part.getBudgetedPrice()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal finalParts = canonicalParts.stream()
+                .map(part -> scale(part.getFinalPrice()) == null ? BigDecimal.ZERO : scale(part.getFinalPrice()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal agreed = insuranceProcessingRepository.findByCaseId(caseId).map(InsuranceProcessingEntity::getAgreedAmount).map(this::scale).orElse(null);
+        BigDecimal amountToBill = agreed != null ? agreed : budget == null ? null : scale(budget.getTotalQuoted());
+
+        entity.setMinimumLaborAmount(scale(minimumLabor));
+        entity.setMinimumPartsAmount(scale(minimumParts));
+        entity.setBestQuotationSubtotal(scale(bestQuotation));
+        entity.setFinalPartsTotal("TALLER".equals(normalizeCode(entity.getPartsProvisionModeCode())) ? scale(finalParts) : null);
+        entity.setAmountToBillCompany(amountToBill);
         boolean workshopProvidesParts = "TALLER".equals(normalizeCode(entity.getPartsProvisionModeCode()));
-        BigDecimal amountToBill = entity.getAmountToBillCompany();
         if (!workshopProvidesParts || amountToBill == null || !hasBudgetReplacementParts(caseId)) {
             if (!workshopProvidesParts) {
                 entity.setFinalPartsTotal(null);
@@ -472,8 +505,8 @@ public class InsuranceService {
             entity.setFinalAmountForWorkshop(amountToBill);
             return;
         }
-        BigDecimal finalParts = entity.getFinalPartsTotal() == null ? BigDecimal.ZERO : entity.getFinalPartsTotal();
-        entity.setFinalAmountForWorkshop(scale(amountToBill.subtract(finalParts)));
+        BigDecimal workshopFinalParts = entity.getFinalPartsTotal() == null ? BigDecimal.ZERO : entity.getFinalPartsTotal();
+        entity.setFinalAmountForWorkshop(scale(amountToBill.subtract(workshopFinalParts)));
     }
 
     private boolean hasBudgetReplacementParts(Long caseId) {
@@ -494,6 +527,7 @@ public class InsuranceService {
     public CaseLegalResponse getCaseLegal(Long caseId) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
+        requireLegalAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.ver");
         return caseLegalRepository.findByCaseId(caseId).map(this::toCaseLegalResponse).orElse(null);
     }
@@ -502,6 +536,7 @@ public class InsuranceService {
     public CaseLegalResponse upsertCaseLegal(Long caseId, CaseLegalUpsertRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
+        requireLegalAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
         validateCaseLegalRequest(request);
         CaseLegalEntity entity = caseLegalRepository.findByCaseId(caseId).orElseGet(CaseLegalEntity::new);
@@ -536,6 +571,7 @@ public class InsuranceService {
     public List<LegalNewsResponse> listCaseLegalNews(Long caseId) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
+        requireLegalAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.ver");
         CaseLegalEntity caseLegal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
         return legalNewsRepository.findByCaseLegalIdOrderByNewsDateDesc(caseLegal.getId()).stream().map(this::toLegalNewsResponse).toList();
@@ -545,6 +581,7 @@ public class InsuranceService {
     public LegalNewsResponse createCaseLegalNews(Long caseId, LegalNewsCreateRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
+        requireLegalAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
         CaseLegalEntity caseLegal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
         LegalNewsEntity entity = new LegalNewsEntity();
@@ -561,6 +598,7 @@ public class InsuranceService {
     public List<LegalLesionadoResponse> listCaseLegalLesionados(Long caseId) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
+        requireLegalAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.ver");
         CaseLegalEntity caseLegal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
         return legalLesionadoRepository.findByCaseLegalIdOrderByIdAsc(caseLegal.getId()).stream().map(this::toLegalLesionadoResponse).toList();
@@ -570,6 +608,7 @@ public class InsuranceService {
     public LegalLesionadoResponse createCaseLegalLesionado(Long caseId, LegalLesionadoCreateRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
+        requireLegalAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
         CaseLegalEntity caseLegal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
         LegalLesionadoEntity entity = new LegalLesionadoEntity();
@@ -586,6 +625,7 @@ public class InsuranceService {
     public LegalLesionadoResponse updateCaseLegalLesionado(Long caseId, Long lesionadoId, LegalLesionadoCreateRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
+        requireLegalAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
         CaseLegalEntity caseLegal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
         LegalLesionadoEntity entity = requireLesionado(caseLegal.getId(), lesionadoId);
@@ -602,6 +642,7 @@ public class InsuranceService {
     public void deleteCaseLegalLesionado(Long caseId, Long lesionadoId, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
+        requireLegalAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
         CaseLegalEntity caseLegal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
         LegalLesionadoEntity entity = requireLesionado(caseLegal.getId(), lesionadoId);
@@ -656,6 +697,7 @@ public class InsuranceService {
     public List<LegalExpenseResponse> listCaseLegalExpenses(Long caseId) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
+        requireLegalAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.ver");
         CaseLegalEntity caseLegal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
         return legalExpenseRepository.findByCaseLegalIdOrderByExpenseDateDesc(caseLegal.getId()).stream().map(this::toLegalExpenseResponse).toList();
@@ -665,6 +707,7 @@ public class InsuranceService {
     public LegalExpenseResponse createCaseLegalExpense(Long caseId, LegalExpenseCreateRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
+        requireLegalAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
         CaseLegalEntity caseLegal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
         if (request.paidByCode() != null && !legalExpensePayerRepository.existsByCodeAndActiveTrue(normalizeCode(request.paidByCode()))) throw new ConflictException("paidByCode no permitido: " + request.paidByCode());
@@ -783,6 +826,10 @@ public class InsuranceService {
     private boolean allowsCleasThirdParty(CaseEntity caseEntity) { return insuranceRepairCasePolicy.allowsCleasThirdParty(caseTypeCode(caseEntity)); }
     private void requireFranchiseAllowed(CaseEntity caseEntity) { if (!allowsFranchise(caseEntity)) throw new ConflictException("Franquicia no aplica a casos GRANIZO"); }
     private void requireCleasThirdPartyAllowed(CaseEntity caseEntity) { if (!allowsCleasThirdParty(caseEntity)) throw new ConflictException("CLEAS y terceros no aplican a casos GRANIZO"); }
+    private void requireInsuranceAllowed(CaseEntity caseEntity) { if (!insuranceRepairCasePolicy.isInsuranceCase(caseTypeCode(caseEntity))) throw new ConflictException("Seguro no aplica a este tipo de tramite"); }
+    private void requireCleasAllowed(CaseEntity caseEntity) { if (!insuranceRepairCasePolicy.isCleasCase(caseTypeCode(caseEntity))) throw new ConflictException("CLEAS solo aplica a casos CLEAS"); }
+    private void requireThirdPartyAllowed(CaseEntity caseEntity) { if (!insuranceRepairCasePolicy.isThirdPartyClaim(caseTypeCode(caseEntity))) throw new ConflictException("Datos de terceros solo aplican a reclamos de terceros"); }
+    private void requireLegalAllowed(CaseEntity caseEntity) { if (!insuranceRepairCasePolicy.isThirdPartyLawyerClaim(caseTypeCode(caseEntity))) throw new ConflictException("Gestion legal solo aplica a reclamos de terceros por abogado"); }
     private String caseTypeCode(CaseEntity caseEntity) { return caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(CaseTypeEntity::getCode).orElse(""); }
     private InsuranceCompanyResponse toCompanyResponse(InsuranceCompanyEntity e) { return new InsuranceCompanyResponse(e.getId(), e.getPublicId(), e.getCode(), e.getName(), e.getTaxId(), e.getRequiresRepairPhotos(), e.getExpectedPaymentDays(), e.getActive()); }
     private InsuranceCompanyContactResponse toCompanyContactResponse(InsuranceCompanyContactEntity e) {

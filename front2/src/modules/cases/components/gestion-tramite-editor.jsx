@@ -8,6 +8,7 @@ import { DocumentsSection } from '@/modules/cases/components/documents-section';
 import { ProcedureSection } from '@/modules/cases/components/procedure-section';
 import { TaskAgenda } from '@/modules/cases/components/task-agenda';
 import { CleasGestionTramiteEditor } from '@/modules/cases/components/cleas/cleas-gestion-tramite-editor';
+import { ThirdPartyWorkshopEditor } from '@/modules/cases/components/third-party-workshop-editor';
 import { readStoredAuth } from '@/shared/auth/session-storage';
 
 export const GestionTramiteEditor = ({ caseId, caseDetail, budget, nroCleas, setNroCleas, cleasInsurance, onCleasInsuranceChange, cleasAgreedAmount, setCleasAgreedAmount, cleasFranchiseDistribution, onCleasFranchiseDistributionChange, cleasOver, cleasOpinion, onCleasOverChange, onCleasOpinionChange, cleasClosedAt, onRequestCleasClosure, onSaved }) => {
@@ -16,6 +17,10 @@ export const GestionTramiteEditor = ({ caseId, caseDetail, budget, nroCleas, set
 
   if (caseTypeCode === 'CLEAS') {
     return <CleasGestionTramiteEditor caseId={caseId} caseDetail={caseDetail} nroCleas={nroCleas} setNroCleas={setNroCleas} insurance={cleasInsurance} onInsuranceChange={onCleasInsuranceChange} cleasAgreedAmount={cleasAgreedAmount} setCleasAgreedAmount={setCleasAgreedAmount} cleasFranchiseDistribution={cleasFranchiseDistribution} onCleasFranchiseDistributionChange={onCleasFranchiseDistributionChange} cleasOver={cleasOver} opinion={cleasOpinion} onCleasOverChange={onCleasOverChange} onOpinionChange={onCleasOpinionChange} cleasClosedAt={cleasClosedAt} onRequestClosure={onRequestCleasClosure} />;
+  }
+
+  if (caseTypeCode === 'RECLAMO_TERCEROS' || caseTypeCode === 'RECLAMO_TERCEROS_ABOGADO') {
+    return <ThirdPartyWorkshopEditor caseId={caseId} caseDetail={caseDetail} budget={budget} />;
   }
 
   const generatePdf = async () => {
@@ -55,7 +60,7 @@ export const GestionTramiteEditor = ({ caseId, caseDetail, budget, nroCleas, set
       ) : null}
 
       {/* 5. Documentación */}
-      <DocumentsSection caseId={caseId} />
+      <DocumentsSection caseId={caseId} moduleCode="GESTION_TRAMITE" title="Documentación del trámite" />
 
       {/* 6. Tramitación */}
       <ProcedureSection caseId={caseId} budget={budget} />

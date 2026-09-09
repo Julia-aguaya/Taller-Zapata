@@ -9,6 +9,7 @@ import com.tallerzapata.backend.infrastructure.persistence.document.DocumentEnti
 import com.tallerzapata.backend.infrastructure.persistence.document.DocumentRepository;
 import com.tallerzapata.backend.infrastructure.persistence.organization.BranchEntity;
 import com.tallerzapata.backend.infrastructure.persistence.organization.OrganizationEntity;
+import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleEntity;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 
@@ -32,7 +33,7 @@ public class BudgetPdfService {
         this.documentStorageService = documentStorageService;
     }
 
-    public byte[] generate(BudgetEntity budget, List<BudgetItemEntity> items, String folderCode, OrganizationEntity org, BranchEntity branch) {
+    public byte[] generate(BudgetEntity budget, List<BudgetItemEntity> items, String folderCode, OrganizationEntity org, BranchEntity branch, VehicleEntity vehicle) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         Document document = new Document(PageSize.A4, 50, 50, 50, 50);
         try {
@@ -92,14 +93,10 @@ public class BudgetPdfService {
             vehicleData.setWidthPercentage(100);
             vehicleData.setWidths(new float[]{1.2f, 0.5f, 0.9f, 0.6f, 1.2f, 0.7f, 1.0f, 1.0f});
             vehicleData.setSpacingAfter(8);
-            addMetaCell(vehicleData, "PRESUPUESTO", sectionFont, Element.ALIGN_CENTER, true);
-            addMetaCell(vehicleData, "Fecha:", smallFont, Element.ALIGN_RIGHT, false);
-            addMetaCell(vehicleData, budget.getBudgetDate() != null ? budget.getBudgetDate().format(DATE_FMT) : "-", normalFont, Element.ALIGN_CENTER, false);
-            addMetaCell(vehicleData, "Autorizo:", smallFont, Element.ALIGN_RIGHT, false);
-            addMetaCell(vehicleData, nullToStr(budget.getAuthorizedByName()), normalFont, Element.ALIGN_LEFT, false);
-            addMetaCell(vehicleData, "Interesado:", smallFont, Element.ALIGN_RIGHT, false);
-            addMetaCell(vehicleData, nullToStr(budget.getInterestedName()), normalFont, Element.ALIGN_LEFT, false);
-            addMetaCell(vehicleData, nullToStr(folderCode), normalFont, Element.ALIGN_CENTER, false);
+            addMetaCell(vehicleData, "Dominio:", smallFont, Element.ALIGN_RIGHT, false); addMetaCell(vehicleData, vehicle == null ? "-" : nullToStr(vehicle.getPlate()), normalFont, Element.ALIGN_LEFT, false);
+            addMetaCell(vehicleData, "Vehículo:", smallFont, Element.ALIGN_RIGHT, false); addMetaCell(vehicleData, vehicle == null ? "-" : nullToStr((vehicle.getBrandText() == null ? "" : vehicle.getBrandText()) + " " + (vehicle.getModelText() == null ? "" : vehicle.getModelText())).trim(), normalFont, Element.ALIGN_LEFT, false);
+            addMetaCell(vehicleData, "Año / Color:", smallFont, Element.ALIGN_RIGHT, false); addMetaCell(vehicleData, vehicle == null ? "-" : (vehicle.getYear() == null ? "-" : vehicle.getYear()) + " / " + nullToStr(vehicle.getColor()), normalFont, Element.ALIGN_LEFT, false);
+            addMetaCell(vehicleData, "Carpeta:", smallFont, Element.ALIGN_RIGHT, false); addMetaCell(vehicleData, nullToStr(folderCode), normalFont, Element.ALIGN_LEFT, false);
             document.add(vehicleData);
 
             Paragraph title = new Paragraph("PRESUPUESTO", titleFont);
@@ -131,7 +128,7 @@ public class BudgetPdfService {
             for (BudgetItemEntity item : items) {
                 if (!Boolean.TRUE.equals(item.getActive())) continue;
                 hasActive = true;
-                String taskText = Arrays.stream(new String[]{item.getPartDecisionCode(), item.getTaskCode()})
+                String taskText = Arrays.stream(new String[]{item.getActionCode(), item.getTaskCode(), item.getPartDecisionCode()})
                         .filter(value -> value != null && !value.isBlank())
                         .reduce((a, b) -> a + " / " + b)
                         .orElse("-");

@@ -21,6 +21,9 @@ public final class TodoRiesgoEffectiveStatePolicy {
         if (outcome != null && outcome.repaired()) return "REPARADO";
         if (outcome != null && outcome.hasUnsatisfiedReentry()) return "DEBE_REINGRESAR";
         if (facts.hasValidNormalAppointment()) return "CON_TURNO";
+        // La reparación inicia en trámite. Sólo puede pasar a su circuito operativo
+        // (repuestos / dar turno) cuando la cotización ya fue acordada.
+        if (facts.agreementDate() == null) return "EN_TRAMITE";
         PartsAvailability parts = partsAvailability(facts.parts());
         if (parts.pendingAuthorization()) return "EN_TRAMITE";
         if (parts.authorizedUnreceived()) return "FALTAN_REPUESTOS";

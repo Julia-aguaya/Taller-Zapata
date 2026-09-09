@@ -21,7 +21,10 @@ import { ExtraBudgetPaymentsPanel } from '@/modules/cases/components/extra-budge
 import { GestionTramiteEditor } from '@/modules/cases/components/gestion-tramite-editor';
 import { FranchiseRecoveryEditor } from '@/modules/cases/components/franchise-recovery-editor';
 import { FranchiseRecoveryPaymentsEditor } from '@/modules/cases/components/franchise-recovery-payments-editor';
+import { ThirdPartyLawyerEditor } from '@/modules/cases/components/third-party-lawyer-editor';
 import { requestJson } from '@/shared/api/http-client';
+import { searchPersons } from '@/modules/cases/api/new-case-api';
+import { addCasePerson, getCasePersons } from '@/modules/cases/api/third-party-api';
 import { getCleasTabs, getOperationalTabs, getTabIcon, getTabLabel } from '@/modules/cases/lib/tab-registry';
 
 const currency = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 });
@@ -54,7 +57,7 @@ const DEFAULT_OVERRIDE_OPTIONS = {
 
 const TODO_RIESGO_OVERRIDE_OPTIONS = {
   tramite: [],
-  reparacion: [],
+  reparacion: ['NO_DEBE_REPARARSE', 'RECHAZADO', 'DESISTIDO'],
 };
 
 const createCleasPaymentsUi = () => ({
@@ -232,6 +235,7 @@ export const CaseWorkspacePage = () => {
   const isCleasClosed = caseDetail.caseTypeCode === 'CLEAS' && Boolean(caseDetail.closedAt);
   const isInsuranceRepair = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail.caseTypeCode);
   const canOverrideVisibleState = !isInsuranceRepair && !isCleasClosed;
+  const canOverrideRepairState = !isCleasClosed;
   const handleCleasOverChange = (value) => setCleasOver(value);
   const handleCleasOpinionChange = (value) => setCleasOpinion(value);
   const overrideOptions = caseDetail.caseTypeCode === 'PARTICULAR'
@@ -278,7 +282,7 @@ export const CaseWorkspacePage = () => {
 
               {/* Reparación state — clickeable para override */}
               <div className="relative">
-                <button type="button" disabled={!canOverrideVisibleState} onClick={() => { if (canOverrideVisibleState) setOverrideModal({ domain: 'reparacion', currentCode: caseDetail.visibleRepairState.code }); }}
+                <button type="button" disabled={!canOverrideRepairState} onClick={() => { if (canOverrideRepairState) setOverrideModal({ domain: 'reparacion', currentCode: caseDetail.visibleRepairState.code }); }}
                   className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition hover:ring-2 hover:ring-primary/30 ${
                     caseDetail.visibleRepairState.code === 'REPARADO' ? 'border-emerald-200 bg-emerald-100 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400' :
                     caseDetail.visibleRepairState.code === 'NO_DEBE_REPARARSE' ? 'border-blue-200 bg-blue-100 text-blue-800 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-400' :
@@ -403,6 +407,8 @@ export const CaseWorkspacePage = () => {
                : <GestionTramiteEditor caseId={caseId} caseDetail={caseDetail} budget={budget} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, setNroCleas, cleasInsurance, onCleasInsuranceChange: setCleasInsurance, cleasAgreedAmount, setCleasAgreedAmount, cleasFranchiseDistribution, onCleasFranchiseDistributionChange: handleCleasFranchiseDistributionChange, cleasOver, cleasOpinion, onCleasOverChange: handleCleasOverChange, onCleasOpinionChange: handleCleasOpinionChange, cleasClosedAt: caseDetail.closedAt, onRequestCleasClosure: () => setShowCleasClosureDialog(true) } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'GESTION_REPARACION' ? (
             <RepairEditorPanel caseId={caseId} caseDetail={caseDetail} latestAppointment={latestAppointment} latestIntake={latestIntake} latestOutcome={latestOutcome} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
+          ) : currentTab?.tabCode === 'ABOGADO' ? (
+            <ThirdPartyLawyerEditor caseId={caseId} />
           ) : currentTab?.tabCode === 'PAGOS' ? (
             caseDetail.caseTypeCode === 'RECUPERO_FRANQUICIA'
               ? <FranchiseRecoveryPaymentsEditor caseId={caseId} caseDetail={caseDetail} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
@@ -980,10 +986,42 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
             )}
           </div>
         </div>
+        {['RECLAMO_TERCEROS', 'RECLAMO_TERCEROS_ABOGADO'].includes(caseDetail.caseTypeCode) ? <RegistryOwnershipSection caseId={caseId} caseDetail={caseDetail} /> : null}
       </div>
       ) : null}
     </Card>
   );
+};
+
+const RegistryOwnershipSection = ({ caseId, caseDetail }) => {
+  const queryClient = useQueryClient();
+  const [firstPersonId, setFirstPersonId] = useState(caseDetail.principalCustomerPersonId ? String(caseDetail.principalCustomerPersonId) : '');
+  const [secondPersonId, setSecondPersonId] = useState('');
+  const [percentage, setPercentage] = useState('100');
+  const personsQuery = useQuery({ queryKey: ['cases', String(caseId), 'persons'], queryFn: () => getCasePersons(caseId) });
+  const owners = (personsQuery.data ?? []).filter((person) => person.caseRoleCode === 'TITULAR' && person.vehicleId === caseDetail.principalVehicleId);
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const ownerPayload = (personId, ownership) => ({ personId: Number(personId), caseRoleCode: 'TITULAR', vehicleId: caseDetail.principalVehicleId, isMain: false, notes: 'Titular registral', porcentajeTitularidad: ownership });
+      await addCasePerson(caseId, ownerPayload(firstPersonId, Number(percentage)));
+      if (percentage === '50') await addCasePerson(caseId, ownerPayload(secondPersonId, 50));
+    },
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'persons'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); toast.success('Titularidad registral guardada.'); },
+    onError: (error) => toast.error(error.message || 'No se pudo guardar la titularidad.'),
+  });
+
+  if (owners.length) {
+    return <section className="mt-5 rounded-2xl border border-border/60 bg-background/70 p-5"><h4 className="font-semibold">Titularidad registral</h4><p className="mt-1 text-sm text-muted-foreground">La identificación de la carpeta toma al primer titular registrado.</p><ul className="mt-3 space-y-2">{owners.map((owner) => <li key={owner.id} className="rounded-xl border border-border/50 px-3 py-2 text-sm"><strong>{owner.displayName}</strong> · {owner.registryOwnershipPercentage}%</li>)}</ul></section>;
+  }
+
+  const canSave = Boolean(firstPersonId) && (percentage === '100' || Boolean(secondPersonId));
+  return <section className="mt-5 rounded-2xl border border-border/60 bg-background/70 p-5"><div className="flex flex-col gap-1"><h4 className="font-semibold">Titularidad registral</h4><p className="text-sm text-muted-foreground">Indicá si el cliente es titular. Si hay dos titulares, declaralos en partes iguales.</p></div><div className="mt-4 grid gap-3 md:grid-cols-2"><RegistryPersonPicker label="Primer titular" personId={firstPersonId} onPersonIdChange={setFirstPersonId} suggestedPersonId={caseDetail.principalCustomerPersonId} suggestedName={caseDetail.principalCustomerName} /><label className="block text-sm"><span className="mb-1 block font-medium">Porcentaje de titularidad</span><select className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm" value={percentage} onChange={(event) => setPercentage(event.target.value)}><option value="100">100%</option><option value="50">50%</option></select></label>{percentage === '50' ? <RegistryPersonPicker label="Segundo titular" personId={secondPersonId} onPersonIdChange={setSecondPersonId} /> : null}</div><Button className="mt-4" onClick={() => saveMutation.mutate()} disabled={!canSave || saveMutation.isPending}><Save className="mr-2 h-4 w-4" />Guardar titularidad</Button></section>;
+};
+
+const RegistryPersonPicker = ({ label, personId, onPersonIdChange, suggestedPersonId, suggestedName }) => {
+  const [search, setSearch] = useState('');
+  const peopleQuery = useQuery({ queryKey: ['persons', 'registry-owner-search', search], queryFn: () => searchPersons({ q: search }), enabled: search.trim().length >= 2 });
+  return <div className="relative"><Label>{label}</Label>{suggestedPersonId && !personId ? <Button className="mt-1 w-full justify-start" variant="outline" type="button" onClick={() => onPersonIdChange(String(suggestedPersonId))}>Usar cliente: {suggestedName}</Button> : null}<Input className="mt-1" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={personId ? `Persona #${personId} seleccionada` : 'Buscar titular por nombre o documento'} />{(peopleQuery.data ?? []).length ? <div className="absolute z-10 mt-1 w-full rounded-xl border border-border bg-card p-1 shadow-lg">{peopleQuery.data.map((person) => <button key={person.id} type="button" className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-muted" onClick={() => { onPersonIdChange(String(person.id)); setSearch(''); }}>{person.nombreMostrar}</button>)}</div> : null}</div>;
 };
 
 // ── Ficha Técnica: Sub-tab Reparación ──

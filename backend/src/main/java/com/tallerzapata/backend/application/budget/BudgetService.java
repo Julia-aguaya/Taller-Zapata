@@ -22,6 +22,8 @@ import com.tallerzapata.backend.infrastructure.persistence.person.PersonEntity;
 import com.tallerzapata.backend.infrastructure.persistence.person.PersonRepository;
 import com.tallerzapata.backend.infrastructure.persistence.provider.ProviderEntity;
 import com.tallerzapata.backend.infrastructure.persistence.provider.ProviderRepository;
+import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleEntity;
+import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleRepository;
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
 import com.tallerzapata.backend.infrastructure.security.CurrentUserService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -68,9 +70,10 @@ public class BudgetService {
     private final CanonicalPartReconciliationService canonicalPartReconciliationService;
     private final CasePartReconciliationWarningRepository warningRepository;
     private final CleasDownstreamGate cleasDownstreamGate;
+    private final VehicleRepository vehicleRepository;
 
     public BudgetService(BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, BudgetAccessoryWorkRepository budgetAccessoryWorkRepository, CasePartRepository casePartRepository, CaseRepository caseRepository, BudgetReportStatusRepository budgetReportStatusRepository, BudgetTaskRepository budgetTaskRepository, DamageLevelRepository damageLevelRepository, PartDecisionRepository partDecisionRepository, BudgetActionRepository budgetActionRepository, PartStatusRepository partStatusRepository, PartPurchaserRepository partPurchaserRepository, PartPaymentStatusRepository partPaymentStatusRepository, InsurancePartsAuthorizationRepository insurancePartsAuthorizationRepository, PersonRepository personRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService,             BudgetPdfService budgetPdfService, ParticularCaseClosureService particularCaseClosureService,
-            OrganizationRepository organizationRepository, BranchRepository branchRepository, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, ProviderRepository providerRepository, BudgetComparisonService budgetComparisonService, CanonicalPartReconciliationService canonicalPartReconciliationService, CasePartReconciliationWarningRepository warningRepository, CleasDownstreamGate cleasDownstreamGate) {
+            OrganizationRepository organizationRepository, BranchRepository branchRepository, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, ProviderRepository providerRepository, BudgetComparisonService budgetComparisonService, CanonicalPartReconciliationService canonicalPartReconciliationService, CasePartReconciliationWarningRepository warningRepository, CleasDownstreamGate cleasDownstreamGate, VehicleRepository vehicleRepository) {
         this.budgetRepository = budgetRepository;
         this.budgetItemRepository = budgetItemRepository;
         this.budgetAccessoryWorkRepository = budgetAccessoryWorkRepository;
@@ -100,6 +103,7 @@ public class BudgetService {
         this.canonicalPartReconciliationService = canonicalPartReconciliationService;
         this.warningRepository = warningRepository;
         this.cleasDownstreamGate = cleasDownstreamGate;
+        this.vehicleRepository = vehicleRepository;
     }
 
     @Transactional(readOnly = true)
@@ -139,7 +143,8 @@ public class BudgetService {
         CaseEntity caseEntity = requireCase(caseId);
         OrganizationEntity org = caseEntity.getOrganizationId() != null ? organizationRepository.findById(caseEntity.getOrganizationId()).orElse(null) : null;
         BranchEntity branch = caseEntity.getBranchId() != null ? branchRepository.findById(caseEntity.getBranchId()).orElse(null) : null;
-        return budgetPdfService.generate(data.budget(), data.items(), data.folderCode(), org, branch);
+        VehicleEntity vehicle = caseEntity.getPrincipalVehicleId() == null ? null : vehicleRepository.findById(caseEntity.getPrincipalVehicleId()).orElse(null);
+        return budgetPdfService.generate(data.budget(), data.items(), data.folderCode(), org, branch, vehicle);
     }
 
     private PdfData loadPdfData(Long caseId) {
@@ -282,7 +287,7 @@ public class BudgetService {
         entity.setAffectedPiece(request.affectedPiece().trim());
         entity.setTaskCode(normalizedOptionalCode(request.taskCode()));
         entity.setDamageLevelCode(normalizedOptionalCode(request.damageLevelCode()));
-        entity.setPartDecisionCode(normalizedOptionalCode(request.partDecisionCode()));
+        entity.setPartDecisionCode(normalizePartDecisionCode(request.partDecisionCode()));
         entity.setActionCode(normalizedOptionalCode(request.actionCode()));
         entity.setRequiresReplacement(Boolean.TRUE.equals(request.requiresReplacement()));
         entity.setPartValue(scale(request.partValue()));
@@ -308,7 +313,7 @@ public class BudgetService {
         entity.setAffectedPiece(request.affectedPiece().trim());
         entity.setTaskCode(normalizedOptionalCode(request.taskCode()));
         entity.setDamageLevelCode(normalizedOptionalCode(request.damageLevelCode()));
-        entity.setPartDecisionCode(normalizedOptionalCode(request.partDecisionCode()));
+        entity.setPartDecisionCode(normalizePartDecisionCode(request.partDecisionCode()));
         entity.setActionCode(normalizedOptionalCode(request.actionCode()));
         entity.setRequiresReplacement(Boolean.TRUE.equals(request.requiresReplacement()));
         entity.setPartValue(scale(request.partValue()));
@@ -445,14 +450,14 @@ public class BudgetService {
     private void validateBudgetItemCreateRequest(BudgetItemCreateRequest request) {
         if (request.taskCode() != null && !budgetTaskRepository.existsByCodeAndActiveTrue(normalizeCode(request.taskCode()))) throw new ConflictException("taskCode no permitido: " + request.taskCode());
         if (request.damageLevelCode() != null && !damageLevelRepository.existsByCodeAndActiveTrue(normalizeCode(request.damageLevelCode()))) throw new ConflictException("damageLevelCode no permitido: " + request.damageLevelCode());
-        if (request.partDecisionCode() != null && !partDecisionRepository.existsByCodeAndActiveTrue(normalizeCode(request.partDecisionCode()))) throw new ConflictException("partDecisionCode no permitido: " + request.partDecisionCode());
+        if (request.partDecisionCode() != null && !partDecisionRepository.existsByCodeAndActiveTrue(normalizePartDecisionCode(request.partDecisionCode()))) throw new ConflictException("partDecisionCode no permitido: " + request.partDecisionCode());
         if (request.actionCode() != null && !budgetActionRepository.existsByCodeAndActiveTrue(normalizeCode(request.actionCode()))) throw new ConflictException("actionCode no permitido: " + request.actionCode());
     }
 
     private void validateBudgetItemUpdateRequest(BudgetItemUpdateRequest request) {
         if (request.taskCode() != null && !budgetTaskRepository.existsByCodeAndActiveTrue(normalizeCode(request.taskCode()))) throw new ConflictException("taskCode no permitido: " + request.taskCode());
         if (request.damageLevelCode() != null && !damageLevelRepository.existsByCodeAndActiveTrue(normalizeCode(request.damageLevelCode()))) throw new ConflictException("damageLevelCode no permitido: " + request.damageLevelCode());
-        if (request.partDecisionCode() != null && !partDecisionRepository.existsByCodeAndActiveTrue(normalizeCode(request.partDecisionCode()))) throw new ConflictException("partDecisionCode no permitido: " + request.partDecisionCode());
+        if (request.partDecisionCode() != null && !partDecisionRepository.existsByCodeAndActiveTrue(normalizePartDecisionCode(request.partDecisionCode()))) throw new ConflictException("partDecisionCode no permitido: " + request.partDecisionCode());
         if (request.actionCode() != null && !budgetActionRepository.existsByCodeAndActiveTrue(normalizeCode(request.actionCode()))) throw new ConflictException("actionCode no permitido: " + request.actionCode());
     }
 
@@ -472,7 +477,7 @@ public class BudgetService {
             item.setAffectedPiece(requested.affectedPiece().trim());
             item.setTaskCode(normalizedOptionalCode(requested.taskCode()));
             item.setDamageLevelCode(normalizedOptionalCode(requested.damageLevelCode()));
-            item.setPartDecisionCode(normalizedOptionalCode(requested.partDecisionCode()));
+            item.setPartDecisionCode(normalizePartDecisionCode(requested.partDecisionCode()));
             item.setActionCode(normalizedOptionalCode(requested.actionCode()));
             item.setRequiresReplacement(Boolean.TRUE.equals(requested.requiresReplacement()));
             item.setPartValue(scale(requested.partValue()));
@@ -523,6 +528,16 @@ public class BudgetService {
     }
 
     private CaseEntity requireCase(Long caseId) { return caseRepository.findById(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId)); }
+    private String normalizePartDecisionCode(String value) {
+        String code = normalizedOptionalCode(value);
+        if (code == null) return null;
+        return switch (code) {
+            case "REEMPLAZAR" -> "DEBE_REEMPLAZARSE";
+            case "REPARAR", "PULIR" -> "PUEDE_REPARARSE";
+            case "NO_APLICA" -> "A_VERIFICAR";
+            default -> code;
+        };
+    }
     private CaseEntity requireCaseForUpdate(Long caseId) {
         CaseEntity caseEntity = caseRepository.findByIdForUpdate(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
         cleasDownstreamGate.requireAllowed(caseEntity);

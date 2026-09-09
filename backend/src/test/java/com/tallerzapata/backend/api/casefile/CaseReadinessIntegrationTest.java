@@ -514,7 +514,7 @@ class CaseReadinessIntegrationTest {
                 .andExpect(jsonPath("$.tabs[1].tabCode").value("GESTION_TRAMITE"))
                 .andExpect(jsonPath("$.tabs[1].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
-                .andExpect(jsonPath("$.tabs[2].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
                 .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"));
     }
@@ -541,7 +541,7 @@ class CaseReadinessIntegrationTest {
     }
 
     @Test
-    void shouldKeepTodoRiesgoBudgetBlockedWhileTramiteIsPendingEvenWithCompleteInsuranceData() throws Exception {
+    void shouldAllowTodoRiesgoBudgetWhileTramiteIsPendingEvenWithCompleteInsuranceData() throws Exception {
         Long caseId = createTodoRiesgoCase();
         seedTodoRiesgoBudgetAccessData(caseId);
         jdbcTemplate.update("UPDATE caso_siniestro SET hora_siniestro = NULL, lugar = NULL, dinamica = NULL WHERE caso_id = ?", caseId);
@@ -552,7 +552,7 @@ class CaseReadinessIntegrationTest {
                 .andExpect(jsonPath("$.tabs[1].tabCode").value("GESTION_TRAMITE"))
                 .andExpect(jsonPath("$.tabs[1].completed").value(false))
                 .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
-                .andExpect(jsonPath("$.tabs[2].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[2].blockingReasons").value(org.hamcrest.Matchers.contains("Debe completar Gestion del Tramite antes de cargar el presupuesto")))
                 .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
                 .andExpect(jsonPath("$.tabs[3].allowed").value(false));
@@ -576,7 +576,7 @@ class CaseReadinessIntegrationTest {
     }
 
     @Test
-    void shouldBlockTodoRiesgoBudgetWhenCompleteInsuranceDataIsMissing() throws Exception {
+    void shouldAllowTodoRiesgoBudgetWhenCompleteInsuranceDataIsMissing() throws Exception {
         Long caseId = createTodoRiesgoCase();
         seedTodoRiesgoBudgetAccessData(caseId);
         jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_presentacion) VALUES (?, ?)", caseId, LocalDate.of(2026, 1, 5));
@@ -586,7 +586,7 @@ class CaseReadinessIntegrationTest {
                         .header("X-User-Id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
-                .andExpect(jsonPath("$.tabs[2].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[2].blockingReasons").value(org.hamcrest.Matchers.contains("Falta numero de siniestro")));
     }
 
@@ -670,7 +670,7 @@ class CaseReadinessIntegrationTest {
                 .andExpect(jsonPath("$.tabs[1].tabCode").value("GESTION_TRAMITE"))
                 .andExpect(jsonPath("$.tabs[1].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
-                .andExpect(jsonPath("$.tabs[2].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
                 .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"));
     }
@@ -800,12 +800,12 @@ class CaseReadinessIntegrationTest {
     @Test
     void shouldBlockDownstreamWhenQuotationNotAgreedForTodoRiesgo() throws Exception {
         Long caseId = createTodoRiesgoCase();
-        // Sin seguro → GESTION_TRAMITE bloquea PRESUPUESTO, REPARACION y PAGOS
+        // Sin seguro, PRESUPUESTO sigue disponible; GESTION_REPARACION y PAGOS permanecen bloqueados.
         mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
                         .header("X-User-Id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
-                .andExpect(jsonPath("$.tabs[2].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
                 .andExpect(jsonPath("$.tabs[3].allowed").value(false))
                 .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))

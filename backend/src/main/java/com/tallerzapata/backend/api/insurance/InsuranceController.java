@@ -2,6 +2,7 @@ package com.tallerzapata.backend.api.insurance;
 
 import com.tallerzapata.backend.application.casefile.TramitePdfService;
 import com.tallerzapata.backend.application.insurance.InsuranceCatalogService;
+import com.tallerzapata.backend.application.insurance.LegalRecoverableItemService;
 import com.tallerzapata.backend.application.insurance.InsuranceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -22,11 +23,13 @@ import java.util.List;
 public class InsuranceController {
     private final InsuranceCatalogService insuranceCatalogService;
     private final InsuranceService insuranceService;
+    private final LegalRecoverableItemService legalRecoverableItemService;
     private final TramitePdfService tramitePdfService;
 
-    public InsuranceController(InsuranceCatalogService insuranceCatalogService, InsuranceService insuranceService, TramitePdfService tramitePdfService) {
+    public InsuranceController(InsuranceCatalogService insuranceCatalogService, InsuranceService insuranceService, LegalRecoverableItemService legalRecoverableItemService, TramitePdfService tramitePdfService) {
         this.insuranceCatalogService = insuranceCatalogService;
         this.insuranceService = insuranceService;
+        this.legalRecoverableItemService = legalRecoverableItemService;
         this.tramitePdfService = tramitePdfService;
     }
 
@@ -171,6 +174,18 @@ public class InsuranceController {
     @PreAuthorize("hasAuthority('seguro.crear')")
     @PostMapping("/cases/{caseId}/legal-expenses")
     public LegalExpenseResponse createCaseLegalExpense(@PathVariable Long caseId, @RequestBody LegalExpenseCreateRequest request, HttpServletRequest httpRequest) { return insuranceService.createCaseLegalExpense(caseId, request, httpRequest); }
+
+    @PreAuthorize("hasAuthority('seguro.ver')")
+    @GetMapping("/cases/{caseId}/legal-recoverables")
+    public List<LegalRecoverableItemResponse> listLegalRecoverables(@PathVariable Long caseId) { return legalRecoverableItemService.list(caseId); }
+
+    @PreAuthorize("hasAuthority('seguro.crear')")
+    @PostMapping("/cases/{caseId}/legal-recoverables")
+    public LegalRecoverableItemResponse createLegalRecoverable(@PathVariable Long caseId, @RequestBody LegalRecoverableItemCreateRequest request, HttpServletRequest httpRequest) { return legalRecoverableItemService.create(caseId, request, httpRequest); }
+
+    @PreAuthorize("hasAuthority('seguro.crear')")
+    @PostMapping("/cases/{caseId}/legal-recoverables/{itemId}/collect")
+    public LegalRecoverableItemResponse collectLegalRecoverable(@PathVariable Long caseId, @PathVariable Long itemId, HttpServletRequest httpRequest) { return legalRecoverableItemService.markCollected(caseId, itemId, httpRequest); }
 
     @Operation(summary = "Listar lesionados del expediente", description = "Devuelve los lesionados cargados en la gestion legal del caso")
     @ApiResponse(responseCode = "200", description = "OK")

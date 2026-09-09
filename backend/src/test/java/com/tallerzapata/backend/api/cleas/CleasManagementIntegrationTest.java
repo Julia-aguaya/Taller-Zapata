@@ -99,7 +99,7 @@ class CleasManagementIntegrationTest {
         assertThat(jdbcTemplate.queryForObject("SELECT fecha_cierre FROM casos WHERE id = 100", java.time.LocalDateTime.class)).isNotNull();
         mockMvc.perform(get("/api/v1/cases/100/readiness").header("X-User-Id", "3"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.tabs[2].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[3].allowed").value(false))
                 .andExpect(jsonPath("$.tabs[4].allowed").value(false))
                 .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra."));
@@ -136,24 +136,24 @@ class CleasManagementIntegrationTest {
     }
 
     @Test
-    void shouldBlockCleasDownstreamReadinessWhileOpinionIsPendingRegardlessOfScope() throws Exception {
+    void shouldAllowCleasBudgetWhileKeepingDownstreamReadinessBlockedWhenOpinionIsPending() throws Exception {
         mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scopeCode\":\"FRANQUICIA\",\"opinionCode\":\"PENDIENTE\"}"))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/cases/100/readiness").header("X-User-Id", "3"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.tabs[2].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[3].allowed").value(false))
                 .andExpect(jsonPath("$.tabs[4].allowed").value(false))
                 .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("No se puede avanzar hasta recibir el dictamen."));
     }
 
     @Test
-    void shouldBlockCleasDownstreamReadinessUntilItsDefinitionExists() throws Exception {
+    void shouldAllowCleasBudgetWhileKeepingDownstreamReadinessBlockedUntilItsDefinitionExists() throws Exception {
         mockMvc.perform(get("/api/v1/cases/100/readiness").header("X-User-Id", "3"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.tabs[2].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[3].allowed").value(false))
                 .andExpect(jsonPath("$.tabs[4].allowed").value(false))
                 .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("No se puede avanzar hasta recibir el dictamen."));

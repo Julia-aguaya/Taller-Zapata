@@ -62,6 +62,7 @@ class DocumentIntegrationTest {
 
     @Test
     void shouldUploadRelateListAndDownloadDocument() throws Exception {
+        Long categoryId = activeCategoryId("PERSONAL");
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "orden-ingreso.txt",
@@ -71,13 +72,13 @@ class DocumentIntegrationTest {
 
         String uploadResponse = mockMvc.perform(multipart("/api/v1/documents")
                         .file(file)
-                        .param("categoryId", "1")
+                        .param("categoryId", categoryId.toString())
                         .param("documentDate", LocalDate.of(2026, 5, 10).toString())
                         .param("originCode", "OPERACION")
                         .param("observations", "Carga inicial")
                         .header("X-User-Id", "3"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.categoryId").value(1))
+                .andExpect(jsonPath("$.categoryId").value(categoryId))
                 .andExpect(jsonPath("$.observations").value("Carga inicial"))
                 .andReturn()
                 .getResponse()
@@ -134,12 +135,16 @@ class DocumentIntegrationTest {
                         .header("X-User-Id", "3")
                         .param("moduleCode", "OPERACION"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.categories.length()").value(3))
-                .andExpect(jsonPath("$.categories[0].moduleCode").value("OPERACION"));
+                .andExpect(jsonPath("$.categories.length()").value(4))
+                .andExpect(jsonPath("$.categories[?(@.code == 'PERSONAL')]").isNotEmpty())
+                .andExpect(jsonPath("$.categories[?(@.code == 'VEHICULO')]").isNotEmpty())
+                .andExpect(jsonPath("$.categories[?(@.code == 'SEGURO')]").isNotEmpty())
+                .andExpect(jsonPath("$.categories[?(@.code == 'OTRO')]").isNotEmpty());
     }
 
     @Test
     void shouldUpdateRelationAndReplaceDocument() throws Exception {
+        Long categoryId = activeCategoryId("OTRO");
         MockMultipartFile file = new MockMultipartFile(
                 "file",
                 "foto-dano.txt",
@@ -149,7 +154,7 @@ class DocumentIntegrationTest {
 
         String uploadResponse = mockMvc.perform(multipart("/api/v1/documents")
                         .file(file)
-                        .param("categoryId", "2")
+                        .param("categoryId", categoryId.toString())
                         .param("originCode", "OPERACION")
                         .header("X-User-Id", "3"))
                 .andExpect(status().isOk())
@@ -190,7 +195,7 @@ class DocumentIntegrationTest {
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(new DocumentUpdateRequest(
-                                2L,
+                                categoryId,
                                 "DETALLE",
                                 null,
                                 "OPERACION",
@@ -261,6 +266,14 @@ class DocumentIntegrationTest {
         jdbcTemplate.update(
                 "INSERT INTO caso_vehiculos (id, caso_id, vehiculo_id, rol_vehiculo_codigo, es_principal, orden_visual) VALUES (?, ?, ?, ?, ?, ?)",
                 1L, 100L, 10L, "PRINCIPAL", true, 1
+        );
+    }
+
+    private Long activeCategoryId(String code) {
+        return jdbcTemplate.queryForObject(
+                "SELECT id FROM categorias_documentales WHERE codigo = ? AND activo = 1",
+                Long.class,
+                code
         );
     }
 }

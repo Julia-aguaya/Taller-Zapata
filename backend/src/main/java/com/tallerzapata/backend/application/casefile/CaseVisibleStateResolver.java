@@ -158,11 +158,11 @@ public class CaseVisibleStateResolver {
             return todoRiesgoEffectiveStateRepository.findByCaseId(caseEntity.getId()).map(state -> {
                 Map<String, CaseVisibleStateResponse> result = new LinkedHashMap<>();
                 result.put(DOMAIN_TRAMITE, buildVisibleState(DOMAIN_TRAMITE, state.getProcedureCode(), null));
-                result.put(DOMAIN_REPARACION, buildVisibleState(DOMAIN_REPARACION, state.getRepairCode(), null));
+                result.put(DOMAIN_REPARACION, buildVisibleState(DOMAIN_REPARACION, state.getRepairCode(), normalizeCode(caseEntity.getVisibleRepairStateOverrideCode())));
                 return result;
             }).orElseGet(() -> Map.of(
                     DOMAIN_TRAMITE, buildVisibleState(DOMAIN_TRAMITE, "SIN_PRESENTAR", null),
-                    DOMAIN_REPARACION, buildVisibleState(DOMAIN_REPARACION, "EN_TRAMITE", null)
+                    DOMAIN_REPARACION, buildVisibleState(DOMAIN_REPARACION, "EN_TRAMITE", normalizeCode(caseEntity.getVisibleRepairStateOverrideCode()))
             ));
         }
 
