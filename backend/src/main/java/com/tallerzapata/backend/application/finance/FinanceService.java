@@ -134,7 +134,7 @@ public class FinanceService {
     public FinancialMovementResponse createMovement(Long caseId, FinancialMovementCreateRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
-        accessControlService.requireCaseAccess(currentUser, caseEntity, "finanza.crear");
+        requireMovementPermission(currentUser, caseEntity, request);
         cleasDownstreamGate.requireAllowed(caseEntity);
         validateMovementRequest(request);
         requireFranchiseMovementAllowed(caseEntity, request);
@@ -189,7 +189,7 @@ public class FinanceService {
     public IssuedReceiptResponse createReceipt(Long caseId, IssuedReceiptCreateRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
-        accessControlService.requireCaseAccess(currentUser, caseEntity, "finanza.crear");
+        requireReceiptPermission(currentUser, caseEntity, request);
         cleasDownstreamGate.requireAllowed(caseEntity);
         validateReceiptRequest(caseEntity, request);
         if (request.fiscalTypeCode() != null && receiptRepository.existsByFiscalTypeCodeAndSalePointAndFiscalNumber(normalizeFiscalType(request.fiscalTypeCode()), normalizeSalePoint(request.salePoint()), normalizeFiscalNumber(request.fiscalNumber()))) throw new ConflictException("Ya existe un comprobante con ese tipo fiscal, punto de venta y número");
@@ -335,7 +335,7 @@ public class FinanceService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         FinancialMovementEntity movement = movementRepository.findById(movementId).orElseThrow(() -> new ResourceNotFoundException("No existe el movimiento " + movementId));
         CaseEntity caseEntity = requireCase(movement.getCaseId());
-        accessControlService.requireCaseAccess(currentUser, caseEntity, "finanza.crear");
+        requireGlobalFinancePermission(currentUser, caseEntity, "finanza.retencion.gestionar");
         cleasDownstreamGate.requireAllowed(caseEntity);
         for (FinancialMovementRetentionRequest request : requests) {
             if (!retentionTypeRepository.existsByCodeAndActiveTrue(normalizeCode(request.retentionTypeCode()))) throw new ConflictException("retentionTypeCode no permitido: " + request.retentionTypeCode());
@@ -358,7 +358,7 @@ public class FinanceService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         FinancialMovementEntity movement = movementRepository.findById(movementId).orElseThrow(() -> new ResourceNotFoundException("No existe el movimiento " + movementId));
         CaseEntity caseEntity = requireCase(movement.getCaseId());
-        accessControlService.requireCaseAccess(currentUser, caseEntity, "finanza.crear");
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "finanza.imputacion.crear");
         cleasDownstreamGate.requireAllowed(caseEntity);
         for (FinancialMovementApplicationRequest request : requests) {
             if (!applicationConceptRepository.existsByCodeAndActiveTrue(normalizeCode(request.conceptCode()))) throw new ConflictException("conceptCode no permitido: " + request.conceptCode());
@@ -407,7 +407,9 @@ public class FinanceService {
 
     @Transactional(readOnly = true)
     public byte[] getClientPaymentPdf(Long caseId, String clientName, String vehiclePlate, String comprobanteTipo, BigDecimal totalCotizado, String observaciones, String facturaRazonSocial, String facturaNumero) {
-        CaseEntity caseEntity = caseRepository.findById(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "finanza.ver");
         List<FinancialMovementEntity> movements = movementRepository.findByCaseId(caseId, Sort.by(Sort.Order.asc("movementAt")));
         OrganizationEntity org = organizationRepository.findAll().stream().findFirst().orElse(null);
         BranchEntity branch = org != null ? branchRepository.findByOrganizationIdOrderByNameAsc(org.getId()).stream().findFirst().orElse(null) : null;
@@ -416,8 +418,10 @@ public class FinanceService {
 
     @Transactional(readOnly = true)
     public byte[] getReceiptPdf(Long receiptId) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         IssuedReceiptEntity receipt = receiptRepository.findById(receiptId).orElseThrow(() -> new ResourceNotFoundException("Recibo no encontrado: " + receiptId));
-        CaseEntity caseEntity = caseRepository.findById(receipt.getCaseId()).orElse(null);
+        CaseEntity caseEntity = requireCase(receipt.getCaseId());
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "finanza.ver");
         OrganizationEntity org = organizationRepository.findAll().stream().findFirst().orElse(null);
         BranchEntity branch = org != null ? branchRepository.findByOrganizationIdOrderByNameAsc(org.getId()).stream().findFirst().orElse(null) : null;
         return receiptPdfService.generate(receipt, caseEntity, org, branch);
@@ -476,6 +480,31 @@ public class FinanceService {
 
     private CaseEntity requireCase(Long caseId) {
         return caseRepository.findById(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
+    }
+
+    private void requireMovementPermission(AuthenticatedUser currentUser, CaseEntity caseEntity, FinancialMovementCreateRequest request) {
+        boolean exceptional = "EGRESO".equals(normalizeCode(request.movementTypeCode())) || "AJUSTE".equals(normalizeCode(request.movementTypeCode()));
+        boolean hasRetentions = request.retentions() != null && !request.retentions().isEmpty();
+        if (exceptional || hasRetentions) {
+            requireGlobalFinancePermission(currentUser, caseEntity, exceptional ? "finanza.excepcional.modificar" : "finanza.retencion.gestionar");
+            return;
+        }
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "finanza.pago.crear");
+    }
+
+    private void requireReceiptPermission(AuthenticatedUser currentUser, CaseEntity caseEntity, IssuedReceiptCreateRequest request) {
+        if ("NOTA_CREDITO".equals(normalizeCode(request.receiptTypeCode()))) {
+            requireGlobalFinancePermission(currentUser, caseEntity, "finanza.excepcional.modificar");
+            return;
+        }
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "finanza.recibo.crear");
+    }
+
+    private void requireGlobalFinancePermission(AuthenticatedUser currentUser, CaseEntity caseEntity, String permission) {
+        accessControlService.requireCaseAccess(currentUser, caseEntity, permission);
+        if (!accessControlService.hasGlobalScope(currentUser)) {
+            throw new com.tallerzapata.backend.application.common.ForbiddenException("Solo un administrador global puede realizar operaciones financieras excepcionales");
+        }
     }
 
     private boolean isGranizo(CaseEntity caseEntity) {

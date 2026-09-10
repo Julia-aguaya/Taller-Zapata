@@ -284,7 +284,7 @@ public class ExtraBudgetService {
     public ExtraBudgetResponse registerPayment(Long caseId, ExtraBudgetPaymentRequest request, HttpServletRequest requestContext) {
         AuthenticatedUser user = currentUser.requireCurrentUser();
         CaseEntity caseEntity = requireCaseForUpdate(caseId);
-        access.requireCaseAccess(user, caseEntity, "finanza.crear");
+        access.requireCaseAccess(user, caseEntity, "finanza.pago.crear");
         requireExtraBudgetSupported(caseEntity);
         ExtraBudgetEntity header = requireHeaderForUpdate(caseId);
         assertExpected(header, request.expectedVersion());
@@ -320,7 +320,7 @@ public class ExtraBudgetService {
     public ExtraBudgetResponse annulPayment(Long caseId, ExtraBudgetPaymentAnnulmentRequest request, HttpServletRequest requestContext) {
         AuthenticatedUser user = currentUser.requireCurrentUser();
         CaseEntity caseEntity = requireCaseForUpdate(caseId);
-        access.requireCaseAccess(user, caseEntity, "finanza.crear");
+        requireGlobalExceptionalFinanceAccess(user, caseEntity);
         requireExtraBudgetSupported(caseEntity);
         ExtraBudgetEntity header = requireHeaderForUpdate(caseId);
         assertExpected(header, request.expectedVersion());
@@ -663,6 +663,10 @@ public class ExtraBudgetService {
     private ExtraBudgetVersionEntity currentVersion(ExtraBudgetEntity header) { return versions.findByExtraBudgetIdAndVersionNumber(header.getId(), header.getCurrentVersion()).orElseThrow(() -> new IllegalStateException("Falta la versión actual del presupuesto extra")); }
     private CaseEntity requireCase(Long caseId) { return cases.findById(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId)); }
     private CaseEntity requireCaseForUpdate(Long caseId) { return cases.findByIdForUpdate(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId)); }
+    private void requireGlobalExceptionalFinanceAccess(AuthenticatedUser user, CaseEntity caseEntity) {
+        access.requireCaseAccess(user, caseEntity, "finanza.excepcional.modificar");
+        if (!access.hasGlobalScope(user)) throw new com.tallerzapata.backend.application.common.ForbiddenException("Solo un administrador global puede realizar operaciones financieras excepcionales");
+    }
     private void requireExtraBudgetSupported(CaseEntity caseEntity) {
         String caseType = caseTypes.findById(caseEntity.getCaseTypeId()).map(CaseTypeEntity::getCode).orElse(null);
         if (!"TODO_RIESGO".equals(caseType) && !"GRANIZO".equals(caseType) && !"CLEAS".equals(caseType))

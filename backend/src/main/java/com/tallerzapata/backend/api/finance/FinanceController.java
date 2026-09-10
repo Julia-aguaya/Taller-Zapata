@@ -48,7 +48,7 @@ public class FinanceController {
 
     @Operation(summary = "Crear movimiento financiero", description = "Crea un nuevo movimiento financiero para un caso")
     @ApiResponse(responseCode = "200", description = "OK")
-    @PreAuthorize("hasAuthority('finanza.crear')")
+    @PreAuthorize("hasAuthority('finanza.pago.crear') or hasAuthority('finanza.excepcional.modificar') or hasAuthority('finanza.retencion.gestionar')")
     @PostMapping("/cases/{caseId}/financial-movements")
     public FinancialMovementResponse createMovement(@PathVariable Long caseId, @Valid @RequestBody FinancialMovementCreateRequest request, HttpServletRequest httpRequest) { return financeService.createMovement(caseId, request, httpRequest); }
 
@@ -74,7 +74,7 @@ public class FinanceController {
 
     @Operation(summary = "Crear recibo", description = "Emite un nuevo recibo para un caso")
     @ApiResponse(responseCode = "200", description = "OK")
-    @PreAuthorize("hasAuthority('finanza.crear')")
+    @PreAuthorize("hasAuthority('finanza.recibo.crear') or hasAuthority('finanza.excepcional.modificar')")
     @PostMapping("/cases/{caseId}/receipts")
     public IssuedReceiptResponse createReceipt(@PathVariable Long caseId, @Valid @RequestBody IssuedReceiptCreateRequest request, HttpServletRequest httpRequest) { return financeService.createReceipt(caseId, request, httpRequest); }
 
@@ -106,13 +106,13 @@ public class FinanceController {
 
     @Operation(summary = "Agregar retenciones", description = "Agrega retenciones a un movimiento financiero")
     @ApiResponse(responseCode = "200", description = "OK")
-    @PreAuthorize("hasAuthority('finanza.crear')")
+    @PreAuthorize("hasAuthority('finanza.retencion.gestionar')")
     @PostMapping("/financial-movements/{movementId}/retentions")
     public List<FinancialMovementRetentionResponse> addRetentions(@PathVariable Long movementId, @Valid @RequestBody List<FinancialMovementRetentionRequest> requests, HttpServletRequest httpRequest) { return financeService.addRetentions(movementId, requests, httpRequest); }
 
     @Operation(summary = "Agregar aplicaciones", description = "Agrega aplicaciones/imputaciones a un movimiento financiero")
     @ApiResponse(responseCode = "200", description = "OK")
-    @PreAuthorize("hasAuthority('finanza.crear')")
+    @PreAuthorize("hasAuthority('finanza.imputacion.crear')")
     @PostMapping("/financial-movements/{movementId}/applications")
     public List<FinancialMovementApplicationResponse> addApplications(@PathVariable Long movementId, @Valid @RequestBody List<FinancialMovementApplicationRequest> requests, HttpServletRequest httpRequest) { return financeService.addApplications(movementId, requests, httpRequest); }
 }

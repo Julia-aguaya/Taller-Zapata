@@ -225,7 +225,7 @@ public class CleasManagementService {
     @Transactional
     public CleasCompanyPaymentResponse registerCompanyPayment(Long caseId, CleasCompanyPaymentRequest request, HttpServletRequest httpRequest) {
         CaseEntity caseEntity = requireEditableCleasCase(caseId);
-        AuthenticatedUser currentUser = requireAccess(caseEntity, "finanza.crear");
+        AuthenticatedUser currentUser = requirePaymentAccess(caseEntity, request.retentions());
         CleasCompanyPaymentSummaryResponse summary = companyPaymentSummary(caseEntity);
         BigDecimal grossAmount = money(request.amount());
         if (grossAmount.signum() <= 0) throw new ConflictException("El importe bruto del pago de compania debe ser positivo");
@@ -297,7 +297,7 @@ public class CleasManagementService {
     @Transactional
     public CleasCompanyPaymentSummaryResponse annulCompanyPayment(Long caseId, Long movementId, CleasCompanyPaymentAnnulmentRequest request, HttpServletRequest httpRequest) {
         CaseEntity caseEntity = requireEditableCleasCase(caseId);
-        AuthenticatedUser currentUser = requireAccess(caseEntity, "finanza.crear");
+        AuthenticatedUser currentUser = requireExceptionalFinanceAccess(caseEntity);
 
         FinancialMovementEntity original = financialMovementRepository.findById(movementId)
                 .filter(movement -> caseId.equals(movement.getCaseId()))
@@ -359,7 +359,7 @@ public class CleasManagementService {
     @Transactional
     public CleasFranchisePaymentSummaryResponse registerCustomerFranchisePayment(Long caseId, CleasCustomerFranchisePaymentRequest request, HttpServletRequest httpRequest) {
         CaseEntity caseEntity = requireEditableCleasCase(caseId);
-        AuthenticatedUser currentUser = requireAccess(caseEntity, "finanza.crear");
+        AuthenticatedUser currentUser = requireAccess(caseEntity, "finanza.pago.crear");
         var cleas = caseCleasRepository.findByCaseId(caseId).orElseThrow(() -> new ConflictException("El caso no tiene definicion CLEAS"));
         if (!"FRANQUICIA".equals(cleas.getScopeCode()) || !"EN_CONTRA".equals(cleas.getOpinionCode())) {
             throw new ConflictException("El pago de franquicia del cliente solo aplica a CLEAS FRANQUICIA con dictamen EN_CONTRA");
@@ -405,7 +405,7 @@ public class CleasManagementService {
     @Transactional
     public CleasFranchisePaymentSummaryResponse annulCustomerFranchisePayment(Long caseId, Long movementId, CleasCompanyPaymentAnnulmentRequest request, HttpServletRequest httpRequest) {
         CaseEntity caseEntity = requireEditableCleasCase(caseId);
-        AuthenticatedUser currentUser = requireAccess(caseEntity, "finanza.crear");
+        AuthenticatedUser currentUser = requireExceptionalFinanceAccess(caseEntity);
         var cleas = caseCleasRepository.findByCaseId(caseId).orElseThrow(() -> new ConflictException("El caso no tiene definicion CLEAS"));
         FinancialMovementEntity original = financialMovementRepository.findById(movementId).filter(item -> caseId.equals(item.getCaseId())).orElseThrow(() -> new ResourceNotFoundException("No existe el pago de franquicia " + movementId));
         if (!"INGRESO".equals(normalizeCode(original.getMovementTypeCode())) || !"CLIENTE".equals(normalizeCode(original.getFlowOriginCode())) || !"FRANQUICIA".equals(normalizeCode(original.getCancellationTypeCode()))) throw new ConflictException("Solo puede anularse un pago de franquicia del cliente");
@@ -423,7 +423,7 @@ public class CleasManagementService {
     @Transactional
     public CleasFranchisePaymentSummaryResponse registerCompanyFranchisePayment(Long caseId, CleasCompanyFranchisePaymentRequest request, HttpServletRequest httpRequest) {
         CaseEntity caseEntity = requireEditableCleasCase(caseId);
-        AuthenticatedUser currentUser = requireAccess(caseEntity, "finanza.crear");
+        AuthenticatedUser currentUser = requireAccess(caseEntity, "finanza.pago.crear");
         var cleas = caseCleasRepository.findByCaseId(caseId).orElseThrow(() -> new ConflictException("El caso no tiene definicion CLEAS"));
         if (!"FRANQUICIA".equals(cleas.getScopeCode()) || !"EN_CONTRA".equals(cleas.getOpinionCode())) {
             throw new ConflictException("El pago de franquicia a la compania solo aplica a CLEAS FRANQUICIA con dictamen EN_CONTRA");
@@ -528,6 +528,19 @@ public class CleasManagementService {
     private AuthenticatedUser requireAccess(CaseEntity caseEntity, String permission) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         accessControlService.requireCaseAccess(currentUser, caseEntity, permission);
+        return currentUser;
+    }
+
+    private AuthenticatedUser requirePaymentAccess(CaseEntity caseEntity, List<FinancialMovementRetentionRequest> retentions) {
+        if (retentions == null || retentions.isEmpty()) return requireAccess(caseEntity, "finanza.pago.crear");
+        AuthenticatedUser currentUser = requireAccess(caseEntity, "finanza.retencion.gestionar");
+        if (!accessControlService.hasGlobalScope(currentUser)) throw new com.tallerzapata.backend.application.common.ForbiddenException("Solo un administrador global puede gestionar retenciones");
+        return currentUser;
+    }
+
+    private AuthenticatedUser requireExceptionalFinanceAccess(CaseEntity caseEntity) {
+        AuthenticatedUser currentUser = requireAccess(caseEntity, "finanza.excepcional.modificar");
+        if (!accessControlService.hasGlobalScope(currentUser)) throw new com.tallerzapata.backend.application.common.ForbiddenException("Solo un administrador global puede realizar operaciones financieras excepcionales");
         return currentUser;
     }
 

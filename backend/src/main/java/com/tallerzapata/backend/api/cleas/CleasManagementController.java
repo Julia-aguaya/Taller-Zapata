@@ -74,11 +74,11 @@ public class CleasManagementController {
     @GetMapping("/summary")
     public CleasCompanyPaymentSummaryResponse summary(@PathVariable Long caseId) { return service.companyPaymentSummary(caseId); }
 
-    @PreAuthorize("hasAuthority('finanza.crear')")
+    @PreAuthorize("hasAuthority('finanza.pago.crear') or hasAuthority('finanza.retencion.gestionar')")
     @PostMapping("/company-payments")
     public CleasCompanyPaymentResponse registerCompanyPayment(@PathVariable Long caseId, @Valid @RequestBody CleasCompanyPaymentRequest request, HttpServletRequest httpRequest) { return service.registerCompanyPayment(caseId, request, httpRequest); }
 
-    @PreAuthorize("hasAuthority('finanza.crear')")
+    @PreAuthorize("hasAuthority('finanza.excepcional.modificar')")
     @PostMapping("/company-payments/{movementId}/annul")
     public CleasCompanyPaymentSummaryResponse annulCompanyPayment(@PathVariable Long caseId, @PathVariable Long movementId, @RequestBody(required = false) CleasCompanyPaymentAnnulmentRequest request, HttpServletRequest httpRequest) { return service.annulCompanyPayment(caseId, movementId, request, httpRequest); }
 
@@ -93,15 +93,15 @@ public class CleasManagementController {
     @GetMapping("/franchise-summary")
     public CleasFranchisePaymentSummaryResponse franchiseSummary(@PathVariable Long caseId) { return service.franchisePaymentSummary(caseId); }
 
-    @PreAuthorize("hasAuthority('finanza.crear')")
+    @PreAuthorize("hasAuthority('finanza.pago.crear')")
     @PostMapping("/customer-franchise-payments")
     public CleasFranchisePaymentSummaryResponse registerCustomerFranchisePayment(@PathVariable Long caseId, @Valid @RequestBody CleasCustomerFranchisePaymentRequest request, HttpServletRequest httpRequest) { return service.registerCustomerFranchisePayment(caseId, request, httpRequest); }
 
-    @PreAuthorize("hasAuthority('finanza.crear')")
+    @PreAuthorize("hasAuthority('finanza.excepcional.modificar')")
     @PostMapping("/customer-franchise-payments/{movementId}/annul")
     public CleasFranchisePaymentSummaryResponse annulCustomerFranchisePayment(@PathVariable Long caseId, @PathVariable Long movementId, @RequestBody(required = false) CleasCompanyPaymentAnnulmentRequest request, HttpServletRequest httpRequest) { return service.annulCustomerFranchisePayment(caseId, movementId, request, httpRequest); }
 
-    @PreAuthorize("hasAuthority('finanza.crear')")
+    @PreAuthorize("hasAuthority('finanza.pago.crear')")
     @PostMapping("/franchise-company-payment")
     public CleasFranchisePaymentSummaryResponse registerCompanyFranchisePayment(@PathVariable Long caseId, @Valid @RequestBody CleasCompanyFranchisePaymentRequest request, HttpServletRequest httpRequest) { return service.registerCompanyFranchisePayment(caseId, request, httpRequest); }
 

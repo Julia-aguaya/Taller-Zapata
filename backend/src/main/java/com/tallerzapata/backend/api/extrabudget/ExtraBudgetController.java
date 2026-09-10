@@ -114,14 +114,14 @@ public class ExtraBudgetController {
     }
 
     @Operation(summary = "Registrar pago de cliente para presupuesto extra")
-    @PreAuthorize("hasAuthority('finanza.crear')")
+    @PreAuthorize("hasAuthority('finanza.pago.crear')")
     @PostMapping("/payments")
     public ExtraBudgetResponse registerPayment(@PathVariable Long caseId, @Valid @RequestBody ExtraBudgetPaymentRequest request, HttpServletRequest httpRequest) {
         return service.registerPayment(caseId, request, httpRequest);
     }
 
     @Operation(summary = "Anular pago de cliente para presupuesto extra")
-    @PreAuthorize("hasAuthority('finanza.crear')")
+    @PreAuthorize("hasAuthority('finanza.excepcional.modificar')")
     @PostMapping("/payments/annul")
     public ExtraBudgetResponse annulPayment(@PathVariable Long caseId, @Valid @RequestBody ExtraBudgetPaymentAnnulmentRequest request, HttpServletRequest httpRequest) {
         return service.annulPayment(caseId, request, httpRequest);

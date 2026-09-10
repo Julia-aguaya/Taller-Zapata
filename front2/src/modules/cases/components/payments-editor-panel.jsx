@@ -7,6 +7,7 @@ import { annulCleasCompanyPayment, annulCleasCustomerFranchisePayment, downloadC
 import { extraBudgetQueryKey, registerExtraBudgetPayment } from '@/modules/cases/api/extra-budget-api';
 import { requestJson } from '@/shared/api/http-client';
 import { readStoredAuth } from '@/shared/auth/session-storage';
+import { useSession } from '@/modules/auth/providers/session-provider';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
@@ -46,6 +47,11 @@ const PAYMENT_METHODS = [
 
 export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFinanceSummary, clientPaymentRequest, onClientPaymentRequestHandled, nroCleas, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange, cleasOver, cleasOpinion, cleasClosedAt, cleasWorkflowGuard, onSaved }) => {
   const queryClient = useQueryClient();
+  const { session } = useSession();
+  const authorities = session?.authorities;
+  const canCreatePayments = !authorities || authorities.includes('finanza.pago.crear');
+  const canCreateReceipts = !authorities || authorities.includes('finanza.recibo.crear');
+  const canHandleExceptionalFinance = !authorities || authorities.includes('finanza.excepcional.modificar');
 
   const [comprobanteTipo, setComprobanteTipo] = useState('A');
   const [form, setForm] = useState({
@@ -152,6 +158,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
       // Si factura=SI, crear recibo primero
       let receiptId = null;
       if (form.factura === 'SI') {
+        if (!canCreateReceipts) throw new Error('No tenés permiso para emitir comprobantes.');
         const totalConIva = comprobanteTipo === 'A' ? monto : monto;
         const neto = comprobanteTipo === 'A' ? monto / 1.21 : monto;
         const iva = comprobanteTipo === 'A' ? monto - neto : 0;
@@ -323,7 +330,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
       {isCleas ? <CleasCompanyPaymentPanel caseId={caseId} receipts={receiptsQuery.data ?? []} onSaved={onSaved} /> : null}
 
       {/* Comprobante + Formulario */}
-        {!blockCleasPayments && !isInsurance ? (
+        {!blockCleasPayments && !isInsurance && canCreatePayments ? (
          <div className="rounded-3xl border border-border/70 bg-card p-5">
            <div className="flex items-center justify-between">
              <h5 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Nuevo pago</h5>
@@ -334,7 +341,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
 
           {isTodoRiesgo ? <div className="rounded-3xl border border-border/70 bg-card p-5" aria-label="Pagos del cliente">
            <div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Cliente</p><h4 className="mt-1 text-lg font-semibold">Franquicia del cliente</h4><p className="mt-1 text-sm text-muted-foreground">Este saldo canónico corresponde solo a la franquicia. Los trabajos adicionales se gestionan por separado en Pagos adicionales del cliente.</p></div>
-           {toAmount(paymentBreakdownQuery.data?.client?.franchisePending) > 0 ? <><div className="mt-4 grid gap-3 md:grid-cols-2"><MiniCard label="Franquicia pendiente del cliente" value={formatCurrency(paymentBreakdownQuery.data.client.franchisePending)} highlight /><MiniCard label="Acción disponible" value="Registrar pago de franquicia" /></div><div className="mt-4"><Button variant="outline" onClick={() => setLocalClientPaymentRequest({ concept: 'FRANQUICIA', amount: String(paymentBreakdownQuery.data.client.franchisePending) })}>Registrar pago de franquicia</Button></div></> : <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">No hay franquicia pendiente de pago a cargo del cliente.</div>}
+            {toAmount(paymentBreakdownQuery.data?.client?.franchisePending) > 0 ? <><div className="mt-4 grid gap-3 md:grid-cols-2"><MiniCard label="Franquicia pendiente del cliente" value={formatCurrency(paymentBreakdownQuery.data.client.franchisePending)} highlight /><MiniCard label="Acción disponible" value="Registrar pago de franquicia" /></div>{canCreatePayments ? <div className="mt-4"><Button variant="outline" onClick={() => setLocalClientPaymentRequest({ concept: 'FRANQUICIA', amount: String(paymentBreakdownQuery.data.client.franchisePending) })}>Registrar pago de franquicia</Button></div> : null}</> : <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">No hay franquicia pendiente de pago a cargo del cliente.</div>}
         </div> : null}
 
         {isUnfavorableFranchise && franchiseSummaryQuery.data ? (
@@ -495,7 +502,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
                      <td className="px-3 py-3 text-xs text-muted-foreground max-w-[150px] truncate">{m.movementTypeCode === 'EGRESO' ? `Anulado: ${m.reason || 'sí'}` : 'Vigente'}</td>
                      <td className="px-3 py-3 text-xs text-muted-foreground max-w-[150px] truncate">{m.receiptId ? `Recibo #${m.receiptId}` : m.externalReference || m.reason || '—'}</td>
                     <td className="px-3 py-3">
-                     {!blockCleasPayments ? (
+                      {!blockCleasPayments ? (
                       <div className="flex items-center gap-1">
                         <button type="button" className="rounded-lg px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-primary/10 hover:text-primary" title="Descargar comprobante" onClick={async () => {
                           const stored = readStoredAuth();
@@ -508,8 +515,9 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
                           a.download = `comprobante-${m.id}.pdf`;
                           a.click();
                         }}><FileDown className="mr-1 h-3.5 w-3.5" />Descargar comprobante</button>
-                        <button type="button" className="rounded-lg px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950" title="Anular pago"
+                         {canHandleExceptionalFinance ? <button type="button" className="rounded-lg px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950" title="Anular pago"
                           onClick={() => setCancelMovement(m)}><Ban className="mr-1 h-3.5 w-3.5" />Anular</button>
+                         : null}
                       </div>
                      ) : null}
                     </td>
@@ -566,7 +574,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
     <Dialog open={!!cancelMovement} onClose={() => setCancelMovement(null)} title="¿Anular este pago?" description="Se registrará un egreso por el mismo monto para revertir el movimiento.">
       <div className="mt-4 flex gap-3">
         <Button variant="outline" className="flex-1" onClick={() => setCancelMovement(null)}>Cancelar</Button>
-        <Button variant="destructive" className="flex-1" onClick={async () => {
+        {canHandleExceptionalFinance ? <Button variant="destructive" className="flex-1" onClick={async () => {
           const m = cancelMovement;
           setCancelMovement(null);
           try {
@@ -594,7 +602,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
             await onSaved?.();
             toast.success('Pago anulado.');
           } catch (e) { toast.error(e.message || 'No se pudo anular el pago.'); }
-        }}>Anular pago</Button>
+        }}>Anular pago</Button> : null}
       </div>
     </Dialog>
     </>

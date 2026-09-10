@@ -502,6 +502,21 @@ class FinanceIntegrationTest {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void shouldDenyOperatorFromAnotherBranchForFinancialPdfs() throws Exception {
+        jdbcTemplate.update("INSERT INTO usuarios (id, public_id, username, email, password_hash, nombre, apellido, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 4L, "00000000-0000-0000-0000-000000000400", "operador-sucursal-uno", "operador-sucursal-uno@tallerzapata.local", "hash", "Olivia", "Operadora", true);
+        jdbcTemplate.update("INSERT INTO usuario_roles (id, usuario_id, rol_id, organizacion_id, sucursal_id, activo) VALUES (?, ?, ?, ?, ?, ?)", 4L, 4L, 2L, 1L, 1L, true);
+        jdbcTemplate.update("INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, estado_tramite_actual_id, estado_reparacion_actual_id, estado_pago_actual_id, estado_documentacion_actual_id, estado_legal_actual_id, prioridad_codigo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 101L, "00000000-0000-0000-0000-000000003101", "0101PZ", 101L, 1L, 1L, 2L, 10L, 10L, false, 1L, 1L, 4L, 7L, 9L, 11L, "MEDIA");
+        jdbcTemplate.update("INSERT INTO comprobantes_emitidos (id, public_id, caso_id, tipo_comprobante_codigo, numero_comprobante, razon_social_receptor, fecha_emision, neto_gravado, iva, total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 50L, "00000000-0000-0000-0000-000000006050", 101L, "RECIBO", "R-101", "Cliente", LocalDate.of(2026, 5, 11), new BigDecimal("100.00"), BigDecimal.ZERO, new BigDecimal("100.00"));
+
+        mockMvc.perform(get("/api/v1/cases/101/finance/client-payment-pdf")
+                        .param("clientName", "Carlos Cliente").param("vehiclePlate", "AB123CD").param("comprobanteTipo", "A").param("totalCotizado", "100")
+                        .header("X-User-Id", "4"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/receipts/50/pdf").header("X-User-Id", "4"))
+                .andExpect(status().isForbidden());
+    }
+
     // ── Helpers ──────────────────────────────────────────────────
 
     private Long createReceiptWithComprobanteFiscal() throws Exception {
