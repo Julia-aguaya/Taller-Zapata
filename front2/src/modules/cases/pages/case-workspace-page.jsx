@@ -214,6 +214,23 @@ export const CaseWorkspacePage = () => {
     return workspaceQuery.data?.caseDetail?.caseTypeCode === 'CLEAS' ? getCleasTabs(readinessTabs) : readinessTabs;
   }, [workspaceQuery.data]);
   const currentTab = useMemo(() => effectiveTabs.find((tab) => tab.tabCode === selectedTab) || effectiveTabs[0] || null, [effectiveTabs, selectedTab]);
+  const openReadinessTab = (tabCode) => {
+    const tab = effectiveTabs.find((candidate) => candidate.tabCode === tabCode);
+    if (!tab) return;
+    if (!tab.allowed) {
+      setSelectedReadinessTab(tab);
+      return;
+    }
+    setSelectedTab(tabCode);
+  };
+
+  useEffect(() => {
+    const selectedReadiness = effectiveTabs.find((tab) => tab.tabCode === selectedTab);
+    if (selectedReadiness && !selectedReadiness.allowed) {
+      setSelectedTab('DETALLES');
+      setSelectedReadinessTab(selectedReadiness);
+    }
+  }, [effectiveTabs, selectedTab]);
 
   const tasksQuery = useQuery({
     queryKey: ['cases', caseId, 'tasks'],
@@ -328,13 +345,7 @@ export const CaseWorkspacePage = () => {
                   role="tab"
                   aria-selected={active}
                   aria-disabled={isBlocked}
-                    onClick={() => {
-                      if (isBlocked) {
-                      setSelectedReadinessTab(tab);
-                      return;
-                    }
-                    setSelectedTab(tab.tabCode);
-                  }}
+                  onClick={() => openReadinessTab(tab.tabCode)}
                   className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-2.5 text-left text-sm font-medium transition ${
                     isBlocked
                       ? 'cursor-not-allowed border-destructive/30 bg-destructive/5 text-destructive/70'
@@ -387,7 +398,7 @@ export const CaseWorkspacePage = () => {
               overrideReason={overrideReason}
               setOverrideReason={setOverrideReason}
               overrideMutation={overrideMutation}
-              onOpenTab={setSelectedTab}
+              onOpenTab={openReadinessTab}
             />
           ) : currentTab?.tabCode === 'FICHA_TECNICA' ? (
             <FichaTecnicaEditor

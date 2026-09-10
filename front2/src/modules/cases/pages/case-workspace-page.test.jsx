@@ -353,6 +353,31 @@ describe('CaseWorkspacePage UI', () => {
     }
   });
 
+  it('no abre etapas bloqueadas para daño total con dictamen pendiente', async () => {
+    const user = userEvent.setup();
+    await renderPage({
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'CLEAS' },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'CLEAS', tabs: [
+        { tabCode: 'GESTION_TRAMITE', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+        { tabCode: 'PRESUPUESTO', allowed: false, completed: false, blockingReasons: ['El dictamen CLEAS sobre daño total sigue pendiente.'], warningReasons: [] },
+        { tabCode: 'GESTION_REPARACION', allowed: false, completed: false, blockingReasons: ['El dictamen CLEAS sobre daño total sigue pendiente.'], warningReasons: [] },
+        { tabCode: 'PAGOS', allowed: false, completed: false, blockingReasons: ['El dictamen CLEAS sobre daño total sigue pendiente.'], warningReasons: [] },
+      ] },
+    });
+
+    for (const name of [/presupuesto/i, /gestión reparación/i, /pagos/i]) {
+      const tab = screen.getByRole('tab', { name });
+      expect(tab).toHaveAttribute('aria-disabled', 'true');
+      await user.click(tab);
+      expect(screen.getByText(/Detalle de (Presupuesto|Gestión Reparación|Pagos)/)).toBeInTheDocument();
+      expect(screen.getAllByText('El dictamen CLEAS sobre daño total sigue pendiente.').length).toBeGreaterThan(0);
+    }
+    expect(screen.queryByText('Budget panel')).toBeNull();
+    expect(screen.queryByText('Repair panel')).toBeNull();
+    expect(screen.queryByText('Payments panel')).toBeNull();
+  });
+
   it('conserva la distribución de franquicia entre Tramitación y Pagos y la reinicia al cambiar de carpeta', async () => {
     const user = userEvent.setup();
     const workspace = {
@@ -475,6 +500,49 @@ describe('CaseWorkspacePage UI', () => {
     await user.click(screen.getByRole('tab', { name: /pagos/i }));
     expect(screen.getAllByText('Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra.').length).toBeGreaterThan(0);
     expect(screen.getByRole('tab', { name: /pagos/i })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('abandona una etapa editable cuando el cierre CLEAS la bloquea', async () => {
+    const user = userEvent.setup();
+    const openWorkspace = {
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'CLEAS' },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'CLEAS', tabs: [
+        { tabCode: 'PAGOS', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+      ] },
+    };
+    const closedWorkspace = {
+      ...openWorkspace,
+      caseDetail: { ...openWorkspace.caseDetail, closedAt: '2026-08-27T12:00:00Z' },
+      readiness: { ...openWorkspace.readiness, tabs: [
+        { tabCode: 'PAGOS', allowed: false, completed: false, blockingReasons: ['Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra.'], warningReasons: [] },
+      ] },
+    };
+    let workspace = openWorkspace;
+    mockUseQuery.mockImplementation(({ queryKey }) => {
+      if (queryKey[2] === 'workspace') return { data: workspace, isLoading: false, isError: false };
+      if (queryKey[2] === 'tasks') return { data: { items: [] }, isLoading: false, isError: false };
+      if (queryKey[1] === 11 || queryKey[1] === '11') return { data: personResponse, isLoading: false, isError: false };
+      if (queryKey[1] === 22 || queryKey[1] === '22') return { data: vehicleResponse, isLoading: false, isError: false };
+      if (queryKey[0] === 'vehicles' && queryKey[1] === 'catalogs') return { data: vehicleCatalogs, isLoading: false, isError: false };
+      if (queryKey[0] === 'referenciadores') return { data: [], isLoading: false, isError: false, isFetching: false };
+      if (queryKey[2] === 'audit') return { data: [], isLoading: false, isError: false };
+      return { data: undefined, isLoading: false, isError: false };
+    });
+    const rendered = render(<CaseWorkspacePage />);
+    await screen.findByText('ZP-2026-0001');
+
+    await user.click(screen.getByRole('tab', { name: /pagos/i }));
+    expect(screen.getByText('Payments panel')).toBeInTheDocument();
+
+    workspace = closedWorkspace;
+    rendered.rerender(<CaseWorkspacePage />);
+
+    expect(await screen.findByText('Detalle de Pagos')).toBeInTheDocument();
+    expect(screen.getByText('Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra.')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /pagos/i })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.queryByText('Payments panel')).toBeNull();
+    expect(screen.getByText('Proximo paso')).toBeInTheDocument();
   });
 
   it('does not offer closure or block tabs for the exact unfavorable franchise branch', async () => {
