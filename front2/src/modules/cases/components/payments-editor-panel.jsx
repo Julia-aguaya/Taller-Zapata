@@ -51,7 +51,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const authorities = session?.authorities;
   const canCreatePayments = !authorities || authorities.includes('finanza.pago.crear');
   const canCreateReceipts = !authorities || authorities.includes('finanza.recibo.crear');
-  const canHandleExceptionalFinance = !authorities || authorities.includes('finanza.excepcional.modificar');
+  const canHandleExceptionalFinance = authorities?.includes('finanza.excepcional.modificar') ?? false;
 
   const [comprobanteTipo, setComprobanteTipo] = useState('A');
   const [form, setForm] = useState({

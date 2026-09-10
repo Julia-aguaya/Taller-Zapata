@@ -4,6 +4,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DocumentsSection } from './documents-section';
 import { clearStoredAuth, saveStoredAuth } from '@/shared/auth/session-storage';
 
+let sessionAuthorities = ['documento.subir', 'documento.eliminar'];
+
+vi.mock('@/modules/auth/providers/session-provider', () => ({
+  useSession: () => ({ session: { authorities: sessionAuthorities } }),
+}));
+
 const jsonResponse = (body) => new Response(JSON.stringify(body), {
   status: 200,
   headers: { 'content-type': 'application/json' },
@@ -20,6 +26,7 @@ const renderSection = () => {
 
 describe('DocumentsSection', () => {
   afterEach(() => {
+    sessionAuthorities = ['documento.subir', 'documento.eliminar'];
     clearStoredAuth();
     vi.unstubAllGlobals();
   });
@@ -177,5 +184,21 @@ describe('DocumentsSection', () => {
     const confirmationDialog = screen.getByRole('dialog', { name: '¿Eliminar documento?' });
     fireEvent.click(within(confirmationDialog).getByRole('button', { name: /^eliminar$/i }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/documents/12', expect.objectContaining({ method: 'DELETE' })));
+  });
+
+  it('hides destructive document actions without the matching capability', async () => {
+    sessionAuthorities = [];
+    const fetchMock = vi.fn((url) => {
+      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [] }));
+      if (url === '/api/v1/cases/42/documents') return Promise.resolve(jsonResponse([{ relationId: 1, documentId: 12, fileName: 'foto.pdf' }]));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderSection();
+
+    expect(await screen.findByRole('button', { name: /^visualizar$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /agregar items/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^eliminar$/i })).not.toBeInTheDocument();
   });
 });

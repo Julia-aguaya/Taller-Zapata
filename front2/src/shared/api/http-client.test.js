@@ -7,7 +7,7 @@ vi.mock('@/shared/auth/session-storage', () => ({
   saveStoredAuth: vi.fn(),
 }));
 
-const { requestBlob } = await import('./http-client');
+const { requestBlob, requestJson } = await import('./http-client');
 const { saveExtraBudgetDraft } = await import('@/modules/cases/api/extra-budget-api');
 
 describe('http client', () => {
@@ -45,6 +45,21 @@ describe('http client', () => {
       message: '[422] No hay comparación',
       httpStatus: 422,
       payload: { message: 'No hay comparación' },
+    });
+  });
+
+  it('returns an actionable message for forbidden JSON requests', async () => {
+    const response = {
+      ok: false,
+      status: 403,
+      headers: new Headers({ 'content-type': 'application/json' }),
+      json: vi.fn().mockResolvedValue({ message: 'Acceso denegado' }),
+    };
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+
+    await expect(requestJson('/management/providers')).rejects.toMatchObject({
+      message: '[403] No tenés permisos para realizar esta acción.',
+      httpStatus: 403,
     });
   });
 

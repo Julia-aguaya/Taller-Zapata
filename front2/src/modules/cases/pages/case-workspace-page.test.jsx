@@ -42,6 +42,10 @@ vi.mock('@/shared/api/http-client', () => ({
   requestJson: (...args) => mockRequestJson(...args),
 }));
 
+vi.mock('@/modules/auth/providers/session-provider', () => ({
+  useSession: () => ({ session: { capabilities: { canOverrideVisibleStates: true } } }),
+}));
+
 vi.mock('@/modules/cases/components/budget-editor-panel', () => ({
   BudgetEditorPanel: () => <div>Budget panel</div>,
 }));

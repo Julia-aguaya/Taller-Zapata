@@ -26,6 +26,7 @@ import { requestJson } from '@/shared/api/http-client';
 import { searchPersons } from '@/modules/cases/api/new-case-api';
 import { addCasePerson, getCasePersons } from '@/modules/cases/api/third-party-api';
 import { getCleasTabs, getOperationalTabs, getTabIcon, getTabLabel } from '@/modules/cases/lib/tab-registry';
+import { useSession } from '@/modules/auth/providers/session-provider';
 
 const currency = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 });
 const formatCurrency = (value) => (value == null ? '-' : currency.format(value));
@@ -153,6 +154,7 @@ export const getNextStepDescriptor = ({ tabs = [], budget, widgets, particularFi
 
 export const CaseWorkspacePage = () => {
   const { caseId } = useParams();
+  const { session } = useSession();
   const queryClient = useQueryClient();
   const [selectedTab, setSelectedTab] = useState('DETALLES');
   const [selectedReadinessTab, setSelectedReadinessTab] = useState(null);
@@ -234,8 +236,8 @@ export const CaseWorkspacePage = () => {
   const isCleasAdverseTotal = caseDetail.caseTypeCode === 'CLEAS' && cleasOver === 'damage' && cleasOpinion === 'unfavorable';
   const isCleasClosed = caseDetail.caseTypeCode === 'CLEAS' && Boolean(caseDetail.closedAt);
   const isInsuranceRepair = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail.caseTypeCode);
-  const canOverrideVisibleState = !isInsuranceRepair && !isCleasClosed;
-  const canOverrideRepairState = !isCleasClosed;
+  const canOverrideVisibleState = Boolean(session?.capabilities?.canOverrideVisibleStates) && !isInsuranceRepair && !isCleasClosed;
+  const canOverrideRepairState = Boolean(session?.capabilities?.canOverrideVisibleStates) && !isCleasClosed;
   const handleCleasOverChange = (value) => setCleasOver(value);
   const handleCleasOpinionChange = (value) => setCleasOpinion(value);
   const overrideOptions = caseDetail.caseTypeCode === 'PARTICULAR'

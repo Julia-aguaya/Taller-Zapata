@@ -13,6 +13,7 @@ import { ManagementReferrersPage } from '@/modules/management/pages/management-r
 import { ManagementInsurancePage } from '@/modules/management/pages/management-insurance-page';
 import { ManagementProvidersPage } from '@/modules/management/pages/management-providers-page';
 import { AuthGate } from '@/modules/auth/components/auth-gate';
+import { AuthorizationGate } from '@/modules/auth/components/authorization-gate';
 
 export const AppRouter = () => (
   <Routes>
@@ -26,19 +27,19 @@ export const AppRouter = () => (
       )}
     >
       <Route index element={<Navigate to="/panel" replace />} />
-      <Route path="panel" element={<PanelPage />} />
-      <Route path="cases" element={<CasesPage />} />
-      <Route path="cases/:caseId" element={<CaseWorkspacePage />} />
-      <Route path="cases/new" element={<NewCasePage />} />
-      <Route path="agenda" element={<AgendaPage />} />
-      <Route path="management" element={<Navigate to="/panel" replace />} />
-      <Route path="management/clients" element={<ManagementClientsPage />} />
-      <Route path="management/vehicles" element={<ManagementVehiclesPage />} />
-      <Route path="management/referrers" element={<ManagementReferrersPage />} />
-      <Route path="management/insurance" element={<ManagementInsurancePage />} />
-      <Route path="management/providers" element={<ManagementProvidersPage />} />
-      <Route path="management/organization" element={<ManagementPage />} />
-      <Route path="management/settings" element={<Navigate to="/management/organization" replace />} />
+      <Route path="panel" element={<AuthorizationGate navigationCode="PANEL"><PanelPage /></AuthorizationGate>} />
+      <Route path="cases" element={<AuthorizationGate navigationCode="CASES"><CasesPage /></AuthorizationGate>} />
+      <Route path="cases/:caseId" element={<AuthorizationGate navigationCode="CASES"><CaseWorkspacePage /></AuthorizationGate>} />
+      <Route path="cases/new" element={<AuthorizationGate navigationCode="NEW_CASE"><NewCasePage /></AuthorizationGate>} />
+      <Route path="agenda" element={<AuthorizationGate navigationCode="AGENDA"><AgendaPage /></AuthorizationGate>} />
+      <Route path="management" element={<AuthorizationGate navigationCode="MANAGEMENT"><Navigate to="/management/organization" replace /></AuthorizationGate>} />
+      <Route path="management/clients" element={<AuthorizationGate navigationCode="MANAGEMENT"><ManagementClientsPage /></AuthorizationGate>} />
+      <Route path="management/vehicles" element={<AuthorizationGate navigationCode="MANAGEMENT"><ManagementVehiclesPage /></AuthorizationGate>} />
+      <Route path="management/referrers" element={<AuthorizationGate navigationCode="MANAGEMENT"><ManagementReferrersPage /></AuthorizationGate>} />
+      <Route path="management/insurance" element={<AuthorizationGate navigationCode="MANAGEMENT"><ManagementInsurancePage /></AuthorizationGate>} />
+      <Route path="management/providers" element={<AuthorizationGate navigationCode="MANAGEMENT"><ManagementProvidersPage /></AuthorizationGate>} />
+      <Route path="management/organization" element={<AuthorizationGate navigationCode="MANAGEMENT"><ManagementPage /></AuthorizationGate>} />
+      <Route path="management/settings" element={<AuthorizationGate navigationCode="MANAGEMENT"><Navigate to="/management/organization" replace /></AuthorizationGate>} />
     </Route>
   </Routes>
 );

@@ -59,7 +59,7 @@ vi.mock('@tanstack/react-query', () => ({
 }));
 
 vi.mock('@/modules/auth/providers/session-provider', () => ({
-  useSession: () => ({ session: { user: { id: 1 } } }),
+  useSession: () => ({ session: { user: { id: 1 }, authorities: ['finanza.pago.crear', 'finanza.recibo.crear', 'finanza.excepcional.modificar'] } }),
 }));
 
 vi.mock('@/shared/api/http-client', () => ({

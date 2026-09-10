@@ -19,7 +19,9 @@ const readJson = async (response) => {
 };
 
 const buildError = (response, payload, fallbackMessage) => {
-  const detail = payload?.message || payload?.detail || payload?.error || fallbackMessage;
+  const detail = response.status === 403
+    ? 'No tenés permisos para realizar esta acción.'
+    : payload?.message || payload?.detail || payload?.error || fallbackMessage;
   const error = new Error(`[${response.status}] ${detail}`);
   error.httpStatus = response.status;
   error.payload = payload;

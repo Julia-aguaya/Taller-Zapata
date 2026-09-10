@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { useState } from 'react';
 import { requestJson } from '@/shared/api/http-client';
 import { readStoredAuth } from '@/shared/auth/session-storage';
+import { useSession } from '@/modules/auth/providers/session-provider';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Dialog } from '@/shared/ui/dialog';
@@ -19,9 +20,10 @@ const currentLocalDate = () => {
 
 export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode = null, includeHistorical = true, showCompleteAction = true, title = 'Documentación' }) => {
   const queryClient = useQueryClient();
-  const authorities = readStoredAuth()?.authorities;
-  const canUploadDocuments = !authorities || authorities.includes('documento.subir');
-  const canDeleteDocuments = !authorities || authorities.includes('documento.eliminar');
+  const { session } = useSession();
+  const authorities = session?.authorities ?? [];
+  const canUploadDocuments = authorities.includes('documento.subir');
+  const canDeleteDocuments = authorities.includes('documento.eliminar');
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadCategory, setUploadCategory] = useState('');

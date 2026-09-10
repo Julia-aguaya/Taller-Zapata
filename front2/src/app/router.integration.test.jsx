@@ -2,10 +2,10 @@ import { createContext, useContext, useMemo, useState } from 'react';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ThemeProvider } from '@/app/theme/theme-provider';
 
-const sessionResponse = {
+const adminSessionResponse = {
   unreadNotifications: 2,
   user: {
     displayName: 'Admin Taller',
@@ -23,6 +23,20 @@ const sessionResponse = {
   },
   scopes: [],
 };
+
+const operatorSessionResponse = {
+  ...adminSessionResponse,
+  user: { displayName: 'Operador Taller', role: 'OPERADOR' },
+  navigation: {
+    defaultRoute: '/panel',
+    items: adminSessionResponse.navigation.items.map((item) => (
+      item.code === 'MANAGEMENT' || item.code === 'NEW_CASE' ? { ...item, enabled: false } : item
+    )),
+  },
+};
+
+let activeSessionResponse = adminSessionResponse;
+let initiallyAuthenticated = false;
 
 let panelResponse = {
   generatedAt: '2026-07-26T12:30:00Z',
@@ -129,9 +143,9 @@ vi.mock('@tanstack/react-query', () => ({
 
 vi.mock('@/modules/auth/providers/session-provider', () => ({
   SessionProvider: ({ children }) => {
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
+    const [isAuthenticated, setIsAuthenticated] = useState(initiallyAuthenticated);
     const value = useMemo(() => ({
-      session: isAuthenticated ? sessionResponse : null,
+      session: isAuthenticated ? activeSessionResponse : null,
       isAuthenticated,
       isLoading: false,
       hasStoredTokens: false,
@@ -161,6 +175,11 @@ const { AppRouter } = await import('@/app/router');
 const { SessionProvider } = await import('@/modules/auth/providers/session-provider');
 
 describe('AppRouter integration', () => {
+  afterEach(() => {
+    activeSessionResponse = adminSessionResponse;
+    initiallyAuthenticated = false;
+  });
+
   it('muestra el panel general como inicio con el menu principal acotado tras login', async () => {
     const user = userEvent.setup();
 
@@ -236,5 +255,27 @@ describe('AppRouter integration', () => {
     expect(screen.getByRole('button', { name: 'Gestión' })).not.toHaveAttribute('aria-current');
     expect(within(managementLinks).getByRole('button', { name: 'Taller y sucursales' })).toHaveAttribute('aria-current', 'page');
     await waitFor(() => expect(screen.getAllByRole('heading', { name: 'Taller y sucursales' }).length).toBeGreaterThan(0));
+  });
+
+  it('oculta Gestión y redirige al operador que abre una ruta administrativa directamente', async () => {
+    activeSessionResponse = operatorSessionResponse;
+    initiallyAuthenticated = true;
+
+    render(
+      <MemoryRouter initialEntries={['/management/providers']}>
+        <SessionProvider>
+          <ThemeProvider>
+            <AppRouter />
+          </ThemeProvider>
+        </SessionProvider>
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByRole('heading', { name: 'Panel general' }).length).toBeGreaterThan(0);
+    });
+
+    expect(screen.queryByRole('button', { name: 'Gestión' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Proveedores')).not.toBeInTheDocument();
   });
 });
