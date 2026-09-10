@@ -112,11 +112,11 @@ describe('GestionTramiteEditor', () => {
     fireEvent.change(screen.getByLabelText('Monto que la Cía. exige al cliente'), { target: { value: '500000' } });
 
     expect(screen.getByText('Distribución de la franquicia')).toBeTruthy();
-    expect(screen.getByLabelText('A facturar Cía.')).toHaveValue('1500000');
+    expect(screen.queryByLabelText('A facturar Cía.')).toBeNull();
     expect(screen.getByLabelText('A cargo del cliente')).toHaveValue('500000');
 
     fireEvent.change(screen.getByLabelText('Monto que la Cía. exige al cliente'), { target: { value: '-2500000' } });
-    expect(screen.getByLabelText('A facturar Cía.')).toHaveValue('-1500000');
+    expect(screen.queryByLabelText('A facturar Cía.')).toBeNull();
     expect(screen.getByRole('alert')).toHaveTextContent('El importe a facturar a la compañía es negativo. Este caso requiere revisión manual antes de continuar.');
     expect(screen.queryByRole('button', { name: 'Cerrar caso' })).toBeNull();
   });
@@ -143,7 +143,7 @@ describe('GestionTramiteEditor', () => {
 
     expect(screen.getByLabelText('Monto que la Cía. exige al cliente')).toHaveValue(1200000);
     expect(screen.getByLabelText('Monto que la Cía. exige al cliente')).toHaveAttribute('readonly');
-    expect(screen.getByLabelText('A facturar Cía.')).toHaveValue('2000000');
+    expect(screen.queryByLabelText('A facturar Cía.')).toBeNull();
     expect(screen.getByLabelText('A cargo del cliente')).toHaveValue('0');
   });
 

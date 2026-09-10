@@ -346,9 +346,11 @@ export const CleasProcedureSection = ({
             <option value="NO">NO</option>
           </Select>
         </Field>
-        <Field label="A facturar Cía.">
-          <Input value={amountToBill} readOnly />
-        </Field>
+        {!isUnfavorableFranchise ? (
+          <Field label="A facturar Cía.">
+            <Input value={amountToBill} readOnly />
+          </Field>
+        ) : null}
         <Field label="Proveedor de repuestos">
           <Input
             value={form.partsSupplierText}

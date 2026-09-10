@@ -52,4 +52,22 @@ describe('CleasProcedureSection manual operational fields', () => {
   it('rejects a negative manual minimum before sending a patch', () => {
     expect(() => buildCleasProcessingPatch({ minimumCloseAmount: '-1' }, { version: 7, minimumCloseAmount: null })).toThrow('El mínimo para cierre no puede ser negativo.');
   });
+
+  it('hides company billing for an unfavorable franchise CLEAS', () => {
+    render(<CleasProcedureSection caseId="42" cleasOver="franchise" opinion="unfavorable" />);
+
+    expect(screen.queryByLabelText('A facturar Cía.')).not.toBeInTheDocument();
+  });
+
+  it('shows the agreed quotation amount for a favorable franchise CLEAS', () => {
+    render(<CleasProcedureSection caseId="42" cleasOver="franchise" opinion="favorable" cleasAgreedAmount="1250" />);
+
+    expect(screen.getByLabelText('A facturar Cía.')).toHaveValue('1250');
+  });
+
+  it('keeps company billing visible for a total-damage CLEAS', () => {
+    render(<CleasProcedureSection caseId="42" cleasOver="damage" opinion="unfavorable" cleasAgreedAmount="1250" />);
+
+    expect(screen.getByLabelText('A facturar Cía.')).toHaveValue('1250');
+  });
 });
