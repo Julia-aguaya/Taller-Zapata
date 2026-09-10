@@ -444,18 +444,19 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.getAllByRole('button', { name: /registrar pago/i }).length).toBeGreaterThan(0);
   });
 
-  it('does not expose CLEAS billing for a favorable franchise', () => {
+  it('does not expose customer franchise or generic payment actions for a favorable CLEAS franchise', () => {
     mount({
       caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' },
       cleasOver: 'franchise',
       cleasOpinion: 'favorable',
       cleasAgreedAmount: '125000',
+      clientPaymentRequest: { concept: 'FRANQUICIA', amount: '125000' },
     });
 
     expect(screen.queryByText('Facturación')).toBeNull();
-    expect(screen.getAllByRole('button', { name: /registrar pago/i }).length).toBeGreaterThan(0);
-    openPaymentForm();
-    expect(screen.getByRole('button', { name: /^registrar pago$/i })).toBeEnabled();
+    expect(screen.queryByTestId('cleas-customer-franchise-payment')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^\+ Registrar pago$/i })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Registrar pago' })).toBeNull();
   });
 
   it('uses the canonical unfavorable franchise summary and payment modal', () => {

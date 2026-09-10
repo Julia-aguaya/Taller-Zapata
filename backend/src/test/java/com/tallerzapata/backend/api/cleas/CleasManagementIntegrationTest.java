@@ -541,6 +541,16 @@ class CleasManagementIntegrationTest {
                 .andExpect(jsonPath("$.customerChargeAmount").value(0))
                 .andExpect(jsonPath("$.amountToBillCompany").value(2000));
 
+        mockMvc.perform(post("/api/v1/cases/100/financial-movements").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"CLIENTE\",\"counterpartyTypeCode\":\"PERSONA\",\"counterpartyPersonId\":10,\"movementAt\":\"2026-08-03T10:00:00\",\"grossAmount\":1000,\"netAmount\":1000,\"paymentMethodCode\":\"EFECTIVO\",\"cancellationTypeCode\":\"FRANQUICIA\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[],\"applications\":[]}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("El pago de franquicia CLEAS debe registrarse por su flujo canonico"));
+        mockMvc.perform(post("/api/v1/cases/100/cleas/customer-franchise-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":1000,\"paymentMethodCode\":\"EFECTIVO\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("El pago de franquicia del cliente solo aplica a CLEAS FRANQUICIA con dictamen EN_CONTRA"));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = 100 AND origen_flujo_codigo = 'CLIENTE' AND cancela_tipo_codigo = 'FRANQUICIA'", Integer.class)).isZero();
+
         String invoice = mockMvc.perform(post("/api/v1/cases/100/receipts").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"receiptTypeCode\":\"FACTURA\",\"receiptNumber\":\"A-FRANQ-FAVOR-100\",\"receiverBusinessName\":\"Rivadavia\",\"issuedDate\":\"2026-08-03\",\"taxableNet\":2000,\"vatAmount\":0,\"total\":2000}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();

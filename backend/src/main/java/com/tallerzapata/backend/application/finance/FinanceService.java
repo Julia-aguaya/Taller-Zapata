@@ -515,6 +515,9 @@ public class FinanceService {
 
     private void requireFranchiseMovementAllowed(CaseEntity caseEntity, FinancialMovementCreateRequest request) {
         if (!"FRANQUICIA".equals(normalizeCode(request.cancellationTypeCode()))) return;
+        if (isCleas(caseEntity)) {
+            throw new ConflictException("El pago de franquicia CLEAS debe registrarse por su flujo canonico");
+        }
         if (isGranizo(caseEntity)) {
             throw new ConflictException("Franquicia no aplica a casos GRANIZO");
         }
@@ -548,6 +551,12 @@ public class FinanceService {
     private boolean isTodoRiesgo(CaseEntity caseEntity) {
         return caseTypeRepository.findById(caseEntity.getCaseTypeId())
                 .map(type -> "TODO_RIESGO".equals(normalizeCode(type.getCode())))
+                .orElse(false);
+    }
+
+    private boolean isCleas(CaseEntity caseEntity) {
+        return caseTypeRepository.findById(caseEntity.getCaseTypeId())
+                .map(type -> "CLEAS".equals(normalizeCode(type.getCode())))
                 .orElse(false);
     }
 

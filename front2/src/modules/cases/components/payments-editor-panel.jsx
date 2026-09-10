@@ -94,6 +94,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const isClosedCleas = isCleasAdverseTotal && Boolean(cleasClosedAt);
   const blockCleasPayments = Boolean(cleasWorkflowGuard) || isClosedCleas;
   const isUnfavorableFranchise = isCleas && cleasOver === 'franchise' && cleasOpinion === 'unfavorable';
+  const isFavorableFranchise = isCleas && cleasOver === 'franchise' && cleasOpinion === 'favorable';
   const franchiseSummaryQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'franchise-summary'], queryFn: () => getCleasFranchisePaymentSummary(caseId), enabled: isUnfavorableFranchise });
   const cleasDocumentsQuery = useQuery({ queryKey: ['cases', String(caseId), 'documents'], queryFn: () => requestJson(`/cases/${caseId}/documents`), enabled: isCleas });
   const documentCategoriesQuery = useQuery({ queryKey: ['documents', 'catalogs'], queryFn: () => requestJson('/documents/catalogs'), enabled: isCleas });
@@ -125,7 +126,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
     : cleasAgreedAmount || '';
   const franchiseClientAmount = toAmount(franchiseSummaryQuery.data?.customerPendingAmount);
   const requestedClientPayment = clientPaymentRequest ?? localClientPaymentRequest;
-  const activeClientPaymentRequest = isGranizo && requestedClientPayment?.concept === 'FRANQUICIA' ? null : requestedClientPayment;
+  const activeClientPaymentRequest = (isGranizo || isFavorableFranchise) && requestedClientPayment?.concept === 'FRANQUICIA' ? null : requestedClientPayment;
 
   useEffect(() => {
     if (!activeClientPaymentRequest) return;
@@ -330,7 +331,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
       {isCleas ? <CleasCompanyPaymentPanel caseId={caseId} receipts={receiptsQuery.data ?? []} onSaved={onSaved} /> : null}
 
       {/* Comprobante + Formulario */}
-        {!blockCleasPayments && !isInsurance && canCreatePayments ? (
+        {!blockCleasPayments && !isInsurance && !isFavorableFranchise && canCreatePayments ? (
          <div className="rounded-3xl border border-border/70 bg-card p-5">
            <div className="flex items-center justify-between">
              <h5 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Nuevo pago</h5>
