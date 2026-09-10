@@ -19,6 +19,7 @@ import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -72,6 +73,7 @@ class DocumentIntegrationTest {
 
         String uploadResponse = mockMvc.perform(multipart("/api/v1/documents")
                         .file(file)
+                        .param("caseId", "100")
                         .param("categoryId", categoryId.toString())
                         .param("documentDate", LocalDate.of(2026, 5, 10).toString())
                         .param("originCode", "OPERACION")
@@ -154,6 +156,7 @@ class DocumentIntegrationTest {
 
         String uploadResponse = mockMvc.perform(multipart("/api/v1/documents")
                         .file(file)
+                        .param("caseId", "100")
                         .param("categoryId", categoryId.toString())
                         .param("originCode", "OPERACION")
                         .header("X-User-Id", "3"))
@@ -215,7 +218,7 @@ class DocumentIntegrationTest {
         String replaceResponse = mockMvc.perform(multipart("/api/v1/documents/{documentId}/replace", documentId)
                         .file(replacementFile)
                         .param("observations", "Reemplazo por nueva evidencia")
-                        .header("X-User-Id", "3"))
+                        .header("X-User-Id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.replacesDocumentId").value(documentId))
                 .andReturn()
@@ -240,6 +243,52 @@ class DocumentIntegrationTest {
         );
         assertThat(activeCount).isEqualTo(1);
         assertThat(relationCount).isEqualTo(1);
+
+        Long replacementRelationId = jdbcTemplate.queryForObject(
+                "SELECT id FROM documento_relaciones WHERE documento_id = ?", Long.class, replacementId);
+        mockMvc.perform(delete("/api/v1/document-relations/{relationId}", replacementRelationId)
+                        .header("X-User-Id", "1")
+                        .header("X-Change-Note", "Relación obsoleta"))
+                .andExpect(status().isOk());
+        mockMvc.perform(delete("/api/v1/documents/{documentId}", replacementId)
+                        .header("X-User-Id", "1")
+                        .header("X-Change-Note", "Documento duplicado"))
+                .andExpect(status().isOk());
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM auditoria_eventos WHERE accion_codigo IN ('reemplazar_documento', 'eliminar_relacion_documento', 'eliminar_documento')",
+                Integer.class)).isEqualTo(3);
+    }
+
+    @Test
+    void shouldDenyOperatorDocumentAccessOutsideBranchAndOnClosedCases() throws Exception {
+        Long categoryId = activeCategoryId("OTRO");
+        Long foreignDocumentId = uploadDocument(categoryId, null, "1");
+        jdbcTemplate.update(
+                "INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, prioridad_codigo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                101L, "00000000-0000-0000-0000-000000003101", "0101PZ", 101L, 1L, 1L, 2L, 10L, 10L, false, 1L, "MEDIA");
+        mockMvc.perform(post("/api/v1/documents/{documentId}/relations", foreignDocumentId)
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new DocumentRelationCreateRequest(101L, "CASO", 101L, "OPERACION", false, false, 0))))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/documents/{documentId}", foreignDocumentId).header("X-User-Id", "3"))
+                .andExpect(status().isForbidden());
+
+        Long ownDocumentId = uploadDocument(categoryId, 100L, "3");
+        mockMvc.perform(post("/api/v1/documents/{documentId}/relations", ownDocumentId)
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new DocumentRelationCreateRequest(100L, "CASO", 100L, "OPERACION", false, false, 0))))
+                .andExpect(status().isOk());
+        jdbcTemplate.update("UPDATE casos SET fecha_cierre = CURRENT_TIMESTAMP WHERE id = 100");
+        mockMvc.perform(put("/api/v1/documents/{documentId}", ownDocumentId)
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new DocumentUpdateRequest(categoryId, null, null, "OPERACION", "No permitido", true))))
+                .andExpect(status().isConflict());
+        mockMvc.perform(multipart("/api/v1/documents").file(new MockMultipartFile("file", "closed.txt", MediaType.TEXT_PLAIN_VALUE, "closed".getBytes()))
+                        .param("caseId", "100").param("categoryId", categoryId.toString()).header("X-User-Id", "3"))
+                .andExpect(status().isConflict());
     }
 
     private void seedBaseData() {
@@ -275,5 +324,17 @@ class DocumentIntegrationTest {
                 Long.class,
                 code
         );
+    }
+
+    private Long uploadDocument(Long categoryId, Long caseId, String userId) throws Exception {
+        var request = multipart("/api/v1/documents")
+                .file(new MockMultipartFile("file", "documento-" + userId + ".txt", MediaType.TEXT_PLAIN_VALUE, "contenido".getBytes()))
+                .param("categoryId", categoryId.toString())
+                .header("X-User-Id", userId);
+        if (caseId != null) {
+            request.param("caseId", caseId.toString());
+        }
+        String response = mockMvc.perform(request).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(response).get("id").asLong();
     }
 }

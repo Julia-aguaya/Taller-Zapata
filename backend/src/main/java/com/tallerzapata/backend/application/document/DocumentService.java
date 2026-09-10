@@ -132,7 +132,8 @@ public class DocumentService {
     @Transactional
     public DocumentResponse upload(DocumentUploadRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
-        caseAccessControlService.requirePermission(currentUser, "documento.crear");
+        caseAccessControlService.requirePermission(currentUser, "documento.subir");
+        requireUploadCaseAccess(currentUser, request.getCaseId());
 
         if (request.getFile() == null || request.getFile().isEmpty()) {
             throw new ConflictException("file es obligatorio");
@@ -159,6 +160,7 @@ public class DocumentService {
                 .filter(item -> item.getFileName().equals(safeFileName(request.getFile().getOriginalFilename())))
                 .orElse(null);
         if (existing != null) {
+            requireDocumentAccess(currentUser, existing.getId(), "documento.subir");
             return toResponse(existing);
         }
 
@@ -182,7 +184,7 @@ public class DocumentService {
 
         caseAuditService.register(
                 currentUser.id(),
-                null,
+                request.getCaseId(),
                 "documentos",
                 entity.getId(),
                 "subir_documento",
@@ -198,16 +200,18 @@ public class DocumentService {
     @Transactional(readOnly = true)
     public DocumentResponse getById(Long documentId) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
-        caseAccessControlService.requirePermission(currentUser, "documento.ver");
-        return toResponse(requireActiveDocument(documentId));
+        DocumentEntity document = requireActiveDocument(documentId);
+        requireDocumentAccess(currentUser, documentId, "documento.ver");
+        return toResponse(document);
     }
 
     @Transactional
     public DocumentResponse update(Long documentId, DocumentUpdateRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
-        caseAccessControlService.requirePermission(currentUser, "documento.crear");
+        caseAccessControlService.requirePermission(currentUser, "documento.editar");
 
         DocumentEntity entity = requireActiveDocument(documentId);
+        requireDocumentAccess(currentUser, documentId, "documento.editar");
         DocumentCategoryEntity category = requireActiveCategory(request.categoryId());
         validateDocumentDate(category, request.documentDate());
 
@@ -240,12 +244,12 @@ public class DocumentService {
     @Transactional
     public DocumentRelationResponse createRelation(Long documentId, DocumentRelationCreateRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
-        caseAccessControlService.requirePermission(currentUser, "documento.crear");
+        caseAccessControlService.requirePermission(currentUser, "documento.relacionar");
 
         DocumentEntity document = documentRepository.findByIdAndActiveTrue(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el documento " + documentId));
         CaseEntity caseEntity = requireCase(request.caseId());
-        caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "documento.ver");
+        requireOpenCaseAccess(currentUser, caseEntity, "documento.relacionar");
 
         String entityType = normalizeCode(request.entityType());
         if (!SUPPORTED_ENTITY_TYPES.contains(entityType)) {
@@ -285,12 +289,12 @@ public class DocumentService {
     @Transactional
     public DocumentRelationResponse updateRelation(Long relationId, DocumentRelationUpdateRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
-        caseAccessControlService.requirePermission(currentUser, "documento.crear");
+        caseAccessControlService.requirePermission(currentUser, "documento.editar");
 
         DocumentRelationEntity entity = documentRelationRepository.findById(relationId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe la relacion documental " + relationId));
         CaseEntity caseEntity = requireCase(entity.getCaseId());
-        caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "documento.ver");
+        requireOpenCaseAccess(currentUser, caseEntity, "documento.editar");
 
         Map<String, Object> before = relationSnapshot(entity);
         if (request.principal() != null) {
@@ -310,12 +314,12 @@ public class DocumentService {
     @Transactional
     public void deleteRelation(Long relationId, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
-        caseAccessControlService.requirePermission(currentUser, "documento.eliminar");
+        caseAccessControlService.requirePermission(currentUser, "documento.desvincular");
 
         DocumentRelationEntity entity = documentRelationRepository.findById(relationId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe la relacion documental " + relationId));
         CaseEntity caseEntity = requireCase(entity.getCaseId());
-        caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "documento.ver");
+        requireGlobalAdmin(currentUser, "desvincular documentos");
 
         caseAuditService.register(
                 currentUser.id(),
@@ -336,11 +340,22 @@ public class DocumentService {
     public void deleteDocument(Long documentId, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         caseAccessControlService.requirePermission(currentUser, "documento.eliminar");
+        requireGlobalAdmin(currentUser, "eliminar documentos");
 
         DocumentEntity entity = documentRepository.findById(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el documento " + documentId));
 
         List<DocumentRelationEntity> relations = documentRelationRepository.findByDocumentIdOrderByVisualOrderAscIdAsc(documentId);
+        for (DocumentRelationEntity relation : relations) {
+            caseAuditService.register(currentUser.id(), relation.getCaseId(), "documentos", entity.getId(), "eliminar_documento",
+                    caseAuditService.toJson(documentSnapshot(entity)), null,
+                    caseAuditService.toJson(Map.of("domain", "documentos", "relationId", relation.getId())), httpRequest);
+        }
+        if (relations.isEmpty()) {
+            caseAuditService.register(currentUser.id(), null, "documentos", entity.getId(), "eliminar_documento",
+                    caseAuditService.toJson(documentSnapshot(entity)), null,
+                    caseAuditService.toJson(Map.of("domain", "documentos")), httpRequest);
+        }
         documentRelationRepository.deleteAll(relations);
 
         if (entity.getStorageKey() != null) {
@@ -353,8 +368,8 @@ public class DocumentService {
     @Transactional
     public DocumentResponse replace(Long documentId, DocumentReplaceRequest request, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
-        caseAccessControlService.requirePermission(currentUser, "documento.crear");
-        caseAccessControlService.requirePermission(currentUser, "documento.crear");
+        caseAccessControlService.requirePermission(currentUser, "documento.reemplazar");
+        requireGlobalAdmin(currentUser, "reemplazar documentos");
 
         DocumentEntity current = requireActiveDocument(documentId);
         if (request.getFile() == null || request.getFile().isEmpty()) {
@@ -421,7 +436,7 @@ public class DocumentService {
     public List<CaseDocumentResponse> listCaseDocuments(Long caseId, String moduleCode, String entityType, Long entityId, Boolean visibleToCustomer) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
-        caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "documento.ver");
+        requireOpenCaseAccess(currentUser, caseEntity, "documento.ver");
 
         String normalizedModuleCode = normalizeCode(moduleCode);
         String normalizedEntityType = normalizeCode(entityType);
@@ -448,7 +463,7 @@ public class DocumentService {
     public ResponseEntity<Resource> downloadCaseDocument(Long caseId, Long documentId) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
-        caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "documento.ver");
+        requireOpenCaseAccess(currentUser, caseEntity, "documento.ver");
 
         boolean relatedToCase = documentRelationRepository.findByCaseIdOrderByVisualOrderAscIdAsc(caseId)
                 .stream()
@@ -471,7 +486,7 @@ public class DocumentService {
     public byte[] downloadCaseDocumentsZip(Long caseId) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
-        caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "documento.ver");
+        requireOpenCaseAccess(currentUser, caseEntity, "documento.ver");
 
         List<DocumentRelationEntity> relations = documentRelationRepository.findByCaseIdOrderByVisualOrderAscIdAsc(caseId);
         Set<String> usedNames = new HashSet<>();
@@ -534,6 +549,43 @@ public class DocumentService {
                 .map(DocumentRelationEntity::getCaseId)
                 .findFirst()
                 .orElse(null);
+    }
+
+    private void requireUploadCaseAccess(AuthenticatedUser currentUser, Long caseId) {
+        if (caseId == null) {
+            if (!caseAccessControlService.hasGlobalScope(currentUser)) {
+                throw new com.tallerzapata.backend.application.common.ForbiddenException("Los operadores deben indicar el caso al subir un documento");
+            }
+            return;
+        }
+        requireOpenCaseAccess(currentUser, requireCase(caseId), "documento.subir");
+    }
+
+    private void requireDocumentAccess(AuthenticatedUser currentUser, Long documentId, String permissionCode) {
+        caseAccessControlService.requirePermission(currentUser, permissionCode);
+        if (caseAccessControlService.hasGlobalScope(currentUser)) {
+            return;
+        }
+        List<DocumentRelationEntity> relations = documentRelationRepository.findByDocumentIdOrderByVisualOrderAscIdAsc(documentId);
+        if (relations.isEmpty()) {
+            throw new com.tallerzapata.backend.application.common.ForbiddenException("El documento no esta vinculado a un caso accesible");
+        }
+        for (DocumentRelationEntity relation : relations) {
+            requireOpenCaseAccess(currentUser, requireCase(relation.getCaseId()), permissionCode);
+        }
+    }
+
+    private void requireOpenCaseAccess(AuthenticatedUser currentUser, CaseEntity caseEntity, String permissionCode) {
+        caseAccessControlService.requireCaseAccess(currentUser, caseEntity, permissionCode);
+        if (!caseAccessControlService.hasGlobalScope(currentUser) && caseEntity.getClosedAt() != null) {
+            throw new ConflictException("El caso esta cerrado; debe ser reabierto por un administrador para modificar documentos");
+        }
+    }
+
+    private void requireGlobalAdmin(AuthenticatedUser currentUser, String operation) {
+        if (!caseAccessControlService.hasGlobalScope(currentUser)) {
+            throw new com.tallerzapata.backend.application.common.ForbiddenException("Solo un administrador global puede " + operation);
+        }
     }
 
     private DocumentEntity buildDocumentEntity(

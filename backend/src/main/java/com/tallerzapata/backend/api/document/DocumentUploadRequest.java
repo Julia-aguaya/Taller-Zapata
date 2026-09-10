@@ -7,6 +7,7 @@ import java.time.LocalDate;
 public class DocumentUploadRequest {
 
     private MultipartFile file;
+    private Long caseId;
     private Long categoryId;
     private String subcategoryCode;
     private LocalDate documentDate;
@@ -15,6 +16,8 @@ public class DocumentUploadRequest {
 
     public MultipartFile getFile() { return file; }
     public void setFile(MultipartFile file) { this.file = file; }
+    public Long getCaseId() { return caseId; }
+    public void setCaseId(Long caseId) { this.caseId = caseId; }
     public Long getCategoryId() { return categoryId; }
     public void setCategoryId(Long categoryId) { this.categoryId = categoryId; }
     public String getSubcategoryCode() { return subcategoryCode; }

@@ -57,6 +57,7 @@ describe('DocumentsSection', () => {
     expect(uploadOptions.headers.get('Authorization')).toBe('Bearer access-token');
     expect(uploadOptions.headers.has('Content-Type')).toBe(false);
     expect(uploadOptions.body.get('documentDate')).toBe('2026-05-10');
+    expect(uploadOptions.body.get('caseId')).toBe('42');
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/documents/99/relations', expect.objectContaining({
       method: 'POST',
       headers: expect.any(Headers),

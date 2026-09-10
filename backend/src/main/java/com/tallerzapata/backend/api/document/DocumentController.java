@@ -47,7 +47,7 @@ public class DocumentController {
 
     @Operation(summary = "Subir documento", description = "Sube un nuevo documento al sistema")
     @ApiResponse(responseCode = "200", description = "OK")
-    @PreAuthorize("hasAuthority('documento.crear')")
+    @PreAuthorize("hasAuthority('documento.subir')")
     @PostMapping("/api/v1/documents")
     public DocumentResponse upload(@ModelAttribute DocumentUploadRequest request, HttpServletRequest httpRequest) {
         return documentService.upload(request, httpRequest);
@@ -63,7 +63,7 @@ public class DocumentController {
 
     @Operation(summary = "Actualizar documento", description = "Actualiza los metadatos de un documento")
     @ApiResponse(responseCode = "200", description = "OK")
-    @PreAuthorize("hasAuthority('documento.crear')")
+    @PreAuthorize("hasAuthority('documento.editar')")
     @PutMapping("/api/v1/documents/{documentId}")
     public DocumentResponse update(
             @PathVariable Long documentId,
@@ -75,7 +75,7 @@ public class DocumentController {
 
     @Operation(summary = "Crear relacion de documento", description = "Relaciona un documento con una entidad del sistema")
     @ApiResponse(responseCode = "200", description = "OK")
-    @PreAuthorize("hasAuthority('documento.crear')")
+    @PreAuthorize("hasAuthority('documento.relacionar')")
     @PostMapping("/api/v1/documents/{documentId}/relations")
     public DocumentRelationResponse createRelation(
             @PathVariable Long documentId,
@@ -87,7 +87,7 @@ public class DocumentController {
 
     @Operation(summary = "Actualizar relacion de documento", description = "Actualiza una relacion de documento existente")
     @ApiResponse(responseCode = "200", description = "OK")
-    @PreAuthorize("hasAuthority('documento.crear')")
+    @PreAuthorize("hasAuthority('documento.editar')")
     @PutMapping("/api/v1/document-relations/{relationId}")
     public DocumentRelationResponse updateRelation(
             @PathVariable Long relationId,
@@ -99,7 +99,7 @@ public class DocumentController {
 
     @Operation(summary = "Eliminar relacion de documento", description = "Elimina la relacion de un documento con una entidad, desvinculandolo del caso")
     @ApiResponse(responseCode = "200", description = "OK")
-    @PreAuthorize("hasAuthority('documento.eliminar')")
+    @PreAuthorize("hasAuthority('documento.desvincular')")
     @DeleteMapping("/api/v1/document-relations/{relationId}")
     public void deleteRelation(@PathVariable Long relationId, HttpServletRequest httpRequest) {
         documentService.deleteRelation(relationId, httpRequest);
@@ -115,7 +115,7 @@ public class DocumentController {
 
     @Operation(summary = "Reemplazar documento", description = "Reemplaza el archivo de un documento existente")
     @ApiResponse(responseCode = "200", description = "OK")
-    @PreAuthorize("hasAuthority('documento.crear')")
+    @PreAuthorize("hasAuthority('documento.reemplazar')")
     @PostMapping("/api/v1/documents/{documentId}/replace")
     public DocumentResponse replace(
             @PathVariable Long documentId,
