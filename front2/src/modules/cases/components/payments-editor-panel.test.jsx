@@ -162,6 +162,7 @@ describe('PaymentsEditorPanel', () => {
       method: 'PATCH',
       body: JSON.stringify({ expectedVersion: 0, passedToPaymentsAt: '2026-08-23' }),
     }));
+    await waitFor(() => expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '42', 'workspace'] }));
   });
 
   it('uses the full insurer agreement and suppresses franchise payment UI for GRANIZO', () => {

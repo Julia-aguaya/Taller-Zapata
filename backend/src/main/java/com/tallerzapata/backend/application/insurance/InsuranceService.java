@@ -911,7 +911,8 @@ public class InsuranceService {
                 .filter(this::isReplacementBudgetItem)
                 .map(BudgetItemEntity::getId)
                 .collect(Collectors.toSet());
-        boolean includesParts = !replacementItemIds.isEmpty();
+        boolean includesParts = !replacementItemIds.isEmpty()
+                || !casePartRepository.findByCaseIdOrderByIdAsc(caseId).isEmpty();
         CaseFranchiseEntity franchise = caseFranchiseRepository.findByCaseId(caseId).orElse(null);
         BigDecimal amountToBill = null;
         if (agreedAmount != null) {

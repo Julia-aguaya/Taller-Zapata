@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarPlus2, CarFront, Clock, Flag, ImagePlus, Lock, PackagePlus, Plus, Save, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { createRepairAppointment, createVehicleIntake, createVehicleOutcome, getOperationCatalogs, listRepairAppointments, listVehicleIntakes, listVehicleOutcomes, updateRepairAppointment } from '@/modules/cases/api/operations-api';
+import { createRepairAppointment, createVehicleIntake, createVehicleOutcome, deleteRepairAppointment, getOperationCatalogs, listRepairAppointments, listVehicleIntakes, listVehicleOutcomes, updateRepairAppointment, updateVehicleIntake } from '@/modules/cases/api/operations-api';
 import { createCasePart, deleteCasePart, getPartsCatalogs, listCaseParts, resolvePartReconciliationWarning, syncPartsFromBudget, updateCasePart } from '@/modules/cases/api/parts-api';
 import { requestJson } from '@/shared/api/http-client';
 import { useSession } from '@/modules/auth/providers/session-provider';
@@ -18,7 +18,7 @@ import { Dialog } from '@/shared/ui/dialog';
 const addBusinessDays = (startDateStr, days) => {
   if (!startDateStr || !days || days <= 0) return startDateStr || '';
   const d = new Date(startDateStr + 'T12:00:00');
-  let added = 0;
+  let added = d.getDay() !== 0 && d.getDay() !== 6 ? 1 : 0;
   while (added < days) {
     d.setDate(d.getDate() + 1);
     const dow = d.getDay();
@@ -82,7 +82,9 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const [intakeForm, setIntakeForm] = useState({ intakeAt: '', mileage: '0', hasObservations: 'NO', observationDetail: '' });
   const [egresoModal, setEgresoModal] = useState(null);
   const [egresoForm, setEgresoForm] = useState({ outcomeAt: '', definitive: 'SI', shouldReenter: 'NO', expectedReentryDate: '', estimatedReentryDays: '0', reentryStatusCode: '', repairedPhotosUploaded: 'NO', notes: '' });
-  const [pendingPartsConfirmationOpen, setPendingPartsConfirmationOpen] = useState(false);
+  const [outcomeFiles, setOutcomeFiles] = useState([]);
+  const [schedulingConfirmation, setSchedulingConfirmation] = useState(null);
+  const [appointmentToDelete, setAppointmentToDelete] = useState(null);
 
   const refreshWorkspace = async (message) => {
     await invalidateCaseProjection(queryClient, caseId);
@@ -94,20 +96,23 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const reentryStatusOptions = (operationCatalogsQuery.data?.reentryStatusCodes ?? []).map((item) => ({ value: item.code, label: item.name }));
 
   const appointmentMutation = useMutation({
-    mutationFn: (overridePendingParts = false) => {
+    mutationFn: ({ overridePendingParts = false, overrideMissingAgreement = false } = {}) => {
       if (!appointment.appointmentDate) { toast.error('Falta la fecha del turno.'); throw new Error(); }
       if (!appointment.estimatedDays || Number(appointment.estimatedDays) <= 0) { toast.error('Faltan los días estimados.'); throw new Error(); }
       if (!appointment.statusCode) { toast.error('Falta el estado del turno.'); throw new Error(); }
       return createRepairAppointment(caseId, {
         appointmentDate: appointment.appointmentDate, appointmentTime: appointment.appointmentTime,
         estimatedDays: Number.parseInt(appointment.estimatedDays || '0', 10) || 0,
-        estimatedExitDate: appointment.estimatedExitDate || null, statusCode: appointment.statusCode, reentry: appointment.reentry === 'SI', notes: appointment.notes || null, userId, overridePendingParts,
+        estimatedExitDate: appointment.estimatedExitDate || null, statusCode: appointment.statusCode, reentry: appointment.reentry === 'SI', notes: appointment.notes || null, userId, overridePendingParts, overrideMissingAgreement,
       });
     },
-    onSuccess: async () => refreshWorkspace('Turno creado y workspace actualizado.'),
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'audit'] }); await refreshWorkspace('Turno creado y workspace actualizado.'); },
     onError: (error) => {
-      if (error.httpStatus === 409 && error.message.includes('Hay repuestos pendientes de recepcion')) {
-        setPendingPartsConfirmationOpen(true);
+      if (error.httpStatus === 409 && error.message.includes('Se requiere confirmacion para agendar:')) {
+        setSchedulingConfirmation({
+          missingAgreement: error.message.includes('SIN_ACUERDO'),
+          pendingParts: error.message.includes('REPUESTOS_PENDIENTES'),
+        });
         return;
       }
       toast.error(error.message || 'No pude crear el turno.');
@@ -120,17 +125,30 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     onError: (error) => toast.error(error.message || 'No pude actualizar el turno.'),
   });
 
-  const intakeMutation = useMutation({
-    mutationFn: ({ appointmentId, intakeAt, mileage, estimatedExitDate, hasObservations, observationDetail }) => createVehicleIntake(caseId, {
-      appointmentId, vehicleId: Number(caseDetail.principalVehicleId), intakeAt,
-      receivedByUserId: userId, deliveredByPersonId: null, mileage: Number.parseInt(mileage || '0', 10) || 0,
-      fuelCode: null, estimatedExitDate: estimatedExitDate || null,
-      hasObservations: hasObservations === 'SI', observationDetail: hasObservations === 'SI' ? observationDetail || null : null,
-    }),
+  const deleteAppointmentMutation = useMutation({
+    mutationFn: deleteRepairAppointment,
     onSuccess: async () => {
-      const appt = intakeModal;
+      setAppointmentToDelete(null);
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'appointments'] });
+      await refreshWorkspace('Turno eliminado. Podés agendar una nueva fecha.');
+    },
+    onError: (error) => toast.error(error.message || 'No pude eliminar el turno.'),
+  });
+
+  const intakeMutation = useMutation({
+    mutationFn: ({ intakeId, appointmentId, intakeAt, mileage, estimatedExitDate, hasObservations, observationDetail }) => {
+      const payload = {
+        appointmentId, vehicleId: Number(caseDetail.principalVehicleId), intakeAt,
+        receivedByUserId: userId, deliveredByPersonId: null, mileage: Number.parseInt(mileage || '0', 10) || 0,
+        fuelCode: null, estimatedExitDate: estimatedExitDate || null,
+        hasObservations: hasObservations === 'SI', observationDetail: hasObservations === 'SI' ? observationDetail || null : null,
+      };
+      return intakeId ? updateVehicleIntake(intakeId, payload) : createVehicleIntake(caseId, payload);
+    },
+    onSuccess: async (_, variables) => {
+      const appt = intakeModal?.appointment;
       setIntakeModal(null);
-      if (appt) {
+      if (!variables.intakeId && appt) {
         await updateRepairAppointment(appt.id, {
           appointmentDate: appt.appointmentDate, appointmentTime: appt.appointmentTime,
           estimatedDays: appt.estimatedDays, estimatedExitDate: appt.estimatedExitDate,
@@ -139,23 +157,41 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
         });
         await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'appointments'] });
       }
-      await refreshWorkspace('Ingreso registrado. Turno actualizado a Cumplido.');
+      await refreshWorkspace(variables.intakeId ? 'Ingreso actualizado.' : 'Ingreso registrado. Turno actualizado a Cumplido.');
     },
     onError: (error) => toast.error(error.message || 'No pude registrar el ingreso.'),
   });
 
+  const uploadOutcomeFiles = async (outcomeId, files) => {
+    if (!files.length) return;
+    const catalogs = await requestJson('/documents/catalogs');
+    const categoryId = catalogs.categories?.find((category) => category.code === 'OTRO')?.id;
+    if (!categoryId) throw new Error('No está disponible la categoría documental Otro.');
+    for (const file of files) {
+      const form = new FormData();
+      form.append('file', file); form.append('categoryId', String(categoryId)); form.append('originCode', 'TALLER'); form.append('observations', file.name);
+      const document = await requestJson('/documents', { method: 'POST', body: form });
+      await requestJson(`/documents/${document.id}/relations`, { method: 'POST', body: JSON.stringify({ caseId: Number(caseId), entityType: 'EGRESO', entityId: Number(outcomeId), moduleCode: 'EGRESO_DEFINITIVO', principal: false, visibleToCustomer: false, visualOrder: 0 }) });
+    }
+  };
+
   const outcomeMutation = useMutation({
-    mutationFn: ({ intakeId, outcomeAt, definitive, shouldReenter, expectedReentryDate, estimatedReentryDays, reentryStatusCode, repairedPhotosUploaded, notes }) => createVehicleOutcome(caseId, {
-      intakeId, outcomeAt, deliveredByUserId: userId, receivedByPersonId: null,
-      definitive: definitive === 'SI', shouldReenter: shouldReenter === 'SI',
-      expectedReentryDate: shouldReenter === 'SI' ? expectedReentryDate || null : null,
-      estimatedReentryDays: shouldReenter === 'SI' ? Number.parseInt(estimatedReentryDays || '0', 10) || 0 : null,
-      reentryStatusCode: shouldReenter === 'SI' ? reentryStatusCode || null : null,
-      repairedPhotosUploaded: repairedPhotosUploaded === 'SI', notes: notes || null,
-    }),
+    mutationFn: async ({ intakeId, outcomeAt, definitive, shouldReenter, expectedReentryDate, estimatedReentryDays, reentryStatusCode, repairedPhotosUploaded, notes }) => {
+      const outcome = await createVehicleOutcome(caseId, {
+        intakeId, outcomeAt, deliveredByUserId: userId, receivedByPersonId: null,
+        definitive: definitive === 'SI', shouldReenter: shouldReenter === 'SI',
+        expectedReentryDate: shouldReenter === 'SI' ? expectedReentryDate || null : null,
+        estimatedReentryDays: shouldReenter === 'SI' ? Number.parseInt(estimatedReentryDays || '0', 10) || 0 : null,
+        reentryStatusCode: shouldReenter === 'SI' ? reentryStatusCode || null : null,
+        repairedPhotosUploaded: outcomeFiles.length > 0 || repairedPhotosUploaded === 'SI', notes: notes || null,
+      });
+      await uploadOutcomeFiles(outcome.id, outcomeFiles);
+      return outcome;
+    },
     onSuccess: async (data) => {
       const message = data?.shouldReenter ? 'Egreso registrado. Turno de reingreso creado automáticamente.' : 'Egreso registrado.';
       setEgresoModal(null);
+      setOutcomeFiles([]);
       await refreshWorkspace(message);
     },
     onError: (error) => toast.error(error.message || 'No pude registrar el egreso.'),
@@ -265,6 +301,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const appointments = appointmentsQuery.data ?? [];
   const intakes = intakesQuery.data ?? [];
   const hasIntakeFor = (appointmentId) => intakes.some((i) => i.appointmentId === appointmentId);
+  const intakeForAppointment = (appointmentId) => intakes.find((i) => i.appointmentId === appointmentId);
   const outcomes = outcomesQuery.data ?? [];
   const hasOutcomeFor = (intakeId) => outcomes.some((o) => o.intakeId === intakeId);
   const appointmentById = useMemo(() => {
@@ -357,6 +394,11 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
           }));
         }
       }
+      for (const original of parts) {
+        if (!draftParts.some((draft) => draft.id === original.id)) {
+          promises.push(deleteCasePart(caseId, original.id));
+        }
+      }
       await Promise.all(promises);
       await refreshWorkspace('Cambios guardados.');
       setEditMode(false);
@@ -374,11 +416,11 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
 
   const subTabAvailability = useMemo(() => ({
     repuestos: { enabled: true, reason: null },
-    turno: { enabled: parts.length > 0, reason: 'Primero cargá los repuestos' },
+    turno: { enabled: true, reason: null },
     ingreso: { enabled: !!latestAppointment?.id, reason: 'Primero creá un turno' },
     egreso: { enabled: !!latestIntake?.id, reason: 'Primero registrá un ingreso' },
     historial: { enabled: true, reason: null },
-  }), [latestAppointment?.id, latestIntake?.id, parts.length]);
+  }), [latestAppointment?.id, latestIntake?.id]);
 
   useEffect(() => {
     if (!subTabAvailability[subTab]?.enabled) {
@@ -404,24 +446,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     historial: false,
   }), [parts.length, appointments.length, intakes.length, outcomes.length]);
 
-  // Photos repaired
   const repairPhotoRef = useRef(null);
-  const repairPhotosUploadMutation = useMutation({
-    mutationFn: async (file) => {
-      const stored = JSON.parse(window.localStorage.getItem('front2.session.v1') || '{}');
-      const catalogs = await requestJson('/documents/catalogs');
-      const categoryId = catalogs.categories?.find((category) => category.code === 'OTRO')?.id;
-      if (!categoryId) throw new Error('No está disponible la categoría documental Otro.');
-      const form = new FormData(); form.append('file', file); form.append('categoryId', String(categoryId)); form.append('originCode', 'TALLER');
-      const r = await fetch('/api/v1/documents', { method: 'POST', headers: { Authorization: `Bearer ${stored.accessToken}` }, body: form });
-      if (!r.ok) throw new Error('Error al subir');
-      const doc = await r.json();
-      await requestJson(`/documents/${doc.id}/relations`, { method: 'POST', body: JSON.stringify({ caseId: Number(caseId), entityType: 'CASO', entityId: Number(caseId), moduleCode: 'EGRESO_DEFINITIVO', principal: false, visibleToCustomer: false, visualOrder: 0 }) });
-      return doc;
-    },
-    onSuccess: async () => { await refreshWorkspace('Foto de reparado subida.'); if (repairPhotoRef.current) repairPhotoRef.current.value = ''; },
-    onError: (error) => toast.error(error.message),
-  });
 
   return (
     <div className="mt-5 space-y-5">
@@ -676,6 +701,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                   <th className="px-3 py-3 text-left">Salida est.</th>
                   <th className="px-3 py-3 text-left">Estado</th>
                   <th className="px-3 py-3 text-left">Notas</th>
+                  <th className="px-3 py-3 text-right"><span className="sr-only">Acciones</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -695,6 +721,11 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                       </select>
                     </td>
                     <td className="px-3 py-3 text-xs text-muted-foreground max-w-[180px] truncate">{a.notes || '—'}</td>
+                    <td className="px-3 py-3 text-right">
+                      <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setAppointmentToDelete(a)} title="Eliminar turno">
+                        <Trash2 className="h-4 w-4" /><span className="sr-only">Eliminar turno</span>
+                      </Button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -743,9 +774,13 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                         {isCanceled ? (
                           <span className="text-xs text-red-500 dark:text-red-400 font-medium">Cancelado</span>
                         ) : alreadyIngested ? (
-                          <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Ingresado</span>
+                          <Button size="sm" variant="outline" onClick={() => {
+                            const intake = intakeForAppointment(a.id);
+                            setIntakeModal({ appointment: a, intake });
+                            setIntakeForm(createIntakeState(intake, caseDetail.principalVehicleId));
+                          }}>Modificar</Button>
                         ) : (
-                          <Button size="sm" variant="outline" onClick={() => { setIntakeModal(a); setIntakeForm({ intakeAt: new Date().toISOString().slice(0, 16), mileage: '0', hasObservations: 'NO', observationDetail: '' }); }}>Ingresar</Button>
+                          <Button size="sm" variant="outline" onClick={() => { setIntakeModal({ appointment: a, intake: null }); setIntakeForm({ intakeAt: new Date().toISOString().slice(0, 16), mileage: '0', hasObservations: 'NO', observationDetail: '' }); }}>Ingresar</Button>
                         )}
                       </td>
                     </tr>
@@ -758,16 +793,16 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
         {intakeModal ? (
           <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 backdrop-blur-sm py-10" onClick={() => setIntakeModal(null)}>
             <div className="w-full max-w-md rounded-3xl border border-border bg-card p-6 shadow-haze my-auto" onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-lg font-semibold">Registrar ingreso</h3>
-              <p className="mt-1 text-sm text-muted-foreground">Turno del {intakeModal.appointmentDate} — {intakeModal.appointmentTime || ''}</p>
+              <h3 className="text-lg font-semibold">{intakeModal.intake ? 'Modificar ingreso' : 'Registrar ingreso'}</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Turno del {intakeModal.appointment.appointmentDate} — {intakeModal.appointment.appointmentTime || ''}</p>
               <div className="mt-5 max-h-[60vh] overflow-y-auto space-y-4 pr-1">
                 <Field label="Fecha y hora"><Input type="datetime-local" value={intakeForm.intakeAt} onChange={(e) => setIntakeForm((f) => ({ ...f, intakeAt: e.target.value }))} /></Field>
-                <Field label="Salida estimada"><Input type="date" value={addBusinessDays(intakeForm.intakeAt?.slice(0, 10), Number(intakeModal.estimatedDays) || 0)} readOnly className="bg-muted/50 cursor-default" /></Field>
+                <Field label="Salida estimada"><Input type="date" value={addBusinessDays(intakeForm.intakeAt?.slice(0, 10), Number(intakeModal.appointment.estimatedDays) || 0)} readOnly className="bg-muted/50 cursor-default" /></Field>
                 <Field label="Kilometraje"><Input type="number" min="0" value={intakeForm.mileage} onChange={(e) => setIntakeForm((f) => ({ ...f, mileage: e.target.value }))} /></Field>
                 <Field label="Observaciones"><Select value={intakeForm.hasObservations} onChange={(e) => setIntakeForm((f) => ({ ...f, hasObservations: e.target.value }))} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
                 {intakeForm.hasObservations === 'SI' ? <Field label="Detalle"><Textarea rows={3} value={intakeForm.observationDetail} onChange={(e) => setIntakeForm((f) => ({ ...f, observationDetail: e.target.value }))} /></Field> : null}
               </div>
-              <div className="mt-5 flex gap-3"><Button variant="outline" className="flex-1" onClick={() => setIntakeModal(null)}>Cancelar</Button><Button className="flex-1" onClick={() => intakeMutation.mutate({ appointmentId: intakeModal.id, intakeAt: intakeForm.intakeAt, mileage: intakeForm.mileage, estimatedExitDate: addBusinessDays(intakeForm.intakeAt?.slice(0, 10), Number(intakeModal.estimatedDays) || 0), hasObservations: intakeForm.hasObservations, observationDetail: intakeForm.observationDetail })} disabled={intakeMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar</Button></div>
+              <div className="mt-5 flex gap-3"><Button variant="outline" className="flex-1" onClick={() => setIntakeModal(null)}>Cancelar</Button><Button className="flex-1" onClick={() => intakeMutation.mutate({ intakeId: intakeModal.intake?.id, appointmentId: intakeModal.appointment.id, intakeAt: intakeForm.intakeAt, mileage: intakeForm.mileage, estimatedExitDate: addBusinessDays(intakeForm.intakeAt?.slice(0, 10), Number(intakeModal.appointment.estimatedDays) || 0), hasObservations: intakeForm.hasObservations, observationDetail: intakeForm.observationDetail })} disabled={intakeMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar</Button></div>
             </div>
           </div>
         ) : null}
@@ -807,14 +842,14 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                       <td className="px-3 py-3 font-medium">{i.intakeAt?.slice(0, 16).replace('T', ' ')}</td>
                       <td className="px-3 py-3 text-muted-foreground">{i.estimatedExitDate || '—'}</td>
                       <td className="px-3 py-3 text-center">{i.mileage ?? '—'}</td>
-                      <td className="px-3 py-3">{i.hasObservations ? <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">Sí</span> : <span className="text-muted-foreground text-xs">—</span>}</td>
+                      <td className="px-3 py-3">{i.hasObservations ? <div className="space-y-1"><span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">Sí</span><p className="max-w-xs whitespace-pre-wrap text-xs text-muted-foreground">{i.observationDetail || 'Sin detalle'}</p></div> : <span className="text-muted-foreground text-xs">—</span>}</td>
                       <td className="px-3 py-3 text-right">
                         {isCanceled ? (
                           <span className="text-xs text-red-500 dark:text-red-400 font-medium">Cancelado</span>
                         ) : alreadyOutcome ? (
                           <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Egresado</span>
                         ) : (
-                          <Button size="sm" variant="outline" onClick={() => { setEgresoModal(i); setEgresoForm({ outcomeAt: new Date().toISOString().slice(0, 16), definitive: 'SI', shouldReenter: 'NO', expectedReentryDate: '', estimatedReentryDays: '0', reentryStatusCode: '', repairedPhotosUploaded: 'NO', notes: '' }); }}>Egresar</Button>
+                          <Button size="sm" variant="outline" onClick={() => { setEgresoModal(i); setEgresoForm({ outcomeAt: new Date().toISOString().slice(0, 16), definitive: 'SI', shouldReenter: 'NO', expectedReentryDate: '', estimatedReentryDays: '0', reentryStatusCode: '', repairedPhotosUploaded: 'NO', notes: '' }); setOutcomeFiles([]); }}>Egresar</Button>
                         )}
                       </td>
                     </tr>
@@ -834,11 +869,10 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                 <Field label="Definitivo"><Select value={egresoForm.definitive} onChange={(e) => setEgresoForm((f) => ({ ...f, definitive: e.target.value }))} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
                 <Field label="Debe reingresar"><Select value={egresoForm.shouldReenter} onChange={(e) => setEgresoForm((f) => ({ ...f, shouldReenter: e.target.value }))} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
                 {egresoForm.shouldReenter === 'SI' ? (<><Field label="Fecha reingreso"><Input type="date" value={egresoForm.expectedReentryDate} onChange={(e) => setEgresoForm((f) => ({ ...f, expectedReentryDate: e.target.value }))} /></Field><Field label="Días reingreso"><Input type="number" min="0" value={egresoForm.estimatedReentryDays} onChange={(e) => setEgresoForm((f) => ({ ...f, estimatedReentryDays: e.target.value }))} /></Field><Field label="Estado reingreso"><Select value={egresoForm.reentryStatusCode} onChange={(e) => setEgresoForm((f) => ({ ...f, reentryStatusCode: e.target.value }))} options={reentryStatusOptions.length > 0 ? reentryStatusOptions : [{ value: '', label: 'Sin definir' }]} /></Field></>) : null}
-                <Field label="Fotos reparado"><Select value={egresoForm.repairedPhotosUploaded} onChange={(e) => setEgresoForm((f) => ({ ...f, repairedPhotosUploaded: e.target.value }))} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
-                <div className="space-y-1.5"><Label>Subir foto reparado</Label><input ref={repairPhotoRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) repairPhotosUploadMutation.mutate(f); }} /><Button variant="outline" size="sm" onClick={() => repairPhotoRef.current?.click()}><ImagePlus className="mr-1.5 h-4 w-4" />Subir</Button></div>
+                <div className="space-y-1.5"><Label>Fotos o videos de reparado</Label><input ref={repairPhotoRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e) => { setOutcomeFiles(Array.from(e.target.files ?? [])); e.target.value = ''; }} /><Button variant="outline" size="sm" onClick={() => repairPhotoRef.current?.click()}><ImagePlus className="mr-1.5 h-4 w-4" />Seleccionar archivos</Button>{outcomeFiles.length > 0 ? <p className="text-xs text-muted-foreground">{outcomeFiles.length} archivo(s) se subirán al guardar el egreso.</p> : null}</div>
                 <Field label="Notas"><Textarea rows={3} value={egresoForm.notes} onChange={(e) => setEgresoForm((f) => ({ ...f, notes: e.target.value }))} /></Field>
               </div>
-              <div className="mt-5 flex gap-3"><Button variant="outline" className="flex-1" onClick={() => setEgresoModal(null)}>Cancelar</Button><Button className="flex-1" onClick={() => outcomeMutation.mutate({ intakeId: egresoModal.id, outcomeAt: egresoForm.outcomeAt, definitive: egresoForm.definitive, shouldReenter: egresoForm.shouldReenter, expectedReentryDate: egresoForm.expectedReentryDate, estimatedReentryDays: egresoForm.estimatedReentryDays, reentryStatusCode: egresoForm.reentryStatusCode, repairedPhotosUploaded: egresoForm.repairedPhotosUploaded, notes: egresoForm.notes })} disabled={outcomeMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar</Button></div>
+              <div className="mt-5 flex gap-3"><Button variant="outline" className="flex-1" onClick={() => { setEgresoModal(null); setOutcomeFiles([]); }}>Cancelar</Button><Button className="flex-1" onClick={() => outcomeMutation.mutate({ intakeId: egresoModal.id, outcomeAt: egresoForm.outcomeAt, definitive: egresoForm.definitive, shouldReenter: egresoForm.shouldReenter, expectedReentryDate: egresoForm.expectedReentryDate, estimatedReentryDays: egresoForm.estimatedReentryDays, reentryStatusCode: egresoForm.reentryStatusCode, repairedPhotosUploaded: egresoForm.repairedPhotosUploaded, notes: egresoForm.notes })} disabled={outcomeMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar</Button></div>
             </div>
           </div>
         ) : null}
@@ -858,11 +892,23 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
           </div>
         </div>
       ) : null}
-      <Dialog open={pendingPartsConfirmationOpen} onClose={() => setPendingPartsConfirmationOpen(false)} title="Hay repuestos pendientes de recibir" description="Podés agendar el turno igualmente. Confirmá para continuar con los repuestos aún pendientes.">
+      <Dialog open={Boolean(schedulingConfirmation)} onClose={() => setSchedulingConfirmation(null)} title="Confirmar agenda del turno" description={[
+        schedulingConfirmation?.missingAgreement ? 'No hay un acuerdo registrado con la compañía.' : null,
+        schedulingConfirmation?.pendingParts ? 'Hay repuestos pendientes de recibir.' : null,
+        'Podés agendar igualmente; la confirmación quedará registrada en el historial de la carpeta.',
+      ].filter(Boolean).join(' ')}>
         <div className="flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={() => setPendingPartsConfirmationOpen(false)}>Cancelar</Button>
-          <Button type="button" disabled={appointmentMutation.isPending} onClick={() => { setPendingPartsConfirmationOpen(false); appointmentMutation.mutate(true); }}>
+          <Button type="button" variant="outline" onClick={() => setSchedulingConfirmation(null)}>Cancelar</Button>
+          <Button type="button" disabled={appointmentMutation.isPending} onClick={() => { const confirmation = schedulingConfirmation; setSchedulingConfirmation(null); appointmentMutation.mutate({ overridePendingParts: confirmation?.pendingParts, overrideMissingAgreement: confirmation?.missingAgreement }); }}>
             {appointmentMutation.isPending ? 'Agendando...' : 'Confirmar y agendar'}
+          </Button>
+        </div>
+      </Dialog>
+      <Dialog open={Boolean(appointmentToDelete)} onClose={() => setAppointmentToDelete(null)} title="¿Eliminar turno?" description="El turno se eliminará para que puedas agendar una nueva fecha. No se pueden eliminar turnos con un ingreso registrado.">
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={() => setAppointmentToDelete(null)}>Cancelar</Button>
+          <Button type="button" variant="destructive" disabled={deleteAppointmentMutation.isPending} onClick={() => deleteAppointmentMutation.mutate(appointmentToDelete.id)}>
+            {deleteAppointmentMutation.isPending ? 'Eliminando...' : 'Eliminar turno'}
           </Button>
         </div>
       </Dialog>

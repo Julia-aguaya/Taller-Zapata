@@ -10,4 +10,6 @@ public interface VehicleIntakeRepository extends JpaRepository<VehicleIntakeEnti
     List<VehicleIntakeEntity> findByCaseId(Long caseId, Sort sort);
 
     boolean existsByIdAndCaseId(Long id, Long caseId);
+
+    boolean existsByAppointmentId(Long appointmentId);
 }

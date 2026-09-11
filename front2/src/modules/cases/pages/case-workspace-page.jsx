@@ -121,7 +121,7 @@ const getTaskSnapshot = (tasks = []) => {
   };
 };
 
-export const getNextStepDescriptor = ({ tabs = [], budget, widgets, particularFinanceSummary }) => {
+export const getNextStepDescriptor = ({ tabs = [], budget, widgets, particularFinanceSummary, visibleTramiteState }) => {
   const operationalTabs = getOperationalTabs(tabs);
   const fichaTab = operationalTabs.find((tab) => tab.tabCode === 'FICHA_TECNICA');
   const budgetTab = operationalTabs.find((tab) => tab.tabCode === 'PRESUPUESTO');
@@ -136,6 +136,9 @@ export const getNextStepDescriptor = ({ tabs = [], budget, widgets, particularFi
   }
   if (budget?.reportStatusCode !== 'CERRADO') {
     return { label: 'Completar y cerrar presupuesto', targetTab: 'PRESUPUESTO', actionable: Boolean(budgetTab?.allowed) };
+  }
+  if (visibleTramiteState?.code === 'PASADO_A_PAGOS' && paymentsTab?.allowed) {
+    return { label: 'Registrar o completar el pago', targetTab: 'PAGOS', actionable: true };
   }
   if (repairTab?.allowed && !repairTab.completed) {
     return { label: 'Gestionar la reparacion', targetTab: 'GESTION_REPARACION', actionable: true };
@@ -245,7 +248,7 @@ export const CaseWorkspacePage = () => {
   const completedStages = countCompletedStages(effectiveTabs);
   const taskSnapshot = getTaskSnapshot(tasksQuery.data?.items ?? []);
   const navigationHint = getHelpfulBlockingMessage(stageTabs.find((tab) => !tab.allowed && tab.blockingReasons?.length)?.blockingReasons?.[0]);
-  const nextStep = getNextStepDescriptor({ tabs: effectiveTabs, budget, widgets, particularFinanceSummary });
+  const nextStep = getNextStepDescriptor({ tabs: effectiveTabs, budget, widgets, particularFinanceSummary, visibleTramiteState: caseDetail?.visibleTramiteState });
 
   return (
     <div className="space-y-5">
@@ -548,6 +551,8 @@ const CaseHistorySection = ({ caseId }) => {
     override_estado_visible: 'Cambio manual de estado',
     crear_cotizacion: 'Se creó cotización',
     acordar_cotizacion: 'Se acordó cotización con la Cía.',
+    confirmar_turno_sin_acuerdo: 'Confirmó agendar turno sin acuerdo de compañía',
+    confirmar_turno_con_repuestos_pendientes: 'Confirmó agendar turno con repuestos pendientes',
   };
   const DOMAIN_LABELS = {
     presupuestos: 'Presupuesto',
@@ -556,6 +561,7 @@ const CaseHistorySection = ({ caseId }) => {
     repuestos_caso: 'Repuestos',
     tramite: 'Trámite',
     ficha_tecnica: 'Ficha Técnica',
+    operacion: 'Operación',
     caso: 'Caso',
   };
   const labelFor = (code) => ACTION_LABELS[code] || code?.replace(/_/g, ' ') || '';
@@ -1212,8 +1218,8 @@ const CaseDetailsPanel = ({ caseDetail, budget, particularFinanceSummary, widget
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/80">Proximo paso</p>
             <p className="mt-1 text-lg font-semibold text-foreground">{nextStep.label}</p>
           </div>
-          {nextStep.targetTab === 'PRESUPUESTO' && nextStep.actionable ? (
-            <Button type="button" onClick={() => onOpenTab('PRESUPUESTO')}>Ir a Presupuesto</Button>
+          {nextStep.targetTab && nextStep.actionable ? (
+            <Button type="button" onClick={() => onOpenTab(nextStep.targetTab)}>Ir a {nextStep.targetTab === 'PRESUPUESTO' ? 'Presupuesto' : 'Pagos'}</Button>
           ) : null}
         </div>
       </div>

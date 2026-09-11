@@ -40,7 +40,7 @@ describe('DocumentsSection', () => {
 
     expect(await screen.findByRole('option', { name: 'Presupuesto' })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Categoría'), { target: { value: '7' } });
-    fireEvent.change(screen.getByLabelText('Archivo'), { target: { files: [new File(['content'], 'presupuesto.pdf', { type: 'application/pdf' })] } });
+    fireEvent.change(screen.getByLabelText('Archivos'), { target: { files: [new File(['content'], 'presupuesto.pdf', { type: 'application/pdf' })] } });
     expect(screen.getByLabelText('Fecha del documento *')).toBeRequired();
     expect(screen.getByLabelText('Fecha del documento *').value).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(screen.getByRole('button', { name: /^subir$/i })).toBeEnabled();
@@ -86,7 +86,7 @@ describe('DocumentsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: /agregar items/i }));
     expect(await screen.findByRole('option', { name: 'Foto' })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Categoría'), { target: { value: '8' } });
-    fireEvent.change(screen.getByLabelText('Archivo'), { target: { files: [new File(['content'], 'foto.pdf', { type: 'application/pdf' })] } });
+    fireEvent.change(screen.getByLabelText('Archivos'), { target: { files: [new File(['content'], 'foto.pdf', { type: 'application/pdf' })] } });
 
     expect(screen.queryByLabelText('Fecha del documento *')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^subir$/i })).toBeEnabled();
@@ -95,6 +95,30 @@ describe('DocumentsSection', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/documents', expect.objectContaining({ method: 'POST' })));
     const [, uploadOptions] = fetchMock.mock.calls.find(([url]) => url === '/api/v1/documents');
     expect(uploadOptions.body.get('documentDate')).toBeNull();
+  });
+
+  it('uploads and relates every selected file', async () => {
+    saveStoredAuth({ accessToken: 'access-token', refreshToken: 'refresh-token' });
+    let uploadCount = 0;
+    const fetchMock = vi.fn((url, options = {}) => {
+      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [{ id: 8, name: 'Otro', requiresDate: false }] }));
+      if (url === '/api/v1/cases/42/documents') return Promise.resolve(jsonResponse([]));
+      if (url === '/api/v1/documents' && options.method === 'POST') return Promise.resolve(jsonResponse({ id: ++uploadCount }));
+      if (/\/api\/v1\/documents\/[12]\/relations/.test(url) && options.method === 'POST') return Promise.resolve(jsonResponse({ id: uploadCount }));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderSection();
+    fireEvent.click(screen.getByRole('button', { name: /agregar items/i }));
+    await screen.findByRole('option', { name: 'Otro' });
+    fireEvent.change(screen.getByLabelText('Categoría'), { target: { value: '8' } });
+    fireEvent.change(screen.getByLabelText('Archivos'), { target: { files: [new File(['a'], 'uno.pdf'), new File(['b'], 'dos.pdf')] } });
+    fireEvent.click(screen.getByRole('button', { name: /^subir$/i }));
+
+    await waitFor(() => expect(fetchMock.mock.calls.filter(([url, options]) => url === '/api/v1/documents' && options?.method === 'POST')).toHaveLength(2));
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/documents/1/relations', expect.objectContaining({ method: 'POST' }));
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/documents/2/relations', expect.objectContaining({ method: 'POST' }));
   });
 
   it('sends editable observations using the backend field name', async () => {
@@ -112,7 +136,7 @@ describe('DocumentsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: /agregar items/i }));
     expect(await screen.findByRole('option', { name: 'Foto' })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Categoría'), { target: { value: '8' } });
-    fireEvent.change(screen.getByLabelText('Archivo'), { target: { files: [new File(['content'], 'foto.pdf', { type: 'application/pdf' })] } });
+    fireEvent.change(screen.getByLabelText('Archivos'), { target: { files: [new File(['content'], 'foto.pdf', { type: 'application/pdf' })] } });
     fireEvent.change(screen.getByLabelText('Observaciones'), { target: { value: '  Archivo revisado  ' } });
     fireEvent.click(screen.getByRole('button', { name: /^subir$/i }));
 

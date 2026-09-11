@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Eye, FileDown, ImagePlus, Plus, Save, ShieldCheck, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { closeCaseBudget, createCaseBudgetItem, generateCaseBudget, updateCaseBudgetItem, upsertCaseBudget } from '@/modules/cases/api/budget-api';
+import { closeCaseBudget, generateCaseBudget, upsertCaseBudget } from '@/modules/cases/api/budget-api';
 import { BudgetComparisonPanel } from '@/modules/cases/components/budget-comparison-panel';
 import { getBudgetCatalogs } from '@/modules/cases/api/budget-catalogs-api';
 import { requestJson } from '@/shared/api/http-client';
@@ -135,11 +135,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
         const response = await generateCaseBudget(caseId, { ...payload, items: normalizedItems.map((item) => ({ visualOrder: item.visualOrder, affectedPiece: item.affectedPiece, taskCode: item.taskCode, damageLevelCode: item.damageLevelCode, partDecisionCode: item.partDecisionCode, actionCode: item.actionCode, requiresReplacement: item.requiresReplacement, partValue: toDecimal(item.partValue), estimatedHours: toDecimal(item.estimatedHours), laborAmount: toDecimal(item.laborAmount), active: item.active, providerId: item.providerId })) }, randomUuid());
         return response;
       }
-      await upsertCaseBudget(caseId, payload);
-       for (const item of normalizedItems) {
-        const p = { visualOrder: item.visualOrder, affectedPiece: item.affectedPiece, taskCode: item.taskCode, damageLevelCode: item.damageLevelCode, partDecisionCode: item.partDecisionCode, actionCode: item.actionCode, requiresReplacement: item.requiresReplacement, partValue: toDecimal(item.partValue), estimatedHours: toDecimal(item.estimatedHours), laborAmount: toDecimal(item.laborAmount), active: item.active, providerId: item.providerId };
-         if (item.id) await updateCaseBudgetItem(caseId, item.id, p); else await createCaseBudgetItem(caseId, p);
-       }
+      await upsertCaseBudget(caseId, { ...payload, items: normalizedItems.map((item) => ({ visualOrder: item.visualOrder, affectedPiece: item.affectedPiece, taskCode: item.taskCode, damageLevelCode: item.damageLevelCode, partDecisionCode: item.partDecisionCode, actionCode: item.actionCode, requiresReplacement: item.requiresReplacement, partValue: toDecimal(item.partValue), estimatedHours: toDecimal(item.estimatedHours), laborAmount: toDecimal(item.laborAmount), active: item.active, providerId: item.providerId })) });
         if (['PARTICULAR', 'TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode)) await syncPartsFromBudget(caseId);
        if (closeAfterSave) await closeCaseBudget(caseId, { reportStatusCode: 'CERRADO', observations: header.observations || null });
     },
@@ -177,19 +173,23 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
     },
   });
   const uploadMutation = useMutation({
-    mutationFn: async (file) => {
+    mutationFn: async (files) => {
       const stored = JSON.parse(window.localStorage.getItem('front2.session.v1') || '{}');
       const catalogs = await requestJson('/documents/catalogs');
       const categoryId = catalogs.categories?.find((category) => category.code === 'OTRO')?.id;
       if (!categoryId) throw new Error('No está disponible la categoría documental Otro.');
-      const form = new FormData(); form.append('file', file); form.append('categoryId', String(categoryId)); form.append('originCode', 'TALLER'); form.append('observations', file.name);
-      const r = await fetch('/api/v1/documents', { method: 'POST', headers: { Authorization: `Bearer ${stored.accessToken}` }, body: form });
-      if (!r.ok) throw new Error('Error al subir');
-      const doc = await r.json();
-      await requestJson(`/documents/${doc.id}/relations`, { method: 'POST', body: JSON.stringify({ caseId: Number(caseId), entityType: 'CASO', entityId: Number(caseId), moduleCode: 'PRESUPUESTO', principal: false, visibleToCustomer: false, visualOrder: 0 }) });
-      return doc;
+      const uploaded = [];
+      for (const file of files) {
+        const form = new FormData(); form.append('file', file); form.append('categoryId', String(categoryId)); form.append('originCode', 'TALLER'); form.append('observations', file.name);
+        const r = await fetch('/api/v1/documents', { method: 'POST', headers: { Authorization: `Bearer ${stored.accessToken}` }, body: form });
+        if (!r.ok) throw new Error(`No se pudo subir ${file.name}`);
+        const doc = await r.json();
+        await requestJson(`/documents/${doc.id}/relations`, { method: 'POST', body: JSON.stringify({ caseId: Number(caseId), entityType: 'CASO', entityId: Number(caseId), moduleCode: 'PRESUPUESTO', principal: false, visibleToCustomer: false, visualOrder: 0 }) });
+        uploaded.push(doc);
+      }
+      return uploaded;
     },
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'documents'] }); toast.success('Subido.'); },
+    onSuccess: async (uploaded) => { await queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'documents'] }); toast.success(`${uploaded.length} archivo(s) subido(s).`); },
     onError: (error) => toast.error(error.message),
   });
   const deleteDocMutation = useMutation({
@@ -339,7 +339,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
           <p className="text-sm font-semibold">Fotos y videos del vehículo</p>
           <Button variant="outline" size="sm" onClick={() => photoInputRef.current?.click()}><ImagePlus className="mr-1.5 h-4 w-4" />Agregar</Button>
         </div>
-        <input ref={photoInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadMutation.mutate(f); }} />
+        <input ref={photoInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e) => { const files = Array.from(e.target.files ?? []); if (files.length) uploadMutation.mutate(files); e.target.value = ''; }} />
         {(docsQuery.data ?? []).length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border/70 py-6 text-center text-sm text-muted-foreground">Todavía no hay archivos.</p>
         ) : (

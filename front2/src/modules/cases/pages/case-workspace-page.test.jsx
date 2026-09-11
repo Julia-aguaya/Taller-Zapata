@@ -223,6 +223,12 @@ describe('case workspace helpers', () => {
       particularFinanceSummary: { pendingBalance: 1210, customerPaid: 0 },
     };
     expect(getNextStepDescriptor(withOpenBudget).label).toBe('Completar y cerrar presupuesto');
+
+    expect(getNextStepDescriptor({
+      ...withOpenBudget,
+      budget: { reportStatusCode: 'CERRADO' },
+      visibleTramiteState: { code: 'PASADO_A_PAGOS' },
+    })).toEqual(expect.objectContaining({ label: 'Registrar o completar el pago', targetTab: 'PAGOS', actionable: true }));
   });
 
   it('no marca ficha como completa si faltan obligatorios', () => {

@@ -197,7 +197,7 @@ class CaseClosureIntegrationTest {
         // Create appointment via API
         String appt = mockMvc.perform(post("/api/v1/cases/{caseId}/appointments", caseId)
                         .header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"appointmentDate\":\"2026-01-10\",\"appointmentTime\":\"09:00\",\"estimatedDays\":2,\"statusCode\":\"PENDIENTE\",\"reentry\":false,\"userId\":1}"))
+                        .content("{\"appointmentDate\":\"2026-01-10\",\"appointmentTime\":\"09:00\",\"estimatedDays\":2,\"statusCode\":\"PENDIENTE\",\"reentry\":false,\"overrideMissingAgreement\":true,\"userId\":1}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         Long apptId = objectMapper.readTree(appt).get("id").asLong();
 

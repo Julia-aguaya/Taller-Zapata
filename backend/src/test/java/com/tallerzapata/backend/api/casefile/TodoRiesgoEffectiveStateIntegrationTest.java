@@ -290,7 +290,7 @@ class TodoRiesgoEffectiveStateIntegrationTest {
 
     private long createAppointment(long caseId, String statusCode, boolean reentry) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/v1/cases/{caseId}/appointments", caseId).header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"appointmentDate\":\"2026-08-10\",\"appointmentTime\":\"09:00:00\",\"estimatedDays\":1,\"statusCode\":\"" + statusCode + "\",\"reentry\":" + reentry + ",\"userId\":1}"))
+                        .content("{\"appointmentDate\":\"2026-08-10\",\"appointmentTime\":\"09:00:00\",\"estimatedDays\":1,\"statusCode\":\"" + statusCode + "\",\"reentry\":" + reentry + ",\"overrideMissingAgreement\":true,\"userId\":1}"))
                 .andExpect(status().isOk()).andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();
     }

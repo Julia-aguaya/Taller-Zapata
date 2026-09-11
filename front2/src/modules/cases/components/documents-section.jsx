@@ -20,7 +20,7 @@ const currentLocalDate = () => {
 export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode = null, includeHistorical = true, showCompleteAction = true, title = 'Documentación' }) => {
   const queryClient = useQueryClient();
   const [showUpload, setShowUpload] = useState(false);
-  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadFiles, setUploadFiles] = useState([]);
   const [uploadCategory, setUploadCategory] = useState('');
   const [uploadDate, setUploadDate] = useState('');
   const [uploadObservations, setUploadObservations] = useState('');
@@ -76,32 +76,24 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
-      const fd = new FormData();
-      fd.append('file', uploadFile);
-      fd.append('categoryId', uploadCategory);
-      if (requiresDate) {
-        fd.append('documentDate', uploadDate);
+      const uploaded = [];
+      for (const file of uploadFiles) {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('categoryId', uploadCategory);
+        if (requiresDate) fd.append('documentDate', uploadDate);
+        if (uploadObservations.trim()) fd.append('observations', uploadObservations.trim());
+        fd.append('originCode', 'SEED_LOCAL');
+        const document = await requestJson('/documents', { method: 'POST', body: fd });
+        await requestJson(`/documents/${document.id}/relations`, {
+          method: 'POST',
+          body: JSON.stringify({ caseId: Number(caseId), entityType: 'CASO', entityId: Number(caseId), moduleCode: moduleCode || 'OPERACION', principal: false, visibleToCustomer: false, visualOrder: 0 }),
+        });
+        uploaded.push(document);
       }
-      if (uploadObservations.trim()) {
-        fd.append('observations', uploadObservations.trim());
-      }
-      fd.append('originCode', 'SEED_LOCAL');
-      const document = await requestJson('/documents', { method: 'POST', body: fd });
-      await requestJson(`/documents/${document.id}/relations`, {
-        method: 'POST',
-        body: JSON.stringify({
-          caseId: Number(caseId),
-          entityType: 'CASO',
-          entityId: Number(caseId),
-          moduleCode: moduleCode || 'OPERACION',
-          principal: false,
-          visibleToCustomer: false,
-          visualOrder: 0,
-        }),
-      });
-      return document;
+      return uploaded;
     },
-    onSuccess: async () => { await invalidateCaseViews(); toast.success('Documento subido.'); setShowUpload(false); setUploadFile(null); setUploadDate(''); setUploadObservations(''); },
+    onSuccess: async (uploaded) => { await invalidateCaseViews(); toast.success(`${uploaded.length} documento(s) subido(s).`); setShowUpload(false); setUploadFiles([]); setUploadDate(''); setUploadObservations(''); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -144,7 +136,7 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
   };
 
   const allComplete = documents.length > 0 && documents.every(d => d.active !== false);
-  const canUpload = Boolean(uploadFile && uploadCategory && (!requiresDate || uploadDate));
+  const canUpload = Boolean(uploadFiles.length > 0 && uploadCategory && (!requiresDate || uploadDate));
 
   return (
     <div className="rounded-3xl border border-border/70 bg-card p-5">
@@ -174,8 +166,9 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
                 </select>
               </div>
                <div>
-                 <label htmlFor="document-file" className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Archivo</label>
-                 <Input id="document-file" type="file" onChange={(e) => setUploadFile(e.target.files[0])} />
+                  <label htmlFor="document-file" className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Archivos</label>
+                  <Input id="document-file" type="file" multiple onChange={(e) => setUploadFiles(Array.from(e.target.files ?? []))} />
+                  {uploadFiles.length > 0 ? <p className="mt-1 text-xs text-muted-foreground">{uploadFiles.length} archivo(s) seleccionado(s).</p> : null}
                </div>
                 {requiresDate ? (
                   <div>

@@ -295,7 +295,13 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
               <Input type="date" value={processing?.passedToPaymentsAt ?? ''}
                 onChange={async (e) => {
                   await requestJson(`/cases/${caseId}/insurance-processing`, { method: 'PATCH', body: JSON.stringify({ expectedVersion: processing?.version ?? 0, passedToPaymentsAt: e.target.value || null }) });
-                  queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] });
+                  await Promise.all([
+                    queryClient.invalidateQueries({ queryKey: ['cases'] }),
+                    queryClient.invalidateQueries({ queryKey: ['cases', String(caseId)] }),
+                    queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }),
+                    queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] }),
+                    queryClient.invalidateQueries({ queryKey: ['panel'] }),
+                  ]);
                 }} />
             </Field>
             <Field label="Fecha estimada de pago">

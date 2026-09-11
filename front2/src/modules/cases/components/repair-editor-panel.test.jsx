@@ -9,7 +9,8 @@ vi.mock('@/modules/cases/api/parts-api', () => ({
   createCasePart: vi.fn(), deleteCasePart: vi.fn(), updateCasePart: (...args) => partsApi.update(...args),
   listCaseParts: (...args) => partsApi.list(...args), syncPartsFromBudget: (...args) => partsApi.sync(...args), resolvePartReconciliationWarning: (...args) => partsApi.resolveWarning(...args), getPartsCatalogs: (...args) => partsApi.catalogs(...args),
 }));
-vi.mock('@/modules/cases/api/operations-api', () => ({ createRepairAppointment: vi.fn(), createVehicleIntake: vi.fn(), createVehicleOutcome: vi.fn(), getOperationCatalogs: vi.fn().mockResolvedValue({}), listRepairAppointments: vi.fn().mockResolvedValue([]), listVehicleIntakes: vi.fn().mockResolvedValue([]), listVehicleOutcomes: vi.fn().mockResolvedValue([]), updateRepairAppointment: vi.fn() }));
+const operationsApi = { create: vi.fn(), remove: vi.fn(), list: vi.fn().mockResolvedValue([]), intakes: vi.fn().mockResolvedValue([]), updateIntake: vi.fn() };
+vi.mock('@/modules/cases/api/operations-api', () => ({ createRepairAppointment: (...args) => operationsApi.create(...args), deleteRepairAppointment: (...args) => operationsApi.remove(...args), createVehicleIntake: vi.fn(), createVehicleOutcome: vi.fn(), getOperationCatalogs: vi.fn().mockResolvedValue({}), listRepairAppointments: (...args) => operationsApi.list(...args), listVehicleIntakes: (...args) => operationsApi.intakes(...args), listVehicleOutcomes: vi.fn().mockResolvedValue([]), updateRepairAppointment: vi.fn(), updateVehicleIntake: (...args) => operationsApi.updateIntake(...args) }));
 vi.mock('@/modules/auth/providers/session-provider', () => ({ useSession: () => ({ session: { user: { id: 1 } } }) }));
 vi.mock('@/shared/api/http-client', () => ({ requestJson: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -192,5 +193,54 @@ describe('invalidateCaseProjection', () => {
     await user.type(screen.getByLabelText('Resolución'), 'Se conserva hasta completar devolución.');
     await user.click(screen.getByRole('button', { name: 'Registrar resolución' }));
     await waitFor(() => expect(partsApi.resolveWarning).toHaveBeenCalledWith('42', 7, 11, 'Se conserva hasta completar devolución.'));
+  });
+
+  it('confirms scheduling despite pending parts and sends the override', async () => {
+    const user = userEvent.setup();
+    operationsApi.list.mockResolvedValue([]);
+    operationsApi.create.mockRejectedValueOnce(Object.assign(new Error('Se requiere confirmacion para agendar: REPUESTOS_PENDIENTES'), { httpStatus: 409 })).mockResolvedValueOnce({ id: 9 });
+    const { RepairEditorPanel } = await import('./repair-editor-panel');
+
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'PARTICULAR', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
+
+    await user.click(screen.getByRole('button', { name: /^Turno/ }));
+    await user.click(screen.getByRole('button', { name: 'Agendar' }));
+    await user.click(await screen.findByRole('button', { name: 'Confirmar y agendar' }));
+    await waitFor(() => expect(operationsApi.create).toHaveBeenLastCalledWith('42', expect.objectContaining({ overridePendingParts: true })));
+  });
+
+  it('deletes an unstarted appointment before scheduling another one', async () => {
+    const user = userEvent.setup();
+    operationsApi.list.mockResolvedValue([{ id: 9, appointmentDate: '2026-09-15', appointmentTime: '09:00', estimatedDays: 3, estimatedExitDate: '2026-09-18', statusCode: 'PENDIENTE', reentry: false, userId: 1 }]);
+    operationsApi.remove.mockResolvedValueOnce(null);
+    const { RepairEditorPanel } = await import('./repair-editor-panel');
+
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'PARTICULAR', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
+
+    await user.click(screen.getByRole('button', { name: /^Turno/ }));
+    await user.click(await screen.findByRole('button', { name: 'Eliminar turno' }));
+    await user.click(within(screen.getByRole('dialog', { name: '¿Eliminar turno?' })).getByRole('button', { name: 'Eliminar turno' }));
+    await waitFor(() => expect(operationsApi.remove.mock.calls[0][0]).toBe(9));
+  });
+
+  it('updates an existing intake and shows its observation detail', async () => {
+    const user = userEvent.setup();
+    operationsApi.list.mockResolvedValue([{ id: 9, appointmentDate: '2026-09-15', appointmentTime: '09:00', estimatedDays: 3, estimatedExitDate: '2026-09-17', statusCode: 'CUMPLIDO', reentry: false, userId: 1 }]);
+    operationsApi.intakes.mockResolvedValue([{ id: 14, appointmentId: 9, intakeAt: '2026-09-15T09:00:00', vehicleId: 4, mileage: 10, estimatedExitDate: '2026-09-17', hasObservations: true, observationDetail: 'Rayón previo en paragolpes' }]);
+    operationsApi.updateIntake.mockResolvedValue({});
+    const { RepairEditorPanel } = await import('./repair-editor-panel');
+
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'PARTICULAR', principalVehicleId: 4, visibleRepairState: {} }} latestAppointment={{ id: 9 }} latestIntake={{ id: 14 }} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
+
+    await user.click(screen.getByRole('button', { name: /^Ingreso/ }));
+    await user.click(await screen.findByRole('button', { name: 'Modificar' }));
+    const mileageInput = screen.getByDisplayValue('10');
+    await user.clear(mileageInput);
+    await user.type(mileageInput, '250');
+    await user.click(screen.getByRole('button', { name: 'Guardar' }));
+    await waitFor(() => expect(operationsApi.updateIntake).toHaveBeenCalledWith(14, expect.objectContaining({ mileage: 250, observationDetail: 'Rayón previo en paragolpes' })));
+
+    await user.click(screen.getByRole('button', { name: /^Egreso/ }));
+    expect(await screen.findByText('Rayón previo en paragolpes')).toBeInTheDocument();
   });
 });
