@@ -101,7 +101,7 @@ describe('GestionTramiteEditor', () => {
     expect(screen.getByTestId('task-agenda')).toHaveAttribute('data-branch-id', '9');
   });
 
-  it('calculates the unfavorable franchise distribution and preserves signed negative results', () => {
+  it('clamps a negative company requirement to zero without an insufficient-quotation alert', () => {
     mount({ caseTypeCode: 'CLEAS' });
 
     fireEvent.change(screen.getByLabelText('CLEAS sobre'), { target: { value: 'FRANQUICIA' } });
@@ -117,8 +117,21 @@ describe('GestionTramiteEditor', () => {
 
     fireEvent.change(screen.getByLabelText('Monto que la Cía. exige al cliente'), { target: { value: '-2500000' } });
     expect(screen.queryByLabelText('A facturar Cía.')).toBeNull();
-    expect(screen.getByRole('alert')).toHaveTextContent('El importe a facturar a la compañía es negativo. Este caso requiere revisión manual antes de continuar.');
+    expect(screen.getByLabelText('A cargo del cliente')).toHaveValue('1000000');
+    expect(screen.queryByRole('alert')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Cerrar caso' })).toBeNull();
+  });
+
+  it('shows the insufficient-quotation alert for an unfavorable franchise', () => {
+    mount({ caseTypeCode: 'CLEAS' });
+
+    fireEvent.change(screen.getByLabelText('CLEAS sobre'), { target: { value: 'FRANQUICIA' } });
+    fireEvent.change(screen.getAllByLabelText('Dictamen')[0], { target: { value: 'EN_CONTRA' } });
+    fireEvent.change(screen.getByLabelText('Monto de cotización acordada'), { target: { value: '500000' } });
+    fireEvent.change(screen.getByLabelText('Monto de franquicia'), { target: { value: '1000000' } });
+    fireEvent.change(screen.getByLabelText('¿La Cía. exige pago de franquicia?'), { target: { value: 'NO' } });
+
+    expect(screen.getByRole('alert')).toHaveTextContent('La cotización no cubre la franquicia pendiente. El importe a facturar a la compañía se ajustó a $0 y el saldo del cliente requiere revisión antes de continuar.');
   });
 
   it('forces a zero company requirement when the company does not require franchise payment', () => {
