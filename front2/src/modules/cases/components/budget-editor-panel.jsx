@@ -8,6 +8,7 @@ import { getBudgetCatalogs } from '@/modules/cases/api/budget-catalogs-api';
 import { requestJson } from '@/shared/api/http-client';
 import { randomUuid } from '@/shared/lib/uuid';
 import { useSession } from '@/modules/auth/providers/session-provider';
+import { hasGlobalAdminScope } from '@/modules/auth/lib/global-admin-scope';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Input } from '@/shared/ui/input';
@@ -42,6 +43,9 @@ const toDecimal = (v) => { const p = Number(v); return Number.isFinite(p) ? p : 
 export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, onSaved }) => {
   const queryClient = useQueryClient();
   const { session } = useSession();
+  const hasDeleteDocumentPermission = session?.authorities?.includes('documento.eliminar') ?? false;
+  const canDeleteDocuments = hasDeleteDocumentPermission && hasGlobalAdminScope(session);
+  const lacksGlobalDeleteScope = hasDeleteDocumentPermission && !hasGlobalAdminScope(session);
   const catalogsQuery = useQuery({ queryKey: ['budget', 'catalogs'], queryFn: getBudgetCatalogs });
   const taskOptions = catalogsQuery.data?.taskCodes ?? emptyOptions;
   const damageOptions = catalogsQuery.data?.damageLevelCodes ?? emptyOptions;
@@ -339,6 +343,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
           <p className="text-sm font-semibold">Fotos y videos del vehículo</p>
           <Button variant="outline" size="sm" onClick={() => photoInputRef.current?.click()}><ImagePlus className="mr-1.5 h-4 w-4" />Agregar</Button>
         </div>
+        {lacksGlobalDeleteScope ? <p role="alert" className="mb-3 text-sm text-destructive">No tenés alcance administrativo global para eliminar documentos.</p> : null}
         <input ref={photoInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadMutation.mutate(f); }} />
         {(docsQuery.data ?? []).length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border/70 py-6 text-center text-sm text-muted-foreground">Todavía no hay archivos.</p>
@@ -347,7 +352,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
             {(docsQuery.data ?? []).map((doc) => (
               <button key={doc.id} type="button" className="group relative block h-32 w-32 overflow-hidden rounded-2xl border border-border/60 bg-muted" onClick={() => setPreviewDoc(doc)}>
                 {doc.mimeType?.startsWith('image/') ? (<><img src={doc.blobUrl || ''} alt={doc.fileName} className="h-full w-full object-cover" /><div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/30 group-hover:opacity-100"><Eye className="h-6 w-6 text-white drop-shadow" /></div></>) : doc.mimeType?.startsWith('video/') ? (<div className="flex h-full w-full items-center justify-center bg-black/20"><Eye className="h-6 w-6 text-white drop-shadow" /><span className="absolute bottom-1 right-1 rounded bg-black/60 px-1 text-[9px] text-white">VIDEO</span></div>) : (<div className="flex h-full w-full flex-col items-center justify-center gap-1 text-xs text-muted-foreground"><Eye className="h-4 w-4" />{doc.extension?.toUpperCase()}</div>)}
-                <button type="button" className="absolute right-1 top-1 rounded-lg bg-black/50 p-1 text-white opacity-0 transition hover:bg-red-600 group-hover:opacity-100" onClick={(e) => { e.stopPropagation(); setDeleteConfirm(doc); }}><Trash2 className="h-3 w-3" /></button>
+                {canDeleteDocuments ? <button type="button" className="absolute right-1 top-1 rounded-lg bg-black/50 p-1 text-white opacity-0 transition hover:bg-red-600 group-hover:opacity-100" onClick={(e) => { e.stopPropagation(); setDeleteConfirm(doc); }}><Trash2 className="h-3 w-3" /></button> : null}
               </button>
             ))}
           </div>

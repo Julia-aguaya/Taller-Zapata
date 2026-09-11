@@ -8,6 +8,7 @@ import { extraBudgetQueryKey, registerExtraBudgetPayment } from '@/modules/cases
 import { requestJson } from '@/shared/api/http-client';
 import { readStoredAuth } from '@/shared/auth/session-storage';
 import { useSession } from '@/modules/auth/providers/session-provider';
+import { hasGlobalAdminScope } from '@/modules/auth/lib/global-admin-scope';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
@@ -52,7 +53,9 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const authorities = session?.authorities;
   const canCreatePayments = !authorities || authorities.includes('finanza.pago.crear');
   const canCreateReceipts = !authorities || authorities.includes('finanza.recibo.crear');
-  const canHandleExceptionalFinance = authorities?.includes('finanza.excepcional.modificar') ?? false;
+  const hasExceptionalFinancePermission = authorities?.includes('finanza.excepcional.modificar') ?? false;
+  const canHandleExceptionalFinance = hasExceptionalFinancePermission && hasGlobalAdminScope(session);
+  const lacksGlobalExceptionalFinanceScope = hasExceptionalFinancePermission && !hasGlobalAdminScope(session);
 
   const [comprobanteTipo, setComprobanteTipo] = useState('A');
   const [form, setForm] = useState({
@@ -474,6 +477,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
         <div className="flex items-center justify-between mb-4">
           <h5 className="text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Historial de movimientos</h5>
         </div>
+        {lacksGlobalExceptionalFinanceScope ? <p role="alert" className="mt-3 text-sm text-destructive">No tenés alcance administrativo global para anular pagos u operar movimientos financieros excepcionales.</p> : null}
         {(movementsQuery.data ?? []).length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border/70 py-6 text-center text-sm text-muted-foreground">Sin movimientos registrados.</p>
         ) : (
@@ -764,6 +768,10 @@ const CleasCompanyPaymentPanel = ({ caseId, receipts, onSaved }) => {
 
 const CleasInvoicePanel = ({ caseId, onSaved }) => {
   const queryClient = useQueryClient();
+  const { session } = useSession();
+  const hasExceptionalFinancePermission = session?.authorities?.includes('finanza.excepcional.modificar') ?? false;
+  const canCreateCreditNotes = hasExceptionalFinancePermission && hasGlobalAdminScope(session);
+  const lacksGlobalCreditNoteScope = hasExceptionalFinancePermission && !hasGlobalAdminScope(session);
   const summaryQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'summary'], queryFn: () => getCleasCompanyPaymentSummary(caseId) });
   const receiptsQuery = useQuery({ queryKey: ['cases', String(caseId), 'receipts'], queryFn: () => listReceipts(caseId) });
   const [form, setForm] = useState({ fiscalTypeCode: 'A', salePoint: '0001', fiscalNumber: '', receiverBusinessName: '', issuedDate: new Date().toISOString().slice(0, 10) });
@@ -824,7 +832,8 @@ const CleasInvoicePanel = ({ caseId, onSaved }) => {
       <Field label="Fecha de emisión"><Input type="date" value={form.issuedDate} onChange={(event) => setForm((current) => ({ ...current, issuedDate: event.target.value }))} /></Field>
     </div>
     <div className="mt-5"><Button type="button" disabled={!canSubmit} onClick={() => invoiceMutation.mutate()}>+ Registrar factura</Button></div>
-    {invoices.length > 0 ? <div className="mt-5 rounded-2xl border border-border/60 p-4"><p className="text-sm font-semibold">Nota de crédito parcial</p><div className="mt-3 grid gap-3 md:grid-cols-4"><Select aria-label="Factura a acreditar" value={creditForm.originalReceiptId} onChange={(event) => setCreditForm((current) => { const invoice = invoices.find((item) => String(item.id) === event.target.value); return { ...current, originalReceiptId: event.target.value, fiscalTypeCode: invoice?.fiscalTypeCode ?? current.fiscalTypeCode, salePoint: invoice?.salePoint ?? current.salePoint }; })} options={[{ value: '', label: 'Seleccionar factura...' }, ...invoices.map((invoice) => ({ value: String(invoice.id), label: `${invoice.receiptNumber} - ${formatCurrency(invoice.total)}` }))]} /><Input aria-label="Tipo fiscal nota de crédito" value={creditForm.fiscalTypeCode} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /><Input aria-label="Punto de venta nota de crédito" value={creditForm.salePoint} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /><Input aria-label="Número fiscal nota de crédito" inputMode="numeric" maxLength="8" value={creditForm.fiscalNumber} onChange={(event) => setCreditForm((current) => ({ ...current, fiscalNumber: event.target.value }))} /><Input aria-label="Monto nota de crédito" type="number" min="0" step="0.01" value={creditForm.amount} onChange={(event) => setCreditForm((current) => ({ ...current, amount: event.target.value }))} /><Input aria-label="Fecha nota de crédito" type="date" value={creditForm.issuedDate} onChange={(event) => setCreditForm((current) => ({ ...current, issuedDate: event.target.value }))} /></div><div className="mt-3"><Button type="button" variant="outline" disabled={!selectedInvoice || !hasValidFiscalIdentity(creditForm) || toAmount(creditForm.amount) <= 0 || creditMutation.isPending} onClick={() => creditMutation.mutate()}>Registrar nota de crédito</Button></div></div> : null}
+    {lacksGlobalCreditNoteScope ? <p role="alert" className="mt-3 text-sm text-destructive">No tenés alcance administrativo global para registrar notas de crédito.</p> : null}
+    {invoices.length > 0 && canCreateCreditNotes ? <div className="mt-5 rounded-2xl border border-border/60 p-4"><p className="text-sm font-semibold">Nota de crédito parcial</p><div className="mt-3 grid gap-3 md:grid-cols-4"><Select aria-label="Factura a acreditar" value={creditForm.originalReceiptId} onChange={(event) => setCreditForm((current) => { const invoice = invoices.find((item) => String(item.id) === event.target.value); return { ...current, originalReceiptId: event.target.value, fiscalTypeCode: invoice?.fiscalTypeCode ?? current.fiscalTypeCode, salePoint: invoice?.salePoint ?? current.salePoint }; })} options={[{ value: '', label: 'Seleccionar factura...' }, ...invoices.map((invoice) => ({ value: String(invoice.id), label: `${invoice.receiptNumber} - ${formatCurrency(invoice.total)}` }))]} /><Input aria-label="Tipo fiscal nota de crédito" value={creditForm.fiscalTypeCode} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /><Input aria-label="Punto de venta nota de crédito" value={creditForm.salePoint} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /><Input aria-label="Número fiscal nota de crédito" inputMode="numeric" maxLength="8" value={creditForm.fiscalNumber} onChange={(event) => setCreditForm((current) => ({ ...current, fiscalNumber: event.target.value }))} /><Input aria-label="Monto nota de crédito" type="number" min="0" step="0.01" value={creditForm.amount} onChange={(event) => setCreditForm((current) => ({ ...current, amount: event.target.value }))} /><Input aria-label="Fecha nota de crédito" type="date" value={creditForm.issuedDate} onChange={(event) => setCreditForm((current) => ({ ...current, issuedDate: event.target.value }))} /></div><div className="mt-3"><Button type="button" variant="outline" disabled={!selectedInvoice || !hasValidFiscalIdentity(creditForm) || toAmount(creditForm.amount) <= 0 || creditMutation.isPending} onClick={() => creditMutation.mutate()}>Registrar nota de crédito</Button></div></div> : null}
     <div className="mt-5">
       <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Facturas del caso</p>
        {invoices.length === 0 ? <p className="text-sm text-muted-foreground">Sin facturas registradas.</p> : <ul className="space-y-2">{invoices.map((invoice) => {

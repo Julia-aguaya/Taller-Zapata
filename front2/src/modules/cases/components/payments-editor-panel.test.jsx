@@ -23,6 +23,11 @@ const mockGetCleasFranchisePaymentSummary = vi.fn();
 const mockRegisterCleasCustomerFranchisePayment = vi.fn();
 const mockRegisterCleasCompanyFranchisePayment = vi.fn();
 let useQueryData = {};
+let session = {
+  user: { id: 1 },
+  authorities: ['finanza.pago.crear', 'finanza.recibo.crear', 'finanza.excepcional.modificar'],
+  scopes: [{ organizationId: null, branchId: null }],
+};
 
 vi.mock('@/modules/cases/api/finance-api', () => ({
   createFinancialMovement: (...a) => mockCreateFinancialMovement(...a),
@@ -59,7 +64,7 @@ vi.mock('@tanstack/react-query', () => ({
 }));
 
 vi.mock('@/modules/auth/providers/session-provider', () => ({
-  useSession: () => ({ session: { user: { id: 1 }, authorities: ['finanza.pago.crear', 'finanza.recibo.crear', 'finanza.excepcional.modificar'] } }),
+  useSession: () => ({ session }),
 }));
 
 vi.mock('@/shared/api/http-client', () => ({
@@ -117,6 +122,11 @@ describe('PaymentsEditorPanel', () => {
   // "+ Registrar pago", impidiendo que el modal genérico se abra.
   beforeEach(() => {
     useQueryData = {};
+    session = {
+      user: { id: 1 },
+      authorities: ['finanza.pago.crear', 'finanza.recibo.crear', 'finanza.excepcional.modificar'],
+      scopes: [{ organizationId: null, branchId: null }],
+    };
   });
 
   it('shows cliente and vehiculo from case detail', () => {
@@ -299,6 +309,22 @@ describe('PaymentsEditorPanel', () => {
       cancellationTypeCode: 'FRANQUICIA',
       netAmount: 40,
     })));
+  });
+
+  it('hides exceptional finance controls for an administrator permission without global scope', () => {
+    session = {
+      user: { id: 1 },
+      authorities: ['finanza.pago.crear', 'finanza.recibo.crear', 'finanza.excepcional.modificar'],
+      scopes: [{ organizationId: 1, branchId: 10, branchCode: 'Z' }],
+    };
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'financial-movements'])]: [{ id: 1, movementAt: '2026-08-24T10:00', movementTypeCode: 'INGRESO', netAmount: 100, paymentMethodCode: 'TRANSFERENCIA', cancellationTypeCode: 'PRESUPUESTO' }],
+    };
+
+    mount();
+
+    expect(screen.getByRole('alert')).toHaveTextContent('No tenés alcance administrativo global para anular pagos u operar movimientos financieros excepcionales.');
+    expect(screen.queryByRole('button', { name: 'Anular' })).not.toBeInTheDocument();
   });
 
   it('clearly shows that a TODO_RIESGO client has no payable franchise without exposing a payment action', () => {

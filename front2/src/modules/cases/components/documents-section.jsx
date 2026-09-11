@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { requestJson } from '@/shared/api/http-client';
 import { readStoredAuth } from '@/shared/auth/session-storage';
 import { useSession } from '@/modules/auth/providers/session-provider';
+import { hasGlobalAdminScope } from '@/modules/auth/lib/global-admin-scope';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Dialog } from '@/shared/ui/dialog';
@@ -23,7 +24,8 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
   const { session } = useSession();
   const authorities = session?.authorities ?? [];
   const canUploadDocuments = authorities.includes('documento.subir');
-  const canDeleteDocuments = authorities.includes('documento.eliminar');
+  const canDeleteDocuments = authorities.includes('documento.eliminar') && hasGlobalAdminScope(session);
+  const lacksGlobalDeleteScope = authorities.includes('documento.eliminar') && !hasGlobalAdminScope(session);
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadCategory, setUploadCategory] = useState('');
@@ -166,9 +168,11 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
           {showCompleteAction ? <Button size="sm" variant="outline" onClick={() => setShowCompleteDocumentation(true)}>Marcar completa</Button> : null}
           {documents.length > 0 ? <Button size="sm" variant="outline" onClick={downloadAll}><Download className="mr-1.5 h-3.5 w-3.5" />Descargar todo</Button> : null}
         </div>
-      </div>
+        </div>
 
-      {/* Upload dialog */}
+        {lacksGlobalDeleteScope ? <p role="alert" className="mt-3 text-sm text-destructive">No tenés alcance administrativo global para eliminar documentos.</p> : null}
+
+        {/* Upload dialog */}
       {showUpload ? (
         <Dialog open={showUpload} onClose={() => setShowUpload(false)} title="Subir documento">
             <div className="space-y-3">

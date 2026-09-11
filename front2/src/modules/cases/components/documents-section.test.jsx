@@ -4,10 +4,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DocumentsSection } from './documents-section';
 import { clearStoredAuth, saveStoredAuth } from '@/shared/auth/session-storage';
 
-let sessionAuthorities = ['documento.subir', 'documento.eliminar'];
+let session = {
+  authorities: ['documento.subir', 'documento.eliminar'],
+  scopes: [{ organizationId: null, branchId: null }],
+};
 
 vi.mock('@/modules/auth/providers/session-provider', () => ({
-  useSession: () => ({ session: { authorities: sessionAuthorities } }),
+  useSession: () => ({ session }),
 }));
 
 const jsonResponse = (body) => new Response(JSON.stringify(body), {
@@ -26,7 +29,10 @@ const renderSection = () => {
 
 describe('DocumentsSection', () => {
   afterEach(() => {
-    sessionAuthorities = ['documento.subir', 'documento.eliminar'];
+    session = {
+      authorities: ['documento.subir', 'documento.eliminar'],
+      scopes: [{ organizationId: null, branchId: null }],
+    };
     clearStoredAuth();
     vi.unstubAllGlobals();
   });
@@ -187,7 +193,7 @@ describe('DocumentsSection', () => {
   });
 
   it('hides destructive document actions without the matching capability', async () => {
-    sessionAuthorities = [];
+    session = { authorities: [], scopes: [] };
     const fetchMock = vi.fn((url) => {
       if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [] }));
       if (url === '/api/v1/cases/42/documents') return Promise.resolve(jsonResponse([{ relationId: 1, documentId: 12, fileName: 'foto.pdf' }]));
@@ -200,5 +206,36 @@ describe('DocumentsSection', () => {
     expect(await screen.findByRole('button', { name: /^visualizar$/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /agregar items/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^eliminar$/i })).not.toBeInTheDocument();
+  });
+
+  it('hides deletion for an administrator permission without global scope', async () => {
+    session = {
+      authorities: ['documento.subir', 'documento.eliminar'],
+      scopes: [{ organizationId: 1, branchId: 10, branchCode: 'Z' }],
+    };
+    const fetchMock = vi.fn((url) => {
+      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [] }));
+      if (url === '/api/v1/cases/42/documents') return Promise.resolve(jsonResponse([{ relationId: 1, documentId: 12, fileName: 'foto.pdf' }]));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderSection();
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('No tenés alcance administrativo global para eliminar documentos.');
+    expect(screen.queryByRole('button', { name: /^eliminar$/i })).not.toBeInTheDocument();
+  });
+
+  it('renders deletion for an administrator with global scope and permission', async () => {
+    const fetchMock = vi.fn((url) => {
+      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [] }));
+      if (url === '/api/v1/cases/42/documents') return Promise.resolve(jsonResponse([{ relationId: 1, documentId: 12, fileName: 'foto.pdf' }]));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderSection();
+
+    expect(await screen.findByRole('button', { name: /^eliminar$/i })).toBeInTheDocument();
   });
 });

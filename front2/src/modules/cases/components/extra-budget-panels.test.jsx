@@ -16,6 +16,7 @@ vi.mock('@/modules/cases/api/extra-budget-api', () => ({
 }));
 vi.mock('@/modules/cases/api/budget-catalogs-api', () => ({ getBudgetCatalogs: vi.fn() }));
 vi.mock('@/modules/cases/components/budget-comparison-panel', () => ({ BudgetComparisonPanel: ({ context }) => <div data-testid="common-comparison">Matriz común {context}</div> }));
+vi.mock('@/modules/auth/providers/session-provider', () => ({ useSession: () => ({ session: { authorities: ['finanza.excepcional.modificar'], scopes: [{ organizationId: null, branchId: null }] } }) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const draft = (overrides = {}) => ({ versionLock: 9, currentVersion: 1, currentStatus: 'BORRADOR', customerConfirmation: 'PENDIENTE', activation: { active: true, requiresDeactivationConfirmation: true }, paidAmount: 0, balance: 0, versions: [{ id: 1, number: 1, status: 'BORRADOR', generalLaborAmount: 0, generalLaborVatApplies: false, notes: '', partsTotal: 0, laborWithoutVat: 0, laborVat: 0, total: 0, items: [{ itemId: 1, visualOrder: 1, affectedPiece: 'Puerta', actionCode: 'REPARAR', damageLevelCode: 'LEVE', partsAmount: 0, active: true }] }], ...overrides });
