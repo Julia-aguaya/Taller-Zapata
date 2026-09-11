@@ -446,10 +446,11 @@ public class InsuranceService {
         requireCleasAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
         requireCleasThirdPartyAllowed(caseEntity);
-        validateCleasRequest(request);
         CaseCleasEntity entity = caseCleasRepository.findByCaseId(caseId).orElseGet(CaseCleasEntity::new);
+        String finalScopeCode = request.scopeCode() != null ? normalizedOptionalCode(request.scopeCode()) : entity.getScopeCode();
+        validateCleasRequest(request, finalScopeCode);
         entity.setCaseId(caseId);
-        entity.setScopeCode(normalizedOptionalCode(request.scopeCode()));
+        entity.setScopeCode(finalScopeCode);
         entity.setOpinionCode(normalizedOptionalCode(request.opinionCode()));
         entity.setFranchiseAmount(scale(request.franchiseAmount()));
         entity.setCustomerChargeAmount(scale(request.customerChargeAmount()));
@@ -768,10 +769,10 @@ public class InsuranceService {
         return toLegalExpenseResponse(entity);
     }
 
-    private void validateCleasRequest(CaseCleasUpsertRequest request) {
+    private void validateCleasRequest(CaseCleasUpsertRequest request, String finalScopeCode) {
         if (request.scopeCode() != null && !cleasScopeRepository.existsByCodeAndActiveTrue(normalizeCode(request.scopeCode()))) throw new ConflictException("scopeCode no permitido: " + request.scopeCode());
         if (request.opinionCode() != null && !cleasOpinionRepository.existsByCodeAndActiveTrue(normalizeCode(request.opinionCode()))) throw new ConflictException("opinionCode no permitido: " + request.opinionCode());
-        if ("FRANQUICIA".equals(normalizeCode(request.scopeCode())) && "CULPA_COMPARTIDA".equals(normalizeCode(request.opinionCode()))) throw new ConflictException("CULPA_COMPARTIDA solo aplica a CLEAS sobre DANIO_TOTAL");
+        if ("CULPA_COMPARTIDA".equals(normalizeCode(request.opinionCode())) && !"DANIO_TOTAL".equals(finalScopeCode)) throw new ConflictException("CULPA_COMPARTIDA solo aplica a CLEAS sobre DANIO_TOTAL");
         if (request.customerPaymentStatusCode() != null && !paymentStatusRepository.existsByCodeAndActiveTrue(normalizeCode(request.customerPaymentStatusCode()))) throw new ConflictException("customerPaymentStatusCode no permitido: " + request.customerPaymentStatusCode());
         if (request.companyFranchisePaymentStatusCode() != null && !paymentStatusRepository.existsByCodeAndActiveTrue(normalizeCode(request.companyFranchisePaymentStatusCode()))) throw new ConflictException("companyFranchisePaymentStatusCode no permitido: " + request.companyFranchisePaymentStatusCode());
     }

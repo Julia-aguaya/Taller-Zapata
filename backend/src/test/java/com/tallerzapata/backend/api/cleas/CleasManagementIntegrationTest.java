@@ -251,6 +251,34 @@ class CleasManagementIntegrationTest {
     }
 
     @Test
+    void shouldRejectSharedFaultOnPartialDefinitionUpdateWhenPersistedScopeIsFranchise() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scopeCode\":\"FRANQUICIA\",\"opinionCode\":\"EN_CONTRA\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"opinionCode\":\"CULPA_COMPARTIDA\"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("CULPA_COMPARTIDA solo aplica a CLEAS sobre DANIO_TOTAL"));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT alcance_codigo FROM caso_cleas WHERE caso_id = 100", String.class)).isEqualTo("FRANQUICIA");
+        assertThat(jdbcTemplate.queryForObject("SELECT dictamen_codigo FROM caso_cleas WHERE caso_id = 100", String.class)).isEqualTo("EN_CONTRA");
+    }
+
+    @Test
+    void shouldPreserveSharedFaultOnPartialDefinitionUpdateWhenPersistedScopeIsTotalDamage() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scopeCode\":\"DANIO_TOTAL\",\"opinionCode\":\"A_FAVOR\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"opinionCode\":\"CULPA_COMPARTIDA\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.scopeCode").value("DANIO_TOTAL"))
+                .andExpect(jsonPath("$.opinionCode").value("CULPA_COMPARTIDA"));
+    }
+
+    @Test
     void shouldRegisterCompanyPaymentsAgainstTheCleasAgreementAndCalculateTheSummaryOnTheBackend() throws Exception {
         mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scopeCode\":\"DANIO_TOTAL\",\"opinionCode\":\"A_FAVOR\"}"))
