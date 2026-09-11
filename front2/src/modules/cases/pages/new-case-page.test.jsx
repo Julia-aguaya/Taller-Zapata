@@ -4,11 +4,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NewCasePage, hasReferenciadorName, requiresReferenciador } from './new-case-page';
 
-const { createCase, createCaseWithReferenciador, createPerson, createVehicle, searchReferenciadores } = vi.hoisted(() => ({
+const { createCase, createCaseWithReferenciador, createPerson, createVehicle, listBranches, searchReferenciadores } = vi.hoisted(() => ({
   createCase: vi.fn(),
   createCaseWithReferenciador: vi.fn(),
   createPerson: vi.fn(),
   createVehicle: vi.fn(),
+  listBranches: vi.fn(),
   searchReferenciadores: vi.fn(),
 }));
 
@@ -26,7 +27,7 @@ vi.mock('@/modules/cases/api/new-case-api', () => ({
   getCaseCatalogs: vi.fn().mockResolvedValue({ caseTypes: [{ id: 1, name: 'Particular', code: 'PARTICULAR' }, { id: 2, name: 'Todo riesgo', code: 'TODO_RIESGO' }, { id: 3, name: 'Granizo', code: 'GRANIZO' }] }),
   getPersonVehicles: vi.fn().mockResolvedValue([]),
   getVehicleCatalogs: vi.fn().mockResolvedValue({ vehicleTypeCodes: [{ code: 'SEDAN', name: 'Sedán' }], usageCodes: [{ code: 'PARTICULAR', name: 'Particular' }], transmissionCodes: [{ code: 'MANUAL', name: 'Manual' }] }),
-  listBranches: vi.fn().mockResolvedValue([]),
+  listBranches,
   listOrganizations: vi.fn().mockResolvedValue([]),
   listVehicleBrands: vi.fn().mockResolvedValue([]),
   listVehicleModels: vi.fn().mockResolvedValue([]),
@@ -53,16 +54,19 @@ const renderPage = () => {
 
 describe('NewCasePage canonical referenciador validation', () => {
   beforeEach(() => {
+    session.scopes = [{ organizationId: 1, branchId: 2, branchCode: 'Z', branchName: 'Centro' }];
     createPerson.mockReset();
     createVehicle.mockReset();
     createCase.mockReset();
     createCaseWithReferenciador.mockReset();
     searchReferenciadores.mockReset();
+    listBranches.mockReset();
     createPerson.mockResolvedValue({ id: 31 });
     createVehicle.mockResolvedValue({ id: 41 });
     createCase.mockResolvedValue({ id: 51, folderCode: 'Z-001', caseTypeCode: 'PARTICULAR' });
     createCaseWithReferenciador.mockResolvedValue({ id: 52, folderCode: 'Z-002', caseTypeCode: 'TODO_RIESGO', referenciadorId: 91 });
     searchReferenciadores.mockResolvedValue([]);
+    listBranches.mockResolvedValue([]);
   });
 
   afterEach(() => queryClient?.clear());
@@ -77,6 +81,31 @@ describe('NewCasePage canonical referenciador validation', () => {
     expect(hasReferenciadorName('Ana Referidora')).toBe(true);
     expect(hasReferenciadorName('Ana')).toBe(true);
     expect(hasReferenciadorName('   ')).toBe(false);
+  });
+
+  it('renders Sucursal options for a global admin and submits the selected branch scope', async () => {
+    session.scopes = [{ organizationId: null, branchId: null, branchCode: null, branchName: null }];
+    listBranches.mockResolvedValue([
+      { id: 1, organizationId: 10, code: 'Z', name: 'Zapata' },
+      { id: 2, organizationId: 20, code: 'C', name: 'Centro' },
+    ]);
+    const user = userEvent.setup();
+    renderPage();
+
+    expect(screen.getByText('Sucursal')).toBeInTheDocument();
+    const branchSelect = await screen.findByRole('combobox', { name: 'Sucursal' });
+    expect(await within(branchSelect).findByRole('option', { name: 'Z - Zapata' })).toBeInTheDocument();
+    expect(within(branchSelect).getByRole('option', { name: 'C - Centro' })).toBeInTheDocument();
+    await user.selectOptions(branchSelect, '2');
+    await user.type(within(screen.getByText('Nombre').parentElement).getByRole('textbox'), 'Cliente');
+    await user.type(within(screen.getByText('Apellido').parentElement).getByRole('textbox'), 'Prueba');
+    await user.type(within(screen.getByText('Marca').parentElement).getByRole('combobox'), 'Ford');
+    await user.type(within(screen.getByText('Modelo').parentElement).getByRole('combobox'), 'Fiesta');
+    await user.type(within(screen.getByText('Dominio').parentElement).getByRole('textbox'), 'AA123BB');
+
+    await user.click(screen.getByRole('button', { name: /crear carpeta particular/i }));
+
+    expect(createCase).toHaveBeenCalledWith(expect.objectContaining({ organizationId: 20, branchId: 2 }));
   });
 
   it('creates an unmatched referenciador atomically with the folder', async () => {

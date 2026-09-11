@@ -3,9 +3,10 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { FolderOpen, FolderPlus, Search, UserPlus, Car } from 'lucide-react';
 import { toast } from 'sonner';
-import { createCase, createCaseWithReferenciador, createPerson, createVehicle, getCaseCatalogs, getPersonVehicles, getVehicleCatalogs, listBranches, listOrganizations, listVehicleBrands, listVehicleModels, searchPersons, searchVehicles } from '@/modules/cases/api/new-case-api';
+import { createCase, createCaseWithReferenciador, createPerson, createVehicle, getCaseCatalogs, getPersonVehicles, getVehicleCatalogs, listBranches, listVehicleBrands, listVehicleModels, searchPersons, searchVehicles } from '@/modules/cases/api/new-case-api';
 import { searchReferenciadores } from '@/modules/cases/api/cases-api';
 import { useSession } from '@/modules/auth/providers/session-provider';
+import { hasGlobalAdminScope } from '@/modules/auth/lib/global-admin-scope';
 import { Card } from '@/shared/ui/card';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
@@ -99,23 +100,21 @@ export const NewCasePage = () => {
     enabled: Boolean(selectedPersonId) && !selectedVehicleId,
   });
 
-  const resolvedScope = useMemo(() => {
-    const scopes = session?.scopes ?? [];
-    const uniqueOrgs = [...new Set(scopes.map((s) => s.organizationId).filter(Boolean))];
-    const uniqueOrgId = uniqueOrgs.length === 1 ? uniqueOrgs[0] : null;
-    if (!uniqueOrgId) return { organizationId: null, branchId: null, resolved: false };
-    const orgBranches = scopes.filter((s) => s.organizationId === uniqueOrgId && s.branchId);
-    const uniqueBranchId = orgBranches.length === 1 ? orgBranches[0].branchId : null;
-    return { organizationId: uniqueOrgId, branchId: uniqueBranchId, branchCode: uniqueBranchId ? orgBranches[0]?.branchCode : null, branchName: uniqueBranchId ? orgBranches[0]?.branchName : null, resolved: uniqueBranchId !== null };
+  const isGlobalAdmin = hasGlobalAdminScope(session);
+  const scopedBranches = useMemo(() => {
+    const branchesById = new Map();
+    (session?.scopes ?? []).forEach((scope) => {
+      if (scope.organizationId != null && scope.branchId != null) {
+        branchesById.set(scope.branchId, {
+          id: scope.branchId,
+          code: scope.branchCode,
+          name: scope.branchName,
+          organizationId: scope.organizationId,
+        });
+      }
+    });
+    return [...branchesById.values()];
   }, [session]);
-
-  const showOrgSelector = resolvedScope.organizationId === null;
-
-  const organizationsQuery = useQuery({
-    queryKey: ['identity', 'organizations'],
-    queryFn: listOrganizations,
-    enabled: showOrgSelector,
-  });
 
   const caseCatalogsQuery = useQuery({
     queryKey: ['cases', 'catalogs'],
@@ -143,27 +142,23 @@ export const NewCasePage = () => {
     enabled: brandsQuery.isSuccess,
   });
 
-  const organizationIdForBranches = form.organizationId || resolvedScope.organizationId || '';
   const branchesQuery = useQuery({
-    queryKey: ['identity', 'branches', organizationIdForBranches],
-    queryFn: () => listBranches(organizationIdForBranches),
-    enabled: Boolean(organizationIdForBranches) && resolvedScope.organizationId !== null && resolvedScope.branchId === null,
+    queryKey: ['identity', 'branches'],
+    queryFn: () => listBranches(),
+    enabled: isGlobalAdmin,
   });
+  const branchOptions = isGlobalAdmin ? branchesQuery.data ?? [] : scopedBranches;
 
   useEffect(() => {
-    if (resolvedScope.resolved) {
+    if (branchOptions.length === 1) {
+      const [branch] = branchOptions;
       setForm((current) => ({
         ...current,
-        organizationId: resolvedScope.organizationId,
-        branchId: resolvedScope.branchId,
-      }));
-    } else if (resolvedScope.organizationId && !resolvedScope.branchId) {
-      setForm((current) => ({
-        ...current,
-        organizationId: resolvedScope.organizationId,
+        organizationId: branch.organizationId,
+        branchId: branch.id,
       }));
     }
-  }, [resolvedScope]);
+  }, [branchOptions]);
 
   const createCaseMutation = useMutation({
     mutationFn: async () => {
@@ -286,8 +281,7 @@ export const NewCasePage = () => {
     event.preventDefault();
 
     const fieldErrors = {};
-    if (showOrgSelector && !form.organizationId) fieldErrors.organizacion = 'Seleccioná una organización';
-    if (resolvedScope.organizationId && resolvedScope.branchId === null && !form.branchId) fieldErrors.sucursal = 'Seleccioná una sucursal';
+    if (!form.branchId) fieldErrors.sucursal = 'Seleccioná una sucursal';
     if (!selectedPersonId) {
       if (!form.person.nombre?.trim()) fieldErrors.personNombre = 'El nombre es obligatorio';
       if (!form.person.apellido?.trim()) fieldErrors.personApellido = 'El apellido es obligatorio';
@@ -325,8 +319,7 @@ export const NewCasePage = () => {
   }, [caseTypeOptions, form.caseTypeId]);
   const blockingReasons = useMemo(() => {
     const reasons = [];
-    if (showOrgSelector && !form.organizationId) reasons.push('Falta seleccionar la organización');
-    if (resolvedScope.organizationId && resolvedScope.branchId === null && !form.branchId) reasons.push('Falta seleccionar la sucursal');
+    if (!form.branchId) reasons.push('Falta seleccionar la sucursal');
     if (!selectedPersonId) {
       if (!form.person.nombre?.trim()) reasons.push('Falta el nombre del cliente');
       if (!form.person.apellido?.trim()) reasons.push('Falta el apellido del cliente');
@@ -338,7 +331,7 @@ export const NewCasePage = () => {
     }
     if (requiresReferenciador(form.referenced, selectedReferenciadorId) && !hasReferenciadorName(referenciadorSearch)) reasons.push('Falta seleccionar o ingresar el nombre del referenciador');
     return reasons;
-  }, [form, selectedPersonId, selectedVehicleId, showOrgSelector, resolvedScope]);
+  }, [form, selectedPersonId, selectedVehicleId]);
 
   return (
     <div className="space-y-5">
@@ -370,35 +363,27 @@ export const NewCasePage = () => {
               </Select>
             </Field>
 
-            {showOrgSelector ? (
-              <Field label="Organizacion">
-                <Select className={errors.organizacion ? 'border-destructive ring-1 ring-destructive' : ''} value={String(form.organizationId)} onChange={(event) => setForm((current) => ({ ...current, organizationId: event.target.value, branchId: '' }))}>
-                  <option value="">Seleccionar</option>
-                  {(organizationsQuery.data ?? []).map((organization) => (
-                    <option key={organization.id} value={organization.id}>{organization.name}</option>
-                  ))}
-                </Select>
-                {errors.organizacion ? <p className="mt-1 text-xs text-destructive">{errors.organizacion}</p> : null}
-              </Field>
-            ) : null}
-
-            {resolvedScope.resolved ? (
-              <Field label="Scope">
-                <div className="flex h-12 items-center rounded-2xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-medium text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
-                  {resolvedScope.branchCode || 'Sucursal'} — {resolvedScope.branchName || ''}
-                </div>
-              </Field>
-            ) : resolvedScope.organizationId && resolvedScope.branchId === null ? (
-              <Field label="Sucursal">
-                <Select className={errors.sucursal ? 'border-destructive ring-1 ring-destructive' : ''} value={String(form.branchId)} onChange={(event) => setForm((current) => ({ ...current, branchId: event.target.value }))}>
-                  <option value="">Seleccionar</option>
-                  {(branchesQuery.data ?? []).map((branch) => (
-                    <option key={branch.id} value={branch.id}>{branch.code} - {branch.name}</option>
-                  ))}
-                </Select>
-                {errors.sucursal ? <p className="mt-1 text-xs text-destructive">{errors.sucursal}</p> : null}
-              </Field>
-            ) : null}
+            <Field label="Sucursal">
+              <Select
+                className={errors.sucursal ? 'border-destructive ring-1 ring-destructive' : ''}
+                aria-label="Sucursal"
+                value={String(form.branchId)}
+                onChange={(event) => {
+                  const branch = branchOptions.find((option) => String(option.id) === event.target.value);
+                  setForm((current) => ({
+                    ...current,
+                    organizationId: branch?.organizationId ?? '',
+                    branchId: event.target.value,
+                  }));
+                }}
+              >
+                <option value="">Seleccionar</option>
+                {branchOptions.map((branch) => (
+                  <option key={branch.id} value={branch.id}>{branch.code} - {branch.name}</option>
+                ))}
+              </Select>
+              {errors.sucursal ? <p className="mt-1 text-xs text-destructive">{errors.sucursal}</p> : null}
+            </Field>
 
             <Field label="Referenciado">
               <Select value={form.referenced} onChange={(event) => setForm((current) => ({ ...current, referenced: event.target.value }))}>
