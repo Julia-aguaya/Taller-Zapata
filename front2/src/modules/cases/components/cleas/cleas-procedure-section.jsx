@@ -15,6 +15,7 @@ import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Select } from "@/shared/ui/select";
+import { deriveUnfavorableFranchiseSettlement } from "./cleas-franchise-settlement";
 
 const processingFields = [
   "presentedAt",
@@ -131,7 +132,7 @@ export const CleasProcedureSection = ({
           cleasFranchiseDistribution.franchiseAmount,
         ),
         customerChargeAmount: isUnfavorableFranchise
-          ? agreedAmount - amountToBill
+          ? unfavorableFranchiseSettlement.customerChargeAmount
           : null,
         customerPaymentStatusCode:
           cleasFranchiseDistribution.companyPaymentStatus || null,
@@ -196,15 +197,16 @@ export const CleasProcedureSection = ({
     onError: (error) =>
       toast.error(error.message || "No se pudo desvincular la orden."),
   });
-  const agreedAmount = Number(cleasAgreedAmount || form.agreedAmount) || 0;
+  const agreedAmount = cleasAgreedAmount ?? form.agreedAmount;
   const isUnfavorableFranchise =
     cleasOver === "franchise" && opinion === "unfavorable";
-  const franchiseAmount =
-    Number(cleasFranchiseDistribution.franchiseAmount) || 0;
-  const companyRequiredAmount =
-    Number(cleasFranchiseDistribution.companyRequiredAmount) || 0;
+  const unfavorableFranchiseSettlement = deriveUnfavorableFranchiseSettlement({
+    agreedQuote: agreedAmount,
+    franchise: cleasFranchiseDistribution.franchiseAmount,
+    amountRequiredByCompany: cleasFranchiseDistribution.companyRequiredAmount,
+  });
   const amountToBill = isUnfavorableFranchise
-    ? agreedAmount - (franchiseAmount - companyRequiredAmount)
+    ? unfavorableFranchiseSettlement.amountToBillCompany
     : agreedAmount;
   const setField = (field) => (event) => {
     setForm((current) => ({ ...current, [field]: event.target.value }));
@@ -412,15 +414,16 @@ export const CleasProcedureSection = ({
                 />
               </Field>
               <Field label="A cargo del cliente">
-                <Input value={agreedAmount - amountToBill} readOnly />
+                <Input value={unfavorableFranchiseSettlement.customerChargeAmount} readOnly />
               </Field>
-              {amountToBill < 0 ? (
+              {unfavorableFranchiseSettlement.quotationInsufficient ? (
                 <p
                   role="alert"
                   className="md:col-span-2 text-xs text-destructive"
                 >
-                  El importe a facturar a la compañía es negativo. Este caso
-                  requiere revisión manual antes de continuar.
+                  La cotización no cubre la franquicia pendiente. El importe a
+                  facturar a la compañía se ajustó a $0 y el saldo del cliente
+                  requiere revisión antes de continuar.
                 </p>
               ) : null}
             </>

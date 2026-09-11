@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildCleasProcessingPatch, CleasProcedureSection } from './cleas-procedure-section';
+import { deriveUnfavorableFranchiseSettlement } from './cleas-franchise-settlement';
 
 let processing;
 const saveCleasProcessing = vi.fn();
@@ -69,5 +70,23 @@ describe('CleasProcedureSection manual operational fields', () => {
     render(<CleasProcedureSection caseId="42" cleasOver="damage" opinion="unfavorable" cleasAgreedAmount="1250" />);
 
     expect(screen.getByLabelText('A facturar Cía.')).toHaveValue('1250');
+  });
+
+  it('treats null and zero company requirements as no company requirement', () => {
+    expect(deriveUnfavorableFranchiseSettlement({ agreedQuote: 2000, franchise: 1000, amountRequiredByCompany: null })).toMatchObject({ amountToBillCompany: 1000, customerChargeAmount: 1000 });
+    expect(deriveUnfavorableFranchiseSettlement({ agreedQuote: 2000, franchise: 1000, amountRequiredByCompany: 0 })).toMatchObject({ amountToBillCompany: 1000, customerChargeAmount: 1000 });
+  });
+
+  it('derives partial and total company requirements using the canonical formula', () => {
+    expect(deriveUnfavorableFranchiseSettlement({ agreedQuote: 2000, franchise: 1000, amountRequiredByCompany: 500 })).toMatchObject({ amountToBillCompany: 1500, customerChargeAmount: 500 });
+    expect(deriveUnfavorableFranchiseSettlement({ agreedQuote: 2000, franchise: 1000, amountRequiredByCompany: 1000 })).toMatchObject({ amountToBillCompany: 2000, customerChargeAmount: 0 });
+  });
+
+  it('clamps an insufficient quotation and keeps company billing hidden in adverse franchise processing', () => {
+    render(<CleasProcedureSection caseId="42" cleasOver="franchise" opinion="unfavorable" cleasAgreedAmount="600" cleasFranchiseDistribution={{ franchiseAmount: '1000', companyRequiredAmount: '0' }} />);
+
+    expect(screen.queryByLabelText('A facturar Cía.')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('A cargo del cliente')).toHaveValue('600');
+    expect(screen.getByRole('alert')).toHaveTextContent('La cotización no cubre la franquicia pendiente');
   });
 });

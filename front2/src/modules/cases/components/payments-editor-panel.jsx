@@ -14,6 +14,7 @@ import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
 import { Dialog } from '@/shared/ui/dialog';
 import { Card } from '@/shared/ui/card';
+import { deriveUnfavorableFranchiseSettlement } from '@/modules/cases/components/cleas/cleas-franchise-settlement';
 
 const toAmount = (value) => {
   const parsed = Number(value);
@@ -119,12 +120,13 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
     onError: (error) => toast.error(error.message || 'No pude actualizar el pago a la compañía.'),
   });
   const cleasNumberDisplay = nroCleas?.trim() ? nroCleas : 'Sin número de CLEAS cargado';
-  const franchiseAmount = toAmount(cleasFranchiseDistribution?.franchiseAmount);
-  const companyRequiredAmount = toAmount(cleasFranchiseDistribution?.companyRequiredAmount);
-  const cleasAmountToBill = isUnfavorableFranchise
-    ? toAmount(cleasAgreedAmount) - (franchiseAmount - companyRequiredAmount)
-    : cleasAgreedAmount || '';
-  const franchiseClientAmount = toAmount(franchiseSummaryQuery.data?.customerPendingAmount);
+  const unfavorableFranchiseSettlement = deriveUnfavorableFranchiseSettlement({
+    agreedQuote: cleasAgreedAmount,
+    franchise: cleasFranchiseDistribution?.franchiseAmount,
+    amountRequiredByCompany: cleasFranchiseDistribution?.companyRequiredAmount,
+  });
+  const cleasAmountToBill = unfavorableFranchiseSettlement.amountToBillCompany;
+  const franchiseClientAmount = Math.max(0, toAmount(franchiseSummaryQuery.data?.customerPendingAmount));
   const requestedClientPayment = clientPaymentRequest ?? localClientPaymentRequest;
   const activeClientPaymentRequest = (isGranizo || isFavorableFranchise) && requestedClientPayment?.concept === 'FRANQUICIA' ? null : requestedClientPayment;
 
@@ -350,10 +352,11 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
             <h4 className="text-lg font-semibold">Pago de franquicia a cargo del cliente</h4>
            <p className="mt-1 text-sm text-muted-foreground">Liquidación canónica de franquicia adversa.</p>
             <div className="mt-4 grid gap-4 md:grid-cols-3">
-              <MiniCard label="A facturar Cía." value={formatCurrency(franchiseSummaryQuery.data.amountToBillCompany)} highlight />
+              <MiniCard label="A facturar Cía." value={formatCurrency(cleasAmountToBill)} highlight />
               <MiniCard label="Franquicia exigida por Cía." value={formatCurrency(franchiseSummaryQuery.data.companyRequiredAmount)} />
               <MiniCard label="Pendiente de franquicia" value={formatCurrency(franchiseClientAmount)} highlight />
             </div>
+            {unfavorableFranchiseSettlement.quotationInsufficient ? <p role="alert" className="mt-3 text-sm text-destructive">La cotización no cubre la franquicia pendiente. El importe a facturar a la compañía se ajustó a $0 y el saldo del cliente requiere revisión antes de continuar.</p> : null}
             <div className="mt-4 flex flex-wrap items-center gap-3">
               {franchiseClientAmount > 0 ? <Button type="button" data-testid="cleas-customer-franchise-payment" onClick={() => setLocalClientPaymentRequest({ concept: 'FRANQUICIA', amount: String(franchiseClientAmount) })}>+ Registrar pago al taller</Button> : null}
                <Select aria-label="Estado pago a compañía" value={franchiseCompanyPayment.statusCode} onChange={(event) => setFranchiseCompanyPayment((current) => ({ ...current, statusCode: event.target.value }))} options={[{ value: 'PENDIENTE', label: 'Pendiente' }, { value: 'COBRADO', label: 'Cobrado' }, { value: 'NO_APLICA', label: 'No aplica' }]} />
