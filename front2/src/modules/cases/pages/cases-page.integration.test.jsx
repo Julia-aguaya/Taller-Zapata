@@ -236,7 +236,7 @@ describe('CasesPage integration', () => {
     await user.selectOptions(screen.getByLabelText('Sucursal'), '2');
     await user.click(screen.getByRole('button', { name: 'Aplicar filtros' }));
 
-    expect(listCases).toHaveBeenLastCalledWith({ size: 200, branchId: 2 });
+    await waitFor(() => expect(listCases).toHaveBeenLastCalledWith({ size: 200, branchId: 2 }));
     expect(screen.queryByText('Cargando carpetas...')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Filtros avanzados · 1' })).toBeInTheDocument();
 
@@ -258,7 +258,7 @@ describe('CasesPage integration', () => {
     await user.selectOptions(screen.getByLabelText('Sucursal'), '1');
     await user.click(screen.getByRole('button', { name: 'Aplicar filtros' }));
 
-    expect(listCases).toHaveBeenLastCalledWith({ size: 200, branchId: 1 });
+    await waitFor(() => expect(listCases).toHaveBeenLastCalledWith({ size: 200, branchId: 1 }));
 
     setMainCasesState({ branchId: 1 }, {
       isLoading: false,
