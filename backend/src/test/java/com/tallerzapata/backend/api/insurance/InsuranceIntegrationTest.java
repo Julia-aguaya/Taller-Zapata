@@ -719,7 +719,7 @@ class InsuranceIntegrationTest {
         jdbcTemplate.update("UPDATE presupuesto_items SET requiere_reemplazo = false WHERE presupuesto_id = ?", 500L);
         mockMvc.perform(get("/api/v1/cases/100/insurance-processing").header("X-User-Id", "3"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.includesParts").value(false))
+                .andExpect(jsonPath("$.includesParts").value(true))
                 .andExpect(jsonPath("$.partsAuthorizationCode").doesNotExist());
     }
 

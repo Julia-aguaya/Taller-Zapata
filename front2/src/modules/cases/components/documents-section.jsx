@@ -4,8 +4,6 @@ import { toast } from 'sonner';
 import { useState } from 'react';
 import { requestJson } from '@/shared/api/http-client';
 import { readStoredAuth } from '@/shared/auth/session-storage';
-import { useSession } from '@/modules/auth/providers/session-provider';
-import { hasGlobalAdminScope } from '@/modules/auth/lib/global-admin-scope';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Dialog } from '@/shared/ui/dialog';
@@ -21,13 +19,8 @@ const currentLocalDate = () => {
 
 export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode = null, includeHistorical = true, showCompleteAction = true, title = 'Documentación' }) => {
   const queryClient = useQueryClient();
-  const { session } = useSession();
-  const authorities = session?.authorities ?? [];
-  const canUploadDocuments = authorities.includes('documento.subir');
-  const canDeleteDocuments = authorities.includes('documento.eliminar') && hasGlobalAdminScope(session);
-  const lacksGlobalDeleteScope = authorities.includes('documento.eliminar') && !hasGlobalAdminScope(session);
   const [showUpload, setShowUpload] = useState(false);
-  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadFiles, setUploadFiles] = useState([]);
   const [uploadCategory, setUploadCategory] = useState('');
   const [uploadDate, setUploadDate] = useState('');
   const [uploadObservations, setUploadObservations] = useState('');
@@ -83,33 +76,24 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
-      const fd = new FormData();
-      fd.append('file', uploadFile);
-      fd.append('caseId', String(caseId));
-      fd.append('categoryId', uploadCategory);
-      if (requiresDate) {
-        fd.append('documentDate', uploadDate);
+      const uploaded = [];
+      for (const file of uploadFiles) {
+        const fd = new FormData();
+        fd.append('file', file);
+        fd.append('categoryId', uploadCategory);
+        if (requiresDate) fd.append('documentDate', uploadDate);
+        if (uploadObservations.trim()) fd.append('observations', uploadObservations.trim());
+        fd.append('originCode', 'SEED_LOCAL');
+        const document = await requestJson('/documents', { method: 'POST', body: fd });
+        await requestJson(`/documents/${document.id}/relations`, {
+          method: 'POST',
+          body: JSON.stringify({ caseId: Number(caseId), entityType: 'CASO', entityId: Number(caseId), moduleCode: moduleCode || 'OPERACION', principal: false, visibleToCustomer: false, visualOrder: 0 }),
+        });
+        uploaded.push(document);
       }
-      if (uploadObservations.trim()) {
-        fd.append('observations', uploadObservations.trim());
-      }
-      fd.append('originCode', 'SEED_LOCAL');
-      const document = await requestJson('/documents', { method: 'POST', body: fd });
-      await requestJson(`/documents/${document.id}/relations`, {
-        method: 'POST',
-        body: JSON.stringify({
-          caseId: Number(caseId),
-          entityType: 'CASO',
-          entityId: Number(caseId),
-          moduleCode: moduleCode || 'OPERACION',
-          principal: false,
-          visibleToCustomer: false,
-          visualOrder: 0,
-        }),
-      });
-      return document;
+      return uploaded;
     },
-    onSuccess: async () => { await invalidateCaseViews(); toast.success('Documento subido.'); setShowUpload(false); setUploadFile(null); setUploadDate(''); setUploadObservations(''); },
+    onSuccess: async (uploaded) => { await invalidateCaseViews(); toast.success(`${uploaded.length} documento(s) subido(s).`); setShowUpload(false); setUploadFiles([]); setUploadDate(''); setUploadObservations(''); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -152,7 +136,7 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
   };
 
   const allComplete = documents.length > 0 && documents.every(d => d.active !== false);
-  const canUpload = Boolean(uploadFile && uploadCategory && (!requiresDate || uploadDate));
+  const canUpload = Boolean(uploadFiles.length > 0 && uploadCategory && (!requiresDate || uploadDate));
 
   return (
     <div className="rounded-3xl border border-border/70 bg-card p-5">
@@ -164,15 +148,13 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
           <h4 className="text-sm font-semibold">{title}</h4>
         </div>
         <div className="flex gap-2">
-          {canUploadDocuments ? <Button size="sm" variant="outline" onClick={() => setShowUpload(true)}><Plus className="mr-1.5 h-3.5 w-3.5" />Agregar items</Button> : null}
+          <Button size="sm" variant="outline" onClick={() => setShowUpload(true)}><Plus className="mr-1.5 h-3.5 w-3.5" />Agregar items</Button>
           {showCompleteAction ? <Button size="sm" variant="outline" onClick={() => setShowCompleteDocumentation(true)}>Marcar completa</Button> : null}
           {documents.length > 0 ? <Button size="sm" variant="outline" onClick={downloadAll}><Download className="mr-1.5 h-3.5 w-3.5" />Descargar todo</Button> : null}
         </div>
-        </div>
+      </div>
 
-        {lacksGlobalDeleteScope ? <p role="alert" className="mt-3 text-sm text-destructive">No tenés alcance administrativo global para eliminar documentos.</p> : null}
-
-        {/* Upload dialog */}
+      {/* Upload dialog */}
       {showUpload ? (
         <Dialog open={showUpload} onClose={() => setShowUpload(false)} title="Subir documento">
             <div className="space-y-3">
@@ -184,8 +166,9 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
                 </select>
               </div>
                <div>
-                 <label htmlFor="document-file" className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Archivo</label>
-                 <Input id="document-file" type="file" onChange={(e) => setUploadFile(e.target.files[0])} />
+                  <label htmlFor="document-file" className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Archivos</label>
+                  <Input id="document-file" type="file" multiple onChange={(e) => setUploadFiles(Array.from(e.target.files ?? []))} />
+                  {uploadFiles.length > 0 ? <p className="mt-1 text-xs text-muted-foreground">{uploadFiles.length} archivo(s) seleccionado(s).</p> : null}
                </div>
                 {requiresDate ? (
                   <div>
@@ -230,7 +213,7 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
                        {cleasOrderPicker && categories.find((category) => category.id === doc.categoryId)?.code === 'ORDEN_CLEAS' ? <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => linkCleasOrderMutation.mutate(doc.documentId)} disabled={linkCleasOrderMutation.isPending}><Plus className="mr-1.5 h-3.5 w-3.5" />Vincular orden</Button> : null}
                        <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => handleView(doc)}><Eye className="mr-1.5 h-3.5 w-3.5" />Visualizar</Button>
                       <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => handleDownload(doc)}><Download className="mr-1.5 h-3.5 w-3.5" />Descargar</Button>
-                        {canDeleteDocuments ? <Button variant="ghost" size="sm" className="h-8 px-2 text-destructive" onClick={() => setDocumentToDelete(doc)} disabled={deleteMutation.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Eliminar</Button> : null}
+                       <Button variant="ghost" size="sm" className="h-8 px-2 text-destructive" onClick={() => setDocumentToDelete(doc)} disabled={deleteMutation.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Eliminar</Button>
                     </div>
                   </td>
                 </tr>

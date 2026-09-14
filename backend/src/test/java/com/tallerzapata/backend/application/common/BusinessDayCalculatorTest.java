@@ -12,17 +12,17 @@ class BusinessDayCalculatorTest {
     private final BusinessDayCalculator calculator = new BusinessDayCalculator();
 
     @Test
-    void shouldAddOneBusinessDayFromMonday() {
+    void shouldCountTheStartingBusinessDay() {
         LocalDate startDate = LocalDate.of(2026, 4, 20); // Lunes
         LocalDate result = calculator.addBusinessDays(startDate, 1, List.of());
-        assertEquals(LocalDate.of(2026, 4, 21), result); // Martes
+        assertEquals(LocalDate.of(2026, 4, 20), result); // Lunes
     }
 
     @Test
     void shouldSkipWeekendFromFriday() {
         LocalDate startDate = LocalDate.of(2026, 4, 24); // Viernes
         LocalDate result = calculator.addBusinessDays(startDate, 1, List.of());
-        assertEquals(LocalDate.of(2026, 4, 27), result); // Lunes
+        assertEquals(LocalDate.of(2026, 4, 24), result); // Viernes
     }
 
     @Test
@@ -30,7 +30,7 @@ class BusinessDayCalculatorTest {
         LocalDate startDate = LocalDate.of(2026, 4, 22); // Miercoles
         LocalDate holiday = LocalDate.of(2026, 4, 23); // Jueves feriado
         LocalDate result = calculator.addBusinessDays(startDate, 3, List.of(holiday));
-        assertEquals(LocalDate.of(2026, 4, 28), result); // Martes (salta Jueves feriado, Viernes, finde)
+        assertEquals(LocalDate.of(2026, 4, 27), result); // Lunes (cuenta Miercoles; salta Jueves feriado y finde)
     }
 
     @Test
@@ -52,6 +52,6 @@ class BusinessDayCalculatorTest {
     void shouldTreatNullHolidaysAsNoHolidays() {
         LocalDate startDate = LocalDate.of(2026, 4, 20); // Lunes
         LocalDate result = calculator.addBusinessDays(startDate, 1, null);
-        assertEquals(LocalDate.of(2026, 4, 21), result); // Martes
+        assertEquals(LocalDate.of(2026, 4, 20), result); // Lunes
     }
 }

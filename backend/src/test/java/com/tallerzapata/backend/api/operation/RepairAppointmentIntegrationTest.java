@@ -57,7 +57,8 @@ class RepairAppointmentIntegrationTest {
                 false,
                 "Recepcion inicial",
                 3L,
-                null
+                null,
+                true
         );
 
         String response = mockMvc.perform(post("/api/v1/cases/100/appointments")
@@ -111,7 +112,7 @@ class RepairAppointmentIntegrationTest {
     }
 
     @Test
-    void shouldCalculateEstimatedDateSkippingHolidays() throws Exception {
+    void shouldCountAppointmentDateAsFirstBusinessDay() throws Exception {
         RepairAppointmentCreateRequest createRequest = new RepairAppointmentCreateRequest(
                 LocalDate.of(2026, 5, 20),
                 LocalTime.of(9, 0),
@@ -121,7 +122,8 @@ class RepairAppointmentIntegrationTest {
                 false,
                 "Recepcion cerca de feriado",
                 3L,
-                null
+                null,
+                true
         );
 
         mockMvc.perform(post("/api/v1/cases/100/appointments")
@@ -129,7 +131,7 @@ class RepairAppointmentIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(createRequest)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.estimatedExitDate").value("2026-05-26"));
+                .andExpect(jsonPath("$.estimatedExitDate").value("2026-05-22"));
     }
 
     private void seedCases() {

@@ -25,13 +25,13 @@ import com.tallerzapata.backend.infrastructure.persistence.operation.HolidayRepo
 import com.tallerzapata.backend.infrastructure.persistence.operation.RepairAppointmentEntity;
 import com.tallerzapata.backend.infrastructure.persistence.operation.RepairAppointmentRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.RepairAppointmentStatusRepository;
+import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleIntakeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.security.UserEntity;
 import com.tallerzapata.backend.infrastructure.persistence.security.UserRepository;
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
 import com.tallerzapata.backend.infrastructure.security.CurrentUserService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.data.domain.Sort;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,6 +61,7 @@ public class RepairAppointmentService {
     private final CaseTypeRepository caseTypeRepository;
     private final CasePartRepository casePartRepository;
     private final CleasDownstreamGate cleasDownstreamGate;
+    private final VehicleIntakeRepository vehicleIntakeRepository;
 
     public RepairAppointmentService(
             RepairAppointmentRepository repairAppointmentRepository,
@@ -78,7 +79,8 @@ public class RepairAppointmentService {
             InsuranceProcessingRepository insuranceProcessingRepository,
             CaseTypeRepository caseTypeRepository,
             CasePartRepository casePartRepository,
-            CleasDownstreamGate cleasDownstreamGate
+            CleasDownstreamGate cleasDownstreamGate,
+            VehicleIntakeRepository vehicleIntakeRepository
     ) {
         this.repairAppointmentRepository = repairAppointmentRepository;
         this.repairAppointmentStatusRepository = repairAppointmentStatusRepository;
@@ -96,6 +98,7 @@ public class RepairAppointmentService {
         this.caseTypeRepository = caseTypeRepository;
         this.casePartRepository = casePartRepository;
         this.cleasDownstreamGate = cleasDownstreamGate;
+        this.vehicleIntakeRepository = vehicleIntakeRepository;
     }
 
     @Transactional(readOnly = true)
@@ -119,33 +122,32 @@ public class RepairAppointmentService {
         caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "turno.crear");
         cleasDownstreamGate.requireAllowed(caseEntity);
 
-        // Para tramites con seguro: validar que la cotizacion este acordada
+        // Para tramites con seguro: requerir confirmacion explicita si no hay acuerdo.
         CaseTypeEntity caseType = caseTypeRepository.findById(caseEntity.getCaseTypeId()).orElse(null);
+        boolean missingAgreement = false;
         if (caseType != null && Boolean.TRUE.equals(caseType.getRequiresProcessing())) {
             InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
             boolean hasAgreement = processing != null
                     && processing.getAgreedAmount() != null
                     && processing.getQuotationDate() != null
                     && "ACEPTADA".equals(normalizeCode(processing.getQuotationStatusCode()));
-            if (!hasAgreement) {
-                boolean hasOverride = SecurityContextHolder.getContext().getAuthentication()
-                        .getAuthorities().stream()
-                        .anyMatch(a -> a.getAuthority().equals("turno.crear.sin_acuerdo"));
-                if (!hasOverride) {
-                    throw new ConflictException("Monto pendiente de acordarse con la Cia. Solicite autorizacion al administrador.");
-                }
-            }
+            missingAgreement = !hasAgreement;
         }
 
         // Validar repuestos pendientes: si hay repuestos no recibidos, advertir
         List<CasePartEntity> parts = casePartRepository.findByCaseIdOrderByIdAsc(caseId);
-        if (!parts.isEmpty()) {
-            boolean allReceived = parts.stream().allMatch(p ->
-                    "RECIBIDO".equals(normalizeCode(p.getStatusCode())) || "INSTALADO".equals(normalizeCode(p.getStatusCode()))
-            );
-            if (!allReceived && !Boolean.TRUE.equals(request.overridePendingParts())) {
-                throw new ConflictException("Hay repuestos pendientes de recepcion. Confirme para continuar.");
-            }
+        boolean hasPendingParts = !parts.isEmpty() && parts.stream().anyMatch(p ->
+                !"RECIBIDO".equals(normalizeCode(p.getStatusCode())) && !"INSTALADO".equals(normalizeCode(p.getStatusCode()))
+        );
+        List<String> requiredConfirmations = new java.util.ArrayList<>();
+        if (missingAgreement && !Boolean.TRUE.equals(request.overrideMissingAgreement())) {
+            requiredConfirmations.add("SIN_ACUERDO");
+        }
+        if (hasPendingParts && !Boolean.TRUE.equals(request.overridePendingParts())) {
+            requiredConfirmations.add("REPUESTOS_PENDIENTES");
+        }
+        if (!requiredConfirmations.isEmpty()) {
+            throw new ConflictException("Se requiere confirmacion para agendar: " + String.join(",", requiredConfirmations));
         }
 
         String statusCode = normalizeStatusCode(request.statusCode());
@@ -174,6 +176,20 @@ public class RepairAppointmentService {
                 caseAuditService.toJson(Map.of("domain", "operacion")),
                 httpRequest
         );
+        if (missingAgreement) {
+            caseAuditService.register(
+                    currentUser.id(), caseId, "turno_reparacion", entity.getId(), "confirmar_turno_sin_acuerdo",
+                    null, caseAuditService.toJson(toAuditPayload(entity)),
+                    caseAuditService.toJson(Map.of("domain", "operacion", "confirmation", "SIN_ACUERDO")), httpRequest
+            );
+        }
+        if (hasPendingParts) {
+            caseAuditService.register(
+                    currentUser.id(), caseId, "turno_reparacion", entity.getId(), "confirmar_turno_con_repuestos_pendientes",
+                    null, caseAuditService.toJson(toAuditPayload(entity)),
+                    caseAuditService.toJson(Map.of("domain", "operacion", "confirmation", "REPUESTOS_PENDIENTES")), httpRequest
+            );
+        }
 
         caseWorkflowService.syncRepairStateFromOperation(
                 caseId,
@@ -227,6 +243,35 @@ public class RepairAppointmentService {
         todoRiesgoEffectiveStateRecalculator.recalculate(entity.getCaseId());
 
         return toResponse(entity);
+    }
+
+    @Transactional
+    public void delete(Long appointmentId, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        RepairAppointmentEntity entity = repairAppointmentRepository.findById(appointmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el turno " + appointmentId));
+        CaseEntity caseEntity = requireCase(entity.getCaseId());
+        caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "turno.editar");
+        cleasDownstreamGate.requireAllowed(caseEntity);
+        if (vehicleIntakeRepository.existsByAppointmentId(appointmentId)) {
+            throw new ConflictException("No se puede eliminar un turno que ya tiene un ingreso registrado.");
+        }
+
+        Map<String, Object> before = toAuditPayload(entity);
+        repairAppointmentRepository.delete(entity);
+        caseAuditService.register(
+                currentUser.id(),
+                entity.getCaseId(),
+                "turno_reparacion",
+                appointmentId,
+                "eliminar_turno",
+                caseAuditService.toJson(before),
+                null,
+                caseAuditService.toJson(Map.of("domain", "operacion")),
+                httpRequest
+        );
+        particularEffectiveStateRecalculator.recalculate(entity.getCaseId());
+        todoRiesgoEffectiveStateRecalculator.recalculate(entity.getCaseId());
     }
 
     @Transactional

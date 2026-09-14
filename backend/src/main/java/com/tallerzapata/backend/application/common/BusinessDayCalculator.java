@@ -17,7 +17,7 @@ public class BusinessDayCalculator {
         }
         Set<LocalDate> holidaySet = holidays == null ? Set.of() : new HashSet<>(holidays);
         LocalDate result = startDate;
-        int added = 0;
+        int added = isBusinessDay(result, holidaySet) ? 1 : 0;
         while (added < days) {
             result = result.plusDays(1);
             if (isBusinessDay(result, holidaySet)) {

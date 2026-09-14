@@ -173,7 +173,7 @@ public class CaseReadinessService {
             tabs.add(tramiteTab);
             CaseReadinessTabResponse budgetTab = buildTodoRiesgoPresupuestoReadiness(caseId, principalVehicle, gestionTramiteCompleted);
             tabs.add(budgetTab);
-            tabs.add(buildTodoRiesgoReparacionReadiness(caseId, budgetTab.completed(), gestionTramiteCompleted));
+            tabs.add(buildTodoRiesgoReparacionReadiness(caseId, hasGeneratedBudget(caseId)));
             tabs.add(buildTodoRiesgoPagosReadiness(caseId));
         } else if ("GRANIZO".equals(caseType.getCode())) {
             CaseReadinessTabResponse tramiteTab = buildTodoRiesgoGestionTramiteReadiness(caseId);
@@ -181,7 +181,7 @@ public class CaseReadinessService {
             CaseReadinessTabResponse budgetTab = buildGranizoPresupuestoReadiness(
                     caseId, principalVehicle, collectInsuranceRepairBudgetAccessBlockingReasons(caseId));
             tabs.add(budgetTab);
-            tabs.add(buildTodoRiesgoReparacionReadiness(caseId, budgetTab.completed(), tramiteTab.completed()));
+            tabs.add(buildTodoRiesgoReparacionReadiness(caseId, hasGeneratedBudget(caseId)));
             tabs.add(buildInsuranceRepairPagosReadiness(caseId, false));
         } else if ("CLEAS".equals(caseType.getCode())) {
             CaseCleasEntity definition = caseCleasRepository.findByCaseId(caseId).orElse(null);
@@ -197,7 +197,7 @@ public class CaseReadinessService {
             if (enablesRepair) {
                 CaseReadinessTabResponse budgetTab = buildTramiteGatedPresupuestoReadiness(caseId, principalVehicle, tramiteTab.completed());
                 tabs.add(budgetTab);
-                tabs.add(buildTodoRiesgoReparacionReadiness(caseId, budgetTab.completed(), tramiteTab.completed()));
+                tabs.add(buildTodoRiesgoReparacionReadiness(caseId, hasGeneratedBudget(caseId)));
             }
             tabs.add(buildFranchiseRecoveryPagosReadiness(tramiteTab.completed()));
         } else if (insuranceRepairCasePolicy.isThirdPartyClaim(caseType.getCode())) {
@@ -212,7 +212,7 @@ public class CaseReadinessService {
             // la tramitacion toma sus montos desde el presupuesto, no al reves.
             CaseReadinessTabResponse budgetTab = buildBudgetCompletionReadiness(caseId, principalVehicle);
             tabs.add(budgetTab);
-            tabs.add(buildTercerosReparacionReadiness(caseId, budgetTab.completed(), legal));
+            tabs.add(buildTercerosReparacionReadiness(caseId, legal));
             if (lawyerManaged) {
                 tabs.add(buildLegalPagosReadiness(legal));
             } else {
@@ -456,7 +456,7 @@ public class CaseReadinessService {
         return toTab("PRESUPUESTO", true, blocking, List.of());
     }
 
-    private CaseReadinessTabResponse buildTodoRiesgoReparacionReadiness(Long caseId, boolean budgetCompleted, boolean tramiteCompleted) {
+    private CaseReadinessTabResponse buildTodoRiesgoReparacionReadiness(Long caseId, boolean budgetGenerated) {
         List<String> blocking = new ArrayList<>();
         InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
 
@@ -465,11 +465,8 @@ public class CaseReadinessService {
             return new CaseReadinessTabResponse("GESTION_REPARACION", true, true, "BLUE", List.of(), List.of());
         }
 
-        boolean quotationAgreed = isQuotationAgreed(processing);
-        if (!budgetCompleted || !tramiteCompleted || !quotationAgreed) {
-            if (!budgetCompleted) blocking.add("Debe cerrar el presupuesto antes de gestionar la reparacion");
-            if (!tramiteCompleted) blocking.add("Debe completar Gestion del Tramite antes de gestionar la reparacion");
-            if (!quotationAgreed) blocking.add("Falta acordar cotizacion con la Cia. antes de gestionar la reparacion");
+        if (!budgetGenerated) {
+            blocking.add("Debe generar el presupuesto antes de gestionar la reparacion");
             return toTab("GESTION_REPARACION", false, blocking, List.of());
         }
 
@@ -596,12 +593,12 @@ public class CaseReadinessService {
         );
     }
 
-    private CaseReadinessTabResponse buildTercerosReparacionReadiness(Long caseId, boolean budgetCompleted, CaseLegalEntity legal) {
+    private CaseReadinessTabResponse buildTercerosReparacionReadiness(Long caseId, CaseLegalEntity legal) {
         // "No repara vehiculo" anula la gestion de reparacion: la solapa queda completa en azul.
         if (legal != null && Boolean.FALSE.equals(legal.getRepairsVehicle())) {
             return new CaseReadinessTabResponse("GESTION_REPARACION", true, true, "BLUE", List.of(), List.of());
         }
-        return buildTodoRiesgoReparacionReadiness(caseId, budgetCompleted, true);
+        return buildTodoRiesgoReparacionReadiness(caseId, hasGeneratedBudget(caseId));
     }
 
     /**
@@ -778,6 +775,10 @@ public class CaseReadinessService {
                 && "ACEPTADA".equals(normalizeCode(processing.getQuotationStatusCode()))
                 && processing.getAgreedAmount() != null
                 && processing.getQuotationDate() != null;
+    }
+
+    private boolean hasGeneratedBudget(Long caseId) {
+        return budgetRepository.findByCaseId(caseId).isPresent();
     }
 
     private BigDecimal scale(BigDecimal value) {

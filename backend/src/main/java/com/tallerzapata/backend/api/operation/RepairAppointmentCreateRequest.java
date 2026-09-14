@@ -16,6 +16,7 @@ public record RepairAppointmentCreateRequest(
         Boolean reentry,
         String notes,
         @NotNull Long userId,
-        Boolean overridePendingParts
+        Boolean overridePendingParts,
+        Boolean overrideMissingAgreement
 ) {
 }

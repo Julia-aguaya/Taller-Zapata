@@ -136,6 +136,7 @@ class CaseReadinessIntegrationTest {
                 false,
                 "Turno confirmado",
                 1L,
+                null,
                 null
         );
 
@@ -228,6 +229,7 @@ class CaseReadinessIntegrationTest {
                 false,
                 "Turno confirmado",
                 1L,
+                null,
                 null
         );
 
@@ -534,7 +536,7 @@ class CaseReadinessIntegrationTest {
                 .andExpect(jsonPath("$.tabs[2].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
                 .andExpect(jsonPath("$.tabs[3].allowed").value(false))
-                .andExpect(jsonPath("$.tabs[3].blockingReasons").value(org.hamcrest.Matchers.hasItem("Falta acordar cotizacion con la Cia. antes de gestionar la reparacion")))
+                .andExpect(jsonPath("$.tabs[3].blockingReasons").value(org.hamcrest.Matchers.hasItem("Debe generar el presupuesto antes de gestionar la reparacion")))
                 .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))
                 .andExpect(jsonPath("$.tabs[4].allowed").value(false))
                 .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("Falta acordar cotizacion con la Cia. antes de registrar pagos"));
@@ -591,7 +593,7 @@ class CaseReadinessIntegrationTest {
     }
 
     @Test
-    void shouldUseAcceptedQuotationAsLaterTodoRiesgoRepairGate() throws Exception {
+    void shouldAllowTodoRiesgoRepairAfterBudgetGenerationWithoutQuotation() throws Exception {
         Long caseId = createTodoRiesgoCase();
         seedInitialTodoRiesgoTramite(caseId);
         completeVehicle(caseId);
@@ -600,8 +602,7 @@ class CaseReadinessIntegrationTest {
         mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
                         .header("X-User-Id", "1"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.tabs[3].allowed").value(false))
-                .andExpect(jsonPath("$.tabs[3].blockingReasons[0]").value("Falta acordar cotizacion con la Cia. antes de gestionar la reparacion"));
+                .andExpect(jsonPath("$.tabs[3].allowed").value(true));
 
         jdbcTemplate.update("UPDATE caso_tramitacion_seguro SET cotizacion_estado_codigo = ?, fecha_cotizacion = ?, monto_acordado = ? WHERE caso_id = ?",
                 "ACEPTADA", LocalDate.of(2026, 1, 3), new BigDecimal("100000"), caseId);
@@ -1209,7 +1210,7 @@ class CaseReadinessIntegrationTest {
     private void createAppointment(Long caseId) throws Exception {
         mockMvc.perform(post("/api/v1/cases/{caseId}/appointments", caseId)
                         .header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"appointmentDate\":\"2026-01-10\",\"appointmentTime\":\"09:00\",\"estimatedDays\":2,\"statusCode\":\"PENDIENTE\",\"reentry\":false,\"userId\":1}"))
+                        .content("{\"appointmentDate\":\"2026-01-10\",\"appointmentTime\":\"09:00\",\"estimatedDays\":2,\"statusCode\":\"PENDIENTE\",\"reentry\":false,\"overrideMissingAgreement\":true,\"userId\":1}"))
                 .andExpect(status().isOk());
     }
 
