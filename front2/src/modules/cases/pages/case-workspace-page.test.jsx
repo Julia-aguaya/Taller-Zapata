@@ -384,6 +384,32 @@ describe('CaseWorkspacePage UI', () => {
     expect(screen.queryByText('Payments panel')).toBeNull();
   });
 
+  it('renderiza el readiness incompleto favorable de daño total como pendiente o bloqueado', async () => {
+    await renderPage({
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'CLEAS' },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'CLEAS', tabs: [
+        { tabCode: 'FICHA_TECNICA', allowed: true, completed: true, blockingReasons: [], warningReasons: [] },
+        { tabCode: 'GESTION_TRAMITE', allowed: true, completed: false, blockingReasons: ['Falta la fecha del siniestro'], warningReasons: [] },
+        { tabCode: 'PRESUPUESTO', allowed: true, completed: false, blockingReasons: ['Falta cargar el presupuesto'], warningReasons: [] },
+        { tabCode: 'GESTION_REPARACION', allowed: false, completed: false, blockingReasons: ['Debe generar el presupuesto antes de gestionar la reparacion'], warningReasons: [] },
+        { tabCode: 'PAGOS', allowed: false, completed: false, blockingReasons: ['Falta acordar cotizacion con la Cia. antes de registrar pagos'], warningReasons: [] },
+      ] },
+    });
+
+    for (const name of [/gestión del trámite/i, /presupuesto/i, /pagos/i]) {
+      const tab = screen.getByRole('tab', { name });
+      expect(tab).toHaveAttribute('aria-disabled', name.source.includes('pagos') ? 'true' : 'false');
+      expect(within(tab).queryByText('Completa')).toBeNull();
+      expect(within(tab).getByText(name.source.includes('pagos') ? 'Bloqueada' : 'Pendiente')).toBeInTheDocument();
+    }
+
+    const repairTab = screen.getByRole('tab', { name: /gestión reparación/i });
+    expect(repairTab).toHaveAttribute('aria-disabled', 'true');
+    expect(within(repairTab).getByText('Bloqueada')).toBeInTheDocument();
+    expect(screen.getByText('1 de 5 etapas completas')).toBeInTheDocument();
+  });
+
   it('conserva la distribución de franquicia entre Tramitación y Pagos y la reinicia al cambiar de carpeta', async () => {
     const user = userEvent.setup();
     const workspace = {

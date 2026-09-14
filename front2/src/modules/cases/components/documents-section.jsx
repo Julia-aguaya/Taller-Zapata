@@ -4,6 +4,8 @@ import { toast } from 'sonner';
 import { useState } from 'react';
 import { requestJson } from '@/shared/api/http-client';
 import { readStoredAuth } from '@/shared/auth/session-storage';
+import { useSession } from '@/modules/auth/providers/session-provider';
+import { hasGlobalAdminScope } from '@/modules/auth/lib/global-admin-scope';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Dialog } from '@/shared/ui/dialog';
@@ -19,6 +21,11 @@ const currentLocalDate = () => {
 
 export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode = null, includeHistorical = true, showCompleteAction = true, title = 'Documentación' }) => {
   const queryClient = useQueryClient();
+  const { session } = useSession();
+  const canUploadDocuments = session?.authorities?.includes('documento.subir') ?? false;
+  const hasDeletePermission = session?.authorities?.includes('documento.eliminar') ?? false;
+  const canDeleteDocuments = hasDeletePermission && hasGlobalAdminScope(session);
+  const lacksGlobalDeleteScope = hasDeletePermission && !hasGlobalAdminScope(session);
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFiles, setUploadFiles] = useState([]);
   const [uploadCategory, setUploadCategory] = useState('');
@@ -80,6 +87,7 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
       for (const file of uploadFiles) {
         const fd = new FormData();
         fd.append('file', file);
+        fd.append('caseId', String(caseId));
         fd.append('categoryId', uploadCategory);
         if (requiresDate) fd.append('documentDate', uploadDate);
         if (uploadObservations.trim()) fd.append('observations', uploadObservations.trim());
@@ -148,7 +156,7 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
           <h4 className="text-sm font-semibold">{title}</h4>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => setShowUpload(true)}><Plus className="mr-1.5 h-3.5 w-3.5" />Agregar items</Button>
+          {canUploadDocuments ? <Button size="sm" variant="outline" onClick={() => setShowUpload(true)}><Plus className="mr-1.5 h-3.5 w-3.5" />Agregar items</Button> : null}
           {showCompleteAction ? <Button size="sm" variant="outline" onClick={() => setShowCompleteDocumentation(true)}>Marcar completa</Button> : null}
           {documents.length > 0 ? <Button size="sm" variant="outline" onClick={downloadAll}><Download className="mr-1.5 h-3.5 w-3.5" />Descargar todo</Button> : null}
         </div>
@@ -213,7 +221,7 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
                        {cleasOrderPicker && categories.find((category) => category.id === doc.categoryId)?.code === 'ORDEN_CLEAS' ? <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => linkCleasOrderMutation.mutate(doc.documentId)} disabled={linkCleasOrderMutation.isPending}><Plus className="mr-1.5 h-3.5 w-3.5" />Vincular orden</Button> : null}
                        <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => handleView(doc)}><Eye className="mr-1.5 h-3.5 w-3.5" />Visualizar</Button>
                       <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => handleDownload(doc)}><Download className="mr-1.5 h-3.5 w-3.5" />Descargar</Button>
-                       <Button variant="ghost" size="sm" className="h-8 px-2 text-destructive" onClick={() => setDocumentToDelete(doc)} disabled={deleteMutation.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Eliminar</Button>
+                        {canDeleteDocuments ? <Button variant="ghost" size="sm" className="h-8 px-2 text-destructive" onClick={() => setDocumentToDelete(doc)} disabled={deleteMutation.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Eliminar</Button> : null}
                     </div>
                   </td>
                 </tr>
@@ -224,6 +232,7 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
       ) : (
         <p className="mt-4 text-xs text-muted-foreground">No hay documentos cargados.</p>
       )}
+      {lacksGlobalDeleteScope ? <p role="alert" className="mt-3 text-sm text-destructive">No tenés alcance administrativo global para eliminar documentos.</p> : null}
 
       <Dialog
         open={Boolean(documentToDelete)}

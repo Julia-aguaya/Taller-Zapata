@@ -160,6 +160,30 @@ class CleasManagementIntegrationTest {
     }
 
     @Test
+    void shouldUseTodoRiesgoReadinessForFavorableTotalLossCleasWithoutOperationalData() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scopeCode\":\"DANIO_TOTAL\",\"opinionCode\":\"A_FAVOR\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100/readiness").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[1].tabCode").value("GESTION_TRAMITE"))
+                .andExpect(jsonPath("$.tabs[1].allowed").value(true))
+                .andExpect(jsonPath("$.tabs[1].completed").value(false))
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
+                .andExpect(jsonPath("$.tabs[2].allowed").value(true))
+                .andExpect(jsonPath("$.tabs[2].completed").value(false))
+                .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
+                .andExpect(jsonPath("$.tabs[3].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[3].completed").value(false))
+                .andExpect(jsonPath("$.tabs[3].blockingReasons[0]").value("Debe generar el presupuesto antes de gestionar la reparacion"))
+                .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))
+                .andExpect(jsonPath("$.tabs[4].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[4].completed").value(false))
+                .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("Falta acordar cotizacion con la Cia. antes de registrar pagos"));
+    }
+
+    @Test
     void shouldRejectGenericBudgetWritesBeforeTheCleasDefinitionAllowsDownstreamWork() throws Exception {
         mockMvc.perform(put("/api/v1/cases/100/budget").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"budgetDate\":\"2026-08-01\",\"reportStatusCode\":\"BORRADOR\",\"laborWithoutVat\":0,\"vatRate\":21,\"partsTotal\":0}"))

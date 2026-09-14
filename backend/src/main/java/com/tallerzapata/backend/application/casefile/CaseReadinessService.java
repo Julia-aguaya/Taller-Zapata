@@ -185,10 +185,18 @@ public class CaseReadinessService {
             tabs.add(buildInsuranceRepairPagosReadiness(caseId, false));
         } else if ("CLEAS".equals(caseType.getCode())) {
             CaseCleasEntity definition = caseCleasRepository.findByCaseId(caseId).orElse(null);
-            tabs.add(buildCleasGestionTramiteReadiness(definition));
-            tabs.add(buildCleasDownstreamReadiness("PRESUPUESTO", definition));
-            tabs.add(buildCleasDownstreamReadiness("GESTION_REPARACION", definition));
-            tabs.add(buildCleasDownstreamReadiness("PAGOS", definition));
+            if (isFavorableTotalLossCleas(definition) && !cleasClosurePolicy.blocksDownstream(definition)) {
+                CaseReadinessTabResponse tramiteTab = buildTodoRiesgoGestionTramiteReadiness(caseId);
+                tabs.add(tramiteTab);
+                tabs.add(buildTodoRiesgoPresupuestoReadiness(caseId, principalVehicle, tramiteTab.completed()));
+                tabs.add(buildTodoRiesgoReparacionReadiness(caseId, hasGeneratedBudget(caseId)));
+                tabs.add(buildTodoRiesgoPagosReadiness(caseId));
+            } else {
+                tabs.add(buildCleasGestionTramiteReadiness(definition));
+                tabs.add(buildCleasDownstreamReadiness("PRESUPUESTO", definition));
+                tabs.add(buildCleasDownstreamReadiness("GESTION_REPARACION", definition));
+                tabs.add(buildCleasDownstreamReadiness("PAGOS", definition));
+            }
         } else if ("RECUPERO_FRANQUICIA".equals(caseType.getCode())) {
             FranchiseRecoveryEntity recovery = franchiseRecoveryRepository.findByCaseId(caseId).orElse(null);
             CaseReadinessTabResponse tramiteTab = buildFranchiseRecoveryGestionTramiteReadiness(recovery);
@@ -242,6 +250,12 @@ public class CaseReadinessService {
         if (definition == null || definition.getScopeCode() == null) blocking.add("Falta indicar el alcance del CLEAS");
         if (definition == null || definition.getOpinionCode() == null) blocking.add("Falta cargar el dictamen CLEAS");
         return toTab("GESTION_TRAMITE", true, blocking, List.of());
+    }
+
+    private boolean isFavorableTotalLossCleas(CaseCleasEntity definition) {
+        return definition != null
+                && "DANIO_TOTAL".equals(definition.getScopeCode())
+                && "A_FAVOR".equals(definition.getOpinionCode());
     }
 
     private CaseReadinessTabResponse buildCleasDownstreamReadiness(String tabCode, CaseCleasEntity definition) {
