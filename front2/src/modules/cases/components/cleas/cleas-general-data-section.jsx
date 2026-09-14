@@ -8,9 +8,23 @@ import { Card } from '@/shared/ui/card';
 
 const emptyDates = { incidentDate: '', prescriptionDate: '', presentedAt: '' };
 
-const DateField = ({ label, value, editing, onChange }) => <div className="min-w-0">
+const prescriptionFromIncident = (incidentDate) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(incidentDate);
+  if (!match) return '';
+  const [, yearText, monthText, dayText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const nextYear = year + 1;
+  const daysInIncidentMonth = month === 2 ? (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28) : [4, 6, 9, 11].includes(month) ? 30 : 31;
+  if (month < 1 || month > 12 || day < 1 || day > daysInIncidentMonth) return '';
+  const daysInPrescriptionMonth = month === 2 ? (nextYear % 4 === 0 && (nextYear % 100 !== 0 || nextYear % 400 === 0) ? 29 : 28) : [4, 6, 9, 11].includes(month) ? 30 : 31;
+  return `${String(nextYear).padStart(4, '0')}-${monthText}-${String(Math.min(day, daysInPrescriptionMonth)).padStart(2, '0')}`;
+};
+
+const DateField = ({ label, value, editing, onChange, readOnly = false }) => <div className="min-w-0">
   <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
-  {editing ? <input aria-label={label} type="date" value={value} onChange={onChange} className="mt-0.5 h-9 w-full rounded-lg border border-input bg-background px-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" /> : <p className="mt-1 text-sm font-medium">{value || 'Sin informar'}</p>}
+  {editing ? <input aria-label={label} type="date" value={value} onChange={onChange} readOnly={readOnly} className="mt-0.5 h-9 w-full rounded-lg border border-input bg-background px-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" /> : <p className="mt-1 text-sm font-medium">{value || 'Sin informar'}</p>}
 </div>;
 
 export const CleasGeneralDataSection = ({ caseId, closed = false }) => {
@@ -29,7 +43,7 @@ export const CleasGeneralDataSection = ({ caseId, closed = false }) => {
       if (incidentChanged) {
         await saveCleasIncident(caseId, {
           incident: { ...incident, incidentDate: draft.incidentDate || null, prescriptionDate: draft.prescriptionDate || null },
-          thirdPartyVehicleId: incidentQuery.data?.thirdPartyVehicleId ?? null,
+          thirdPartyPlate: incidentQuery.data?.thirdPartyPlate ?? null,
         });
       }
       if (presentedChanged) await saveCleasProcessing(caseId, { expectedVersion: processing?.version ?? 0, presentedAt: draft.presentedAt || null });
@@ -48,7 +62,8 @@ export const CleasGeneralDataSection = ({ caseId, closed = false }) => {
   });
 
   const startEditing = () => {
-    setDraft({ incidentDate: incident?.incidentDate ?? '', prescriptionDate: incident?.prescriptionDate ?? '', presentedAt: processing?.presentedAt ?? '' });
+    const incidentDate = incident?.incidentDate ?? '';
+    setDraft({ incidentDate, prescriptionDate: prescriptionFromIncident(incidentDate), presentedAt: processing?.presentedAt ?? '' });
     setEditing(true);
   };
 
@@ -58,8 +73,8 @@ export const CleasGeneralDataSection = ({ caseId, closed = false }) => {
       {!closed && (!editing ? <Button type="button" size="sm" variant="outline" onClick={startEditing}><Edit2 className="mr-1.5 h-3.5 w-3.5" />Editar</Button> : <div className="flex gap-2"><Button type="button" size="sm" variant="outline" onClick={() => setEditing(false)}><X className="mr-1.5 h-3.5 w-3.5" />Cancelar</Button><Button type="button" size="sm" onClick={() => mutation.mutate()} disabled={mutation.isPending}><Save className="mr-1.5 h-3.5 w-3.5" />Guardar</Button></div>)}
     </div>
     <div className="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-4">
-      <DateField label="Fecha del siniestro" value={editing ? draft.incidentDate : incident?.incidentDate ?? ''} editing={editing} onChange={(event) => setDraft((current) => ({ ...current, incidentDate: event.target.value }))} />
-      <DateField label="Prescripción del trámite" value={editing ? draft.prescriptionDate : incident?.prescriptionDate ?? ''} editing={editing} onChange={(event) => setDraft((current) => ({ ...current, prescriptionDate: event.target.value }))} />
+      <DateField label="Fecha del siniestro" value={editing ? draft.incidentDate : incident?.incidentDate ?? ''} editing={editing} onChange={(event) => setDraft((current) => ({ ...current, incidentDate: event.target.value, prescriptionDate: prescriptionFromIncident(event.target.value) }))} />
+      <DateField label="Prescripción del trámite" value={editing ? draft.prescriptionDate : incident?.prescriptionDate ?? ''} editing={editing} readOnly />
       <DateField label="Fecha presentado" value={editing ? draft.presentedAt : processing?.presentedAt ?? ''} editing={editing} onChange={(event) => setDraft((current) => ({ ...current, presentedAt: event.target.value }))} />
       <div className="min-w-0"><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Días tramitando</p><p className="mt-1 text-sm font-medium">{incident?.daysInProcess ?? 'Sin informar'}</p></div>
     </div>

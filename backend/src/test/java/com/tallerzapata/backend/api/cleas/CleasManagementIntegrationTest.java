@@ -47,7 +47,7 @@ class CleasManagementIntegrationTest {
     }
 
     @Test
-    void shouldPersistEveryCleasManagementSectionUsingExistingDomainRelations() throws Exception {
+    void shouldPersistEveryCleasManagementSectionWithoutChangingVehicleRelations() throws Exception {
         mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scopeCode\":\"DANIO_TOTAL\",\"opinionCode\":\"A_FAVOR\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.scopeCode").value("DANIO_TOTAL"));
@@ -57,9 +57,12 @@ class CleasManagementIntegrationTest {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.cleasNumber").value("CLEAS-100"));
 
         mockMvc.perform(put("/api/v1/cases/100/cleas/incident").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"incident\":{\"incidentDate\":\"2026-08-01\",\"incidentTime\":\"10:30\",\"location\":\"Rosario\",\"dynamics\":\"Impacto lateral\",\"observations\":\"Con tercero\"},\"thirdPartyVehicleId\":11}"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.incident.location").value("Rosario")).andExpect(jsonPath("$.thirdPartyVehicleId").value(11));
-        assertThat(jdbcTemplate.queryForObject("SELECT vehiculo_id FROM caso_vehiculos WHERE caso_id = ? AND rol_vehiculo_codigo = 'TERCERO'", Long.class, 100L)).isEqualTo(11L);
+                        .content("{\"incident\":{\"incidentDate\":\"2026-08-01\",\"incidentTime\":\"10:30\",\"location\":\"Rosario\",\"dynamics\":\"Impacto lateral\",\"observations\":\"Con tercero\"},\"thirdPartyPlate\":\"ac-123 de\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.incident.location").value("Rosario")).andExpect(jsonPath("$.thirdPartyPlate").value("AC123DE"));
+        mockMvc.perform(get("/api/v1/cases/100/cleas/incident").header("X-User-Id", "3"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.thirdPartyPlate").value("AC123DE"));
+        assertThat(jdbcTemplate.queryForObject("SELECT dominio_tercero FROM caso_cleas WHERE caso_id = ?", String.class, 100L)).isEqualTo("AC123DE");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM caso_vehiculos WHERE caso_id = ? AND rol_vehiculo_codigo = 'TERCERO'", Integer.class, 100L)).isZero();
 
         mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"presentedAt\":\"2026-08-02\"}"))
@@ -76,6 +79,14 @@ class CleasManagementIntegrationTest {
 
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/v1/cases/100/cleas/orders/{relationId}", relationId).header("X-User-Id", "3"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void shouldRejectAnInvalidThirdPartyPlateWithBadRequest() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/cleas/incident").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"incident\":{\"incidentDate\":\"2026-08-01\"},\"thirdPartyPlate\":\"invalid\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.details[0]").value("thirdPartyPlateValid: thirdPartyPlate debe tener formato argentino AAA999 o AA999AA"));
     }
 
     @Test
@@ -109,7 +120,7 @@ class CleasManagementIntegrationTest {
         mockMvc.perform(get("/api/v1/cases/100/cleas/incident").header("X-User-Id", "3"))
                 .andExpect(status().isOk());
         mockMvc.perform(put("/api/v1/cases/100/cleas/incident").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"incident\":{\"incidentDate\":\"2026-08-01\"},\"thirdPartyVehicleId\":null}"))
+                        .content("{\"incident\":{\"incidentDate\":\"2026-08-01\"},\"thirdPartyPlate\":null}"))
                 .andExpect(status().isConflict());
         mockMvc.perform(get("/api/v1/cases/100/cleas/liquidation-pdf").header("X-User-Id", "3"))
                 .andExpect(status().isConflict());
@@ -272,6 +283,26 @@ class CleasManagementIntegrationTest {
                 .andExpect(jsonPath("$.tabs[2].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[3].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[4].allowed").value(true));
+    }
+
+    @Test
+    void shouldDeriveCleasPrescriptionFromIncidentDateAndIgnoreClientValue() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/cleas/incident").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"incident\":{\"incidentDate\":\"2024-02-29\",\"prescriptionDate\":\"2030-01-01\"},\"thirdPartyPlate\":null}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.incident.incidentDate").value("2024-02-29"))
+                .andExpect(jsonPath("$.incident.prescriptionDate").value("2025-02-28"));
+
+        mockMvc.perform(put("/api/v1/cases/100/cleas/incident").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"incident\":{\"incidentDate\":\"2026-08-01\",\"prescriptionDate\":\"2029-08-01\"},\"thirdPartyPlate\":null}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.incident.prescriptionDate").value("2027-08-01"));
+
+        mockMvc.perform(put("/api/v1/cases/100/cleas/incident").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"incident\":{\"incidentDate\":null,\"prescriptionDate\":\"2027-08-01\"},\"thirdPartyPlate\":null}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.incident.incidentDate").doesNotExist())
+                .andExpect(jsonPath("$.incident.prescriptionDate").doesNotExist());
     }
 
     @Test

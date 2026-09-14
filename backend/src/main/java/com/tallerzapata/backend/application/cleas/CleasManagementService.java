@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.application.cleas;
 
 import com.tallerzapata.backend.api.casefile.CaseIncidentResponse;
+import com.tallerzapata.backend.api.casefile.CaseIncidentUpdateRequest;
 import com.tallerzapata.backend.api.cleas.CleasIncidentResponse;
 import com.tallerzapata.backend.api.cleas.CleasIncidentUpsertRequest;
 import com.tallerzapata.backend.api.cleas.CleasClosureResponse;
@@ -27,18 +28,18 @@ import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.insurance.InsuranceService;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
+import com.tallerzapata.backend.application.vehicle.VehiclePlateNormalizer;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeRepository;
-import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseVehicleEntity;
-import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseVehicleRepository;
 import com.tallerzapata.backend.infrastructure.persistence.document.DocumentCategoryRepository;
 import com.tallerzapata.backend.infrastructure.persistence.document.DocumentEntity;
 import com.tallerzapata.backend.infrastructure.persistence.document.DocumentRelationEntity;
 import com.tallerzapata.backend.infrastructure.persistence.document.DocumentRelationRepository;
 import com.tallerzapata.backend.infrastructure.persistence.document.DocumentRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseCleasRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseCleasEntity;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseInsuranceRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingRepository;
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementEntity;
@@ -48,7 +49,6 @@ import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMove
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialPaymentMethodRepository;
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialRetentionTypeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.finance.IssuedReceiptRepository;
-import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleRepository;
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
 import com.tallerzapata.backend.infrastructure.security.CurrentUserService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -65,7 +65,6 @@ import java.time.LocalDateTime;
 
 @Service
 public class CleasManagementService {
-    private static final String THIRD_PARTY_ROLE = "TERCERO";
     private static final String CLEAS_MODULE = "CLEAS";
     private static final String COMPANY_PAYMENT_CANCELLATION_TYPE = "COMPANIA";
     private static final String COMPANY_PAYMENT_DOCUMENT_CATEGORY = "COMPROBANTE_PAGO_CLEAS";
@@ -75,8 +74,6 @@ public class CleasManagementService {
     private final CaseManagementService caseManagementService;
     private final CaseRepository caseRepository;
     private final CaseTypeRepository caseTypeRepository;
-    private final CaseVehicleRepository caseVehicleRepository;
-    private final VehicleRepository vehicleRepository;
     private final DocumentRepository documentRepository;
     private final DocumentCategoryRepository documentCategoryRepository;
     private final DocumentRelationRepository documentRelationRepository;
@@ -95,13 +92,11 @@ public class CleasManagementService {
     private final FinancialRetentionTypeRepository financialRetentionTypeRepository;
     private final IssuedReceiptRepository issuedReceiptRepository;
 
-    public CleasManagementService(InsuranceService insuranceService, CaseManagementService caseManagementService, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CaseVehicleRepository caseVehicleRepository, VehicleRepository vehicleRepository, DocumentRepository documentRepository, DocumentCategoryRepository documentCategoryRepository, DocumentRelationRepository documentRelationRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, CaseCleasRepository caseCleasRepository, CleasClosurePolicy cleasClosurePolicy, CleasSettlementPolicy cleasSettlementPolicy, CleasLiquidationPdfService cleasLiquidationPdfService, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, FinancialMovementRepository financialMovementRepository, FinancialMovementRetentionRepository financialMovementRetentionRepository, FinancialPaymentMethodRepository financialPaymentMethodRepository, FinancialRetentionTypeRepository financialRetentionTypeRepository, IssuedReceiptRepository issuedReceiptRepository) {
+    public CleasManagementService(InsuranceService insuranceService, CaseManagementService caseManagementService, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, DocumentRepository documentRepository, DocumentCategoryRepository documentCategoryRepository, DocumentRelationRepository documentRelationRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, CaseCleasRepository caseCleasRepository, CleasClosurePolicy cleasClosurePolicy, CleasSettlementPolicy cleasSettlementPolicy, CleasLiquidationPdfService cleasLiquidationPdfService, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, FinancialMovementRepository financialMovementRepository, FinancialMovementRetentionRepository financialMovementRetentionRepository, FinancialPaymentMethodRepository financialPaymentMethodRepository, FinancialRetentionTypeRepository financialRetentionTypeRepository, IssuedReceiptRepository issuedReceiptRepository) {
         this.insuranceService = insuranceService;
         this.caseManagementService = caseManagementService;
         this.caseRepository = caseRepository;
         this.caseTypeRepository = caseTypeRepository;
-        this.caseVehicleRepository = caseVehicleRepository;
-        this.vehicleRepository = vehicleRepository;
         this.documentRepository = documentRepository;
         this.documentCategoryRepository = documentCategoryRepository;
         this.documentRelationRepository = documentRelationRepository;
@@ -137,16 +132,20 @@ public class CleasManagementService {
     public CleasIncidentResponse getIncident(Long caseId) {
         requireCleasCase(caseId);
         CaseIncidentResponse incident = caseManagementService.getCaseIncident(caseId);
-        return new CleasIncidentResponse(incident, thirdPartyVehicleId(caseId));
+        return new CleasIncidentResponse(incident, thirdPartyPlate(caseId));
     }
 
     @Transactional
     public CleasIncidentResponse upsertIncident(Long caseId, CleasIncidentUpsertRequest request, HttpServletRequest httpRequest) {
         requireEditableCleasCase(caseId);
         if (request.incident() == null) throw new ConflictException("incident es obligatorio");
-        caseManagementService.updateCaseIncident(caseId, request.incident(), httpRequest);
-        updateThirdPartyVehicle(caseId, request.thirdPartyVehicleId());
-        return new CleasIncidentResponse(caseManagementService.getCaseIncident(caseId), thirdPartyVehicleId(caseId));
+        var incident = request.incident();
+        var normalizedIncident = new CaseIncidentUpdateRequest(
+                incident.incidentDate(), incident.incidentTime(), incident.location(), incident.dynamics(), incident.observations(),
+                incident.incidentDate() == null ? null : incident.incidentDate().plusYears(1));
+        caseManagementService.updateCaseIncident(caseId, normalizedIncident, httpRequest);
+        updateThirdPartyPlate(caseId, request.thirdPartyPlate());
+        return new CleasIncidentResponse(caseManagementService.getCaseIncident(caseId), thirdPartyPlate(caseId));
     }
 
     @Transactional(readOnly = true)
@@ -480,31 +479,18 @@ public class CleasManagementService {
         return new CleasFranchisePaymentSummaryResponse(caseEntity.getId(), settlement.franchiseAmount(), settlement.companyRequiredAmount(), settlement.customerChargeAmount(), settlement.amountToBillCompany(), customerPaid, customerPending, cleas.getCompanyFranchisePaymentStatusCode(), cleas.getCompanyFranchisePaymentDate());
     }
 
-    private void updateThirdPartyVehicle(Long caseId, Long vehicleId) {
-        List<CaseVehicleEntity> relations = caseVehicleRepository.findByCaseIdAndVehicleRoleCodeOrderByIdAsc(caseId, THIRD_PARTY_ROLE);
-        if (vehicleId == null) {
-            caseVehicleRepository.deleteAll(relations);
-            return;
-        }
-        if (vehicleRepository.findById(vehicleId).filter(vehicle -> Boolean.TRUE.equals(vehicle.getActivo())).isEmpty()) throw new ResourceNotFoundException("No existe el vehiculo activo " + vehicleId);
-        CaseVehicleEntity relation = relations.stream()
-                .filter(item -> vehicleId.equals(item.getVehicleId()))
-                .findFirst()
-                .orElse(relations.isEmpty() ? new CaseVehicleEntity() : relations.getFirst());
-        List<CaseVehicleEntity> obsoleteRelations = relations.stream()
-                .filter(item -> !item.getId().equals(relation.getId()))
-                .toList();
-        if (!obsoleteRelations.isEmpty()) caseVehicleRepository.deleteAll(obsoleteRelations);
-        relation.setCaseId(caseId);
-        relation.setVehicleId(vehicleId);
-        relation.setVehicleRoleCode(THIRD_PARTY_ROLE);
-        relation.setPrincipal(false);
-        relation.setVisualOrder(0);
-        caseVehicleRepository.save(relation);
+    private void updateThirdPartyPlate(Long caseId, String plate) {
+        var cleas = caseCleasRepository.findByCaseId(caseId).orElseGet(() -> {
+            var entity = new CaseCleasEntity();
+            entity.setCaseId(caseId);
+            return entity;
+        });
+        cleas.setThirdPartyPlate(VehiclePlateNormalizer.normalize(plate));
+        caseCleasRepository.save(cleas);
     }
 
-    private Long thirdPartyVehicleId(Long caseId) {
-        return caseVehicleRepository.findByCaseIdAndVehicleRoleCodeOrderByIdAsc(caseId, THIRD_PARTY_ROLE).stream().findFirst().map(CaseVehicleEntity::getVehicleId).orElse(null);
+    private String thirdPartyPlate(Long caseId) {
+        return caseCleasRepository.findByCaseId(caseId).map(CaseCleasEntity::getThirdPartyPlate).orElse(null);
     }
 
     private CleasOrderResponse toOrderResponse(DocumentRelationEntity relation) {

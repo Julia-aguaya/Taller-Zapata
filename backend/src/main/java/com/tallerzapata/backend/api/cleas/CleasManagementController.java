@@ -56,7 +56,7 @@ public class CleasManagementController {
 
     @PreAuthorize("hasAuthority('caso.crear')")
     @PutMapping("/incident")
-    public CleasIncidentResponse upsertIncident(@PathVariable Long caseId, @RequestBody CleasIncidentUpsertRequest request, HttpServletRequest httpRequest) { return service.upsertIncident(caseId, request, httpRequest); }
+    public CleasIncidentResponse upsertIncident(@PathVariable Long caseId, @Valid @RequestBody CleasIncidentUpsertRequest request, HttpServletRequest httpRequest) { return service.upsertIncident(caseId, request, httpRequest); }
 
     @PreAuthorize("hasAuthority('seguro.ver')")
     @GetMapping("/processing")

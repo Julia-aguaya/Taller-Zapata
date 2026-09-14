@@ -4,6 +4,6 @@ import com.tallerzapata.backend.api.casefile.CaseIncidentResponse;
 
 public record CleasIncidentResponse(
         CaseIncidentResponse incident,
-        Long thirdPartyVehicleId
+        String thirdPartyPlate
 ) {
 }
