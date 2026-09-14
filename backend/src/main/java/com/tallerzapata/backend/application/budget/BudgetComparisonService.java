@@ -19,7 +19,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class BudgetComparisonService {
-    private static final Set<String> ELIGIBLE_ACTIONS = Set.of("A_VERIFICAR", "REEMPLAZAR", "REEMPLAZAR_Y_CARGAR", "REEMPLAZAR_Y_PINTAR");
+    private static final Set<String> ELIGIBLE_ACTIONS = Set.of("REEMPLAZAR", "REEMPLAZAR_Y_CARGAR", "REEMPLAZAR_Y_PINTAR");
+    private static final Set<String> ELIGIBLE_PART_DECISIONS = Set.of("DEBE_REEMPLAZARSE", "A_VERIFICAR");
     private static final Set<String> BILLING_CODES = Set.of("A", "C", "SIN_FACTURA");
     private static final Set<String> PAYMENT_CODES = Set.of("CONTADO", "TARJETA_1_PAGO_SIN_INTERES", "TARJETA_CUOTAS_SIN_INTERES");
     private static final Set<String> SNAPSHOT_CONTEXTS = Set.of("MAIN", "EXTRA");
@@ -29,7 +30,7 @@ public class BudgetComparisonService {
     @Transactional public Snapshot createSnapshot(Long caseId, BudgetEntity budget, List<BudgetItemEntity> items, String key) {
         var previous=snapshots.findByCaseIdAndIdempotencyKey(caseId,key); if(previous.isPresent()) return snapshot(previous.get());
         BudgetComparisonSnapshotEntity snapshot=new BudgetComparisonSnapshotEntity(); snapshot.setCaseId(caseId); snapshot.setContext("MAIN"); snapshot.setBudgetId(budget.getId()); snapshot.setGeneration(snapshots.findTopByCaseIdOrderByGenerationDesc(caseId).map(s->s.getGeneration()+1).orElse(1)); snapshot.setBudgetDate(budget.getBudgetDate()); snapshot.setBudgetVersion(budget.getCurrentVersion()); snapshot.setIdempotencyKey(key); snapshot.setMode("MATRIX"); snapshot=snapshots.save(snapshot);
-        for(BudgetItemEntity item:items) if(Boolean.TRUE.equals(item.getActive())&&ELIGIBLE_ACTIONS.contains(item.getActionCode())) saveImportedPiece(snapshot.getId(), item);
+        for(BudgetItemEntity item:items) if(Boolean.TRUE.equals(item.getActive())&&ELIGIBLE_ACTIONS.contains(item.getActionCode())&&ELIGIBLE_PART_DECISIONS.contains(item.getPartDecisionCode())) saveImportedPiece(snapshot.getId(), item);
         return snapshot(snapshot);
     }
     @Transactional(readOnly=true) public List<Snapshot> list(Long caseId, String context) { require(caseId,"presupuesto.ver"); String requestedContext=normalizeContext(context); return snapshots.findByCaseIdAndContextOrderByGenerationDesc(caseId,requestedContext).stream().filter(s -> "MATRIX".equals(s.getMode())).map(this::snapshot).toList(); }

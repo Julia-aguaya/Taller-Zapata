@@ -531,27 +531,38 @@ class BudgetIntegrationTest {
     }
 
     @Test
-    void shouldCreateAnAtomicIdempotentComparisonSnapshotWithAllEligibleActions() throws Exception {
+    void shouldCreateAnAtomicIdempotentComparisonSnapshotOnlyForEligibleActionsAndDecisions() throws Exception {
         List<BudgetItemCreateRequest> items = List.of(
-                comparisonItem(1, "Verificar", "A_VERIFICAR", 100),
-                comparisonItem(2, "Reemplazar", "REEMPLAZAR", 200),
-                comparisonItem(3, "Cargar", "REEMPLAZAR_Y_CARGAR", 300),
-                comparisonItem(4, "Pintar", "REEMPLAZAR_Y_PINTAR", 400),
-                comparisonItem(5, "No comparable", "REPARAR", 500));
+                comparisonItem(1, "Debe reemplazar", "REEMPLAZAR", "REEMPLAZAR", 100),
+                comparisonItem(2, "Debe cargar", "REEMPLAZAR", "REEMPLAZAR_Y_CARGAR", 200),
+                comparisonItem(3, "Debe pintar", "REEMPLAZAR", "REEMPLAZAR_Y_PINTAR", 300),
+                comparisonItem(4, "Verificar reemplazar", "A_VERIFICAR", "REEMPLAZAR", 400),
+                comparisonItem(5, "Verificar cargar", "A_VERIFICAR", "REEMPLAZAR_Y_CARGAR", 500),
+                comparisonItem(6, "Verificar pintar", "A_VERIFICAR", "REEMPLAZAR_Y_PINTAR", 600),
+                comparisonItem(7, "Accion verificar", "DEBE_REEMPLAZARSE", "A_VERIFICAR", 700),
+                comparisonItem(8, "Accion cargar", "DEBE_REEMPLAZARSE", "CARGAR", 800),
+                comparisonItem(9, "Puede repararse", "PUEDE_REPARARSE", "REEMPLAZAR", 900),
+                comparisonItem(10, "Inactiva", "DEBE_REEMPLAZARSE", "REEMPLAZAR", 1000));
 
-        String response = generateComparison("comparison-key-1", items);
+        saveBudget(items);
+        jdbcTemplate.update("UPDATE presupuesto_items SET activo = 0 WHERE pieza_afectada = 'Inactiva'");
+
+        String response = generateComparison("comparison-key-1", null);
         Long snapshotId = objectMapper.readTree(response).path("comparisonSnapshot").path("id").asLong();
-        generateComparison("comparison-key-1", items);
+        generateComparison("comparison-key-1", null);
 
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM comparacion_presupuesto_snapshot WHERE caso_id = 100", Integer.class)).isEqualTo(1);
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM comparacion_pieza WHERE snapshot_id = ?", Integer.class, snapshotId)).isEqualTo(4);
+        assertThat(jdbcTemplate.queryForList("SELECT descripcion FROM comparacion_pieza WHERE snapshot_id = ? ORDER BY id", String.class, snapshotId))
+                .containsExactly("Debe reemplazar", "Debe cargar", "Debe pintar", "Verificar reemplazar", "Verificar cargar", "Verificar pintar");
+        assertThat(jdbcTemplate.queryForObject("SELECT decision_repuesto_codigo FROM presupuesto_items WHERE pieza_afectada = 'Debe reemplazar'", String.class))
+                .isEqualTo("DEBE_REEMPLAZARSE");
         mockMvc.perform(get("/api/v1/cases/100/budget-comparisons").header("X-User-Id", "3"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].id").value(snapshotId))
                 .andExpect(jsonPath("$[0].context").value("MAIN"));
         mockMvc.perform(get("/api/v1/cases/100/budget-comparisons/{snapshotId}", snapshotId).header("X-User-Id", "3"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.pieces.length()").value(4));
+                .andExpect(jsonPath("$.pieces.length()").value(6));
     }
 
     @Test
@@ -741,8 +752,19 @@ class BudgetIntegrationTest {
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
     }
 
+    private void saveBudget(List<BudgetItemCreateRequest> items) throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/budget")
+                        .header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(LocalDate.of(2026, 4, 20), "BORRADOR", new BigDecimal("1000.00"), new BigDecimal("21.00"), new BigDecimal("0.00"), 5, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, items))))
+                .andExpect(status().isOk());
+    }
+
     private BudgetItemCreateRequest comparisonItem(int order, String piece, String action, int amount) {
         return new BudgetItemCreateRequest(order, piece, "CHAPA", "MEDIO", "REEMPLAZAR", action, false, new BigDecimal(amount), BigDecimal.ZERO, BigDecimal.ZERO);
+    }
+
+    private BudgetItemCreateRequest comparisonItem(int order, String piece, String decision, String action, int amount) {
+        return new BudgetItemCreateRequest(order, piece, "CHAPA", "MEDIO", decision, action, false, new BigDecimal(amount), BigDecimal.ZERO, BigDecimal.ZERO);
     }
 
     private void seedBaseData() {
