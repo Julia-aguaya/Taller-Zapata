@@ -91,6 +91,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const processing = insuranceProcessingQuery.data;
 
   const isInsurance = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
+  const isParticular = caseDetail?.caseTypeCode === 'PARTICULAR';
   const isTodoRiesgo = caseDetail?.caseTypeCode === 'TODO_RIESGO';
   const isGranizo = caseDetail?.caseTypeCode === 'GRANIZO';
   const isCleas = caseDetail?.caseTypeCode === 'CLEAS';
@@ -139,16 +140,20 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
     setShowPaymentModal(true);
   }, [activeClientPaymentRequest]);
 
-  // Derivar MO y repuestos del presupuesto
+  // Los comprobantes de PARTICULAR deben reflejar el presupuesto y resumen canónicos.
   const budgetItems = budget?.items ?? [];
-  const totalMO = useMemo(() => budgetItems.reduce((sum, item) => sum + toAmount(item.laborAmount || 0), 0), [budgetItems]);
-  const totalRepuestos = useMemo(() => budgetItems.reduce((sum, item) => sum + toAmount(item.partValue || 0), 0), [budgetItems]);
+  const itemLaborTotal = useMemo(() => budgetItems.reduce((sum, item) => sum + toAmount(item.laborAmount || 0), 0), [budgetItems]);
+  const itemPartsTotal = useMemo(() => budgetItems.reduce((sum, item) => sum + toAmount(item.partValue || 0), 0), [budgetItems]);
+  const totalMO = isParticular ? toAmount(budget?.laborWithoutVat) : itemLaborTotal;
+  const totalRepuestos = isParticular ? toAmount(budget?.partsTotal) : itemPartsTotal;
+  const totalCotizadoParticular = toAmount(particularFinanceSummary?.quotedTotal ?? budget?.totalQuoted);
 
   // Total según comprobante
   const cotizadoConIva = useMemo(() => {
+    if (isParticular) return comprobanteTipo === 'A' ? totalCotizadoParticular : totalMO + totalRepuestos;
     const moConIva = comprobanteTipo === 'A' ? totalMO * 1.21 : totalMO;
     return moConIva + totalRepuestos;
-  }, [comprobanteTipo, totalMO, totalRepuestos]);
+  }, [comprobanteTipo, isParticular, totalCotizadoParticular, totalMO, totalRepuestos]);
 
   const pagado = toAmount(particularFinanceSummary?.customerPaid || 0);
   const pendiente = Math.max(0, cotizadoConIva - pagado);
@@ -207,7 +212,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
         netAmount: monto,
         paymentMethodCode: form.paymentMethodCode,
         paymentMethodDetail: form.paymentMethodDetail || null,
-        cancellationTypeCode: activeClientPaymentRequest?.concept ?? 'PRESUPUESTO',
+        cancellationTypeCode: activeClientPaymentRequest?.concept ?? form.cancelacionTipo,
         advancePayment: form.advancePayment === 'SI',
         bonification: form.cancelacionTipo === 'BONIFICACION',
         reason: form.reason || null,
@@ -218,6 +223,8 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
     },
     onSuccess: async () => {
       clientPaymentSubmittingRef.current = false;
+      await queryClient.invalidateQueries({ queryKey: ['cases'] });
+      await queryClient.invalidateQueries({ queryKey: ['panel'] });
       await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
       await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] });
        await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'receipts'] });
@@ -394,7 +401,11 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
             ))}
           </div>
           <p className="mt-3 text-xs text-muted-foreground">
-            {comprobanteTipo === 'A' ? `MO: ${formatCurrency(totalMO)} + IVA 21%: ${formatCurrency(totalMO * 0.21)} + Repuestos: ${formatCurrency(totalRepuestos)} = Total: ${formatCurrency(cotizadoConIva)}` : `MO: ${formatCurrency(totalMO)} + Repuestos: ${formatCurrency(totalRepuestos)} = Total: ${formatCurrency(cotizadoConIva)}`}
+            {isParticular && comprobanteTipo === 'A'
+              ? `Total cotizado: ${formatCurrency(cotizadoConIva)}`
+              : comprobanteTipo === 'A'
+                ? `MO: ${formatCurrency(totalMO)} + IVA 21%: ${formatCurrency(totalMO * 0.21)} + Repuestos: ${formatCurrency(totalRepuestos)} = Total: ${formatCurrency(cotizadoConIva)}`
+                : `MO: ${formatCurrency(totalMO)} + Repuestos: ${formatCurrency(totalRepuestos)} = Total: ${formatCurrency(cotizadoConIva)}`}
           </p>
         </div>
 

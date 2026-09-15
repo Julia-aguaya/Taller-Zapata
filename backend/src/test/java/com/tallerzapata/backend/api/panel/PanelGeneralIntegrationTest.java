@@ -14,7 +14,9 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -59,6 +61,24 @@ class PanelGeneralIntegrationTest {
                 .andExpect(jsonPath("$.priorityBuckets[0].code").value("URGENT"))
                 .andExpect(jsonPath("$.priorityBuckets[0].items.length()").value(2))
                 .andExpect(jsonPath("$.priorityBuckets[0].items[0].priorityReasons").isArray());
+    }
+
+    @Test
+    void shouldRemoveParticularPaymentPendingEntryAfterTotalPaymentRecalculation() throws Exception {
+        jdbcTemplate.update(
+                "INSERT INTO movimientos_financieros (public_id, caso_id, tipo_movimiento_codigo, origen_flujo_codigo, contraparte_tipo_codigo, contraparte_persona_id, fecha_movimiento, monto_bruto, monto_neto, medio_pago_codigo, cancela_tipo_codigo, registrado_por) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                UUID.randomUUID().toString(), 101L, "INGRESO", "CLIENTE", "PERSONA", 11L,
+                Timestamp.valueOf(LocalDateTime.of(2026, 6, 12, 10, 0)), new BigDecimal("1210.00"), new BigDecimal("1210.00"), "EFECTIVO", "TOTAL", 1L
+        );
+        particularEffectiveStateRecalculator.recalculate(101L);
+
+        String response = mockMvc.perform(get("/api/v1/panel/general")
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.summary.pendingPayments").value(0))
+                .andReturn().getResponse().getContentAsString();
+
+        assertThat(response).doesNotContain("Pago pendiente");
     }
 
     private void seedPanelCases() {

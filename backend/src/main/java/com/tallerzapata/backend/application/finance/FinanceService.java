@@ -413,7 +413,10 @@ public class FinanceService {
         List<FinancialMovementEntity> movements = movementRepository.findByCaseId(caseId, Sort.by(Sort.Order.asc("movementAt")));
         OrganizationEntity org = organizationRepository.findAll().stream().findFirst().orElse(null);
         BranchEntity branch = org != null ? branchRepository.findByOrganizationIdOrderByNameAsc(org.getId()).stream().findFirst().orElse(null) : null;
-        return clientPaymentPdfService.generate(caseEntity, clientName, vehiclePlate, comprobanteTipo, totalCotizado, movements, observaciones, facturaRazonSocial, facturaNumero, org, branch);
+        BigDecimal totalForPdf = "PARTICULAR".equals(caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> type.getCode()).orElse(""))
+                ? budgetRepository.findByCaseId(caseId).map(BudgetEntity::getTotalQuoted).map(this::scale).orElse(BigDecimal.ZERO)
+                : totalCotizado;
+        return clientPaymentPdfService.generate(caseEntity, clientName, vehiclePlate, comprobanteTipo, totalForPdf, movements, observaciones, facturaRazonSocial, facturaNumero, org, branch);
     }
 
     @Transactional(readOnly = true)

@@ -725,6 +725,9 @@ describe('CaseWorkspacePage UI', () => {
 
     expect(screen.queryByRole('option', { name: 'Sin presentar' })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Acordado' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Pagado' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Reparado' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Desistido' })).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /volver a automático/i }));
 
     expect(mockOverrideVisibleState).toHaveBeenCalledWith('1', 'tramite', null, '');

@@ -90,12 +90,12 @@ class ParticularEffectiveStateFactsLoaderTest {
     }
 
     @Test
-    void fulfilledReentryWithLaterIntakeDoesNotLeaveUnsatisfiedReentry() {
+    void fulfilledReentryWithLaterIntakeIsAnAdvancedReentryFact() {
         VehicleOutcomeEntity outcome = outcome(1L, T1, T1, 2L, false, true);
         ParticularEffectiveStateFacts.OutcomeFact fact = load(List.of(outcome), List.of(appointment(2L, CASE_ID, T2, "CUMPLIDO", true)), List.of(intake(T2))).latestOutcome();
         assertFalse(fact.hasLaterValidReentryAppointment());
         assertTrue(fact.hasLaterAdvancedFact());
-        assertFalse(fact.hasUnsatisfiedReentry());
+        assertTrue(fact.requiresReentry());
     }
 
     @Test
@@ -106,9 +106,9 @@ class ParticularEffectiveStateFactsLoaderTest {
     }
 
     @Test
-    void fulfilledReentryWithoutLaterFactsRemainsUnsatisfied() {
+    void fulfilledReentryWithoutLaterFactsStillRequiresReentry() {
         VehicleOutcomeEntity outcome = outcome(1L, T1, T1, 2L, false, true);
-        assertTrue(load(List.of(outcome), List.of(appointment(2L, CASE_ID, T2, "CUMPLIDO", true)), List.of()).latestOutcome().hasUnsatisfiedReentry());
+        assertTrue(load(List.of(outcome), List.of(appointment(2L, CASE_ID, T2, "CUMPLIDO", true)), List.of()).latestOutcome().requiresReentry());
     }
 
     @Test

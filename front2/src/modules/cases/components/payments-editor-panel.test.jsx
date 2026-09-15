@@ -82,9 +82,9 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const baseProps = {
   caseId: 42,
-  caseDetail: { principalCustomerPersonId: 1, principalCustomerName: 'Juan', principalVehiclePlate: 'ABC123' },
-  budget: { items: [{ laborAmount: 100000, partValue: 50000 }, { laborAmount: 50000, partValue: 20000 }] },
-  particularFinanceSummary: { customerPaid: 0, pendingBalance: 220000, quotedTotal: 220000, hasAdvancePayment: false, paidInFull: false },
+  caseDetail: { caseTypeCode: 'PARTICULAR', principalCustomerPersonId: 1, principalCustomerName: 'Juan', principalVehiclePlate: 'ABC123' },
+  budget: { laborWithoutVat: 150000, partsTotal: 70000, totalQuoted: 251500, items: [{ laborAmount: 100000, partValue: 50000 }, { laborAmount: 50000, partValue: 20000 }] },
+  particularFinanceSummary: { customerPaid: 0, pendingBalance: 251500, quotedTotal: 251500, hasAdvancePayment: false, paidInFull: false },
   onSaved: vi.fn(),
 };
 
@@ -566,11 +566,36 @@ describe('PaymentsEditorPanel', () => {
     ['Ganancias', 'Contribución patrimonial', 'IIBB', 'DReI', 'Otra'].forEach((label) => expect(screen.getByLabelText(label)).toBeTruthy());
   });
 
-  it('calculates total con IVA for comprobante A (default)', () => {
-    mount();
-    // MO=150000 + 21%=31500 + Rep=70000 = 251500
-    const elements = screen.getAllByText(/\$ *251\.500/);
-    expect(elements.length).toBeGreaterThan(0);
+  it('uses the canonical PARTICULAR quoted total for comprobante A when item labor is zero', () => {
+    mount({ budget: { ...baseProps.budget, items: [{ laborAmount: 0, partValue: 70000 }] } });
+
+    expect(screen.getByText('Cotizado (según cpte.)').parentElement).toHaveTextContent('251.500');
+    openPaymentForm();
+    expect(screen.getByText(/Total cotizado:.*251\.500/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Monto')).toHaveAttribute('placeholder', 'Ej: 251500');
+    expect(screen.queryByText(/70\.000/)).toBeNull();
+  });
+
+  it('falls back to the PARTICULAR budget header quoted total for comprobante A', () => {
+    mount({ particularFinanceSummary: { ...baseProps.particularFinanceSummary, quotedTotal: null } });
+
+    expect(screen.getByText('Cotizado (según cpte.)').parentElement).toHaveTextContent('251.500');
+  });
+
+  it.each(['C', 'R'])('uses canonical PARTICULAR header labor and parts without VAT for comprobante %s', (comprobanteTipo) => {
+    mount({ budget: { ...baseProps.budget, items: [{ laborAmount: 0, partValue: 70000 }] } });
+    openPaymentForm();
+
+    fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${comprobanteTipo}.*Factura|^${comprobanteTipo}.*Recibo`) }));
+
+    expect(screen.getByText(/MO:.*150\.000.*Repuestos:.*70\.000.*Total:.*220\.000/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Monto')).toHaveAttribute('placeholder', 'Ej: 220000');
+  });
+
+  it('calculates the PARTICULAR pending amount from the canonical quoted total and prior payments', () => {
+    mount({ particularFinanceSummary: { ...baseProps.particularFinanceSummary, customerPaid: 50000 } });
+
+    expect(screen.getByText('Pendiente').parentElement).toHaveTextContent('201.500');
   });
 
   it('renders seña, cancela, modo, and factura selects', () => {
@@ -586,6 +611,27 @@ describe('PaymentsEditorPanel', () => {
     mount();
     openPaymentForm();
     expect(screen.getByRole('button', { name: /^registrar pago$/i })).toBeTruthy();
+  });
+
+  it('persists the selected PARTICULAR cancellation type', async () => {
+    mount();
+    openPaymentForm();
+    fireEvent.change(screen.getByLabelText('Monto'), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText('Cancela saldo'), { target: { value: 'PARCIAL' } });
+    fireEvent.click(screen.getByRole('button', { name: /^registrar pago$/i }));
+
+    await waitFor(() => expect(mockCreateFinancialMovement).toHaveBeenCalledWith(42, expect.objectContaining({ cancellationTypeCode: 'PARCIAL' })));
+  });
+
+  it('invalidates panel and case lists after a client payment succeeds', async () => {
+    mount();
+    openPaymentForm();
+    fireEvent.change(screen.getByLabelText('Monto'), { target: { value: '100' } });
+    fireEvent.click(screen.getByRole('button', { name: /^registrar pago$/i }));
+
+    await waitFor(() => expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['panel'] }));
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases'] });
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '42', 'workspace'] });
   });
 
   it('keeps the PARTICULAR payment form within the viewport with an internal scroll area', () => {

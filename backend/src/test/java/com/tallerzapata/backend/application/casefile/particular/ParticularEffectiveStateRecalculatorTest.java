@@ -65,14 +65,14 @@ class ParticularEffectiveStateRecalculatorTest {
     @Test
     void updatesOnlyProcedureAndRecordsProcedureScope() {
         ParticularEffectiveStateEntity state = state("INGRESADO", "REPARADO", null, null);
-        Fixture fixture = particularFixture(state, repairedFacts("0"));
+        Fixture fixture = particularFixture(state, repairedFacts("10"));
 
         fixture.recalculator.recalculate(7L);
 
         ArgumentCaptor<ParticularEffectiveStateHistoryEntity> history = ArgumentCaptor.forClass(ParticularEffectiveStateHistoryEntity.class);
         verify(fixture.history).save(history.capture());
         assertEquals("TRAMITE", field(history.getValue(), "changeScope"));
-        assertEquals("PAGADO", field(history.getValue(), "newProcedureCode"));
+        assertEquals("PASADO_A_PAGOS", field(history.getValue(), "newProcedureCode"));
         assertEquals("REPARADO", field(history.getValue(), "newRepairCode"));
     }
 
@@ -183,13 +183,13 @@ class ParticularEffectiveStateRecalculatorTest {
     }
 
     private ParticularEffectiveStateFacts facts(String repairOverride, String procedureOverride, String balance, boolean appointment) {
-        return new ParticularEffectiveStateFacts(repairOverride, procedureOverride, null, appointment, false, false, new BigDecimal(balance), new BigDecimal("100"));
+        return new ParticularEffectiveStateFacts(repairOverride, procedureOverride, null, appointment, false, false, new BigDecimal(balance), new BigDecimal("100"), false);
     }
 
     private ParticularEffectiveStateFacts repairedFacts(String balance) {
         return new ParticularEffectiveStateFacts(null, null,
                 new ParticularEffectiveStateFacts.OutcomeFact(1L, null, true, null, false),
-                false, false, false, new BigDecimal(balance), new BigDecimal("100"));
+                false, false, false, new BigDecimal(balance), new BigDecimal("100"), false);
     }
 
     private ParticularEffectiveStateEntity state(String procedure, String repair, String procedureOverride, String repairOverride) {

@@ -47,8 +47,8 @@ const toSentenceCase = (value) => value
 const pluralize = (count, singular, plural) => `${count} ${count === 1 ? singular : plural}`;
 
 const PARTICULAR_OVERRIDE_OPTIONS = {
-  tramite: ['INGRESADO', 'PASADO_A_PAGOS', 'PAGADO', 'RECHAZADO', 'DESISTIDO'],
-  reparacion: ['EN_TRAMITE', 'DAR_TURNO', 'FALTAN_REPUESTOS', 'CON_TURNO', 'DEBE_REINGRESAR', 'REPARADO', 'RECHAZADO', 'DESISTIDO'],
+  tramite: ['RECHAZADO', 'DESISTIDO'],
+  reparacion: ['RECHAZADO', 'DESISTIDO'],
 };
 
 const DEFAULT_OVERRIDE_OPTIONS = {

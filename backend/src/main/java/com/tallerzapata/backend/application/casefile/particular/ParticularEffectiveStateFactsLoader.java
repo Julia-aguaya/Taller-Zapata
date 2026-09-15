@@ -49,11 +49,12 @@ public class ParticularEffectiveStateFactsLoader {
                 partRepository.findByCaseIdOrderByIdAsc(caseId).stream().anyMatch(part -> !"RECIBIDO".equals(normalize(part.getStatusCode()))),
                 receiptRepository.findByCaseId(caseId, Sort.unsorted()).stream().anyMatch(receipt -> "FACTURA".equals(normalize(receipt.getReceiptTypeCode())) || "RECIBO".equals(normalize(receipt.getReceiptTypeCode()))),
                 balanceService.balanceFor(caseId),
-                balanceService.expectedQuotedTotal(caseId)
+                balanceService.expectedQuotedTotal(caseId),
+                balanceService.hasPersistedTotalCancellation(caseId)
         );
     }
 
-    private boolean isValidNormalAppointment(RepairAppointmentEntity appointment) { return !Boolean.TRUE.equals(appointment.getReentry()) && isCurrent(appointment); }
+    private boolean isValidNormalAppointment(RepairAppointmentEntity appointment) { return !Boolean.TRUE.equals(appointment.getReentry()) && isAssigned(appointment); }
     private boolean hasValidReentryAppointment(Long caseId, VehicleOutcomeEntity outcome, List<VehicleOutcomeEntity> outcomes,
                                                 List<RepairAppointmentEntity> appointments) {
         if (outcome.getReentryAppointmentId() != null) {
@@ -93,6 +94,9 @@ public class ParticularEffectiveStateFactsLoader {
     private boolean isCurrent(RepairAppointmentEntity appointment) {
         String status = normalize(appointment.getStatusCode());
         return "PENDIENTE".equals(status) || "REPROGRAMADO".equals(status);
+    }
+    private boolean isAssigned(RepairAppointmentEntity appointment) {
+        return isCurrent(appointment) || "CUMPLIDO".equals(normalize(appointment.getStatusCode()));
     }
     private String normalize(String value) { return value == null ? "" : value.trim().toUpperCase(); }
 }

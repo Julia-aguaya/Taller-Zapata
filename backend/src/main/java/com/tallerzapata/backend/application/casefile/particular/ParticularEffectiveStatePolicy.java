@@ -15,7 +15,10 @@ public final class ParticularEffectiveStatePolicy {
         if (isTerminal(facts.repairTerminalOverrideCode())) return facts.repairTerminalOverrideCode();
         ParticularEffectiveStateFacts.OutcomeFact outcome = facts.latestOutcome();
         if (outcome != null && outcome.isRepaired()) return "REPARADO";
-        if (outcome != null && outcome.hasUnsatisfiedReentry()) return "DEBE_REINGRESAR";
+        if (outcome != null && outcome.requiresReentry()) {
+            if (outcome.hasLaterValidReentryAppointment() || outcome.hasLaterAdvancedFact()) return "CON_TURNO";
+            return "DEBE_REINGRESAR";
+        }
         if (facts.hasValidNormalAppointment()) return "CON_TURNO";
         if (facts.hasUnreceivedPart()) return "FALTAN_REPUESTOS";
         if (facts.hasQualifyingReceipt()) return "DAR_TURNO";
@@ -24,21 +27,18 @@ public final class ParticularEffectiveStatePolicy {
 
     private String procedureCode(ParticularEffectiveStateFacts facts, String repairCode) {
         if (isTerminal(facts.procedureTerminalOverrideCode())) return facts.procedureTerminalOverrideCode();
-        if (isFullyPaid(facts)) return "PAGADO";
-        if ("REPARADO".equals(repairCode)) return "PASADO_A_PAGOS";
+        if (facts.hasPersistedTotalCancellation()) return "PAGADO";
+        if ("REPARADO".equals(repairCode) && hasPositiveOutstandingBalance(facts)) return "PASADO_A_PAGOS";
         return "INGRESADO";
     }
 
     /**
-     * "Pagado" exige que haya existido algo que pagar: un monto citado positivo
-     * cubierto por los pagos del cliente. Una carpeta sin presupuesto (o con saldo
-     * desconocido) nunca nace pagada.
+     * The automatic transition to payments is meaningful only while a real balance
+     * remains. PAGADO itself is governed by the persisted TOTAL cancellation choice.
      */
-    private boolean isFullyPaid(ParticularEffectiveStateFacts facts) {
-        BigDecimal expected = facts.expectedTotal();
+    private boolean hasPositiveOutstandingBalance(ParticularEffectiveStateFacts facts) {
         BigDecimal balance = facts.balance();
-        return expected != null && expected.signum() > 0
-                && balance != null && balance.signum() <= 0;
+        return balance != null && balance.signum() > 0;
     }
 
     private boolean isTerminal(String code) { return code != null && TERMINAL_CODES.contains(code); }

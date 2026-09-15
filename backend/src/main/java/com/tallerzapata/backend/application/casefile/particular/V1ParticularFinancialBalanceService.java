@@ -37,6 +37,14 @@ public class V1ParticularFinancialBalanceService implements ParticularFinancialB
                 .orElse(null);
     }
 
+    @Override
+    public boolean hasPersistedTotalCancellation(Long caseId) {
+        return financialMovementRepository.findByCaseId(caseId, MOVEMENT_SORT).stream()
+                .anyMatch(movement -> "CLIENTE".equals(normalize(movement.getFlowOriginCode()))
+                        && "INGRESO".equals(normalize(movement.getMovementTypeCode()))
+                        && "TOTAL".equals(normalize(movement.getCancellationTypeCode())));
+    }
+
     private BigDecimal signedMovement(String typeCode, BigDecimal amount) {
         BigDecimal value = zeroWhenNull(amount);
         return "INGRESO".equals(normalize(typeCode)) || ("AJUSTE".equals(normalize(typeCode)) && value.signum() >= 0)

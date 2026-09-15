@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
@@ -309,6 +309,21 @@ describe('PanelPage', () => {
 
     expect(screen.getByText('No hay urgencias pendientes')).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Ver todas las carpetas' }).length).toBeGreaterThan(0);
+  });
+
+  it('muestra PAGADO y descarta la prioridad de pago cuando el estado legacy sigue pendiente', () => {
+    panelResponse.priorityBuckets[0].items[0].visibleTramiteState = { code: 'PAGADO', label: 'Pagado' };
+    casesResponse.items[0].visibleTramiteState = { code: 'PAGADO', label: 'Pagado' };
+
+    render(<PanelPage />);
+
+    const paidCaseRows = [...new Set(screen.getAllByText('CAR-001').map((element) => element.closest('tr')))];
+
+    paidCaseRows.forEach((paidCaseRow) => {
+      expect(within(paidCaseRow).getAllByText('Pagado').length).toBeGreaterThan(0);
+      expect(within(paidCaseRow).queryByText('Pago pendiente')).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole('button', { name: /Pagos pendientes/ })).toHaveTextContent('1');
   });
 
   it('deriva el color de prioridad del codigo resuelto y etiqueta las acciones de carpeta', () => {

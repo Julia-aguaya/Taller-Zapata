@@ -147,7 +147,7 @@ class ParticularVisibleStateIntegrationTest {
         updateAppointment(appointmentId, "CANCELADO", false);
         assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
         updateAppointment(appointmentId, "CUMPLIDO", false);
-        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
+        assertProjection(caseId, "INGRESADO", "CON_TURNO");
 
         createAppointment(caseId, "CANCELADO", false);
         createAppointment(caseId, "REPROGRAMADO", false);
@@ -159,7 +159,7 @@ class ParticularVisibleStateIntegrationTest {
         long caseId = createCase("PARTICULAR");
         long intakeId = createIntake(caseId, 1);
         createOutcome(caseId, intakeId, false, true);
-        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
+        assertProjection(caseId, "INGRESADO", "CON_TURNO");
     }
 
     @Test
@@ -170,7 +170,7 @@ class ParticularVisibleStateIntegrationTest {
         Long reentryAppointmentId = jdbcTemplate.queryForObject("SELECT turno_reingreso_id FROM egresos_vehiculo WHERE id = ?", Long.class, outcomeId);
 
         updateAppointment(reentryAppointmentId, "REPROGRAMADO", true);
-        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
+        assertProjection(caseId, "INGRESADO", "CON_TURNO");
     }
 
     @Test
@@ -195,9 +195,9 @@ class ParticularVisibleStateIntegrationTest {
         assertProjection(caseId, "INGRESADO", "DEBE_REINGRESAR");
 
         createIntake(caseId, 2);
-        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
+        assertProjection(caseId, "INGRESADO", "CON_TURNO");
         updateOutcome(outcomeId, true, false);
-        assertProjection(caseId, "PASADO_A_PAGOS", "REPARADO");
+        assertProjection(caseId, "INGRESADO", "REPARADO");
     }
 
     @Test
@@ -210,9 +210,9 @@ class ParticularVisibleStateIntegrationTest {
         long appointmentId = createAppointment(caseId, "PENDIENTE", false);
         assertProjection(caseId, "INGRESADO", "CON_TURNO");
         updateAppointment(appointmentId, "CUMPLIDO", false);
-        assertProjection(caseId, "INGRESADO", "FALTAN_REPUESTOS");
+        assertProjection(caseId, "INGRESADO", "CON_TURNO");
         updatePart(caseId, partId, "RECIBIDO");
-        assertProjection(caseId, "INGRESADO", "DAR_TURNO");
+        assertProjection(caseId, "INGRESADO", "CON_TURNO");
     }
 
     @Test
@@ -221,7 +221,7 @@ class ParticularVisibleStateIntegrationTest {
         createReceipt(caseId, "RECIBO");
         createAppointment(caseId, "CUMPLIDO", false);
 
-        assertProjection(caseId, "INGRESADO", "DAR_TURNO");
+        assertProjection(caseId, "INGRESADO", "CON_TURNO");
     }
 
     @Test
@@ -334,7 +334,7 @@ class ParticularVisibleStateIntegrationTest {
                 .andExpect(status().isOk());
         assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
 
-        createClientMovement(caseId, "121.00");
+        createClientMovement(caseId, "121.00", "TOTAL");
         assertProjection(caseId, "PAGADO", "EN_TRAMITE");
         int historyBeforeNonStateFinancialMutations = countHistory(caseId);
         long movementId = jdbcTemplate.queryForObject("SELECT id FROM movimientos_financieros WHERE caso_id = ?", Long.class, caseId);
@@ -526,9 +526,13 @@ class ParticularVisibleStateIntegrationTest {
     }
 
     private void createClientMovement(long caseId, String amount) throws Exception {
+        createClientMovement(caseId, amount, "PARCIAL");
+    }
+
+    private void createClientMovement(long caseId, String amount, String cancellationType) throws Exception {
         mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId).header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"CLIENTE\",\"counterpartyTypeCode\":\"PERSONA\",\"counterpartyPersonId\":10,\"movementAt\":\"2026-08-09T10:00:00\",\"grossAmount\":" + amount + ",\"netAmount\":" + amount + ",\"paymentMethodCode\":\"TRANSFERENCIA\",\"advancePayment\":false,\"bonification\":false}"))
+                        .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"CLIENTE\",\"counterpartyTypeCode\":\"PERSONA\",\"counterpartyPersonId\":10,\"movementAt\":\"2026-08-09T10:00:00\",\"grossAmount\":" + amount + ",\"netAmount\":" + amount + ",\"paymentMethodCode\":\"TRANSFERENCIA\",\"cancellationTypeCode\":\"" + cancellationType + "\",\"advancePayment\":false,\"bonification\":false}"))
                 .andExpect(status().isOk());
     }
 }

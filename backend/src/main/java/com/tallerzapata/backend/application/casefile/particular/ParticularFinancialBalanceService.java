@@ -10,4 +10,7 @@ public interface ParticularFinancialBalanceService {
      * presupuesto: sin monto esperado no puede declararse una carpeta como pagada.
      */
     BigDecimal expectedQuotedTotal(Long caseId);
+
+    /** A TOTAL selection is the explicit customer cancellation signal for PARTICULAR. */
+    boolean hasPersistedTotalCancellation(Long caseId);
 }

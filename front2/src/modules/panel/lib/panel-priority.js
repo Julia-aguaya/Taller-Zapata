@@ -12,6 +12,7 @@ const normalizeCode = (value) => String(value || '')
   .replace(/[\s-]+/g, '_');
 
 const PAYMENT_SETTLED_CODES = new Set(['PAGADO']);
+const EFFECTIVE_PAYMENT_OUTCOME_CODES = new Set(['PAGADO', 'PASADO_A_PAGOS']);
 const REPAIR_APPOINTMENT_PENDING_CODES = new Set(['DAR_TURNO', 'SIN_TURNO']);
 const REPAIR_RESOLVED_CODES = new Set(['REPARADO', 'RESUELTA', 'RESUELTO', 'FINALIZADA', 'FINALIZADO']);
 
@@ -24,7 +25,12 @@ const PRIORITY_REASON_TYPES = {
   OTHER: 'OTHER',
 };
 
-const getCurrentPaymentCode = (item) => normalizeCode(item?.currentPaymentStateCode || item?.visibleTramiteState?.code);
+export const resolveEffectivePaymentCode = (item) => {
+  const visibleProcedureCode = normalizeCode(item?.visibleTramiteState?.code);
+  return EFFECTIVE_PAYMENT_OUTCOME_CODES.has(visibleProcedureCode)
+    ? visibleProcedureCode
+    : normalizeCode(item?.currentPaymentStateCode || item?.visibleTramiteState?.code);
+};
 const getCurrentRepairCode = (item) => normalizeCode(item?.visibleRepairState?.code || item?.currentRepairStateCode);
 
 export const resolvePriorityReasonType = (reason) => {
@@ -40,7 +46,7 @@ export const resolvePriorityReasonType = (reason) => {
 };
 
 export const resolveCasePriorityState = (item, taskMeta = null) => {
-  const isPaymentSettled = PAYMENT_SETTLED_CODES.has(getCurrentPaymentCode(item));
+  const isPaymentSettled = PAYMENT_SETTLED_CODES.has(resolveEffectivePaymentCode(item));
   const currentRepairCode = getCurrentRepairCode(item);
   const isRepairResolved = REPAIR_RESOLVED_CODES.has(currentRepairCode);
   const needsAppointment = REPAIR_APPOINTMENT_PENDING_CODES.has(currentRepairCode);

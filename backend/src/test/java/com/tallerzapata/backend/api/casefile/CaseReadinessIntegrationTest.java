@@ -302,7 +302,7 @@ class CaseReadinessIntegrationTest {
                 new BigDecimal("1210.00"),
                 "TRANSFERENCIA",
                 null,
-                "PRESUPUESTO",
+                "TOTAL",
                 false,
                 false,
                 "Pago total del cliente",

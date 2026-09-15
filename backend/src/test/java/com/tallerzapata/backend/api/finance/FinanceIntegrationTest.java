@@ -1,6 +1,8 @@
 package com.tallerzapata.backend.api.finance;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.lowagie.text.pdf.PdfReader;
+import com.lowagie.text.pdf.parser.PdfTextExtractor;
 import com.tallerzapata.backend.testsupport.TestDatabaseCleaner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -493,6 +495,30 @@ class FinanceIntegrationTest {
                         .header("X-User-Id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(result -> org.junit.jupiter.api.Assertions.assertTrue(result.getResponse().getContentAsByteArray().length > 0));
+    }
+
+    @Test
+    void shouldUsePersistedParticularBudgetForClientPaymentPdfBalance() throws Exception {
+        Long caseId = createParticularCase();
+        jdbcTemplate.update("INSERT INTO presupuestos (caso_id, organizacion_id, sucursal_id, fecha_presupuesto, informe_estado_codigo, total_cotizado) VALUES (?, ?, ?, ?, ?, ?)",
+                caseId, 1L, 1L, LocalDate.of(2026, 1, 15), "PENDIENTE", new BigDecimal("150000.00"));
+        mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId)
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"CLIENTE\",\"counterpartyTypeCode\":\"PERSONA\",\"counterpartyPersonId\":10,\"movementAt\":\"2026-01-15T12:00:00\",\"grossAmount\":50000,\"netAmount\":50000,\"paymentMethodCode\":\"EFECTIVO\",\"advancePayment\":true,\"bonification\":false,\"retentions\":[],\"applications\":[]}"))
+                .andExpect(status().isOk());
+
+        byte[] pdf = mockMvc.perform(get("/api/v1/cases/{caseId}/finance/client-payment-pdf", caseId)
+                        .param("clientName", "Carlos Cliente")
+                        .param("vehiclePlate", "AB123CD")
+                        .param("comprobanteTipo", "A")
+                        .param("totalCotizado", "50000")
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray();
+
+        String text = new PdfTextExtractor(new PdfReader(pdf)).getTextFromPage(1);
+        assertThat(text).contains("Saldo deudor:").containsPattern("(?s)Saldo deudor:\\s*\\$\\s*100[.,]000[.,]00");
     }
 
     @Test

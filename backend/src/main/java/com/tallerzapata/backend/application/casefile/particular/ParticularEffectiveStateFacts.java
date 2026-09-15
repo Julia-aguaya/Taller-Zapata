@@ -12,7 +12,8 @@ public record ParticularEffectiveStateFacts(
         boolean hasUnreceivedPart,
         boolean hasQualifyingReceipt,
         BigDecimal balance,
-        BigDecimal expectedTotal
+        BigDecimal expectedTotal,
+        boolean hasPersistedTotalCancellation
 ) {
     public record OutcomeFact(Long id, LocalDateTime occurredAt, Boolean definitive, Boolean shouldReenter,
                                boolean hasLaterValidReentryAppointment, boolean hasLaterAdvancedFact) {
@@ -24,8 +25,6 @@ public record ParticularEffectiveStateFacts(
             return Boolean.TRUE.equals(definitive) || Boolean.FALSE.equals(shouldReenter);
         }
 
-        public boolean hasUnsatisfiedReentry() {
-            return Boolean.TRUE.equals(shouldReenter) && !hasLaterValidReentryAppointment && !hasLaterAdvancedFact;
-        }
+        public boolean requiresReentry() { return Boolean.TRUE.equals(shouldReenter); }
     }
 }

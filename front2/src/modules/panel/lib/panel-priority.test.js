@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveCasePriorityState } from '@/modules/panel/lib/panel-priority';
+import { resolveCasePriorityState, resolveEffectivePaymentCode } from '@/modules/panel/lib/panel-priority';
 
 describe('resolveCasePriorityState', () => {
   it('descarta pago pendiente cuando el pago real ya esta pagado', () => {
@@ -11,6 +11,29 @@ describe('resolveCasePriorityState', () => {
 
     expect(state.validReasons).toEqual(['Caso proximo a prescribir']);
     expect(state.priorityBucketCode).toBe('URGENT');
+  });
+
+  it('uses the visible paid procedure outcome over a legacy pending payment state', () => {
+    const item = {
+      currentPaymentStateCode: 'PENDIENTE',
+      visibleTramiteState: { code: 'PAGADO' },
+      visibleRepairState: { code: 'EN_REPARACION' },
+      priorityReasons: ['Pago pendiente'],
+    };
+
+    expect(resolveEffectivePaymentCode(item)).toBe('PAGADO');
+    expect(resolveCasePriorityState(item).isVisibleInPriority).toBe(false);
+  });
+
+  it('uses the visible passed-to-payments outcome while preserving legacy fallbacks', () => {
+    expect(resolveEffectivePaymentCode({
+      currentPaymentStateCode: 'PENDIENTE',
+      visibleTramiteState: { code: 'PASADO_A_PAGOS' },
+    })).toBe('PASADO_A_PAGOS');
+    expect(resolveEffectivePaymentCode({
+      currentPaymentStateCode: 'PENDIENTE',
+      visibleTramiteState: { code: 'EN_TRAMITE' },
+    })).toBe('PENDIENTE');
   });
 
   it('descarta tarea pendiente cuando la tarea ya esta resuelta o cancelada', () => {

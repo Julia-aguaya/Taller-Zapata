@@ -7,7 +7,7 @@ import { getCaseCatalogs } from '@/modules/cases/api/new-case-api';
 import { getTaskDisplayStatus } from '@/modules/agenda/lib/agenda-helpers';
 import { listCases } from '@/modules/cases/api/cases-api';
 import { getPanelGeneral } from '@/modules/panel/api/panel-api';
-import { resolveCasePriorityState } from '@/modules/panel/lib/panel-priority';
+import { resolveCasePriorityState, resolveEffectivePaymentCode } from '@/modules/panel/lib/panel-priority';
 import {
   EMPTY_CASE_FILTERS,
   applyLocalCaseFilters,
@@ -320,9 +320,11 @@ function CaseRepairBadge({ item }) {
 }
 
 function CasePaymentBadge({ item }) {
+  const paymentCode = resolveEffectivePaymentCode(item);
+
   return (
-    <Badge variant={resolvePaymentBadgeVariant(item.currentPaymentStateCode)}>
-      {formatCodeLabel(item.currentPaymentStateCode, 'Sin dato')}
+    <Badge variant={resolvePaymentBadgeVariant(paymentCode)}>
+      {formatCodeLabel(paymentCode, 'Sin dato')}
     </Badge>
   );
 }
