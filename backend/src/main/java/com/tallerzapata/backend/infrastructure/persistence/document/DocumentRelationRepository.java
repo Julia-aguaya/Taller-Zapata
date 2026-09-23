@@ -8,6 +8,8 @@ public interface DocumentRelationRepository extends JpaRepository<DocumentRelati
 
     boolean existsByDocumentIdAndEntityTypeAndEntityId(Long documentId, String entityType, Long entityId);
 
+    boolean existsByDocumentIdAndEntityTypeAndEntityIdAndModuleCode(Long documentId, String entityType, Long entityId, String moduleCode);
+
     List<DocumentRelationEntity> findByDocumentIdOrderByVisualOrderAscIdAsc(Long documentId);
 
     List<DocumentRelationEntity> findByCaseIdOrderByVisualOrderAscIdAsc(Long caseId);

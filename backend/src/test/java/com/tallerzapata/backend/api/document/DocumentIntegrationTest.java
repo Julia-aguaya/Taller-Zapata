@@ -280,6 +280,30 @@ class DocumentIntegrationTest {
     }
 
     @Test
+    void shouldAllowTheSameDocumentToBeRelatedToDifferentCaseModules() throws Exception {
+        Long categoryId = activeCategoryId("OTRO");
+        Long documentId = uploadDocument(categoryId, 100L, "3");
+
+        for (String moduleCode : java.util.List.of("GESTION_TRAMITE", "PRESUPUESTO")) {
+            mockMvc.perform(post("/api/v1/documents/{documentId}/relations", documentId)
+                            .header("X-User-Id", "3")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsBytes(new DocumentRelationCreateRequest(100L, "CASO", 100L, moduleCode, false, false, 0))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.moduleCode").value(moduleCode));
+        }
+
+        mockMvc.perform(get("/api/v1/cases/100/documents").header("X-User-Id", "3").param("moduleCode", "GESTION_TRAMITE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].moduleCode").value("GESTION_TRAMITE"));
+        mockMvc.perform(get("/api/v1/cases/100/documents").header("X-User-Id", "3").param("moduleCode", "PRESUPUESTO"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].moduleCode").value("PRESUPUESTO"));
+    }
+
+    @Test
     void shouldDenyOperatorDocumentAccessOutsideBranchAndOnClosedCases() throws Exception {
         Long categoryId = activeCategoryId("OTRO");
         Long foreignDocumentId = uploadDocument(categoryId, null, "1");

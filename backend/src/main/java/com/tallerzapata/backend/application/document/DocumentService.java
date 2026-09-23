@@ -267,7 +267,8 @@ public class DocumentService {
             throw new ConflictException("entityType no soportado: " + request.entityType());
         }
         validateEntityBelongsToCase(caseEntity.getId(), entityType, request.entityId());
-        if (documentRelationRepository.existsByDocumentIdAndEntityTypeAndEntityId(documentId, entityType, request.entityId())) {
+        String moduleCode = normalizeCode(request.moduleCode());
+        if (documentRelationRepository.existsByDocumentIdAndEntityTypeAndEntityIdAndModuleCode(documentId, entityType, request.entityId(), moduleCode)) {
             throw new ConflictException("El documento ya esta relacionado con esa entidad");
         }
 
@@ -276,7 +277,7 @@ public class DocumentService {
         entity.setCaseId(caseEntity.getId());
         entity.setEntityType(entityType);
         entity.setEntityId(request.entityId());
-        entity.setModuleCode(normalizeCode(request.moduleCode()));
+        entity.setModuleCode(moduleCode);
         entity.setPrincipal(Boolean.TRUE.equals(request.principal()));
         entity.setVisibleToCustomer(Boolean.TRUE.equals(request.visibleToCustomer()));
         entity.setVisualOrder(request.visualOrder() == null ? 0 : request.visualOrder());
