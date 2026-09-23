@@ -131,13 +131,10 @@ export const CleasProcedureSection = ({
         franchiseAmount: toNumberOrNull(
           cleasFranchiseDistribution.franchiseAmount,
         ),
-        customerChargeAmount: isUnfavorableFranchise
-          ? unfavorableFranchiseSettlement.customerChargeAmount
-          : null,
-        customerPaymentStatusCode:
-          cleasFranchiseDistribution.companyPaymentStatus || null,
-        customerPaymentDate:
-          cleasFranchiseDistribution.companyPaymentDate || null,
+        // El cargo, su estado y su fecha se derivan de los movimientos financieros.
+        customerChargeAmount: null,
+        customerPaymentStatusCode: null,
+        customerPaymentDate: null,
         companyFranchisePaymentAmount: isUnfavorableFranchise
           ? toNumberOrNull(cleasFranchiseDistribution.companyRequiredAmount)
           : null,

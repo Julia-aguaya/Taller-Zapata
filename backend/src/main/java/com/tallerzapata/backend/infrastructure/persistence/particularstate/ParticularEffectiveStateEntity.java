@@ -25,6 +25,8 @@ public class ParticularEffectiveStateEntity {
     private Long sourceOutcomeId;
     @Column(name = "turno_reingreso_origen_id")
     private Long sourceReentryAppointmentId;
+    @Column(name = "comprobante_intencion_codigo")
+    private String comprobanteIntentCode;
     @Column(name = "recalculated_at", nullable = false)
     private LocalDateTime recalculatedAt;
 
@@ -42,6 +44,8 @@ public class ParticularEffectiveStateEntity {
     public void setSourceOutcomeId(Long sourceOutcomeId) { this.sourceOutcomeId = sourceOutcomeId; }
     public Long getSourceReentryAppointmentId() { return sourceReentryAppointmentId; }
     public void setSourceReentryAppointmentId(Long sourceReentryAppointmentId) { this.sourceReentryAppointmentId = sourceReentryAppointmentId; }
+    public String getComprobanteIntentCode() { return comprobanteIntentCode; }
+    public void setComprobanteIntentCode(String comprobanteIntentCode) { this.comprobanteIntentCode = comprobanteIntentCode; }
     public LocalDateTime getRecalculatedAt() { return recalculatedAt; }
     public void setRecalculatedAt(LocalDateTime recalculatedAt) { this.recalculatedAt = recalculatedAt; }
 }

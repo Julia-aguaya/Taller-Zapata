@@ -27,6 +27,7 @@ import com.tallerzapata.backend.infrastructure.persistence.organization.BranchEn
 import com.tallerzapata.backend.infrastructure.persistence.organization.BranchRepository;
 import com.tallerzapata.backend.infrastructure.persistence.organization.OrganizationEntity;
 import com.tallerzapata.backend.infrastructure.persistence.organization.OrganizationRepository;
+import com.tallerzapata.backend.infrastructure.persistence.particularstate.ParticularEffectiveStateRepository;
 import com.tallerzapata.backend.infrastructure.persistence.person.PersonRepository;
 import com.tallerzapata.backend.infrastructure.persistence.security.UserRepository;
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
@@ -83,8 +84,9 @@ public class FinanceService {
     private final ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
     private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
     private final CleasDownstreamGate cleasDownstreamGate;
+    private final ParticularEffectiveStateRepository particularEffectiveStateRepository;
 
-    public FinanceService(FinancialMovementRepository movementRepository, FinancialMovementRetentionRepository retentionRepository, FinancialMovementApplicationRepository applicationRepository, IssuedReceiptRepository receiptRepository, ExtraBudgetRepository extraBudgetRepository, ExtraBudgetPaymentApplicationRepository extraBudgetPaymentApplications, CaseFranchiseRepository caseFranchiseRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, BudgetRepository budgetRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, PersonRepository personRepository, UserRepository userRepository, DocumentRepository documentRepository, FinancialMovementTypeRepository movementTypeRepository, FinancialFlowOriginRepository flowOriginRepository, FinancialCounterpartyTypeRepository counterpartyTypeRepository, FinancialPaymentMethodRepository paymentMethodRepository, FinancialCancellationTypeRepository cancellationTypeRepository, FinancialRetentionTypeRepository retentionTypeRepository, FinancialApplicationConceptRepository applicationConceptRepository, IssuedReceiptTypeRepository issuedReceiptTypeRepository, InsuranceCompanyRepository companyRepository, OrganizationRepository organizationRepository, BranchRepository branchRepository, ReceiptPdfService receiptPdfService, ClientPaymentPdfService clientPaymentPdfService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, ParticularCaseClosureService particularCaseClosureService, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasDownstreamGate cleasDownstreamGate) {
+    public FinanceService(FinancialMovementRepository movementRepository, FinancialMovementRetentionRepository retentionRepository, FinancialMovementApplicationRepository applicationRepository, IssuedReceiptRepository receiptRepository, ExtraBudgetRepository extraBudgetRepository, ExtraBudgetPaymentApplicationRepository extraBudgetPaymentApplications, CaseFranchiseRepository caseFranchiseRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, BudgetRepository budgetRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, PersonRepository personRepository, UserRepository userRepository, DocumentRepository documentRepository, FinancialMovementTypeRepository movementTypeRepository, FinancialFlowOriginRepository flowOriginRepository, FinancialCounterpartyTypeRepository counterpartyTypeRepository, FinancialPaymentMethodRepository paymentMethodRepository, FinancialCancellationTypeRepository cancellationTypeRepository, FinancialRetentionTypeRepository retentionTypeRepository, FinancialApplicationConceptRepository applicationConceptRepository, IssuedReceiptTypeRepository issuedReceiptTypeRepository, InsuranceCompanyRepository companyRepository, OrganizationRepository organizationRepository, BranchRepository branchRepository, ReceiptPdfService receiptPdfService, ClientPaymentPdfService clientPaymentPdfService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, ParticularCaseClosureService particularCaseClosureService, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasDownstreamGate cleasDownstreamGate, ParticularEffectiveStateRepository particularEffectiveStateRepository) {
         this.movementRepository = movementRepository;
         this.retentionRepository = retentionRepository;
         this.applicationRepository = applicationRepository;
@@ -120,6 +122,7 @@ public class FinanceService {
         this.particularEffectiveStateRecalculator = particularEffectiveStateRecalculator;
         this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
         this.cleasDownstreamGate = cleasDownstreamGate;
+        this.particularEffectiveStateRepository = particularEffectiveStateRepository;
     }
 
     @Transactional(readOnly = true)
@@ -296,8 +299,22 @@ public class FinanceService {
                 pendingBalance,
                 hasAdvancePayment,
                 paidInFullAt != null,
-                paidInFullAt
+                paidInFullAt,
+                particularEffectiveStateRepository.findById(caseId).map(state -> state.getComprobanteIntentCode()).orElse(null)
         );
+    }
+
+    @Transactional
+    public void selectParticularComprobanteIntent(Long caseId, String comprobanteType, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "finanza.pago.crear");
+        if (!"PARTICULAR".equals(caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> normalizeCode(type.getCode())).orElse(null))) {
+            throw new ConflictException("La intencion de comprobante solo aplica a casos PARTICULAR");
+        }
+        particularEffectiveStateRecalculator.selectComprobanteIntent(caseId, comprobanteType);
+        caseAuditService.register(currentUser.id(), caseId, "particular_effective_state", caseId, "seleccionar_intencion_comprobante", null,
+                caseAuditService.toJson(Map.of("comprobanteTipo", normalizeCode(comprobanteType))), caseAuditService.toJson(Map.of("domain", "particular")), httpRequest);
     }
 
     @Transactional(readOnly = true)
@@ -323,7 +340,7 @@ public class FinanceService {
         Long companyId = caseInsuranceRepository.findByCaseId(caseId).map(value -> value.getInsuranceCompanyId()).orElse(null);
         BigDecimal insurerTotal = granizo || "PROPIA_CIA".equals(caseFranchiseRepository.findByCaseId(caseId).map(value -> normalizeCode(value.getRecoveryTypeCode())).orElse(null))
                 ? agreement : agreement.subtract(franchise).max(BigDecimal.ZERO);
-        BigDecimal insurerPaid = signedPaymentsByOrigin(caseId, "ASEGURADORA");
+        BigDecimal insurerPaid = signedInsurerPayments(caseId);
 
         return new FinancePaymentBreakdownResponse(caseId,
                 new FinancePaymentBreakdownResponse.Client(franchise, franchisePaid, franchisePending, extrasTotal, extrasPaid, extrasPending, franchise.add(extrasTotal), franchisePaid.add(extrasPaid), franchisePending.add(extrasPending)),
@@ -577,7 +594,7 @@ public class FinanceService {
             throw new ConflictException("El pago debe registrarse para la compania aseguradora del caso");
         }
 
-        BigDecimal amount = money(request.netAmount());
+        BigDecimal amount = money(request.grossAmount());
         String movementType = normalizeCode(request.movementTypeCode());
         if ("INGRESO".equals(movementType)) {
             BigDecimal agreement = insuranceProcessingRepository.findByCaseId(caseEntity.getId())
@@ -609,7 +626,7 @@ public class FinanceService {
                 caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> type.getCode()).orElse(""),
                 agreement,
                 caseFranchiseRepository.findByCaseId(caseEntity.getId()).orElse(null));
-        return target.subtract(signedPaymentsByOrigin(caseEntity.getId(), "ASEGURADORA")).max(BigDecimal.ZERO);
+        return target.subtract(signedInsurerPayments(caseEntity.getId())).max(BigDecimal.ZERO);
     }
 
     private boolean insurerPaidInFull(CaseEntity caseEntity) {
@@ -620,14 +637,14 @@ public class FinanceService {
                 caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> type.getCode()).orElse(""),
                 agreement,
                 caseFranchiseRepository.findByCaseId(caseEntity.getId()).orElse(null));
-        return signedPaymentsByOrigin(caseEntity.getId(), "ASEGURADORA").compareTo(target) >= 0;
+        return signedInsurerPayments(caseEntity.getId()).compareTo(target) >= 0;
     }
 
-    private BigDecimal signedPaymentsByOrigin(Long caseId, String origin) {
+    private BigDecimal signedInsurerPayments(Long caseId) {
         return movementRepository.findByCaseId(caseId, Sort.unsorted()).stream()
-                .filter(movement -> origin.equals(normalizeCode(movement.getFlowOriginCode())))
+                .filter(movement -> "ASEGURADORA".equals(normalizeCode(movement.getFlowOriginCode())))
                 .map(movement -> {
-                    BigDecimal amount = money(movement.getNetAmount());
+                    BigDecimal amount = money(movement.getGrossAmount());
                     return "INGRESO".equals(normalizeCode(movement.getMovementTypeCode())) || ("AJUSTE".equals(normalizeCode(movement.getMovementTypeCode())) && amount.signum() >= 0)
                             ? amount : amount.negate();
                 })

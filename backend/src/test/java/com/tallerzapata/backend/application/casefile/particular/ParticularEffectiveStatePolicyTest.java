@@ -97,8 +97,18 @@ class ParticularEffectiveStatePolicyTest {
     @Test
     void marksPaidOnlyAfterPersistedTotalCancellation() {
         ParticularEffectiveStateFacts facts = new ParticularEffectiveStateFacts(null, null, null, false, false, false,
-                new BigDecimal("100"), new BigDecimal("100"), true);
+                BigDecimal.ZERO, new BigDecimal("100"), true);
         assertState("PAGADO", "EN_TRAMITE", facts);
+    }
+
+    @Test
+    void totalCancellationRequiresTheActualOutstandingBalanceToBeCovered() {
+        assertState("INGRESADO", "EN_TRAMITE", new ParticularEffectiveStateFacts(null, null, null, false, false, false,
+                new BigDecimal("1.00"), new BigDecimal("100.00"), true));
+        assertState("PAGADO", "EN_TRAMITE", new ParticularEffectiveStateFacts(null, null, null, false, false, false,
+                BigDecimal.ZERO, new BigDecimal("100.00"), true));
+        assertState("PAGADO", "EN_TRAMITE", new ParticularEffectiveStateFacts(null, null, null, false, false, false,
+                new BigDecimal("-1.00"), new BigDecimal("100.00"), true));
     }
 
     private ParticularEffectiveStateFacts.OutcomeFact outcome(Boolean definitive, Boolean shouldReenter, boolean hasReentry) {

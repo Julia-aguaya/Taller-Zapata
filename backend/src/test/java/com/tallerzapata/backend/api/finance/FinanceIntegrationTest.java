@@ -186,6 +186,26 @@ class FinanceIntegrationTest {
     }
 
     @Test
+    void shouldApplyTodoRiesgoCompanyPaymentByGrossAmountWhenItHasRetentions() throws Exception {
+        Long caseId = createTodoRiesgoCase();
+        jdbcTemplate.update("INSERT INTO caso_seguro (caso_id, compania_seguro_id) VALUES (?, ?)", caseId, 1L);
+        jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_cotizacion, monto_acordado, monto_facturar_compania) VALUES (?, ?, ?, ?)",
+                caseId, LocalDate.of(2026, 5, 11), new BigDecimal("100.00"), new BigDecimal("100.00"));
+
+        mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId).header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"ASEGURADORA\",\"counterpartyTypeCode\":\"COMPANIA\",\"counterpartyCompanyId\":1,\"movementAt\":\"2026-05-11T10:30:00\",\"grossAmount\":100,\"netAmount\":90,\"paymentMethodCode\":\"TRANSFERENCIA\",\"cancellationTypeCode\":\"COMPANIA\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[{\"retentionTypeCode\":\"DREI\",\"amount\":10}],\"applications\":[]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.grossAmount").value(100.00))
+                .andExpect(jsonPath("$.netAmount").value(90.00))
+                .andExpect(jsonPath("$.retentions[0].retentionTypeCode").value("DREI"));
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/finance/payment-breakdown", caseId).header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.insurer.paid").value(100.00))
+                .andExpect(jsonPath("$.insurer.pending").value(0.00));
+    }
+
+    @Test
     void shouldRejectCompanyPaymentWithoutAnAgreementOrForAnotherInsurer() throws Exception {
         Long caseId = createTodoRiesgoCase();
         jdbcTemplate.update("INSERT INTO caso_seguro (caso_id, compania_seguro_id) VALUES (?, ?)", caseId, 1L);

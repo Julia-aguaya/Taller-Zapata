@@ -21,6 +21,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -527,6 +528,54 @@ class ParticularVisibleStateIntegrationTest {
 
     private void createClientMovement(long caseId, String amount) throws Exception {
         createClientMovement(caseId, amount, "PARCIAL");
+    }
+
+    @Test
+    void totalCancellationRequiresTheOutstandingParticularBalanceAndRepairedCasesPassToPayments() throws Exception {
+        long caseId = createCase("PARTICULAR");
+        mockMvc.perform(put("/api/v1/cases/{caseId}/budget", caseId).header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"budgetDate\":\"2026-08-09\",\"reportStatusCode\":\"BORRADOR\",\"laborWithoutVat\":100,\"vatRate\":21,\"partsTotal\":0,\"estimatedDays\":1}"))
+                .andExpect(status().isOk());
+
+        createClientMovement(caseId, "100.00", "TOTAL");
+        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
+
+        long intakeId = createIntake(caseId, 1);
+        createOutcome(caseId, intakeId, true, false);
+        assertProjection(caseId, "PASADO_A_PAGOS", "REPARADO");
+
+        createClientMovement(caseId, "21.00", "TOTAL");
+        assertProjection(caseId, "PAGADO", "REPARADO");
+    }
+
+    @Test
+    void persistsParticularComprobanteIntentWithoutIssuingAReceiptOrMovement() throws Exception {
+        long caseId = createCase("PARTICULAR");
+
+        mockMvc.perform(put("/api/v1/cases/{caseId}/finance/particular-comprobante-intent", caseId).header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"comprobanteTipo\":\"C\"}"))
+                .andExpect(status().isOk());
+
+        assertProjection(caseId, "INGRESADO", "DAR_TURNO");
+        assertThat(jdbcTemplate.queryForObject("SELECT comprobante_intencion_codigo FROM particular_effective_state WHERE caso_id = ?", String.class, caseId)).isEqualTo("C");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM comprobantes_emitidos WHERE caso_id = ?", Integer.class, caseId)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ?", Integer.class, caseId)).isZero();
+        mockMvc.perform(get("/api/v1/cases/{caseId}/finance/particular-summary", caseId).header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.comprobanteIntentCode").value("C"));
+    }
+
+    @Test
+    void acceptsEveryParticularComprobanteIntentType() throws Exception {
+        for (String type : List.of("A", "C", "R")) {
+            long caseId = createCase("PARTICULAR");
+            mockMvc.perform(put("/api/v1/cases/{caseId}/finance/particular-comprobante-intent", caseId).header("X-User-Id", "1")
+                            .contentType(MediaType.APPLICATION_JSON).content("{\"comprobanteTipo\":\"" + type + "\"}"))
+                    .andExpect(status().isOk());
+            assertThat(jdbcTemplate.queryForObject("SELECT comprobante_intencion_codigo FROM particular_effective_state WHERE caso_id = ?", String.class, caseId)).isEqualTo(type);
+            assertProjection(caseId, "INGRESADO", "DAR_TURNO");
+        }
     }
 
     private void createClientMovement(long caseId, String amount, String cancellationType) throws Exception {

@@ -61,12 +61,6 @@ const TODO_RIESGO_OVERRIDE_OPTIONS = {
   reparacion: ['NO_DEBE_REPARARSE', 'RECHAZADO', 'DESISTIDO'],
 };
 
-const createCleasPaymentsUi = () => ({
-  paymentDraft: { paidAt: '', status: 'PENDIENTE', depositedAmount: '', hasRetentions: 'NO', vatRetention: '', earningsRetention: '', patrimonialContribution: '', iibbRetention: '', dreiRetention: '', otherRetention: '' },
-  paymentDocument: { file: null, name: '' },
-  franchiseClientPayment: { status: 'PENDIENTE', paidAt: '', amount: '', paymentMethod: 'TRANSFERENCIA', externalReference: '', notes: '', document: { file: null, name: '' }, registered: false },
-});
-
 const createCleasFranchiseDistribution = () => ({
   franchiseAmount: '',
   companyRequirement: 'NO',
@@ -165,7 +159,6 @@ export const CaseWorkspacePage = () => {
   const [overrideReason, setOverrideReason] = useState('');
   const [nroCleas, setNroCleas] = useState('');
   const [cleasAgreedAmount, setCleasAgreedAmount] = useState('');
-  const [cleasPaymentsUi, setCleasPaymentsUi] = useState(createCleasPaymentsUi);
   const [cleasInsurance, setCleasInsurance] = useState({ clientCompany: '', claimNumber: '' });
   const [cleasFranchiseDistribution, setCleasFranchiseDistribution] = useState(createCleasFranchiseDistribution);
   const [cleasOver, setCleasOver] = useState('damage');
@@ -176,7 +169,6 @@ export const CaseWorkspacePage = () => {
   useEffect(() => {
     setNroCleas('');
     setCleasAgreedAmount('');
-    setCleasPaymentsUi(createCleasPaymentsUi());
     setCleasInsurance({ clientCompany: '', claimNumber: '' });
     setCleasFranchiseDistribution(createCleasFranchiseDistribution());
     setCleasOver('damage');
@@ -214,7 +206,8 @@ export const CaseWorkspacePage = () => {
 
   const effectiveTabs = useMemo(() => {
     const readinessTabs = workspaceQuery.data?.readiness?.tabs ?? [];
-    return workspaceQuery.data?.caseDetail?.caseTypeCode === 'CLEAS' ? getCleasTabs(readinessTabs) : readinessTabs;
+    const tabs = workspaceQuery.data?.caseDetail?.caseTypeCode === 'CLEAS' ? getCleasTabs(readinessTabs) : readinessTabs;
+    return tabs.map((tab) => tab.tabCode === 'PAGOS' ? { ...tab, allowed: true } : tab);
   }, [workspaceQuery.data]);
   const currentTab = useMemo(() => effectiveTabs.find((tab) => tab.tabCode === selectedTab) || effectiveTabs[0] || null, [effectiveTabs, selectedTab]);
   const openReadinessTab = (tabCode) => {
@@ -428,7 +421,7 @@ export const CaseWorkspacePage = () => {
           ) : currentTab?.tabCode === 'PAGOS' ? (
             caseDetail.caseTypeCode === 'RECUPERO_FRANQUICIA'
               ? <FranchiseRecoveryPaymentsEditor caseId={caseId} caseDetail={caseDetail} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
-               : <div className="space-y-5"><PaymentsEditorPanel caseId={caseId} caseDetail={caseDetail} budget={budget} particularFinanceSummary={particularFinanceSummary} clientPaymentRequest={clientPaymentRequest} onClientPaymentRequestHandled={() => setClientPaymentRequest(null)} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange: setCleasPaymentsUi, cleasOver, cleasOpinion, cleasClosedAt: caseDetail.closedAt } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />{caseDetail.caseTypeCode !== 'PARTICULAR' ? <ExtraBudgetPaymentsPanel caseId={caseId} caseTypeCode={caseDetail.caseTypeCode} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} onRegisterClientPayment={setClientPaymentRequest} /> : null}</div>
+                : <div className="space-y-5"><PaymentsEditorPanel caseId={caseId} caseDetail={caseDetail} budget={budget} particularFinanceSummary={particularFinanceSummary} clientPaymentRequest={clientPaymentRequest} onClientPaymentRequestHandled={() => setClientPaymentRequest(null)} {...(caseDetail.caseTypeCode === 'CLEAS' ? { nroCleas, cleasAgreedAmount, cleasFranchiseDistribution, cleasOver, cleasOpinion, cleasClosedAt: caseDetail.closedAt } : {})} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />{caseDetail.caseTypeCode !== 'PARTICULAR' ? <ExtraBudgetPaymentsPanel caseId={caseId} caseTypeCode={caseDetail.caseTypeCode} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} onRegisterClientPayment={setClientPaymentRequest} /> : null}</div>
           ) : null}
         </div>
       </Card>

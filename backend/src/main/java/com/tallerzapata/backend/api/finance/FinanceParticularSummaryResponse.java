@@ -10,6 +10,7 @@ public record FinanceParticularSummaryResponse(
         BigDecimal pendingBalance,
         Boolean hasAdvancePayment,
         Boolean paidInFull,
-        LocalDateTime paidInFullAt
+        LocalDateTime paidInFullAt,
+        String comprobanteIntentCode
 ) {
 }

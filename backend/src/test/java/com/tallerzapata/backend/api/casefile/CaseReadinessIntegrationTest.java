@@ -538,7 +538,7 @@ class CaseReadinessIntegrationTest {
                 .andExpect(jsonPath("$.tabs[3].allowed").value(false))
                 .andExpect(jsonPath("$.tabs[3].blockingReasons").value(org.hamcrest.Matchers.hasItem("Debe generar el presupuesto antes de gestionar la reparacion")))
                 .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))
-                .andExpect(jsonPath("$.tabs[4].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[4].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("Falta acordar cotizacion con la Cia. antes de registrar pagos"));
     }
 
@@ -706,7 +706,7 @@ class CaseReadinessIntegrationTest {
                 .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
                 .andExpect(jsonPath("$.tabs[3].allowed").value(false))
                 .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))
-                .andExpect(jsonPath("$.tabs[4].allowed").value(false));
+                .andExpect(jsonPath("$.tabs[4].allowed").value(true));
     }
 
     @Test
@@ -810,7 +810,7 @@ class CaseReadinessIntegrationTest {
                 .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
                 .andExpect(jsonPath("$.tabs[3].allowed").value(false))
                 .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))
-                .andExpect(jsonPath("$.tabs[4].allowed").value(false));
+                .andExpect(jsonPath("$.tabs[4].allowed").value(true));
     }
 
     // ── RECLAMO_TERCEROS (taller y abogado) readiness tests ─────
@@ -836,7 +836,7 @@ class CaseReadinessIntegrationTest {
                 .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
                 .andExpect(jsonPath("$.tabs[3].allowed").value(false))
                 .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))
-                .andExpect(jsonPath("$.tabs[4].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[4].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("Falta acordar cotizacion con la Cia. antes de registrar pagos"));
     }
 

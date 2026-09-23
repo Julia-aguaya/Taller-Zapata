@@ -27,7 +27,7 @@ public final class ParticularEffectiveStatePolicy {
 
     private String procedureCode(ParticularEffectiveStateFacts facts, String repairCode) {
         if (isTerminal(facts.procedureTerminalOverrideCode())) return facts.procedureTerminalOverrideCode();
-        if (facts.hasPersistedTotalCancellation()) return "PAGADO";
+        if (facts.hasPersistedTotalCancellation() && hasNoOutstandingBalance(facts)) return "PAGADO";
         if ("REPARADO".equals(repairCode) && hasPositiveOutstandingBalance(facts)) return "PASADO_A_PAGOS";
         return "INGRESADO";
     }
@@ -39,6 +39,11 @@ public final class ParticularEffectiveStatePolicy {
     private boolean hasPositiveOutstandingBalance(ParticularEffectiveStateFacts facts) {
         BigDecimal balance = facts.balance();
         return balance != null && balance.signum() > 0;
+    }
+
+    private boolean hasNoOutstandingBalance(ParticularEffectiveStateFacts facts) {
+        return facts.expectedTotal() != null && facts.expectedTotal().signum() > 0
+                && facts.balance() != null && facts.balance().signum() <= 0;
     }
 
     private boolean isTerminal(String code) { return code != null && TERMINAL_CODES.contains(code); }

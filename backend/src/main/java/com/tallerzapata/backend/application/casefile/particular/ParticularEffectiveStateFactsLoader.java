@@ -47,7 +47,7 @@ public class ParticularEffectiveStateFactsLoader {
                 latestOutcome == null ? null : new ParticularEffectiveStateFacts.OutcomeFact(latestOutcome.getId(), latestOutcome.getOutcomeAt(), latestOutcome.getDefinitive(), latestOutcome.getShouldReenter(), hasReentry, hasLaterIntake(caseId, latestOutcome)),
                 appointments.stream().anyMatch(this::isValidNormalAppointment),
                 partRepository.findByCaseIdOrderByIdAsc(caseId).stream().anyMatch(part -> !"RECIBIDO".equals(normalize(part.getStatusCode()))),
-                receiptRepository.findByCaseId(caseId, Sort.unsorted()).stream().anyMatch(receipt -> "FACTURA".equals(normalize(receipt.getReceiptTypeCode())) || "RECIBO".equals(normalize(receipt.getReceiptTypeCode()))),
+                hasQualifyingReceiptOrIntent(caseId, projection),
                 balanceService.balanceFor(caseId),
                 balanceService.expectedQuotedTotal(caseId),
                 balanceService.hasPersistedTotalCancellation(caseId)
@@ -55,6 +55,11 @@ public class ParticularEffectiveStateFactsLoader {
     }
 
     private boolean isValidNormalAppointment(RepairAppointmentEntity appointment) { return !Boolean.TRUE.equals(appointment.getReentry()) && isAssigned(appointment); }
+    private boolean hasQualifyingReceiptOrIntent(Long caseId, ParticularEffectiveStateEntity projection) {
+        return isComprobanteIntent(projection == null ? null : projection.getComprobanteIntentCode())
+                || receiptRepository.findByCaseId(caseId, Sort.unsorted()).stream()
+                .anyMatch(receipt -> "FACTURA".equals(normalize(receipt.getReceiptTypeCode())) || "RECIBO".equals(normalize(receipt.getReceiptTypeCode())));
+    }
     private boolean hasValidReentryAppointment(Long caseId, VehicleOutcomeEntity outcome, List<VehicleOutcomeEntity> outcomes,
                                                 List<RepairAppointmentEntity> appointments) {
         if (outcome.getReentryAppointmentId() != null) {
@@ -99,4 +104,5 @@ public class ParticularEffectiveStateFactsLoader {
         return isCurrent(appointment) || "CUMPLIDO".equals(normalize(appointment.getStatusCode()));
     }
     private String normalize(String value) { return value == null ? "" : value.trim().toUpperCase(); }
+    private boolean isComprobanteIntent(String value) { return "A".equals(normalize(value)) || "C".equals(normalize(value)) || "R".equals(normalize(value)); }
 }

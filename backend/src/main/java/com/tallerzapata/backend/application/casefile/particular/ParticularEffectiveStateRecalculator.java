@@ -90,6 +90,26 @@ public class ParticularEffectiveStateRecalculator {
         historyRepository.save(history);
     }
 
+    @Transactional
+    public void selectComprobanteIntent(Long caseId, String comprobanteType) {
+        CaseEntity caseEntity = caseRepository.findByIdForUpdate(caseId).orElseThrow();
+        if (!caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> "PARTICULAR".equals(normalize(type.getCode()))).orElse(false)) return;
+        String normalizedType = normalize(comprobanteType);
+        if (!"A".equals(normalizedType) && !"C".equals(normalizedType) && !"R".equals(normalizedType)) throw new IllegalArgumentException("Tipo de comprobante PARTICULAR no valido");
+        ParticularEffectiveStateEntity state = stateRepository.findByCaseIdForUpdate(caseId).orElseGet(() -> newState(caseEntity, caseId));
+        String priorProcedure = state.getProcedureCode();
+        String priorRepair = state.getRepairCode();
+        state.setComprobanteIntentCode(normalizedType);
+        ParticularEffectiveStatePolicy.ParticularEffectiveState calculated = policy.evaluate(factsLoader.load(caseId, state));
+        state.setProcedureCode(calculated.procedureCode());
+        state.setRepairCode(calculated.repairCode());
+        state.setRecalculatedAt(LocalDateTime.now());
+        stateRepository.save(state);
+        if (!calculated.procedureCode().equals(priorProcedure) || !calculated.repairCode().equals(priorRepair)) {
+            appendHistory(caseId, priorProcedure, priorRepair, calculated);
+        }
+    }
+
     private ParticularEffectiveStateEntity newState(CaseEntity caseEntity, Long caseId) {
         ParticularEffectiveStateEntity state = new ParticularEffectiveStateEntity();
         state.setCaseId(caseId);

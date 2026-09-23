@@ -25,6 +25,7 @@ public class V1ParticularFinancialBalanceService implements ParticularFinancialB
                 .orElse(BigDecimal.ZERO);
         BigDecimal customerNet = financialMovementRepository.findByCaseId(caseId, MOVEMENT_SORT).stream()
                 .filter(movement -> "CLIENTE".equals(normalize(movement.getFlowOriginCode())))
+                .filter(movement -> !"TRABAJOS_EXTRAS".equals(normalize(movement.getCancellationTypeCode())))
                 .map(movement -> signedMovement(movement.getMovementTypeCode(), movement.getNetAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         return totalQuoted.subtract(customerNet);

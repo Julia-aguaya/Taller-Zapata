@@ -52,6 +52,10 @@ describe('getCleasTabs', () => {
     expect(tabs[0]).toEqual({ tabCode: 'FICHA_TECNICA', allowed: true, completed: false, blockingReasons: [], warningReasons: [] });
     expect(tabs[2]).toEqual({ tabCode: 'PRESUPUESTO', allowed: false, completed: false, blockingReasons: ['No se pudo verificar si esta etapa está habilitada.'], warningReasons: [] });
   });
+
+  it('keeps Pagos available when CLEAS readiness omits it', () => {
+    expect(getCleasTabs([])[4]).toEqual({ tabCode: 'PAGOS', allowed: true, completed: false, blockingReasons: ['No se pudo verificar si esta etapa está habilitada.'], warningReasons: [] });
+  });
 });
 
 describe('getTabIcon', () => {

@@ -391,9 +391,6 @@ public class CleasManagementService {
         movement = financialMovementRepository.saveAndFlush(movement);
 
         CleasFranchisePaymentSummaryResponse updated = franchiseSummary(caseEntity);
-        cleas.setCustomerPaymentStatusCode(updated.customerPendingAmount().signum() <= 0 ? "COBRADO" : "PENDIENTE");
-        cleas.setCustomerPaymentDate(request.movementAt() == null ? LocalDate.now() : request.movementAt().toLocalDate());
-        caseCleasRepository.save(cleas);
 
         caseAuditService.register(currentUser.id(), caseId, "movimientos_financieros", movement.getId(), "registrar_pago_franquicia_cleas", null,
                 caseAuditService.toJson(Map.of("grossAmount", grossAmount, "movementId", movement.getId())), caseAuditService.toJson(Map.of("domain", CLEAS_MODULE)), httpRequest);
@@ -413,8 +410,6 @@ public class CleasManagementService {
         FinancialMovementEntity reversal = new FinancialMovementEntity();
         reversal.setCaseId(caseId); reversal.setMovementTypeCode("EGRESO"); reversal.setFlowOriginCode("CLIENTE"); reversal.setCounterpartyTypeCode("PERSONA"); reversal.setCounterpartyPersonId(original.getCounterpartyPersonId()); reversal.setMovementAt(LocalDateTime.now()); reversal.setGrossAmount(money(original.getGrossAmount())); reversal.setNetAmount(money(original.getNetAmount())); reversal.setPaymentMethodCode(original.getPaymentMethodCode()); reversal.setCancellationTypeCode("FRANQUICIA"); reversal.setAdvancePayment(false); reversal.setBonification(false); reversal.setExternalReference(original.getPublicId()); reversal.setReason(request == null || blankToNull(request.reason()) == null ? "Anulacion de pago de franquicia CLEAS" : blankToNull(request.reason())); reversal.setRegisteredBy(currentUser.id()); financialMovementRepository.saveAndFlush(reversal);
         CleasFranchisePaymentSummaryResponse updated = franchiseSummary(caseEntity);
-        cleas.setCustomerPaymentStatusCode(updated.customerPendingAmount().signum() <= 0 ? "COBRADO" : "PENDIENTE");
-        caseCleasRepository.save(cleas);
         caseAuditService.register(currentUser.id(), caseId, "movimientos_financieros", movementId, "anular_pago_franquicia_cleas", null, caseAuditService.toJson(Map.of("movementId", movementId)), caseAuditService.toJson(Map.of("domain", CLEAS_MODULE)), httpRequest);
         return updated;
     }
@@ -470,13 +465,25 @@ public class CleasManagementService {
         var cleas = caseCleasRepository.findByCaseId(caseEntity.getId()).orElseThrow(() -> new ConflictException("El caso no tiene definicion CLEAS"));
         BigDecimal agreedAmount = insuranceProcessingRepository.findByCaseId(caseEntity.getId()).map(value -> money(value.getAgreedAmount())).orElse(BigDecimal.ZERO);
         CleasSettlement settlement = cleasSettlementPolicy.settle(cleas, agreedAmount);
-        BigDecimal customerPaid = financialMovementRepository.findByCaseId(caseEntity.getId(), Sort.unsorted()).stream()
+        List<FinancialMovementEntity> customerPayments = financialMovementRepository.findByCaseId(caseEntity.getId(), Sort.by(Sort.Order.asc("movementAt"), Sort.Order.asc("id"))).stream()
                 .filter(movement -> "CLIENTE".equals(normalizeCode(movement.getFlowOriginCode()))
                         && "FRANQUICIA".equals(normalizeCode(movement.getCancellationTypeCode())))
-                .map(this::signedNetAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .toList();
+        BigDecimal customerPaid = customerPayments.stream().map(this::signedNetAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal customerPending = settlement.customerChargeAmount().subtract(customerPaid).max(BigDecimal.ZERO);
-        return new CleasFranchisePaymentSummaryResponse(caseEntity.getId(), settlement.franchiseAmount(), settlement.companyRequiredAmount(), settlement.customerChargeAmount(), settlement.amountToBillCompany(), customerPaid, customerPending, cleas.getCompanyFranchisePaymentStatusCode(), cleas.getCompanyFranchisePaymentDate());
+        LocalDate customerCollectionDate = null;
+        if (settlement.customerChargeAmount().signum() > 0 && customerPending.signum() <= 0) {
+            BigDecimal collected = BigDecimal.ZERO;
+            for (FinancialMovementEntity payment : customerPayments) {
+                collected = collected.add(signedNetAmount(payment));
+                if (collected.compareTo(settlement.customerChargeAmount()) >= 0) {
+                    customerCollectionDate = payment.getMovementAt().toLocalDate();
+                    break;
+                }
+            }
+        }
+        String customerCollectionStatus = settlement.customerChargeAmount().signum() <= 0 || customerPending.signum() <= 0 ? "COBRADO" : "PENDIENTE";
+        return new CleasFranchisePaymentSummaryResponse(caseEntity.getId(), settlement.franchiseAmount(), settlement.companyRequiredAmount(), settlement.customerChargeAmount(), settlement.amountToBillCompany(), customerPaid, customerPending, customerCollectionStatus, customerCollectionDate, cleas.getCompanyFranchisePaymentStatusCode(), cleas.getCompanyFranchisePaymentDate());
     }
 
     private void updateThirdPartyPlate(Long caseId, String plate) {

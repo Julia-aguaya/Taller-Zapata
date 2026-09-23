@@ -55,13 +55,10 @@ vi.mock('@/modules/cases/components/repair-editor-panel', () => ({
 }));
 
 vi.mock('@/modules/cases/components/payments-editor-panel', () => ({
-  PaymentsEditorPanel: ({ nroCleas, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange }) => cleasPaymentsUi ? (
+  PaymentsEditorPanel: ({ nroCleas, cleasAgreedAmount, cleasFranchiseDistribution }) => nroCleas !== undefined ? (
     <div>
        <div>Payments panel {nroCleas} {cleasAgreedAmount}</div>
        <output data-testid="cleas-franchise-distribution">{JSON.stringify(cleasFranchiseDistribution)}</output>
-        <label>Monto depositado CLEAS<input value={cleasPaymentsUi.paymentDraft.depositedAmount} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, depositedAmount: event.target.value } }))} /></label>
-       <button type="button" onClick={() => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, hasRetentions: 'SI' }, paymentDocument: { file: new File(['pago'], 'pago.pdf'), name: 'pago.pdf' } }))}>Completar UI CLEAS</button>
-       <output data-testid="cleas-payments-ui">{JSON.stringify({ hasRetentions: cleasPaymentsUi.paymentDraft.hasRetentions, paymentDocumentName: cleasPaymentsUi.paymentDocument.name })}</output>
     </div>
   ) : <div>Payments panel</div>,
 }));
@@ -351,12 +348,13 @@ describe('CaseWorkspacePage UI', () => {
       ] },
     });
 
-    for (const name of [/presupuesto/i, /gestión reparación/i, /pagos/i]) {
+    for (const name of [/presupuesto/i, /gestión reparación/i]) {
       const tab = screen.getByRole('tab', { name });
       expect(tab).toHaveAttribute('aria-disabled', 'true');
       await user.click(tab);
       expect(screen.getAllByText('No se puede avanzar hasta recibir el dictamen.').length).toBeGreaterThan(0);
     }
+    expect(screen.getByRole('tab', { name: /pagos/i })).toHaveAttribute('aria-disabled', 'false');
   });
 
   it('no abre etapas bloqueadas para daño total con dictamen pendiente', async () => {
@@ -372,7 +370,7 @@ describe('CaseWorkspacePage UI', () => {
       ] },
     });
 
-    for (const name of [/presupuesto/i, /gestión reparación/i, /pagos/i]) {
+    for (const name of [/presupuesto/i, /gestión reparación/i]) {
       const tab = screen.getByRole('tab', { name });
       expect(tab).toHaveAttribute('aria-disabled', 'true');
       await user.click(tab);
@@ -381,7 +379,8 @@ describe('CaseWorkspacePage UI', () => {
     }
     expect(screen.queryByText('Budget panel')).toBeNull();
     expect(screen.queryByText('Repair panel')).toBeNull();
-    expect(screen.queryByText('Payments panel')).toBeNull();
+    await user.click(screen.getByRole('tab', { name: /pagos/i }));
+    expect(screen.getByText('Payments panel')).toBeInTheDocument();
   });
 
   it('renderiza el readiness incompleto favorable de daño total como pendiente o bloqueado', async () => {
@@ -397,12 +396,13 @@ describe('CaseWorkspacePage UI', () => {
       ] },
     });
 
-    for (const name of [/gestión del trámite/i, /presupuesto/i, /pagos/i]) {
+    for (const name of [/gestión del trámite/i, /presupuesto/i]) {
       const tab = screen.getByRole('tab', { name });
-      expect(tab).toHaveAttribute('aria-disabled', name.source.includes('pagos') ? 'true' : 'false');
+      expect(tab).toHaveAttribute('aria-disabled', 'false');
       expect(within(tab).queryByText('Completa')).toBeNull();
-      expect(within(tab).getByText(name.source.includes('pagos') ? 'Bloqueada' : 'Pendiente')).toBeInTheDocument();
+      expect(within(tab).getByText('Pendiente')).toBeInTheDocument();
     }
+    expect(screen.getByRole('tab', { name: /pagos/i })).toHaveAttribute('aria-disabled', 'false');
 
     const repairTab = screen.getByRole('tab', { name: /gestión reparación/i });
     expect(repairTab).toHaveAttribute('aria-disabled', 'true');
@@ -460,45 +460,6 @@ describe('CaseWorkspacePage UI', () => {
     expect(screen.getByTestId('cleas-franchise-distribution')).toHaveTextContent('"companyRequiredAmount":"1200000"');
   }, 15_000);
 
-  it('conserva los borradores CLEAS al desmontar y remontar la pestaña de pagos', async () => {
-    const user = userEvent.setup();
-    const workspace = {
-      ...baseWorkspace,
-      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'CLEAS' },
-      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'CLEAS', tabs: [
-        { tabCode: 'GESTION_TRAMITE', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
-        { tabCode: 'PAGOS', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
-      ] },
-    };
-    await renderPage(workspace);
-
-    await user.click(screen.getByRole('tab', { name: /pagos/i }));
-    await user.type(screen.getByLabelText('Monto depositado CLEAS'), '90000');
-    await user.click(screen.getByRole('tab', { name: /gestión del trámite/i }));
-    await user.click(screen.getByRole('tab', { name: /pagos/i }));
-
-    expect(screen.getByLabelText('Monto depositado CLEAS')).toHaveValue('90000');
-  });
-
-  it('resetea los borradores CLEAS al cambiar de carpeta', async () => {
-    const user = userEvent.setup();
-    const workspace = {
-      ...baseWorkspace,
-      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'CLEAS' },
-      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'CLEAS', tabs: [{ tabCode: 'PAGOS', allowed: true, completed: false, blockingReasons: [], warningReasons: [] }] },
-    };
-    const rendered = await renderPage(workspace);
-    await user.click(screen.getByRole('tab', { name: /pagos/i }));
-    await user.type(screen.getByLabelText('Monto depositado CLEAS'), '90000');
-    await user.click(screen.getByRole('button', { name: 'Completar UI CLEAS' }));
-
-    currentCaseId = '2';
-    rendered.rerender(<CaseWorkspacePage />);
-
-    expect(screen.getByLabelText('Monto depositado CLEAS')).toHaveValue('');
-    expect(screen.getByTestId('cleas-payments-ui')).toHaveTextContent('{"hasRetentions":"NO","paymentDocumentName":""}');
-  });
-
   it('hidrata el cierre persistido y los bloqueos adversos desde el workspace', async () => {
     const user = userEvent.setup();
     const workspace = {
@@ -531,10 +492,10 @@ describe('CaseWorkspacePage UI', () => {
 
     await user.click(screen.getByRole('tab', { name: /pagos/i }));
     expect(screen.getAllByText('Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra.').length).toBeGreaterThan(0);
-    expect(screen.getByRole('tab', { name: /pagos/i })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('tab', { name: /pagos/i })).toHaveAttribute('aria-disabled', 'false');
   });
 
-  it('abandona una etapa editable cuando el cierre CLEAS la bloquea', async () => {
+  it('mantiene Pagos accesible cuando el cierre CLEAS actualiza el readiness', async () => {
     const user = userEvent.setup();
     const openWorkspace = {
       ...baseWorkspace,
@@ -570,11 +531,9 @@ describe('CaseWorkspacePage UI', () => {
     workspace = closedWorkspace;
     rendered.rerender(<CaseWorkspacePage />);
 
-    expect(await screen.findByText('Detalle de Pagos')).toBeInTheDocument();
-    expect(screen.getByText('Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra.')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /pagos/i })).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.queryByText('Payments panel')).toBeNull();
-    expect(screen.getByText('Proximo paso')).toBeInTheDocument();
+    expect(screen.queryByText('Detalle de Pagos')).toBeNull();
+    expect(screen.getByRole('tab', { name: /pagos/i })).toHaveAttribute('aria-disabled', 'false');
+    expect(screen.getByText('Payments panel')).toBeInTheDocument();
   });
 
   it('does not offer closure or block tabs for the exact unfavorable franchise branch', async () => {

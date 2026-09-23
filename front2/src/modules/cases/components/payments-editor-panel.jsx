@@ -2,7 +2,7 @@ import { cloneElement, useEffect, useId, useMemo, useRef, useState } from 'react
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ban, Building2, CheckCircle, FileDown, Receipt, Save } from 'lucide-react';
 import { toast } from 'sonner';
-import { createFinancialMovement, createReceipt, getClientPaymentPdfUrl, getFinanceCatalogs, getReceiptPdfUrl, listFinancialMovements, listReceipts } from '@/modules/cases/api/finance-api';
+import { createFinancialMovement, createReceipt, getClientPaymentPdfUrl, getFinanceCatalogs, getReceiptPdfUrl, listFinancialMovements, listReceipts, selectParticularComprobanteIntent } from '@/modules/cases/api/finance-api';
 import { annulCleasCompanyPayment, annulCleasCustomerFranchisePayment, downloadCleasLiquidationPdf, getCleasCompanyPaymentSummary, getCleasFranchisePaymentSummary, registerCleasCompanyFranchisePayment, registerCleasCompanyPayment, registerCleasCustomerFranchisePayment } from '@/modules/cases/api/cleas-api';
 import { extraBudgetQueryKey, registerExtraBudgetPayment } from '@/modules/cases/api/extra-budget-api';
 import { requestJson } from '@/shared/api/http-client';
@@ -47,7 +47,7 @@ const PAYMENT_METHODS = [
   { value: 'OTRO', label: 'Otro' },
 ];
 
-export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFinanceSummary, clientPaymentRequest, onClientPaymentRequestHandled, nroCleas, cleasAgreedAmount, cleasFranchiseDistribution, cleasPaymentsUi, onCleasPaymentsUiChange, cleasOver, cleasOpinion, cleasClosedAt, cleasWorkflowGuard, onSaved }) => {
+export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFinanceSummary, clientPaymentRequest, onClientPaymentRequestHandled, nroCleas, cleasAgreedAmount, cleasFranchiseDistribution, cleasOver, cleasOpinion, cleasClosedAt, cleasWorkflowGuard, onSaved }) => {
   const queryClient = useQueryClient();
   const { session } = useSession();
   const authorities = session?.authorities;
@@ -57,7 +57,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const canHandleExceptionalFinance = hasExceptionalFinancePermission && hasGlobalAdminScope(session);
   const lacksGlobalExceptionalFinanceScope = hasExceptionalFinancePermission && !hasGlobalAdminScope(session);
 
-  const [comprobanteTipo, setComprobanteTipo] = useState('A');
+  const [comprobanteTipo, setComprobanteTipo] = useState(particularFinanceSummary?.comprobanteIntentCode || 'A');
   const [form, setForm] = useState({
     amount: '',
     movementAt: new Date().toISOString().slice(0, 16),
@@ -78,9 +78,12 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const [localClientPaymentRequest, setLocalClientPaymentRequest] = useState(null);
   const [cancelMovement, setCancelMovement] = useState(null);
   const [franchiseCompanyPayment, setFranchiseCompanyPayment] = useState({ statusCode: 'COBRADO', paymentDate: new Date().toISOString().slice(0, 10), documentId: '', proofFile: null });
-  const paymentDocumentInputRef = useRef(null);
   const companyPaymentSubmittingRef = useRef(false);
   const clientPaymentSubmittingRef = useRef(false);
+
+  useEffect(() => {
+    if (particularFinanceSummary?.comprobanteIntentCode) setComprobanteTipo(particularFinanceSummary.comprobanteIntentCode);
+  }, [particularFinanceSummary?.comprobanteIntentCode]);
 
   const financeCatalogsQuery = useQuery({ queryKey: ['finance', 'catalogs'], queryFn: getFinanceCatalogs });
   const movementsQuery = useQuery({ queryKey: ['cases', String(caseId), 'financial-movements'], queryFn: () => listFinancialMovements(caseId) });
@@ -88,6 +91,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const insuranceProcessingQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance-processing'], queryFn: () => requestJson(`/cases/${caseId}/insurance-processing`), enabled: caseDetail?.caseTypeCode === 'TODO_RIESGO' || caseDetail?.caseTypeCode === 'GRANIZO' });
   const caseInsuranceQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance'], queryFn: () => requestJson(`/cases/${caseId}/insurance`), enabled: caseDetail?.caseTypeCode === 'TODO_RIESGO' || caseDetail?.caseTypeCode === 'GRANIZO' });
   const paymentBreakdownQuery = useQuery({ queryKey: ['cases', String(caseId), 'finance', 'payment-breakdown'], queryFn: () => requestJson(`/cases/${caseId}/finance/payment-breakdown`), enabled: caseDetail?.caseTypeCode !== 'GRANIZO' });
+  const cleasDefinitionQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'definition'], queryFn: () => requestJson(`/cases/${caseId}/cleas/definition`), enabled: caseDetail?.caseTypeCode === 'CLEAS' });
   const processing = insuranceProcessingQuery.data;
 
   const isInsurance = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
@@ -95,11 +99,13 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const isTodoRiesgo = caseDetail?.caseTypeCode === 'TODO_RIESGO';
   const isGranizo = caseDetail?.caseTypeCode === 'GRANIZO';
   const isCleas = caseDetail?.caseTypeCode === 'CLEAS';
-  const isCleasAdverseTotal = isCleas && cleasOver === 'damage' && cleasOpinion === 'unfavorable';
+  const cleasScope = cleasDefinitionQuery.data?.scopeCode === 'FRANQUICIA' ? 'franchise' : cleasDefinitionQuery.data?.scopeCode === 'DANIO_TOTAL' ? 'damage' : cleasOver;
+  const cleasDirection = cleasDefinitionQuery.data?.opinionCode === 'EN_CONTRA' ? 'unfavorable' : cleasDefinitionQuery.data?.opinionCode === 'A_FAVOR' ? 'favorable' : cleasOpinion;
+  const isCleasAdverseTotal = isCleas && cleasScope === 'damage' && cleasDirection === 'unfavorable';
   const isClosedCleas = isCleasAdverseTotal && Boolean(cleasClosedAt);
   const blockCleasPayments = Boolean(cleasWorkflowGuard) || isClosedCleas;
-  const isUnfavorableFranchise = isCleas && cleasOver === 'franchise' && cleasOpinion === 'unfavorable';
-  const isFavorableFranchise = isCleas && cleasOver === 'franchise' && cleasOpinion === 'favorable';
+  const isUnfavorableFranchise = isCleas && cleasScope === 'franchise' && cleasDirection === 'unfavorable';
+  const isFavorableFranchise = isCleas && cleasScope === 'franchise' && cleasDirection === 'favorable';
   const franchiseSummaryQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'franchise-summary'], queryFn: () => getCleasFranchisePaymentSummary(caseId), enabled: isUnfavorableFranchise });
   const cleasDocumentsQuery = useQuery({ queryKey: ['cases', String(caseId), 'documents'], queryFn: () => requestJson(`/cases/${caseId}/documents`), enabled: isCleas });
   const documentCategoriesQuery = useQuery({ queryKey: ['documents', 'catalogs'], queryFn: () => requestJson('/documents/catalogs'), enabled: isCleas });
@@ -228,7 +234,8 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
       await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
       await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] });
        await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'receipts'] });
-       await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'finance', 'payment-breakdown'] });
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'finance', 'payment-breakdown'] });
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'franchise-summary'] });
       await queryClient.invalidateQueries({ queryKey: extraBudgetQueryKey(caseId) });
       await onSaved?.();
       setShowPaymentModal(false);
@@ -240,10 +247,19 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
     onError: (error) => { clientPaymentSubmittingRef.current = false; toast.error(error.message || 'No pude registrar el pago.'); },
   });
 
-  const [ciaPayment, setCiaPayment] = useState({ amount: '', movementAt: new Date().toISOString().slice(0, 16), paymentMethodCode: 'TRANSFERENCIA' });
+  const comprobanteIntentMutation = useMutation({
+    mutationFn: (type) => selectParticularComprobanteIntent(caseId, type),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
+      await onSaved?.();
+    },
+    onError: (error) => toast.error(error.message || 'No pude guardar el tipo de comprobante.'),
+  });
+
+  const [ciaPayment, setCiaPayment] = useState({ amount: '', movementAt: new Date().toISOString().slice(0, 16), paymentMethodCode: 'TRANSFERENCIA', retentions: [] });
   const ciaPaymentMutation = useMutation({
     mutationFn: (payload) => createFinancialMovement(caseId, payload),
-    onSuccess: async () => { companyPaymentSubmittingRef.current = false; await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'finance', 'payment-breakdown'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); await onSaved?.(); toast.success('Pago de la Cía. registrado.'); setCiaPayment({ amount: '', movementAt: new Date().toISOString().slice(0, 16), paymentMethodCode: 'TRANSFERENCIA' }); },
+    onSuccess: async () => { companyPaymentSubmittingRef.current = false; await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'finance', 'payment-breakdown'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); await onSaved?.(); toast.success('Pago de la Cía. registrado.'); setCiaPayment({ amount: '', movementAt: new Date().toISOString().slice(0, 16), paymentMethodCode: 'TRANSFERENCIA', retentions: [] }); },
     onError: (error) => { companyPaymentSubmittingRef.current = false; toast.error(error.message || 'No pude registrar el pago de la compañía.'); },
   });
 
@@ -255,6 +271,10 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const amountToPay = toAmount(insurerBreakdown?.total ?? fallbackAmountToPay);
   const ciaTotalPaid = toAmount(insurerBreakdown?.paid ?? fallbackCiaPaid);
   const ciaPending = toAmount(insurerBreakdown?.pending ?? Math.max(0, fallbackAmountToPay - fallbackCiaPaid));
+  const companyRetentionTypes = financeCatalogsQuery.data?.retentionTypeCodes ?? [];
+  const companyRetentionsAmount = ciaPayment.retentions.reduce((total, retention) => total + toAmount(retention.amount), 0);
+  const companyNetAmount = Math.max(0, toAmount(ciaPayment.amount) - companyRetentionsAmount);
+  const updateCompanyRetention = (index, field, value) => setCiaPayment((current) => ({ ...current, retentions: current.retentions.map((retention, retentionIndex) => retentionIndex === index ? { ...retention, [field]: value } : retention) }));
 
   const paymentStatus = useMemo(() => {
     const estimated = processing?.estimatedPaymentDate;
@@ -335,10 +355,21 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
           <div className="mt-4 rounded-2xl border border-border/60 bg-background/70 p-4">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Registrar pago de la Cía.</p>
             <div className="grid gap-3 md:grid-cols-3">
-              <Field label="Monto"><Input type="number" min="0" max={ciaPending} step="0.01" value={ciaPayment.amount} onChange={(e) => setCiaPayment((c) => ({ ...c, amount: e.target.value }))} /></Field>
+              <Field label="Bruto que cancela"><Input type="number" min="0" max={ciaPending} step="0.01" value={ciaPayment.amount} onChange={(e) => setCiaPayment((c) => ({ ...c, amount: e.target.value }))} /></Field>
               <Field label="Fecha"><Input type="datetime-local" value={ciaPayment.movementAt} onChange={(e) => setCiaPayment((c) => ({ ...c, movementAt: e.target.value }))} /></Field>
-              <div className="flex items-end"><Button className="w-full" onClick={() => { if (ciaPaymentMutation.isPending || companyPaymentSubmittingRef.current) return; const m = toAmount(ciaPayment.amount); const companyId = insurerBreakdown?.companyId ?? caseInsuranceQuery.data?.insuranceCompanyId; if (m <= 0) { toast.error('Ingresá un monto.'); return; } if (m > ciaPending) { toast.error('El pago no puede superar el saldo pendiente de la compañía.'); return; } if (!companyId) { toast.error('El caso no tiene compañía aseguradora configurada.'); return; } companyPaymentSubmittingRef.current = true; ciaPaymentMutation.mutate({ movementTypeCode: 'INGRESO', flowOriginCode: 'ASEGURADORA', counterpartyTypeCode: 'COMPANIA', counterpartyPersonId: null, counterpartyCompanyId: companyId, movementAt: ciaPayment.movementAt, grossAmount: m, netAmount: m, paymentMethodCode: ciaPayment.paymentMethodCode, paymentMethodDetail: null, cancellationTypeCode: 'COMPANIA', advancePayment: false, bonification: false, reason: 'Pago de compañía', externalReference: null, retentions: [], applications: [] }); }} disabled={ciaPaymentMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar pago de la compañía</Button></div>
+              <Field label="Neto depositado"><Input value={formatCurrency(companyNetAmount)} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
             </div>
+            <div className="mt-4 rounded-2xl border border-border/60 p-4">
+              <div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold">Retenciones</p><Button type="button" size="sm" variant="outline" onClick={() => setCiaPayment((current) => ({ ...current, retentions: [...current.retentions, { retentionTypeCode: companyRetentionTypes[0]?.code ?? '', amount: '', detail: '' }] }))} disabled={!companyRetentionTypes.length}>Agregar retención</Button></div>
+              {ciaPayment.retentions.map((retention, index) => <div key={index} className="mt-3 grid gap-3 md:grid-cols-[1fr_150px_1fr_auto]">
+                <Select aria-label={`Tipo de retención de compañía ${index + 1}`} value={retention.retentionTypeCode} onChange={(event) => updateCompanyRetention(index, 'retentionTypeCode', event.target.value)} options={[{ value: '', label: 'Tipo de retención...' }, ...companyRetentionTypes.map((type) => ({ value: type.code, label: type.name || type.code }))]} />
+                <Input aria-label={`Monto retención de compañía ${index + 1}`} type="number" min="0" step="0.01" value={retention.amount} onChange={(event) => updateCompanyRetention(index, 'amount', event.target.value)} />
+                <Input aria-label={`Detalle retención de compañía ${index + 1}`} value={retention.detail} onChange={(event) => updateCompanyRetention(index, 'detail', event.target.value)} placeholder="Detalle opcional" />
+                <Button type="button" variant="ghost" onClick={() => setCiaPayment((current) => ({ ...current, retentions: current.retentions.filter((_, retentionIndex) => retentionIndex !== index) }))}>Quitar</Button>
+              </div>)}
+              {companyRetentionsAmount > toAmount(ciaPayment.amount) ? <p role="alert" className="mt-3 text-xs text-destructive">Las retenciones no pueden superar el bruto que cancela.</p> : null}
+            </div>
+            <div className="mt-4 flex justify-end"><Button onClick={() => { if (ciaPaymentMutation.isPending || companyPaymentSubmittingRef.current) return; const m = toAmount(ciaPayment.amount); const companyId = insurerBreakdown?.companyId ?? caseInsuranceQuery.data?.insuranceCompanyId; if (m <= 0) { toast.error('Ingresá un monto.'); return; } if (m > ciaPending) { toast.error('El pago no puede superar el saldo pendiente de la compañía.'); return; } if (companyRetentionsAmount > m) { toast.error('Las retenciones no pueden superar el bruto que cancela.'); return; } if (!companyId) { toast.error('El caso no tiene compañía aseguradora configurada.'); return; } companyPaymentSubmittingRef.current = true; ciaPaymentMutation.mutate({ movementTypeCode: 'INGRESO', flowOriginCode: 'ASEGURADORA', counterpartyTypeCode: 'COMPANIA', counterpartyPersonId: null, counterpartyCompanyId: companyId, movementAt: ciaPayment.movementAt, grossAmount: m, netAmount: companyNetAmount, paymentMethodCode: ciaPayment.paymentMethodCode, paymentMethodDetail: null, cancellationTypeCode: 'COMPANIA', advancePayment: false, bonification: false, reason: 'Pago de compañía', externalReference: null, retentions: ciaPayment.retentions.filter((retention) => retention.retentionTypeCode && toAmount(retention.amount) > 0).map((retention) => ({ retentionTypeCode: retention.retentionTypeCode, amount: toAmount(retention.amount), detail: retention.detail.trim() || null })), applications: [] }); }} disabled={ciaPaymentMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar pago de la compañía</Button></div>
           </div>
           {ciaMovements.length > 0 ? <div className="mt-3"><p className="text-xs text-muted-foreground">{ciaMovements.length} pago(s) de la Cía.</p></div> : null}
         </div>
@@ -365,12 +396,14 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
 
         {isUnfavorableFranchise && franchiseSummaryQuery.data ? (
           <Card className="rounded-3xl border-border/70 p-5">
-            <h4 className="text-lg font-semibold">Pago de franquicia a cargo del cliente</h4>
-           <p className="mt-1 text-sm text-muted-foreground">Liquidación canónica de franquicia adversa.</p>
-            <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <h4 className="text-lg font-semibold">A cargo del cliente</h4>
+            <p className="mt-1 text-sm text-muted-foreground">Cobranza independiente del pago y las retenciones de la aseguradora.</p>
+             <div className="mt-4 grid gap-4 md:grid-cols-5">
               <MiniCard label="A facturar Cía." value={formatCurrency(cleasAmountToBill)} highlight />
               <MiniCard label="Franquicia exigida por Cía." value={formatCurrency(franchiseSummaryQuery.data.companyRequiredAmount)} />
-              <MiniCard label="Pendiente de franquicia" value={formatCurrency(franchiseClientAmount)} highlight />
+              <MiniCard label="A cargo del cliente" value={formatCurrency(franchiseSummaryQuery.data.customerChargeAmount)} highlight />
+              <MiniCard label="Estado de cobro" value={franchiseSummaryQuery.data.customerCollectionStatusCode === 'COBRADO' ? 'Cobrado' : 'Pendiente'} variant={franchiseSummaryQuery.data.customerCollectionStatusCode === 'COBRADO' ? 'success' : 'warning'} />
+              <MiniCard label="Fecha de cobro" value={franchiseSummaryQuery.data.customerCollectionDate || 'Sin cobro total'} />
             </div>
             {unfavorableFranchiseSettlement.quotationInsufficient ? <p role="alert" className="mt-3 text-sm text-destructive">La cotización no cubre la franquicia pendiente. El importe a facturar a la compañía se ajustó a $0 y el saldo del cliente requiere revisión antes de continuar.</p> : null}
             <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -392,7 +425,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
           <Label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-muted-foreground">Tipo de comprobante</Label>
           <div className="flex flex-wrap gap-2">
             {COMPROBANTE_TYPES.map((ct) => (
-              <button key={ct.value} type="button" onClick={() => setComprobanteTipo(ct.value)}
+              <button key={ct.value} type="button" onClick={() => { setComprobanteTipo(ct.value); if (isParticular) comprobanteIntentMutation.mutate(ct.value); }}
                 className={`rounded-2xl border px-4 py-2 text-sm font-medium transition ${
                   comprobanteTipo === ct.value ? 'border-primary bg-primary text-primary-foreground' : 'border-border/60 bg-background text-foreground hover:border-primary/30'
                 }`}>
@@ -451,37 +484,6 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
           <Field label="Referencia externa"><Input value={form.externalReference} onChange={(e) => setForm((c) => ({ ...c, externalReference: e.target.value }))} placeholder="N° de operación, cheque, etc." /></Field>
           <Field label="Motivo / notas"><Textarea rows={3} value={form.reason} onChange={(e) => setForm((c) => ({ ...c, reason: e.target.value }))} placeholder="Detalle del pago" /></Field>
         </div>
-
-        {isCleas ? (
-          <div className="mt-5 rounded-2xl border border-primary/15 bg-primary/5 p-4">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-primary">Datos CLEAS del pago</p>
-            {/* Grupo visual CLEAS: datos principales del pago, responsive sin afectar el formulario persistente. */}
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              <Field label="Fecha de pago"><Input type="date" value={cleasPaymentsUi.paymentDraft.paidAt} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, paidAt: event.target.value } }))} /></Field>
-              <Field label="Estado del pago"><Select value={cleasPaymentsUi.paymentDraft.status} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, status: event.target.value } }))} options={[{ value: 'PENDIENTE', label: 'Pendiente' }, { value: 'EN_TERMINO', label: 'En término' }, { value: 'ATRASADO', label: 'Atrasado' }]} /></Field>
-              <Field label="Monto depositado"><Input type="number" min="0" step="0.01" value={cleasPaymentsUi.paymentDraft.depositedAmount} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, depositedAmount: event.target.value } }))} /></Field>
-              <Field label="Retenciones"><Select value={cleasPaymentsUi.paymentDraft.hasRetentions} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, hasRetentions: event.target.value } }))} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
-              <div className="flex items-end">
-                <input ref={paymentDocumentInputRef} type="file" className="hidden" onChange={(event) => { const file = event.target.files?.[0] ?? null; onCleasPaymentsUiChange((current) => ({ ...current, paymentDocument: { file, name: file?.name || '' } })); }} />
-                <Button type="button" variant="outline" className="w-full" onClick={() => paymentDocumentInputRef.current?.click()}>Documentación de pago</Button>
-              </div>
-              {cleasPaymentsUi.paymentDocument.name ? <p className="self-end text-xs text-muted-foreground">{cleasPaymentsUi.paymentDocument.name}</p> : null}
-            </div>
-            {cleasPaymentsUi.paymentDraft.hasRetentions === 'SI' ? (
-              <>
-                {/* Grupo visual CLEAS: retenciones, visible solo cuando se informan. */}
-                <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  <Field label="IVA"><Input type="number" min="0" step="0.01" value={cleasPaymentsUi.paymentDraft.vatRetention} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, vatRetention: event.target.value } }))} /></Field>
-                  <Field label="Ganancias"><Input type="number" min="0" step="0.01" value={cleasPaymentsUi.paymentDraft.earningsRetention} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, earningsRetention: event.target.value } }))} /></Field>
-                  <Field label="Contribución patrimonial"><Input type="number" min="0" step="0.01" value={cleasPaymentsUi.paymentDraft.patrimonialContribution} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, patrimonialContribution: event.target.value } }))} /></Field>
-                  <Field label="IIBB"><Input type="number" min="0" step="0.01" value={cleasPaymentsUi.paymentDraft.iibbRetention} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, iibbRetention: event.target.value } }))} /></Field>
-                  <Field label="DReI"><Input type="number" min="0" step="0.01" value={cleasPaymentsUi.paymentDraft.dreiRetention} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, dreiRetention: event.target.value } }))} /></Field>
-                  <Field label="Otra"><Input type="number" min="0" step="0.01" value={cleasPaymentsUi.paymentDraft.otherRetention} onChange={(event) => onCleasPaymentsUiChange((current) => ({ ...current, paymentDraft: { ...current.paymentDraft, otherRetention: event.target.value } }))} /></Field>
-                </div>
-              </>
-            ) : null}
-          </div>
-        ) : null}
 
         <div className="mt-5 flex gap-3">
           <Button variant="outline" className="flex-1" onClick={() => { setShowPaymentModal(false); setLocalClientPaymentRequest(null); onClientPaymentRequestHandled?.(); }}>Cancelar</Button>
@@ -746,10 +748,12 @@ const CleasCompanyPaymentPanel = ({ caseId, receipts, onSaved }) => {
         <div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Building2 className="h-5 w-5" /></div><h4 className="text-lg font-semibold">Pago de compañía CLEAS</h4></div>
         <Button data-testid="cleas-liquidation-pdf" variant="outline" size="sm" onClick={() => pdfMutation.mutate()} disabled={pdfMutation.isPending}><FileDown className="mr-1.5 h-4 w-4" />Liquidación PDF</Button>
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-4">
+      <div className="mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
         <MiniCard label="Acordado" value={formatCurrency(summary.agreedAmount)} highlight />
         <MiniCard label="Bruto cancelado" value={formatCurrency(summary.paidGrossAmount ?? summary.paidAmount)} />
+        <MiniCard label="Neto depositado" value={formatCurrency(summary.paidAmount)} />
         <MiniCard label="Saldo bruto" value={formatCurrency(pendingGrossAmount)} highlight={pendingGrossAmount > 0} />
+        <MiniCard label="Estado del pago" value={pendingGrossAmount <= 0 ? 'Pagado' : toAmount(summary.paidGrossAmount ?? summary.paidAmount) > 0 ? 'Pago parcial' : 'Pendiente'} variant={pendingGrossAmount <= 0 ? 'success' : 'warning'} />
         <MiniCard label="Retenciones de este pago" value={formatCurrency(retentionsAmount)} />
       </div>
       {pendingGrossAmount > 0 ? (

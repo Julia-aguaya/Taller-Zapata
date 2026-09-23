@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -98,6 +99,13 @@ public class FinanceController {
     @PreAuthorize("hasAuthority('finanza.ver')")
     @GetMapping("/cases/{caseId}/finance/particular-summary")
     public FinanceParticularSummaryResponse summarizeParticular(@PathVariable Long caseId) { return financeService.summarizeParticularCase(caseId); }
+
+    @Operation(summary = "Seleccionar intención de comprobante PARTICULAR", description = "Persiste A, C o R para habilitar el próximo paso de reparación sin emitir un comprobante")
+    @PreAuthorize("hasAuthority('finanza.pago.crear')")
+    @PutMapping("/cases/{caseId}/finance/particular-comprobante-intent")
+    public void selectParticularComprobanteIntent(@PathVariable Long caseId, @Valid @RequestBody ParticularComprobanteIntentRequest request, HttpServletRequest httpRequest) {
+        financeService.selectParticularComprobanteIntent(caseId, request.comprobanteTipo(), httpRequest);
+    }
 
     @Operation(summary = "Desglose autoritativo de obligaciones de cliente y aseguradora")
     @PreAuthorize("hasAuthority('finanza.ver')")

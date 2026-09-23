@@ -112,7 +112,7 @@ class CleasManagementIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tabs[2].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[3].allowed").value(false))
-                .andExpect(jsonPath("$.tabs[4].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[4].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("Esta etapa no está disponible porque el caso CLEAS fue cerrado por dictamen en contra."));
         mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"scopeCode\":\"DANIO_TOTAL\",\"opinionCode\":\"A_FAVOR\"}"))
@@ -156,7 +156,7 @@ class CleasManagementIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tabs[2].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[3].allowed").value(false))
-                .andExpect(jsonPath("$.tabs[4].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[4].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("No se puede avanzar hasta recibir el dictamen."));
     }
 
@@ -166,7 +166,7 @@ class CleasManagementIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tabs[2].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[3].allowed").value(false))
-                .andExpect(jsonPath("$.tabs[4].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[4].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("No se puede avanzar hasta recibir el dictamen."));
     }
 
@@ -189,7 +189,7 @@ class CleasManagementIntegrationTest {
                 .andExpect(jsonPath("$.tabs[3].completed").value(false))
                 .andExpect(jsonPath("$.tabs[3].blockingReasons[0]").value("Debe generar el presupuesto antes de gestionar la reparacion"))
                 .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))
-                .andExpect(jsonPath("$.tabs[4].allowed").value(false))
+                .andExpect(jsonPath("$.tabs[4].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[4].completed").value(false))
                 .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("Falta acordar cotizacion con la Cia. antes de registrar pagos"));
     }
@@ -371,6 +371,46 @@ class CleasManagementIntegrationTest {
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimiento_retenciones WHERE movimiento_id = (SELECT id FROM movimientos_financieros WHERE caso_id = ?)", Integer.class, 100L)).isEqualTo(1);
         assertThat(jdbcTemplate.queryForObject("SELECT visible_cliente FROM documento_relaciones WHERE documento_id = 201 AND entidad_tipo = 'MOVIMIENTO_FINANCIERO'", Boolean.class)).isFalse();
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'registrar_pago_compania_cleas'", Integer.class, 100L)).isEqualTo(1);
+    }
+
+    @Test
+    void shouldPersistAllRetentionTypesForAnAdverseFranchiseCompanyPayment() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scopeCode\":\"FRANQUICIA\",\"opinionCode\":\"EN_CONTRA\",\"franchiseAmount\":1000,\"companyFranchisePaymentAmount\":500}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/cases/100/cleas/insurance").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"insuranceCompanyId\":1}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-08-02\",\"agreedAmount\":2000}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":1500,\"paymentMethodCode\":\"TRANSFERENCIA\",\"documentId\":201,\"retentions\":[{\"retentionTypeCode\":\"IVA\",\"amount\":100},{\"retentionTypeCode\":\"GANANCIAS\",\"amount\":110},{\"retentionTypeCode\":\"CONTRIB_PATRIMONIAL\",\"amount\":120},{\"retentionTypeCode\":\"IIBB\",\"amount\":130},{\"retentionTypeCode\":\"DREI\",\"amount\":140},{\"retentionTypeCode\":\"OTRA\",\"amount\":150}]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.grossAmount").value(1500))
+                .andExpect(jsonPath("$.retentionsAmount").value(750))
+                .andExpect(jsonPath("$.netAmount").value(750))
+                .andExpect(jsonPath("$.retentions.length()").value(6))
+                .andExpect(jsonPath("$.retentions[0].retentionTypeCode").value("IVA"))
+                .andExpect(jsonPath("$.retentions[1].retentionTypeCode").value("GANANCIAS"))
+                .andExpect(jsonPath("$.retentions[2].retentionTypeCode").value("CONTRIB_PATRIMONIAL"))
+                .andExpect(jsonPath("$.retentions[3].retentionTypeCode").value("IIBB"))
+                .andExpect(jsonPath("$.retentions[4].retentionTypeCode").value("DREI"))
+                .andExpect(jsonPath("$.retentions[5].retentionTypeCode").value("OTRA"));
+
+        assertThat(jdbcTemplate.queryForList("SELECT tipo_retencion_codigo FROM movimiento_retenciones WHERE movimiento_id = (SELECT id FROM movimientos_financieros WHERE caso_id = 100 AND origen_flujo_codigo = 'ASEGURADORA') ORDER BY id", String.class))
+                .containsExactly("IVA", "GANANCIAS", "CONTRIB_PATRIMONIAL", "IIBB", "DREI", "OTRA");
+        assertThat(jdbcTemplate.queryForObject("SELECT monto_bruto FROM movimientos_financieros WHERE caso_id = 100 AND origen_flujo_codigo = 'ASEGURADORA'", java.math.BigDecimal.class)).isEqualByComparingTo("1500.00");
+        assertThat(jdbcTemplate.queryForObject("SELECT monto_neto FROM movimientos_financieros WHERE caso_id = 100 AND origen_flujo_codigo = 'ASEGURADORA'", java.math.BigDecimal.class)).isEqualByComparingTo("750.00");
+
+        mockMvc.perform(get("/api/v1/cases/100/cleas/summary").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.agreedAmount").value(1500))
+                .andExpect(jsonPath("$.paidAmount").value(750))
+                .andExpect(jsonPath("$.pendingAmount").value(750))
+                .andExpect(jsonPath("$.paidGrossAmount").value(1500))
+                .andExpect(jsonPath("$.pendingGrossAmount").value(0));
     }
 
     @Test
@@ -563,13 +603,17 @@ class CleasManagementIntegrationTest {
                 .andExpect(jsonPath("$.customerChargeAmount").value(500))
                 .andExpect(jsonPath("$.amountToBillCompany").value(1500))
                 .andExpect(jsonPath("$.customerPaidAmount").value(0))
-                .andExpect(jsonPath("$.customerPendingAmount").value(500));
+                .andExpect(jsonPath("$.customerPendingAmount").value(500))
+                .andExpect(jsonPath("$.customerCollectionStatusCode").value("PENDIENTE"))
+                .andExpect(jsonPath("$.customerCollectionDate").doesNotExist());
 
         mockMvc.perform(post("/api/v1/cases/100/cleas/customer-franchise-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"amount\":500,\"paymentMethodCode\":\"EFECTIVO\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.customerPaidAmount").value(500))
-                .andExpect(jsonPath("$.customerPendingAmount").value(0));
+                .andExpect(jsonPath("$.customerPendingAmount").value(0))
+                .andExpect(jsonPath("$.customerCollectionStatusCode").value("COBRADO"))
+                .andExpect(jsonPath("$.customerCollectionDate").isNotEmpty());
 
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ? AND origen_flujo_codigo = 'CLIENTE' AND cancela_tipo_codigo = 'FRANQUICIA'", Integer.class, 100L)).isEqualTo(1);
 
@@ -579,7 +623,6 @@ class CleasManagementIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.customerPaidAmount").value(0))
                 .andExpect(jsonPath("$.customerPendingAmount").value(500));
-        assertThat(jdbcTemplate.queryForObject("SELECT estado_pago_cliente_codigo FROM caso_cleas WHERE caso_id = 100", String.class)).isEqualTo("PENDIENTE");
 
         mockMvc.perform(post("/api/v1/cases/100/cleas/customer-franchise-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"amount\":100,\"paymentMethodCode\":\"EFECTIVO\"}"))

@@ -231,6 +231,7 @@ public class CaseReadinessService {
         }
 
         ensureBudgetIsAvailableFromCreation(tabs, caseId, principalVehicle);
+        ensurePaymentsAreAvailable(tabs);
         return new CaseReadinessResponse(caseId, caseType.getCode(), tabs);
     }
 
@@ -243,6 +244,15 @@ public class CaseReadinessService {
         }
         int index = tabs.indexOf(budget);
         tabs.set(index, new CaseReadinessTabResponse("PRESUPUESTO", true, budget.completed(), budget.colorHint(), budget.blockingReasons(), budget.warningReasons()));
+    }
+
+    private void ensurePaymentsAreAvailable(List<CaseReadinessTabResponse> tabs) {
+        for (int index = 0; index < tabs.size(); index++) {
+            CaseReadinessTabResponse tab = tabs.get(index);
+            if ("PAGOS".equals(tab.tabCode()) && !tab.allowed()) {
+                tabs.set(index, new CaseReadinessTabResponse("PAGOS", true, tab.completed(), tab.colorHint(), tab.blockingReasons(), tab.warningReasons()));
+            }
+        }
     }
 
     private CaseReadinessTabResponse buildCleasGestionTramiteReadiness(CaseCleasEntity definition) {

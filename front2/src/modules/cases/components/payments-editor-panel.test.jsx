@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PaymentsEditorPanel } from './payments-editor-panel';
@@ -9,6 +8,7 @@ const mockCreateReceipt = vi.fn().mockResolvedValue({ id: 10 });
 const mockGetFinanceCatalogs = vi.fn().mockResolvedValue({ paymentMethodCodes: [], cancellationTypeCodes: [] });
 const mockListFinancialMovements = vi.fn().mockResolvedValue([]);
 const mockListReceipts = vi.fn().mockResolvedValue([]);
+const mockSelectParticularComprobanteIntent = vi.fn().mockResolvedValue();
 const mockRequestJson = vi.fn().mockResolvedValue({});
 const mockInvalidateQueries = vi.fn();
 const mockRefetchQueries = vi.fn().mockResolvedValue(undefined);
@@ -35,6 +35,7 @@ vi.mock('@/modules/cases/api/finance-api', () => ({
   getFinanceCatalogs: (...a) => mockGetFinanceCatalogs(...a),
   listFinancialMovements: (...a) => mockListFinancialMovements(...a),
   listReceipts: (...a) => mockListReceipts(...a),
+  selectParticularComprobanteIntent: (...a) => mockSelectParticularComprobanteIntent(...a),
   getReceiptPdfUrl: (id) => `/api/v1/receipts/${id}/pdf`,
 }));
 
@@ -88,16 +89,8 @@ const baseProps = {
   onSaved: vi.fn(),
 };
 
-const createCleasPaymentsUi = () => ({
-  paymentDraft: { paidAt: '', status: 'PENDIENTE', depositedAmount: '', hasRetentions: 'NO', vatRetention: '', earningsRetention: '', patrimonialContribution: '', iibbRetention: '', dreiRetention: '', otherRetention: '' },
-  paymentDocument: { file: null, name: '' },
-  franchiseClientPayment: { status: 'PENDIENTE', paidAt: '', amount: '', paymentMethod: 'TRANSFERENCIA', externalReference: '', notes: '', document: { file: null, name: '' }, registered: false },
-});
-
 const CleasPaymentsHarness = (props) => {
-  const [cleasPaymentsUi, setCleasPaymentsUi] = useState(createCleasPaymentsUi);
-  const [cleasFranchiseDistribution] = useState(props.cleasFranchiseDistribution ?? { franchiseAmount: '', companyRequirement: 'NO', companyRequiredAmount: '', companyPaymentStatus: 'PENDIENTE', companyPaymentDate: '' });
-  return <PaymentsEditorPanel {...props} cleasFranchiseDistribution={cleasFranchiseDistribution} cleasPaymentsUi={cleasPaymentsUi} onCleasPaymentsUiChange={setCleasPaymentsUi} />;
+  return <PaymentsEditorPanel {...props} cleasFranchiseDistribution={props.cleasFranchiseDistribution ?? { franchiseAmount: '', companyRequirement: 'NO', companyRequiredAmount: '', companyPaymentStatus: 'PENDIENTE', companyPaymentDate: '' }} />;
 };
 
   const mount = (overrides = {}) => {
@@ -219,7 +212,7 @@ describe('PaymentsEditorPanel', () => {
     };
     render(<PaymentsEditorPanel {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'TODO_RIESGO' }} />);
 
-    fireEvent.change(screen.getByLabelText('Monto'), { target: { value: '10' } });
+    fireEvent.change(screen.getByLabelText('Bruto que cancela'), { target: { value: '10' } });
     fireEvent.click(screen.getByRole('button', { name: /^Guardar pago de la compañía$/i }));
 
     await waitFor(() => expect(mockCreateFinancialMovement).toHaveBeenCalledWith(42, expect.objectContaining({
@@ -239,7 +232,7 @@ describe('PaymentsEditorPanel', () => {
     };
     render(<PaymentsEditorPanel {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'TODO_RIESGO' }} />);
 
-    fireEvent.change(screen.getByLabelText('Monto'), { target: { value: '11' } });
+    fireEvent.change(screen.getByLabelText('Bruto que cancela'), { target: { value: '11' } });
     fireEvent.click(screen.getByRole('button', { name: /^Guardar pago de la compañía$/i }));
 
     expect(mockCreateFinancialMovement).not.toHaveBeenCalled();
@@ -255,7 +248,7 @@ describe('PaymentsEditorPanel', () => {
     mockCreateFinancialMovement.mockImplementationOnce(() => new Promise((resolve) => { resolvePayment = resolve; }));
     render(<PaymentsEditorPanel {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'TODO_RIESGO' }} />);
 
-    fireEvent.change(screen.getByLabelText('Monto'), { target: { value: '100000' } });
+    fireEvent.change(screen.getByLabelText('Bruto que cancela'), { target: { value: '100000' } });
     const saveButton = screen.getByRole('button', { name: /^Guardar pago de la compañía$/i });
     fireEvent.click(saveButton);
     fireEvent.click(saveButton);
@@ -398,7 +391,7 @@ describe('PaymentsEditorPanel', () => {
       [JSON.stringify(['cases', '42', 'receipts'])]: [{ id: 44, receiptTypeCode: 'FACTURA', receiptNumber: '0001-44', receiverBusinessName: 'Aseguradora SA', total: 100000 }],
       [JSON.stringify(['cases', '42', 'documents'])]: [{ documentId: 88, categoryId: 9, fileName: 'transferencia.pdf' }],
       [JSON.stringify(['documents', 'catalogs'])]: { categories: [{ id: 9, code: 'COMPROBANTE_PAGO_CLEAS', name: 'Comprobante de pago CLEAS' }] },
-      [JSON.stringify(['finance', 'catalogs'])]: { retentionTypeCodes: [{ code: 'IVA', name: 'IVA' }, { code: 'IIBB', name: 'Ingresos Brutos' }] },
+      [JSON.stringify(['finance', 'catalogs'])]: { retentionTypeCodes: [{ code: 'IVA', name: 'IVA' }, { code: 'GANANCIAS', name: 'Ganancias' }, { code: 'CONTRIB_PATRIMONIAL', name: 'Contribución patrimonial' }, { code: 'IIBB', name: 'Ingresos Brutos' }, { code: 'DREI', name: 'DReI' }, { code: 'OTRA', name: 'Otra' }] },
     };
     render(<CleasPaymentsHarness {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }} />);
 
@@ -411,6 +404,7 @@ describe('PaymentsEditorPanel', () => {
     fireEvent.change(within(companyPanel).getByLabelText('Factura asociada (opcional)'), { target: { value: '44' } });
     fireEvent.change(within(companyPanel).getByLabelText('Comprobante existente'), { target: { value: '88' } });
     fireEvent.click(within(companyPanel).getByRole('button', { name: 'Agregar retención' }));
+    ['IVA', 'Ganancias', 'Contribución patrimonial', 'Ingresos Brutos', 'DReI', 'Otra'].forEach((name) => expect(within(companyPanel).getByRole('option', { name })).toBeTruthy());
     fireEvent.change(within(companyPanel).getByLabelText('Monto retención 1'), { target: { value: '1000' } });
     expect(within(companyPanel).getByLabelText('Neto depositado')).toHaveValue('$ 74.000');
     fireEvent.change(within(companyPanel).getByLabelText('Referencia externa'), { target: { value: 'CLEAS-OP-1' } });
@@ -487,7 +481,7 @@ describe('PaymentsEditorPanel', () => {
   });
 
   it('uses the canonical unfavorable franchise summary and payment modal', () => {
-    useQueryData = { [JSON.stringify(['cases', '42', 'cleas', 'franchise-summary'])]: { amountToBillCompany: 1500000, companyRequiredAmount: 500000, customerPendingAmount: 500000 } };
+    useQueryData = { [JSON.stringify(['cases', '42', 'cleas', 'franchise-summary'])]: { amountToBillCompany: 1500000, companyRequiredAmount: 500000, customerChargeAmount: 500000, customerPendingAmount: 500000, customerCollectionStatusCode: 'PENDIENTE', customerCollectionDate: null } };
     mount({
       caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' },
       cleasOver: 'franchise',
@@ -497,8 +491,10 @@ describe('PaymentsEditorPanel', () => {
     });
 
     expect(screen.queryByText('Facturación')).toBeNull();
-    expect(screen.getByText('Pago de franquicia a cargo del cliente')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'A cargo del cliente' })).toBeTruthy();
     expect(screen.getByText('A facturar Cía.').parentElement).toHaveTextContent('1.500.000');
+    expect(screen.getByText('Estado de cobro').parentElement).toHaveTextContent('Pendiente');
+    expect(screen.getByText('Fecha de cobro').parentElement).toHaveTextContent('Sin cobro total');
     fireEvent.click(screen.getByRole('button', { name: '+ Registrar pago al taller' }));
     expect(screen.getByRole('heading', { name: 'Registrar pago' })).toBeTruthy();
     expect(screen.getByLabelText('Monto')).toHaveValue(500000);
@@ -507,6 +503,18 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.getByLabelText('Fecha pago a compañía')).toHaveValue(new Date().toISOString().slice(0, 10));
     expect(screen.getByLabelText('Comprobante pago cliente a compañía')).toHaveValue('');
     expect(screen.getByLabelText('Subir comprobante pago cliente a compañía')).toBeInTheDocument();
+  });
+
+  it('derives the adverse franchise customer charge from the persisted CLEAS definition', () => {
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'cleas', 'definition'])]: { scopeCode: 'FRANQUICIA', opinionCode: 'EN_CONTRA' },
+      [JSON.stringify(['cases', '42', 'cleas', 'franchise-summary'])]: { amountToBillCompany: 1500000, companyRequiredAmount: 500000, customerChargeAmount: 500000, customerPendingAmount: 500000, customerCollectionStatusCode: 'PENDIENTE', customerCollectionDate: null },
+    };
+
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' } });
+
+    expect(screen.getByRole('heading', { name: 'A cargo del cliente' })).toBeTruthy();
+    expect(screen.getByText('Estado de cobro').parentElement).toHaveTextContent('Pendiente');
   });
 
   it('keeps company billing available for shared-fault total damage without changing the agreed amount', () => {
@@ -550,20 +558,15 @@ describe('PaymentsEditorPanel', () => {
     })));
   });
 
-  it('shows CLEAS payment draft fields and only reveals retentions when selected', () => {
+  it('shows the CLEAS payment status and accumulated deposited net from the canonical summary', () => {
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'cleas', 'summary'])]: { caseId: 42, companyId: 7, agreedAmount: 100000, paidAmount: 74000, pendingAmount: 26000, paidGrossAmount: 75000, pendingGrossAmount: 25000 },
+    };
     mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' } });
-    openPaymentForm();
 
-    expect(screen.getByLabelText('Fecha de pago')).toBeTruthy();
-    expect(screen.getByLabelText('Estado del pago')).toBeTruthy();
-    expect(screen.getByLabelText('Monto depositado')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Documentación de pago' })).toBeTruthy();
-    expect(document.querySelector('input[type="file"]')).toBeTruthy();
-    expect(screen.queryByLabelText('Ganancias')).toBeNull();
-
-    fireEvent.change(screen.getByLabelText('Retenciones'), { target: { value: 'SI' } });
-    expect(screen.getAllByLabelText('IVA')).toHaveLength(1);
-    ['Ganancias', 'Contribución patrimonial', 'IIBB', 'DReI', 'Otra'].forEach((label) => expect(screen.getByLabelText(label)).toBeTruthy());
+    const companyPanel = screen.getByText('Pago de compañía CLEAS').closest('.border');
+    expect(within(companyPanel).getAllByText('Neto depositado')[0].parentElement).toHaveTextContent('74.000');
+    expect(within(companyPanel).getByText('Estado del pago').parentElement).toHaveTextContent('Pago parcial');
   });
 
   it('uses the canonical PARTICULAR quoted total for comprobante A when item labor is zero', () => {
@@ -590,6 +593,17 @@ describe('PaymentsEditorPanel', () => {
 
     expect(screen.getByText(/MO:.*150\.000.*Repuestos:.*70\.000.*Total:.*220\.000/)).toBeInTheDocument();
     expect(screen.getByLabelText('Monto')).toHaveAttribute('placeholder', 'Ej: 220000');
+  });
+
+  it('persists PARTICULAR comprobante intent without creating a receipt or financial movement', async () => {
+    mount();
+    openPaymentForm();
+
+    fireEvent.click(screen.getByRole('button', { name: /^C.*Factura/ }));
+
+    await waitFor(() => expect(mockSelectParticularComprobanteIntent).toHaveBeenCalledWith(42, 'C'));
+    expect(mockCreateReceipt).not.toHaveBeenCalled();
+    expect(mockCreateFinancialMovement).not.toHaveBeenCalled();
   });
 
   it('calculates the PARTICULAR pending amount from the canonical quoted total and prior payments', () => {
@@ -648,22 +662,24 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.getByText('Historial de movimientos')).toBeTruthy();
   });
 
-  it('calls createFinancialMovement on save', async () => {
-    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' } });
-    openPaymentForm();
-    fireEvent.change(screen.getByLabelText('Monto'), { target: { value: '100000' } });
-    fireEvent.change(screen.getByLabelText('Monto depositado'), { target: { value: '90000' } });
-    fireEvent.change(screen.getByLabelText('Retenciones'), { target: { value: 'SI' } });
-    fireEvent.change(screen.getByLabelText('Ganancias'), { target: { value: '1000' } });
-    fireEvent.click(screen.getByRole('button', { name: /^registrar pago$/i }));
-    await waitFor(() => expect(mockCreateFinancialMovement).toHaveBeenCalled());
-    const payload = mockCreateFinancialMovement.mock.calls[0][1];
-    expect(payload.grossAmount).toBe(100000);
-    expect(payload).not.toHaveProperty('depositedAmount');
-    expect(payload).not.toHaveProperty('hasRetentions');
-    expect(payload).not.toHaveProperty('franchiseAmount');
-    expect(payload).not.toHaveProperty('companyRequiredAmount');
-    expect(payload.retentions).toEqual([]);
+  it('registers Todo Riesgo company retentions as part of the payment', async () => {
+    useQueryData = {
+      [JSON.stringify(['finance', 'catalogs'])]: { retentionTypeCodes: [{ code: 'DREI', name: 'DReI' }] },
+      [JSON.stringify(['cases', '42', 'insurance-processing'])]: { amountToBillCompany: 100000 },
+      [JSON.stringify(['cases', '42', 'finance', 'payment-breakdown'])]: { insurer: { companyId: 7, total: 100000, paid: 0, pending: 100000 } },
+    };
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'TODO_RIESGO' } });
+
+    fireEvent.change(screen.getByLabelText('Bruto que cancela'), { target: { value: '100000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar retención' }));
+    fireEvent.change(screen.getByLabelText('Monto retención de compañía 1'), { target: { value: '1000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar pago de la compañía' }));
+
+    await waitFor(() => expect(mockCreateFinancialMovement).toHaveBeenCalledWith(42, expect.objectContaining({
+      grossAmount: 100000,
+      netAmount: 99000,
+      retentions: [{ retentionTypeCode: 'DREI', amount: 1000, detail: null }],
+    })));
   });
 
   it('shows factura fields when Factura = SI', () => {

@@ -11,6 +11,8 @@ public record CleasFranchisePaymentSummaryResponse(
         BigDecimal amountToBillCompany,
         BigDecimal customerPaidAmount,
         BigDecimal customerPendingAmount,
+        String customerCollectionStatusCode,
+        LocalDate customerCollectionDate,
         String companyPaymentStatusCode,
         LocalDate companyPaymentDate
 ) {
