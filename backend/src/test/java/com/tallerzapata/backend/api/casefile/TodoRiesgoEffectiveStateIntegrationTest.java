@@ -113,6 +113,7 @@ class TodoRiesgoEffectiveStateIntegrationTest {
         long intakeId = createIntake(caseId);
         long outcomeId = createOutcome(caseId, intakeId, false, true);
         Long reentryAppointmentId = jdbcTemplate.queryForObject("SELECT turno_reingreso_id FROM egresos_vehiculo WHERE id = ?", Long.class, outcomeId);
+        assertProjection(caseId, "SIN_PRESENTAR", "CON_TURNO");
         updateAppointment(reentryAppointmentId, "CANCELADO", true);
         assertProjection(caseId, "SIN_PRESENTAR", "DEBE_REINGRESAR");
         updateOutcome(outcomeId, true, false);
@@ -155,7 +156,7 @@ class TodoRiesgoEffectiveStateIntegrationTest {
     }
 
     @Test
-    void noRepairEndpointsUseAuthenticatedActorAndExistingOverridePermission() throws Exception {
+    void noRepairEndpointsRequireGlobalAdminEvenWhenTheUserRetainsAdminPermissions() throws Exception {
         long caseId = createCase("TODO_RIESGO");
 
         mockMvc.perform(post("/api/v1/cases/{caseId}/todo-riesgo/no-repair", caseId).header("X-User-Id", "1")
@@ -164,6 +165,7 @@ class TodoRiesgoEffectiveStateIntegrationTest {
                 .andExpect(jsonPath("$.visibleRepairState.code").value("NO_DEBE_REPARARSE"))
                 .andExpect(jsonPath("$.reparacionCode").value("NO_DEBE_REPARARSE"));
         assertThat(jdbcTemplate.queryForObject("SELECT no_repara_actor_usuario_id FROM todo_riesgo_state_facts WHERE caso_id = ?", Long.class, caseId)).isEqualTo(1L);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM notificaciones WHERE caso_id = ? AND usuario_id = 1 AND tipo_codigo = 'TODO_RIESGO_NO_REPARA'", Integer.class, caseId)).isEqualTo(1);
 
         mockMvc.perform(post("/api/v1/cases/{caseId}/todo-riesgo/no-repair/revert", caseId).header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Reparacion autorizada\"}"))
@@ -171,8 +173,7 @@ class TodoRiesgoEffectiveStateIntegrationTest {
                 .andExpect(jsonPath("$.visibleRepairState.code").value("EN_TRAMITE"));
 
         long forbiddenCaseId = createCase("TODO_RIESGO");
-        Long permissionId = jdbcTemplate.queryForObject("SELECT id FROM permisos WHERE codigo = ?", Long.class, "workflow.estado.visible.override");
-        jdbcTemplate.update("DELETE FROM rol_permisos WHERE rol_id = ? AND permiso_id = ?", 1L, permissionId);
+        jdbcTemplate.update("UPDATE usuario_roles SET organizacion_id = 1, sucursal_id = 1 WHERE usuario_id = 1 AND rol_id = 1");
         int historyBefore = historyCount(forbiddenCaseId);
         try {
             mockMvc.perform(post("/api/v1/cases/{caseId}/todo-riesgo/no-repair", forbiddenCaseId).header("X-User-Id", "1")
@@ -181,8 +182,27 @@ class TodoRiesgoEffectiveStateIntegrationTest {
             assertThat(historyCount(forbiddenCaseId)).isEqualTo(historyBefore);
             assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM todo_riesgo_state_facts WHERE caso_id = ?", Integer.class, forbiddenCaseId)).isZero();
         } finally {
-            jdbcTemplate.update("INSERT INTO rol_permisos (rol_id, permiso_id, allow_flag) VALUES (?, ?, ?)", 1L, permissionId, true);
+            jdbcTemplate.update("UPDATE usuario_roles SET organizacion_id = NULL, sucursal_id = NULL WHERE usuario_id = 1 AND rol_id = 1");
         }
+    }
+
+    @Test
+    void rejectsNoRepairWhileARequiredPartIsUnreceivedAndAuditsUrgentRepair() throws Exception {
+        long blockedCaseId = createCase("TODO_RIESGO");
+        createPart(blockedCaseId, "PEDIDO");
+        mockMvc.perform(post("/api/v1/cases/{caseId}/todo-riesgo/no-repair", blockedCaseId).header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"No reparable\"}"))
+                .andExpect(status().isConflict());
+        assertProjection(blockedCaseId, "SIN_PRESENTAR", "EN_TRAMITE");
+
+        long urgentCaseId = createCase("TODO_RIESGO");
+        mockMvc.perform(post("/api/v1/cases/{caseId}/todo-riesgo/urgent-repaired", urgentCaseId).header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Entrega urgente\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.visibleRepairState.code").value("REPARADO"))
+                .andExpect(jsonPath("$.priorityCode").value("URGENTE"));
+        assertThat(jdbcTemplate.queryForObject("SELECT reparacion_urgente_actor_usuario_id FROM todo_riesgo_state_facts WHERE caso_id = ?", Long.class, urgentCaseId)).isEqualTo(1L);
+        assertThat(jdbcTemplate.queryForObject("SELECT cause FROM todo_riesgo_effective_state_history WHERE caso_id = ? ORDER BY id DESC LIMIT 1", String.class, urgentCaseId)).isEqualTo("URGENT_REPAIR");
     }
 
     @Test

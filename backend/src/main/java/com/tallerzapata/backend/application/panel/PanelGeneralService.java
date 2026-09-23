@@ -117,6 +117,10 @@ public class PanelGeneralService {
                 String repairCode = repairState != null ? repairState.code() : "EN_TRAMITE";
                 List<String> reasons = new ArrayList<>();
 
+                if ("URGENTE".equalsIgnoreCase(caseEntity.getPriorityCode())) {
+                    reasons.add("Reparacion urgente");
+                }
+
                 if ("PASADO_A_PAGOS".equals(tramiteCode)) {
                     pendingPayments++;
                     reasons.add("Pago pendiente");
@@ -163,7 +167,7 @@ public class PanelGeneralService {
                         caseEntity.getCreatedAt()
                 );
 
-                if (reasons.stream().anyMatch(reason -> reason.equals("Pago pendiente") || reason.equals("Caso proximo a prescribir"))) {
+                if (reasons.stream().anyMatch(reason -> reason.equals("Pago pendiente") || reason.equals("Caso proximo a prescribir") || reason.equals("Reparacion urgente"))) {
                     urgent.add(item);
                 } else {
                     attention.add(item);

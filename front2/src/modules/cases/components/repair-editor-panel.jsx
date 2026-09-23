@@ -6,6 +6,7 @@ import { createRepairAppointment, createVehicleIntake, createVehicleOutcome, del
 import { createCasePart, deleteCasePart, getPartsCatalogs, listCaseParts, resolvePartReconciliationWarning, syncPartsFromBudget, updateCasePart } from '@/modules/cases/api/parts-api';
 import { requestJson } from '@/shared/api/http-client';
 import { useSession } from '@/modules/auth/providers/session-provider';
+import { hasGlobalAdminScope } from '@/modules/auth/lib/global-admin-scope';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
@@ -236,9 +237,13 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const isInsuranceRepair = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
   const syncsCanonicalParts = ['PARTICULAR', 'TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
   const supportsNoRepair = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
+  const canManageExceptionalRepair = hasGlobalAdminScope(session);
+  const supportsUrgentRepair = caseDetail?.caseTypeCode === 'TODO_RIESGO' && caseDetail?.visibleTramiteState?.code === 'SIN_PRESENTAR';
   const isNoRepair = caseDetail?.visibleRepairState?.code === 'NO_DEBE_REPARARSE';
   const [noRepairDialog, setNoRepairDialog] = useState(null);
   const [noRepairReason, setNoRepairReason] = useState('');
+  const [urgentRepairDialog, setUrgentRepairDialog] = useState(false);
+  const [urgentRepairReason, setUrgentRepairReason] = useState('');
 
   const noRepairMutation = useMutation({
     mutationFn: ({ revert, reason }) => requestJson(`/cases/${caseId}/todo-riesgo/no-repair${revert ? '/revert' : ''}`, {
@@ -251,6 +256,12 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
       await refreshWorkspace(revert ? 'Reparación devuelta a seguimiento automático.' : 'Marcada como no debe repararse.');
     },
     onError: (error) => toast.error(error.message || 'No pude actualizar la excepción de reparación.'),
+  });
+
+  const urgentRepairMutation = useMutation({
+    mutationFn: (reason) => requestJson(`/cases/${caseId}/todo-riesgo/urgent-repaired`, { method: 'POST', body: JSON.stringify({ reason }) }),
+    onSuccess: async () => { setUrgentRepairDialog(false); setUrgentRepairReason(''); await refreshWorkspace('Reparación urgente registrada.'); },
+    onError: (error) => toast.error(error.message || 'No pude registrar la reparación urgente.'),
   });
 
   const [editMode, setEditMode] = useState(false);
@@ -501,11 +512,12 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
             <h4 className="text-lg font-semibold">Repuestos</h4>
             <p className="mt-1 text-sm text-muted-foreground">Total de repuestos: {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(partsTotal)}. Los trabajos extra no se incluyen.</p>
           </div>
-          {supportsNoRepair ? (
+          {supportsNoRepair && canManageExceptionalRepair ? (
             <Button variant={isNoRepair ? 'outline' : 'destructive'} size="sm" onClick={() => setNoRepairDialog(isNoRepair ? 'revert' : 'apply')}>
               {isNoRepair ? 'Volver a automático' : 'No debe repararse'}
             </Button>
           ) : null}
+          {supportsUrgentRepair && canManageExceptionalRepair ? <Button variant="outline" size="sm" onClick={() => setUrgentRepairDialog(true)}>Reparado urgente</Button> : null}
           {editMode ? (
             <div className="ml-auto flex gap-2">
               <Button variant="outline" size="sm" onClick={() => setNewPartDialogOpen(true)}>Agregar repuesto extra</Button>
@@ -637,6 +649,12 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
             </div>
           </div>
         ) : null}
+        <Dialog open={urgentRepairDialog} onClose={() => setUrgentRepairDialog(false)} title="¿Marcar reparado urgente?" description="Es una excepción previa a la presentación. El motivo, actor y fecha quedan auditados y la carpeta pasa a prioridad urgente.">
+          <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (!urgentRepairReason.trim()) { toast.error('El motivo es obligatorio.'); return; } urgentRepairMutation.mutate(urgentRepairReason.trim()); }}>
+            <div className="space-y-1"><Label htmlFor="urgent-repair-reason">Motivo</Label><Textarea id="urgent-repair-reason" data-dialog-initial-focus rows={3} value={urgentRepairReason} onChange={(event) => setUrgentRepairReason(event.target.value)} required /></div>
+            <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setUrgentRepairDialog(false)}>Cancelar</Button><Button type="submit" disabled={urgentRepairMutation.isPending}>{urgentRepairMutation.isPending ? 'Registrando...' : 'Confirmar excepción'}</Button></div>
+          </form>
+        </Dialog>
         <Dialog open={Boolean(warningToResolve)} onClose={() => setWarningToResolve(null)} title="Resolver advertencia manualmente" description="La resolución queda auditada. No se eliminará ni modificará automáticamente el repuesto ni su actividad.">
           <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (!warningResolution.trim()) { toast.error('La resolución es obligatoria.'); return; } resolveWarningMutation.mutate({ partId: warningToResolve.part.id, warningId: warningToResolve.id, resolution: warningResolution.trim() }); }}>
             <p className="text-sm"><strong>{warningToResolve?.part?.description}</strong>: {warningToResolve?.reason}</p>

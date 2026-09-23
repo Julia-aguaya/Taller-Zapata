@@ -21,6 +21,10 @@ public class TodoRiesgoStateFactsEntity {
     @Column(name = "no_repara_revertido_fecha") private LocalDateTime noRepairRevertedAt;
     @Column(name = "no_repara_revertido_actor_usuario_id") private Long noRepairRevertedActorUserId;
     @Column(name = "no_repara_revertido_motivo") private String noRepairRevertedReason;
+    @Column(name = "reparacion_urgente_activa", nullable = false) private Boolean urgentRepairActive;
+    @Column(name = "reparacion_urgente_motivo") private String urgentRepairReason;
+    @Column(name = "reparacion_urgente_fecha") private LocalDateTime urgentRepairAt;
+    @Column(name = "reparacion_urgente_actor_usuario_id") private Long urgentRepairActorUserId;
     public Long getCaseId() { return caseId; } public void setCaseId(Long value) { caseId = value; }
     public LocalDate getAgreementDate() { return agreementDate; } public void setAgreementDate(LocalDate value) { agreementDate = value; }
     public LocalDate getPassedToPaymentsDate() { return passedToPaymentsDate; } public void setPassedToPaymentsDate(LocalDate value) { passedToPaymentsDate = value; }
@@ -32,4 +36,8 @@ public class TodoRiesgoStateFactsEntity {
     public LocalDateTime getNoRepairRevertedAt() { return noRepairRevertedAt; } public void setNoRepairRevertedAt(LocalDateTime value) { noRepairRevertedAt = value; }
     public Long getNoRepairRevertedActorUserId() { return noRepairRevertedActorUserId; } public void setNoRepairRevertedActorUserId(Long value) { noRepairRevertedActorUserId = value; }
     public String getNoRepairRevertedReason() { return noRepairRevertedReason; } public void setNoRepairRevertedReason(String value) { noRepairRevertedReason = value; }
+    public Boolean getUrgentRepairActive() { return urgentRepairActive; } public void setUrgentRepairActive(Boolean value) { urgentRepairActive = value; }
+    public String getUrgentRepairReason() { return urgentRepairReason; } public void setUrgentRepairReason(String value) { urgentRepairReason = value; }
+    public LocalDateTime getUrgentRepairAt() { return urgentRepairAt; } public void setUrgentRepairAt(LocalDateTime value) { urgentRepairAt = value; }
+    public Long getUrgentRepairActorUserId() { return urgentRepairActorUserId; } public void setUrgentRepairActorUserId(Long value) { urgentRepairActorUserId = value; }
 }

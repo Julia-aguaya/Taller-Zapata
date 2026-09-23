@@ -229,6 +229,14 @@ public class CaseController {
         return caseService.getById(caseId);
     }
 
+    @Operation(summary = "Marcar TODO_RIESGO reparado urgente")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @PostMapping("/{caseId}/todo-riesgo/urgent-repaired")
+    public CaseResponse markTodoRiesgoUrgentRepaired(@PathVariable Long caseId, @Valid @RequestBody TodoRiesgoNoRepairRequest request) {
+        caseWorkflowService.markTodoRiesgoUrgentRepaired(caseId, request.reason());
+        return caseService.getById(caseId);
+    }
+
     @Operation(summary = "Agregar nota al caso", description = "Registra una anotacion manual en la auditoria del caso")
     @ApiResponse(responseCode = "200", description = "OK")
     @PostMapping("/{caseId}/notes")

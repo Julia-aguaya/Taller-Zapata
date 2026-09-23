@@ -22,6 +22,7 @@ const PRIORITY_REASON_TYPES = {
   PRESCRIPTION: 'PRESCRIPTION',
   TASK: 'TASK',
   REPAIR: 'REPAIR',
+  URGENT_REPAIR: 'URGENT_REPAIR',
   OTHER: 'OTHER',
 };
 
@@ -41,6 +42,7 @@ export const resolvePriorityReasonType = (reason) => {
   if (normalizedReason === 'pendiente de dar turno' || normalizedReason === 'pendiente de turno') return PRIORITY_REASON_TYPES.APPOINTMENT;
   if (normalizedReason === 'caso proximo a prescribir') return PRIORITY_REASON_TYPES.PRESCRIPTION;
   if (normalizedReason.startsWith('tareas pendientes')) return PRIORITY_REASON_TYPES.TASK;
+  if (normalizedReason === 'reparacion urgente') return PRIORITY_REASON_TYPES.URGENT_REPAIR;
   if (normalizedReason.includes('repar') && normalizedReason.includes('pendient')) return PRIORITY_REASON_TYPES.REPAIR;
   return PRIORITY_REASON_TYPES.OTHER;
 };
@@ -83,6 +85,7 @@ export const resolveCasePriorityState = (item, taskMeta = null) => {
   if (validReasons.length > 0) {
     const hasUrgentReason = reasonTypes.has(PRIORITY_REASON_TYPES.PAYMENT)
       || reasonTypes.has(PRIORITY_REASON_TYPES.PRESCRIPTION)
+      || reasonTypes.has(PRIORITY_REASON_TYPES.URGENT_REPAIR)
       || (reasonTypes.has(PRIORITY_REASON_TYPES.TASK) && hasOverdueTasks);
 
     priorityBucketCode = hasUrgentReason ? 'URGENT' : 'ATTENTION';

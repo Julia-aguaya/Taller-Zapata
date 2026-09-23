@@ -15,6 +15,10 @@ import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEff
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
+import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartRepository;
+import com.tallerzapata.backend.infrastructure.persistence.notification.NotificationEntity;
+import com.tallerzapata.backend.infrastructure.persistence.notification.NotificationRepository;
+import com.tallerzapata.backend.infrastructure.persistence.security.UserRoleRepository;
 import com.tallerzapata.backend.infrastructure.persistence.workflow.CaseStateHistoryEntity;
 import com.tallerzapata.backend.infrastructure.persistence.workflow.CaseStateHistoryRepository;
 import com.tallerzapata.backend.infrastructure.persistence.workflow.WorkflowStateEntity;
@@ -52,6 +56,9 @@ public class CaseWorkflowService {
     private final ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
     private final CaseTypeRepository caseTypeRepository;
     private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
+    private final CasePartRepository casePartRepository;
+    private final UserRoleRepository userRoleRepository;
+    private final NotificationRepository notificationRepository;
 
     public CaseWorkflowService(
             CaseRepository caseRepository,
@@ -63,7 +70,8 @@ public class CaseWorkflowService {
             CaseAccessControlService caseAccessControlService,
             ObjectMapper objectMapper,
             CaseVisibleStateResolver caseVisibleStateResolver, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator,
-            CaseTypeRepository caseTypeRepository, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator
+            CaseTypeRepository caseTypeRepository, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator,
+            CasePartRepository casePartRepository, UserRoleRepository userRoleRepository, NotificationRepository notificationRepository
     ) {
         this.caseRepository = caseRepository;
         this.workflowTransitionRepository = workflowTransitionRepository;
@@ -77,6 +85,9 @@ public class CaseWorkflowService {
         this.particularEffectiveStateRecalculator = particularEffectiveStateRecalculator;
         this.caseTypeRepository = caseTypeRepository;
         this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
+        this.casePartRepository = casePartRepository;
+        this.userRoleRepository = userRoleRepository;
+        this.notificationRepository = notificationRepository;
     }
 
     @Transactional
@@ -108,10 +119,14 @@ public class CaseWorkflowService {
                     caseEntity.setVisibleRepairStateOverrideCode(null);
                     caseRepository.save(caseEntity);
                 } else {
+                    requireGlobalAdmin(currentUser);
                     todoRiesgoEffectiveStateRecalculator.revertNoRepair(caseId, request.reason(), currentUser.id());
                 }
             } else {
+                requireGlobalAdmin(currentUser);
+                requireNoRepairPartsEligible(caseId);
                 todoRiesgoEffectiveStateRecalculator.markNoRepair(caseId, request.reason(), currentUser.id());
+                notifyGlobalAdminsNoRepair(caseEntity, currentUser, request.reason());
             }
         } else if ("tramite".equals(domain)) {
             caseEntity.setVisibleCaseStateOverrideCode(stateCode);
@@ -149,8 +164,10 @@ public class CaseWorkflowService {
         CaseEntity caseEntity = caseRepository.findById(caseId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
         caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "caso.ver");
-        caseAccessControlService.requirePermission(currentUser, "workflow.estado.visible.override");
+        requireGlobalAdmin(currentUser);
+        requireNoRepairPartsEligible(caseId);
         todoRiesgoEffectiveStateRecalculator.markNoRepair(caseId, reason, currentUser.id());
+        notifyGlobalAdminsNoRepair(caseEntity, currentUser, reason);
     }
 
     @Transactional
@@ -159,8 +176,48 @@ public class CaseWorkflowService {
         CaseEntity caseEntity = caseRepository.findById(caseId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
         caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "caso.ver");
-        caseAccessControlService.requirePermission(currentUser, "workflow.estado.visible.override");
+        requireGlobalAdmin(currentUser);
         todoRiesgoEffectiveStateRecalculator.revertNoRepair(caseId, reason, currentUser.id());
+    }
+
+    @Transactional
+    public void markTodoRiesgoUrgentRepaired(Long caseId, String reason) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = caseRepository.findById(caseId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
+        caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "caso.ver");
+        // This exceptional pre-presentation completion is intentionally restricted to global admins.
+        requireGlobalAdmin(currentUser);
+        if (!caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> "TODO_RIESGO".equalsIgnoreCase(type.getCode())).orElse(false)) {
+            throw new ConflictException("La reparacion urgente solo aplica a TODO_RIESGO");
+        }
+        todoRiesgoEffectiveStateRecalculator.markUrgentRepaired(caseId, reason, currentUser.id());
+    }
+
+    private void requireGlobalAdmin(AuthenticatedUser currentUser) {
+        if (!caseAccessControlService.hasGlobalScope(currentUser)) {
+            throw new com.tallerzapata.backend.application.common.ForbiddenException("La accion excepcional requiere ROLE_ADMIN global");
+        }
+    }
+
+    private void requireNoRepairPartsEligible(Long caseId) {
+        boolean pendingRequiredPart = casePartRepository.findByCaseIdOrderByIdAsc(caseId).stream()
+                .anyMatch(part -> !"RECHAZADO".equalsIgnoreCase(part.getAuthorizedCode())
+                        && !"RECIBIDO".equalsIgnoreCase(part.getStatusCode()));
+        if (pendingRequiredPart) {
+            throw new ConflictException("No se puede marcar no debe repararse mientras existan repuestos requeridos sin recibir");
+        }
+    }
+
+    private void notifyGlobalAdminsNoRepair(CaseEntity caseEntity, AuthenticatedUser actor, String reason) {
+        for (Long adminUserId : userRoleRepository.findActiveGlobalUserIdsByRoleCode("ROLE_ADMIN")) {
+            NotificationEntity notification = new NotificationEntity();
+            notification.setUserId(adminUserId); notification.setCaseId(caseEntity.getId()); notification.setTypeCode("TODO_RIESGO_NO_REPARA");
+            notification.setTitle("Caso marcado como no debe repararse");
+            notification.setMessage("Caso " + caseEntity.getFolderCode() + ". Actor: " + actor.displayName() + ". Motivo: " + reason.trim());
+            notification.setActionUrl("/cases/" + caseEntity.getId()); notification.setEntityType("caso"); notification.setEntityId(caseEntity.getId());
+            notificationRepository.save(notification);
+        }
     }
 
     @Transactional

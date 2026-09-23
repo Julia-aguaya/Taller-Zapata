@@ -19,12 +19,19 @@ class TodoRiesgoEffectiveStatePolicyTest {
     }
 
     @Test
+    void requiresAnAcceptedQuotationAsWellAsAgreementDate() {
+        TodoRiesgoEffectiveStateFacts facts = new TodoRiesgoEffectiveStateFacts(LocalDate.now(), true, false, LocalDate.now(), null, null, false, false, null, false, List.of());
+        assertState("EN_TRAMITE", "EN_TRAMITE", facts);
+    }
+
+    @Test
     void appliesRepairFactsInTheirSpecifiedPriority() {
         TodoRiesgoEffectiveStateFacts.OutcomeFact repaired = new TodoRiesgoEffectiveStateFacts.OutcomeFact(1L, true, true, false);
         TodoRiesgoEffectiveStateFacts.OutcomeFact reentry = new TodoRiesgoEffectiveStateFacts.OutcomeFact(1L, false, true, false);
         assertState("SIN_PRESENTAR", "NO_DEBE_REPARARSE", facts(null, false, null, null, null, true, repaired, true, pendingParts()));
         assertState("SIN_PRESENTAR", "REPARADO", facts(null, false, null, null, null, false, repaired, true, pendingParts()));
-        assertState("SIN_PRESENTAR", "DEBE_REINGRESAR", facts(null, false, null, null, null, false, reentry, true, pendingParts()));
+        assertState("SIN_PRESENTAR", "CON_TURNO", facts(null, false, null, null, null, false, reentry, true, pendingParts()));
+        assertState("SIN_PRESENTAR", "DEBE_REINGRESAR", facts(null, false, null, null, null, false, reentry, false, pendingParts()));
         assertState("SIN_PRESENTAR", "CON_TURNO", facts(null, false, null, null, null, false, null, true, pendingParts()));
     }
 

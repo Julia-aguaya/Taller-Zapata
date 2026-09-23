@@ -41,8 +41,10 @@ public class TodoRiesgoEffectiveStateFactsLoader {
         return new TodoRiesgoEffectiveStateFacts(
                 insuranceProcessingRepository.findByCaseId(caseId).map(processing -> processing.getPresentedAt()).orElse(null),
                 documentationComplete(caseEntity),
+                insuranceProcessingRepository.findByCaseId(caseId).map(processing -> isAccepted(processing.getQuotationStatusCode())).orElse(false),
                 facts == null ? null : facts.getAgreementDate(), facts == null ? null : facts.getPassedToPaymentsDate(), facts == null ? null : facts.getPaymentDate(),
                 facts != null && Boolean.TRUE.equals(facts.getNoRepairActive()),
+                facts != null && Boolean.TRUE.equals(facts.getUrgentRepairActive()),
                 latestOutcome == null ? null : new TodoRiesgoEffectiveStateFacts.OutcomeFact(latestOutcome.getId(), isRepaired(latestOutcome), Boolean.TRUE.equals(latestOutcome.getShouldReenter()), hasSatisfiedReentry(latestOutcome, appointments)),
                 appointments.stream().anyMatch(this::isValidNormalAppointment),
                 partRepository.findByCaseIdOrderByIdAsc(caseId).stream().map(part -> new TodoRiesgoEffectiveStateFacts.PartFact(part.getAuthorizedCode(), part.getStatusCode())).toList()
@@ -60,4 +62,5 @@ public class TodoRiesgoEffectiveStateFactsLoader {
     private boolean isValidNormalAppointment(RepairAppointmentEntity appointment) { return !Boolean.TRUE.equals(appointment.getReentry()) && isCurrent(appointment); }
     private boolean isCurrent(RepairAppointmentEntity appointment) { String status = normalize(appointment.getStatusCode()); return "PENDIENTE".equals(status) || "REPROGRAMADO".equals(status); }
     private String normalize(String value) { return value == null ? "" : value.trim().toUpperCase(); }
+    private boolean isAccepted(String quotationStatusCode) { String code = normalize(quotationStatusCode); return "ACEPTADA".equals(code) || "ACORDADA".equals(code); }
 }

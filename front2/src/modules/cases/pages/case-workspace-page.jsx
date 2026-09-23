@@ -334,6 +334,8 @@ export const CaseWorkspacePage = () => {
               const Icon = getTabIcon(tab.tabCode);
               const active = selectedTab === tab.tabCode;
                const isBlocked = !tab.allowed;
+              const repairState = caseDetail.visibleRepairState?.code;
+              const exceptionalRepairTab = tab.tabCode === 'GESTION_REPARACION' && (repairState === 'REPARADO' || repairState === 'NO_DEBE_REPARARSE');
               return (
                 <button
                   key={tab.tabCode}
@@ -345,6 +347,10 @@ export const CaseWorkspacePage = () => {
                   className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-2.5 text-left text-sm font-medium transition ${
                     isBlocked
                       ? 'cursor-not-allowed border-destructive/30 bg-destructive/5 text-destructive/70'
+                      : exceptionalRepairTab
+                        ? repairState === 'REPARADO'
+                          ? 'border-emerald-300 bg-emerald-100 text-emerald-900 shadow-sm dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-200'
+                          : 'border-blue-300 bg-blue-100 text-blue-900 shadow-sm dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200'
                       : (tab.completed || active)
                         ? 'border-primary bg-primary text-primary-foreground shadow-sm'
                         : 'border-border/60 bg-background/80 text-foreground hover:border-primary/30 hover:bg-accent/40'

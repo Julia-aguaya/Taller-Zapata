@@ -10,20 +10,23 @@ public final class TodoRiesgoEffectiveStatePolicy {
     private String procedureCode(TodoRiesgoEffectiveStateFacts facts) {
         if (facts.paymentDate() != null) return "PAGADO";
         if (facts.passedToPaymentsDate() != null) return "PASADO_A_PAGOS";
-        if (facts.agreementDate() != null) return "ACORDADO";
+        if (hasAgreement(facts)) return "ACORDADO";
         if (facts.presentedAt() == null) return "SIN_PRESENTAR";
         return facts.documentationComplete() ? "EN_TRAMITE" : "PRESENTADO_PD";
     }
 
     private String repairCode(TodoRiesgoEffectiveStateFacts facts) {
         if (facts.noRepairActive()) return "NO_DEBE_REPARARSE";
+        if (facts.urgentRepairActive()) return "REPARADO";
         TodoRiesgoEffectiveStateFacts.OutcomeFact outcome = facts.latestOutcome();
         if (outcome != null && outcome.repaired()) return "REPARADO";
-        if (outcome != null && outcome.hasUnsatisfiedReentry()) return "DEBE_REINGRESAR";
+        if (outcome != null && outcome.mustReenter()) {
+            return outcome.hasSatisfiedReentry() || facts.hasValidNormalAppointment() ? "CON_TURNO" : "DEBE_REINGRESAR";
+        }
         if (facts.hasValidNormalAppointment()) return "CON_TURNO";
         // La reparación inicia en trámite. Sólo puede pasar a su circuito operativo
         // (repuestos / dar turno) cuando la cotización ya fue acordada.
-        if (facts.agreementDate() == null) return "EN_TRAMITE";
+        if (!hasAgreement(facts)) return "EN_TRAMITE";
         PartsAvailability parts = partsAvailability(facts.parts());
         if (parts.pendingAuthorization()) return "EN_TRAMITE";
         if (parts.authorizedUnreceived()) return "FALTAN_REPUESTOS";
@@ -43,6 +46,9 @@ public final class TodoRiesgoEffectiveStatePolicy {
     }
 
     private String normalize(String value) { return value == null ? "" : value.trim().toUpperCase(); }
+    private boolean hasAgreement(TodoRiesgoEffectiveStateFacts facts) {
+        return facts.quotationAccepted() && facts.agreementDate() != null;
+    }
 
     private record PartsAvailability(boolean pendingAuthorization, boolean authorizedUnreceived) { }
 

@@ -76,6 +76,21 @@ public class TodoRiesgoEffectiveStateRecalculator {
         factsRepository.save(facts); recalculate(caseId); appendActionHistory(caseId, "REVERT", "NO_REPAIR_REVERT", actorUserId, reason);
     }
 
+    @Transactional
+    public void markUrgentRepaired(Long caseId, String reason, Long actorUserId) {
+        requireActorAndReason(actorUserId, reason); requireInsuranceRepair(caseId);
+        CaseEntity caseEntity = caseRepository.findByIdForUpdate(caseId).orElseThrow();
+        if (factsLoader.load(caseEntity).presentedAt() != null) {
+            throw new ConflictException("La reparacion urgente solo puede registrarse antes de la presentacion");
+        }
+        TodoRiesgoStateFactsEntity facts = factsRepository.findById(caseId).orElseGet(() -> newFacts(caseId));
+        if (Boolean.TRUE.equals(facts.getUrgentRepairActive())) return;
+        facts.setUrgentRepairActive(true); facts.setUrgentRepairReason(reason.trim()); facts.setUrgentRepairAt(LocalDateTime.now()); facts.setUrgentRepairActorUserId(actorUserId);
+        factsRepository.save(facts);
+        caseEntity.setPriorityCode("URGENTE"); caseRepository.save(caseEntity);
+        recalculate(caseId); appendActionHistory(caseId, "OVERRIDE", "URGENT_REPAIR", actorUserId, reason);
+    }
+
     private RecalculationResult calculate(Long caseId, boolean persist) {
         CaseEntity caseEntity = caseRepository.findByIdForUpdate(caseId).orElseThrow();
         if (!caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> insuranceRepairCasePolicy.isInsuranceRepair(type.getCode())).orElse(false)) return RecalculationResult.notInsuranceRepair();
@@ -94,7 +109,7 @@ public class TodoRiesgoEffectiveStateRecalculator {
     }
 
     private TodoRiesgoEffectiveStateEntity newState(Long caseId) { TodoRiesgoEffectiveStateEntity state = new TodoRiesgoEffectiveStateEntity(); state.setCaseId(caseId); return state; }
-    private TodoRiesgoStateFactsEntity newFacts(Long caseId) { TodoRiesgoStateFactsEntity facts = new TodoRiesgoStateFactsEntity(); facts.setCaseId(caseId); facts.setNoRepairActive(false); return facts; }
+    private TodoRiesgoStateFactsEntity newFacts(Long caseId) { TodoRiesgoStateFactsEntity facts = new TodoRiesgoStateFactsEntity(); facts.setCaseId(caseId); facts.setNoRepairActive(false); facts.setUrgentRepairActive(false); return facts; }
     private void requireInsuranceRepair(Long caseId) { if (!isInsuranceRepair(caseId)) throw new ConflictException("La accion solo aplica a casos de reparacion con seguro"); }
     private boolean isInsuranceRepair(Long caseId) { return caseTypeRepository.findById(caseRepository.findByIdForUpdate(caseId).orElseThrow().getCaseTypeId()).map(type -> insuranceRepairCasePolicy.isInsuranceRepair(type.getCode())).orElse(false); }
     private void requireActorAndReason(Long actorUserId, String reason) { if (actorUserId == null || reason == null || reason.isBlank()) throw new ConflictException("Motivo y actor son obligatorios"); }
