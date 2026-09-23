@@ -110,7 +110,7 @@ describe('BudgetEditorPanel comparison tabs', () => {
     const uploadSessionIds = ['00000000-0000-4000-8000-000000000091', '00000000-0000-4000-8000-000000000092'];
     requestJson.mockImplementation((url) => {
       if (url === '/documents/catalogs') return Promise.resolve({ categories: [{ id: 8, code: 'OTRO' }] });
-      if (url === '/document-uploads') return Promise.resolve({ uploadId: uploadSessionIds.shift(), nextChunk: 0 });
+      if (url === '/document-uploads') return Promise.resolve({ uploadId: uploadSessionIds.shift(), nextChunk: 0, chunkCount: 1 });
       if (url.endsWith('/complete')) return Promise.resolve({ id: uploadIds.shift() });
       return Promise.resolve({});
     });

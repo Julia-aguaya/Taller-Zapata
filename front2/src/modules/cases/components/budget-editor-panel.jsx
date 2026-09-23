@@ -165,9 +165,9 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
   const [previewDoc, setPreviewDoc] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const docsQuery = useQuery({
-    queryKey: ['cases', caseId, 'documents'],
+    queryKey: ['cases', caseId, 'documents', 'PRESUPUESTO'],
     queryFn: async () => {
-      const rels = (await requestJson(`/cases/${caseId}/documents`)).filter((relation) => relation.moduleCode === 'PRESUPUESTO');
+      const rels = (await requestJson(`/cases/${caseId}/documents?moduleCode=PRESUPUESTO`)).filter((relation) => relation.moduleCode === 'PRESUPUESTO');
       const stored = JSON.parse(window.localStorage.getItem('front2.session.v1') || '{}');
       const docs = await Promise.all(rels.map(async (rel) => {
         try {
