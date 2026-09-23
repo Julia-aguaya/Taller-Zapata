@@ -6,6 +6,7 @@ import { createFinancialMovement, createReceipt, getClientPaymentPdfUrl, getFina
 import { annulCleasCompanyPayment, annulCleasCustomerFranchisePayment, downloadCleasLiquidationPdf, getCleasCompanyPaymentSummary, getCleasFinancialPlan, getCleasFranchisePaymentSummary, registerCleasCompanyFranchisePayment, registerCleasCompanyPayment, registerCleasCustomerFranchisePayment, saveCleasFinancialPlan } from '@/modules/cases/api/cleas-api';
 import { extraBudgetQueryKey, registerExtraBudgetPayment } from '@/modules/cases/api/extra-budget-api';
 import { requestJson } from '@/shared/api/http-client';
+import { uploadFileResumably } from '@/modules/cases/api/resumable-file-upload-api';
 import { readStoredAuth } from '@/shared/auth/session-storage';
 import { useSession } from '@/modules/auth/providers/session-provider';
 import { hasGlobalAdminScope } from '@/modules/auth/lib/global-admin-scope';
@@ -133,11 +134,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
       if (franchiseCompanyPayment.proofFile) {
         const category = (documentCategoriesQuery.data?.categories ?? []).find((item) => item.code === 'COMPROBANTE_PAGO_CLIENTE_COMPANIA_CLEAS');
         if (!category) throw new Error('No está disponible la categoría de comprobante cliente → compañía CLEAS.');
-        const upload = new FormData();
-        upload.append('file', franchiseCompanyPayment.proofFile);
-        upload.append('categoryId', String(category.id));
-        upload.append('originCode', 'CLEAS');
-        const document = await requestJson('/documents', { method: 'POST', body: upload });
+        const document = await uploadFileResumably({ file: franchiseCompanyPayment.proofFile, metadata: { caseId, categoryId: category.id, originCode: 'CLEAS', observations: franchiseCompanyPayment.proofFile.name } });
         documentId = document.id;
       }
       return registerCleasCompanyFranchisePayment(caseId, { statusCode: franchiseCompanyPayment.statusCode, paymentDate: franchiseCompanyPayment.paymentDate || null, documentId });
@@ -686,11 +683,7 @@ const CleasCompanyPaymentPanel = ({ caseId, receipts, onSaved }) => {
       if (form.proofFile) {
         const paymentProofCategory = (documentCategoriesQuery.data?.categories ?? []).find((category) => category.code === 'COMPROBANTE_PAGO_CLEAS');
         if (!paymentProofCategory) throw new Error('No está disponible la categoría Comprobante de pago CLEAS.');
-        const upload = new FormData();
-        upload.append('file', form.proofFile);
-        upload.append('categoryId', String(paymentProofCategory.id));
-        upload.append('originCode', 'CLEAS');
-        const document = await requestJson('/documents', { method: 'POST', body: upload });
+        const document = await uploadFileResumably({ file: form.proofFile, metadata: { caseId, categoryId: paymentProofCategory.id, originCode: 'CLEAS', observations: form.proofFile.name } });
         documentId = document.id;
       }
       if (!documentId) throw new Error('Seleccioná o subí el comprobante de pago CLEAS.');

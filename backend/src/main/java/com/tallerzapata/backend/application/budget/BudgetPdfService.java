@@ -17,7 +17,6 @@ import java.io.ByteArrayOutputStream;
 import java.math.BigDecimal;
 import java.text.DecimalFormat;
 import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
 import java.util.List;
 
 @Service
@@ -128,10 +127,7 @@ public class BudgetPdfService {
             for (BudgetItemEntity item : items) {
                 if (!Boolean.TRUE.equals(item.getActive())) continue;
                 hasActive = true;
-                String taskText = Arrays.stream(new String[]{item.getActionCode(), item.getTaskCode(), item.getPartDecisionCode()})
-                        .filter(value -> value != null && !value.isBlank())
-                        .reduce((a, b) -> a + " / " + b)
-                        .orElse("-");
+                String taskText = BudgetActionLabelFormatter.format(item.getActionCode());
                 itemsTable.addCell(createCell(nullToStr(item.getAffectedPiece()), normalFont));
                 itemsTable.addCell(createCell(taskText, normalFont));
                 itemsTable.addCell(createCell(nullToStr(item.getDamageLevelCode()), normalFont));
@@ -270,6 +266,7 @@ public class BudgetPdfService {
     }
 
     private String nullToStr(String s) { return s == null ? "-" : s; }
+
 
     private String formatBoolean(Boolean value) {
         if (value == null) {

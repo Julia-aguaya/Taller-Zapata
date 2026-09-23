@@ -7,7 +7,8 @@ const mockCreateCaseBudgetItem = vi.fn().mockResolvedValue({});
 const mockGenerateCaseBudget = vi.fn().mockResolvedValue({ comparisonSnapshot: { importedPieceCount: 1 } });
 const mockSyncPartsFromBudget = vi.fn().mockResolvedValue([]);
 const mockInvalidateQueries = vi.fn().mockResolvedValue({});
-const session = { user: { displayName: 'Taller' }, authorities: ['presupuesto.ver', 'proveedor.ver'] };
+const requestJson = vi.fn().mockResolvedValue([]);
+const session = { user: { displayName: 'Taller' }, authorities: ['presupuesto.ver', 'proveedor.ver', 'documento.subir', 'documento.relacionar'] };
 const budgetCatalogs = {
   taskCodes: [{ code: 'CHAPA', name: 'Chapa' }],
   damageLevelCodes: [{ code: 'LEVE', name: 'Leve' }],
@@ -33,10 +34,11 @@ vi.mock('@/modules/cases/api/budget-catalogs-api', () => ({ getBudgetCatalogs: v
 vi.mock('@/modules/cases/api/parts-api', () => ({ syncPartsFromBudget: (...args) => mockSyncPartsFromBudget(...args) }));
 vi.mock('@/modules/cases/components/provider-selector', () => ({ ProviderSelector: () => <input />, providerPayload: vi.fn() }));
 vi.mock('@/modules/auth/providers/session-provider', () => ({ useSession: () => ({ session }) }));
-vi.mock('@/shared/api/http-client', () => ({ requestJson: vi.fn().mockResolvedValue([]) }));
+vi.mock('@/shared/api/http-client', () => ({ requestJson: (...args) => requestJson(...args) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const validBudget = { items: [{ id: 1, visualOrder: 1, affectedPiece: 'Puerta', taskCode: 'CHAPA', damageLevelCode: 'LEVE', partDecisionCode: 'REPARAR', actionCode: 'REPARAR', partValue: 0, laborAmount: 0, estimatedHours: 0, active: true }] };
+const threeItemBudget = { items: ['Puerta', 'Capot', 'Guardabarros'].map((affectedPiece, index) => ({ ...validBudget.items[0], id: index + 1, visualOrder: index + 1, affectedPiece })) };
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const controlFor = (label) => screen.getByText(label).parentElement.querySelector('input, select');
 const particularCaseDetail = { caseTypeCode: 'PARTICULAR', principalCustomerName: 'Juan', principalVehiclePlate: 'ABC123' };
@@ -45,6 +47,8 @@ const insuranceCaseDetail = { caseTypeCode: 'TODO_RIESGO', principalCustomerName
 afterEach(() => {
   catalogsReady = true;
   mockInvalidateQueries.mockClear();
+  requestJson.mockReset();
+  requestJson.mockResolvedValue([]);
 });
 
 describe('BudgetEditorPanel comparison tabs', () => {
@@ -78,6 +82,47 @@ describe('BudgetEditorPanel comparison tabs', () => {
     render(<BudgetEditorPanel caseId="42" budget={validBudget} caseDetail={particularCaseDetail} workshopInfo={{}} />);
     expect(screen.queryByRole('tab', { name: 'Comparación' })).toBeNull();
     expect(screen.queryByRole('tabpanel', { name: 'Comparación' })).toBeNull();
-    session.authorities = ['presupuesto.ver', 'proveedor.ver'];
+    session.authorities = ['presupuesto.ver', 'proveedor.ver', 'documento.subir', 'documento.relacionar'];
+  });
+
+  it('persists the deletion of a middle row without requiring a separate save', async () => {
+    render(<BudgetEditorPanel caseId="42" budget={threeItemBudget} caseDetail={particularCaseDetail} workshopInfo={{}} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Eliminar tarea 2' }));
+
+    await waitFor(() => expect(mockUpsertCaseBudget).toHaveBeenCalledWith('42', expect.objectContaining({
+      items: expect.arrayContaining([
+        expect.objectContaining({ affectedPiece: 'Puerta', visualOrder: 1 }),
+        expect.objectContaining({ affectedPiece: 'Guardabarros', visualOrder: 3 }),
+      ]),
+    })));
+    expect(mockUpsertCaseBudget.mock.calls.at(-1)[1].items).toHaveLength(2);
+  });
+
+  it('does not restore inactive budget rows after refreshing the budget data', () => {
+    render(<BudgetEditorPanel caseId="42" budget={{ items: [{ ...validBudget.items[0], active: false }] }} caseDetail={particularCaseDetail} workshopInfo={{}} />);
+
+    expect(screen.queryByDisplayValue('Puerta')).not.toBeInTheDocument();
+  });
+
+  it('uploads each selected budget attachment with the case id and budget relation', async () => {
+    const uploadIds = [91, 92];
+    const uploadSessionIds = ['00000000-0000-4000-8000-000000000091', '00000000-0000-4000-8000-000000000092'];
+    requestJson.mockImplementation((url) => {
+      if (url === '/documents/catalogs') return Promise.resolve({ categories: [{ id: 8, code: 'OTRO' }] });
+      if (url === '/document-uploads') return Promise.resolve({ uploadId: uploadSessionIds.shift(), nextChunk: 0 });
+      if (url.endsWith('/complete')) return Promise.resolve({ id: uploadIds.shift() });
+      return Promise.resolve({});
+    });
+    const { container } = render(<BudgetEditorPanel caseId="42" budget={validBudget} caseDetail={particularCaseDetail} workshopInfo={{}} />);
+
+    fireEvent.click(screen.getByRole('button', { name: /agregar archivos/i }));
+    const input = container.querySelector('input[type="file"]');
+    fireEvent.change(input, { target: { files: [new File(['a'], 'uno.pdf', { type: 'application/pdf' }), new File(['b'], 'dos.pdf', { type: 'application/pdf' })] } });
+
+    await waitFor(() => expect(requestJson).toHaveBeenCalledWith('/document-uploads', expect.objectContaining({ method: 'POST' })));
+    const firstUploadRequest = requestJson.mock.calls.find(([url]) => url === '/document-uploads')[1];
+    expect(JSON.parse(firstUploadRequest.body)).toMatchObject({ caseId: 42, categoryId: 8, chunkCount: 1 });
+    await waitFor(() => expect(requestJson).toHaveBeenCalledWith('/documents/91/relations', expect.objectContaining({ method: 'POST' })));
   });
 });

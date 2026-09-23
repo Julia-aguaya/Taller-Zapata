@@ -46,18 +46,18 @@ class TodoRiesgoEffectiveStateIntegrationTest {
     @Test
     void createsAndAdvancesProcedureProjectionForInsuranceDocumentationAndRecordedDates() throws Exception {
         long caseId = createCase("TODO_RIESGO");
-        assertProjection(caseId, "SIN_PRESENTAR", "EN_TRAMITE");
+        assertProjection(caseId, "SIN_PRESENTAR", "SIN_TURNO");
 
         upsertInsuranceProcessing(caseId, "2026-08-09", null, null, null, null);
-        assertProjection(caseId, "PRESENTADO_PD", "EN_TRAMITE");
+        assertProjection(caseId, "PRESENTADO_PD", "SIN_TURNO");
         upsertInsuranceProcessing(caseId, "2026-08-09", "ACEPTADA", "2026-08-10", null, null);
-        assertProjection(caseId, "PRESENTADO_PD", "EN_TRAMITE");
+        assertProjection(caseId, "PRESENTADO_PD", "SIN_TURNO");
 
         Long completeDocumentationState = jdbcTemplate.queryForObject("SELECT id FROM workflow_estados WHERE LOWER(dominio) = 'documentacion' AND codigo = 'COMPLETA'", Long.class);
         jdbcTemplate.update("UPDATE casos SET estado_documentacion_actual_id = ? WHERE id = ?", completeDocumentationState, caseId);
         entityManager.clear();
         recalculator.recalculate(caseId);
-        assertProjection(caseId, "EN_TRAMITE", "EN_TRAMITE");
+        assertProjection(caseId, "EN_TRAMITE", "SIN_TURNO");
 
         upsertInsuranceProcessing(caseId, "2026-08-09", "ACEPTADA", "2026-08-10", "2026-08-10", null);
         assertProjection(caseId, "ACORDADO", "DAR_TURNO");
@@ -78,14 +78,14 @@ class TodoRiesgoEffectiveStateIntegrationTest {
         long caseId = createCase("TODO_RIESGO");
         upsertInsuranceProcessing(caseId, "2026-08-09", "ACEPTADA", "2026-08-10", "2026-08-10", null);
         long pendingAuthorization = createPart(caseId, "PEDIDO");
-        assertProjection(caseId, "ACORDADO", "EN_TRAMITE");
+        assertProjection(caseId, "ACORDADO", "SIN_TURNO");
 
         jdbcTemplate.update("UPDATE repuestos_caso SET autorizado_codigo = 'AUTORIZADO' WHERE id = ?", pendingAuthorization);
         recalculator.recalculate(caseId);
         assertProjection(caseId, "ACORDADO", "FALTAN_REPUESTOS");
 
         updatePart(caseId, pendingAuthorization, "RECIBIDO");
-        assertProjection(caseId, "ACORDADO", "EN_TRAMITE");
+        assertProjection(caseId, "ACORDADO", "SIN_TURNO");
         jdbcTemplate.update("UPDATE repuestos_caso SET autorizado_codigo = 'AUTORIZADO' WHERE id = ?", pendingAuthorization);
         recalculator.recalculate(caseId);
         assertProjection(caseId, "ACORDADO", "DAR_TURNO");
@@ -108,7 +108,7 @@ class TodoRiesgoEffectiveStateIntegrationTest {
         long appointmentId = createAppointment(caseId, "PENDIENTE", false);
         assertProjection(caseId, "SIN_PRESENTAR", "CON_TURNO");
         updateAppointment(appointmentId, "CANCELADO", false);
-        assertProjection(caseId, "SIN_PRESENTAR", "EN_TRAMITE");
+        assertProjection(caseId, "SIN_PRESENTAR", "SIN_TURNO");
 
         long intakeId = createIntake(caseId);
         long outcomeId = createOutcome(caseId, intakeId, false, true);
@@ -136,7 +136,7 @@ class TodoRiesgoEffectiveStateIntegrationTest {
         recalculator.markNoRepair(caseId, "Duplicado", 1L);
         assertThat(historyCount(caseId)).isEqualTo(initialHistory + 2);
         recalculator.revertNoRepair(caseId, "Reparacion autorizada", 1L);
-        assertProjection(caseId, "SIN_PRESENTAR", "EN_TRAMITE");
+        assertProjection(caseId, "SIN_PRESENTAR", "SIN_TURNO");
         assertThat(jdbcTemplate.queryForObject("SELECT cause FROM todo_riesgo_effective_state_history WHERE caso_id = ? ORDER BY id DESC LIMIT 1", String.class, caseId)).isEqualTo("NO_REPAIR_REVERT");
         int afterRevert = historyCount(caseId);
         recalculator.revertNoRepair(caseId, "Duplicado", 1L);
@@ -150,9 +150,9 @@ class TodoRiesgoEffectiveStateIntegrationTest {
         mockMvc.perform(get("/api/v1/cases/{caseId}", caseId).header("X-User-Id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.visibleTramiteState.code").value("SIN_PRESENTAR"))
-                .andExpect(jsonPath("$.visibleRepairState.code").value("EN_TRAMITE"))
+                .andExpect(jsonPath("$.visibleRepairState.code").value("SIN_TURNO"))
                 .andExpect(jsonPath("$.tramiteCode").value("SIN_PRESENTAR"))
-                .andExpect(jsonPath("$.reparacionCode").value("EN_TRAMITE"));
+                .andExpect(jsonPath("$.reparacionCode").value("SIN_TURNO"));
     }
 
     @Test
@@ -170,7 +170,7 @@ class TodoRiesgoEffectiveStateIntegrationTest {
         mockMvc.perform(post("/api/v1/cases/{caseId}/todo-riesgo/no-repair/revert", caseId).header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Reparacion autorizada\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.visibleRepairState.code").value("EN_TRAMITE"));
+                .andExpect(jsonPath("$.visibleRepairState.code").value("SIN_TURNO"));
 
         long forbiddenCaseId = createCase("TODO_RIESGO");
         jdbcTemplate.update("UPDATE usuario_roles SET organizacion_id = 1, sucursal_id = 1 WHERE usuario_id = 1 AND rol_id = 1");
@@ -214,7 +214,7 @@ class TodoRiesgoEffectiveStateIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\" \"}"))
                 .andExpect(status().isBadRequest());
 
-        assertProjection(caseId, "SIN_PRESENTAR", "EN_TRAMITE");
+        assertProjection(caseId, "SIN_PRESENTAR", "SIN_TURNO");
         assertThat(historyCount(caseId)).isEqualTo(historyBefore);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM todo_riesgo_state_facts WHERE caso_id = ?", Integer.class, caseId)).isZero();
     }
@@ -232,12 +232,12 @@ class TodoRiesgoEffectiveStateIntegrationTest {
         recalculator.recalculate(particularId);
         recalculator.recalculate(granizoId);
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM todo_riesgo_effective_state WHERE caso_id = ?", Integer.class, particularId)).isZero();
-        assertProjection(granizoId, "SIN_PRESENTAR", "EN_TRAMITE");
+        assertProjection(granizoId, "SIN_PRESENTAR", "SIN_TURNO");
         assertThatThrownBy(() -> recalculator.markNoRepair(particularId, "No aplica", 1L)).isInstanceOf(ConflictException.class);
         recalculator.markNoRepair(granizoId, "Daño por granizo no reparable", 1L);
         assertProjection(granizoId, "SIN_PRESENTAR", "NO_DEBE_REPARARSE");
         recalculator.revertNoRepair(granizoId, "Reapertura autorizada", 1L);
-        assertProjection(granizoId, "SIN_PRESENTAR", "EN_TRAMITE");
+        assertProjection(granizoId, "SIN_PRESENTAR", "SIN_TURNO");
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM todo_riesgo_state_facts WHERE caso_id = ?", Integer.class, particularId)).isZero();
     }
 

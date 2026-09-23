@@ -38,11 +38,11 @@ class ParticularEffectiveStateRecalculatorTest {
         verify(fixture.history).save(history.capture());
         assertEquals(7L, state.getValue().getCaseId());
         assertEquals("INGRESADO", state.getValue().getProcedureCode());
-        assertEquals("EN_TRAMITE", state.getValue().getRepairCode());
+        assertEquals("SIN_TURNO", state.getValue().getRepairCode());
         assertEquals(null, field(history.getValue(), "priorProcedureCode"));
         assertEquals("INGRESADO", field(history.getValue(), "newProcedureCode"));
         assertEquals(null, field(history.getValue(), "priorRepairCode"));
-        assertEquals("EN_TRAMITE", field(history.getValue(), "newRepairCode"));
+        assertEquals("SIN_TURNO", field(history.getValue(), "newRepairCode"));
         assertEquals("DUAL", field(history.getValue(), "changeScope"));
     }
 
@@ -78,7 +78,7 @@ class ParticularEffectiveStateRecalculatorTest {
 
     @Test
     void isIdempotentAndDoesNotAppendHistoryWhenCodesAreUnchanged() {
-        Fixture fixture = particularFixture(state("INGRESADO", "EN_TRAMITE", null, null), facts(null, null, "10"));
+        Fixture fixture = particularFixture(state("INGRESADO", "SIN_TURNO", null, null), facts(null, null, "10"));
 
         fixture.recalculator.recalculate(7L);
 
@@ -126,7 +126,7 @@ class ParticularEffectiveStateRecalculatorTest {
         assertEquals("EN_TRAMITE", field(history.getAllValues().get(0), "priorRepairCode"));
         assertEquals("CON_TURNO", field(history.getAllValues().get(0), "newRepairCode"));
         assertEquals("CON_TURNO", field(history.getAllValues().get(1), "priorRepairCode"));
-        assertEquals("EN_TRAMITE", field(history.getAllValues().get(1), "newRepairCode"));
+        assertEquals("SIN_TURNO", field(history.getAllValues().get(1), "newRepairCode"));
     }
 
     @Test
@@ -145,7 +145,7 @@ class ParticularEffectiveStateRecalculatorTest {
         verify(fixture.states).save(overridden);
         ArgumentCaptor<ParticularEffectiveStateHistoryEntity> history = ArgumentCaptor.forClass(ParticularEffectiveStateHistoryEntity.class);
         verify(fixture.history).save(history.capture());
-        assertEquals("EN_TRAMITE", overridden.getRepairCode());
+        assertEquals("SIN_TURNO", overridden.getRepairCode());
         assertEquals("REPARACION", field(history.getValue(), "changeScope"));
     }
 

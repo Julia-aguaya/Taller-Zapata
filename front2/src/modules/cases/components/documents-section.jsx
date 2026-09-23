@@ -3,12 +3,15 @@ import { Download, Eye, FileSearch, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useState } from 'react';
 import { requestJson } from '@/shared/api/http-client';
+import { uploadFileResumably } from '@/modules/cases/api/resumable-file-upload-api';
 import { readStoredAuth } from '@/shared/auth/session-storage';
 import { useSession } from '@/modules/auth/providers/session-provider';
 import { hasGlobalAdminScope } from '@/modules/auth/lib/global-admin-scope';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Dialog } from '@/shared/ui/dialog';
+
+const VISIBLE_DOCUMENT_CATEGORY_CODES = new Set(['PERSONAL', 'SEGURO', 'VEHICULO', 'OTRO']);
 import { Textarea } from '@/shared/ui/textarea';
 import { createCleasOrder } from '@/modules/cases/api/cleas-api';
 
@@ -19,7 +22,7 @@ const currentLocalDate = () => {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 };
 
-export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode = null, includeHistorical = true, showCompleteAction = true, title = 'Documentación' }) => {
+export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode = null, includeHistorical = false, showCompleteAction = true, title = 'Documentación' }) => {
   const queryClient = useQueryClient();
   const { session } = useSession();
   const canUploadDocuments = session?.authorities?.includes('documento.subir') ?? false;
@@ -42,8 +45,8 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
   ]);
 
   const docsQuery = useQuery({
-    queryKey: ['cases', String(caseId), 'documents'],
-    queryFn: () => requestJson(`/cases/${caseId}/documents`),
+    queryKey: ['cases', String(caseId), 'documents', moduleCode, includeHistorical],
+    queryFn: () => requestJson(`/cases/${caseId}/documents${moduleCode && !includeHistorical ? `?moduleCode=${encodeURIComponent(moduleCode)}` : ''}`),
   });
 
   const categoriesQuery = useQuery({
@@ -56,7 +59,7 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
     return document.moduleCode === moduleCode || (includeHistorical && document.moduleCode === 'OPERACION');
   });
   const categories = categoriesQuery.data?.categories ?? [];
-  const visibleCategories = categories;
+  const visibleCategories = categories.filter((category) => VISIBLE_DOCUMENT_CATEGORY_CODES.has(category.code));
   const selectedCategory = categories.find((category) => String(category.id) === uploadCategory);
   const requiresDate = Boolean(selectedCategory?.requiresDate);
 
@@ -85,17 +88,10 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
     mutationFn: async () => {
       const uploaded = [];
       for (const file of uploadFiles) {
-        const fd = new FormData();
-        fd.append('file', file);
-        fd.append('caseId', String(caseId));
-        fd.append('categoryId', uploadCategory);
-        if (requiresDate) fd.append('documentDate', uploadDate);
-        if (uploadObservations.trim()) fd.append('observations', uploadObservations.trim());
-        fd.append('originCode', 'SEED_LOCAL');
-        const document = await requestJson('/documents', { method: 'POST', body: fd });
-        await requestJson(`/documents/${document.id}/relations`, {
-          method: 'POST',
-          body: JSON.stringify({ caseId: Number(caseId), entityType: 'CASO', entityId: Number(caseId), moduleCode: moduleCode || 'OPERACION', principal: false, visibleToCustomer: false, visualOrder: 0 }),
+        const document = await uploadFileResumably({
+          file,
+          metadata: { caseId, categoryId: uploadCategory, documentDate: requiresDate ? uploadDate : null, observations: uploadObservations.trim() || null, originCode: 'SEED_LOCAL' },
+          relation: { caseId: Number(caseId), entityType: 'CASO', entityId: Number(caseId), moduleCode: moduleCode || 'OPERACION', principal: false, visibleToCustomer: false, visualOrder: 0 },
         });
         uploaded.push(document);
       }
@@ -133,7 +129,9 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
     const auth = readStoredAuth();
     const token = auth?.accessToken;
     if (!token) { toast.error('No hay sesión activa.'); return; }
-    const res = await fetch(`/api/v1/cases/${caseId}/documents/zip`, { headers: { Authorization: `Bearer ${token}` } });
+    const params = new URLSearchParams();
+    documents.forEach((document) => params.append('documentId', String(document.documentId)));
+    const res = await fetch(`/api/v1/cases/${caseId}/documents/zip${params.size > 0 ? `?${params}` : ''}`, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) { toast.error('No se pudo descargar el comprimido.'); return; }
     const blob = await res.blob();
     const a = document.createElement('a');

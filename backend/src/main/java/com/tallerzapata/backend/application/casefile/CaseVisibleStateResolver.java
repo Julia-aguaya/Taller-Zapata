@@ -65,6 +65,7 @@ public class CaseVisibleStateResolver {
     );
 
     private static final Set<String> REPARACION_VISIBLE_CODES = Set.of(
+            "SIN_TURNO",
             "EN_TRAMITE",
             "FALTAN_REPUESTOS",
             "DAR_TURNO",
@@ -87,6 +88,7 @@ public class CaseVisibleStateResolver {
             Map.entry("RECHAZADO", "Rechazado"),
             Map.entry("DESISTIDO", "Desistido"),
             Map.entry("FALTAN_REPUESTOS", "Faltan repuestos"),
+            Map.entry("SIN_TURNO", "Sin turno"),
             Map.entry("DAR_TURNO", "Dar turno"),
             Map.entry("CON_TURNO", "Con turno"),
             Map.entry("DEBE_REINGRESAR", "Debe reingresar"),
@@ -155,7 +157,7 @@ public class CaseVisibleStateResolver {
                 return result;
             }).orElseGet(() -> Map.of(
                     DOMAIN_TRAMITE, buildVisibleState(DOMAIN_TRAMITE, "INGRESADO", null),
-                    DOMAIN_REPARACION, buildVisibleState(DOMAIN_REPARACION, "EN_TRAMITE", null)
+                    DOMAIN_REPARACION, buildVisibleState(DOMAIN_REPARACION, "SIN_TURNO", null)
             ));
         }
         if (insuranceRepairCasePolicy.isInsuranceRepair(caseType.getCode())) {
@@ -166,7 +168,7 @@ public class CaseVisibleStateResolver {
                 return result;
             }).orElseGet(() -> Map.of(
                     DOMAIN_TRAMITE, buildVisibleState(DOMAIN_TRAMITE, "SIN_PRESENTAR", null),
-                    DOMAIN_REPARACION, buildVisibleState(DOMAIN_REPARACION, "EN_TRAMITE", normalizeCode(caseEntity.getVisibleRepairStateOverrideCode()))
+                    DOMAIN_REPARACION, buildVisibleState(DOMAIN_REPARACION, "SIN_TURNO", normalizeCode(caseEntity.getVisibleRepairStateOverrideCode()))
             ));
         }
         if ("CLEAS".equals(normalizeCode(caseType.getCode()))) {
@@ -366,7 +368,7 @@ public class CaseVisibleStateResolver {
             return "DAR_TURNO";
         }
 
-        return "EN_TRAMITE";
+        return "SIN_TURNO";
     }
 
     private String resolveParticularTramiteCode(String repairVisibleCode, BudgetEntity budget, Long caseId) {
@@ -416,7 +418,7 @@ public class CaseVisibleStateResolver {
             return "DAR_TURNO";
         }
 
-        return "EN_TRAMITE";
+        return "SIN_TURNO";
     }
 
     private boolean isParticularFullyPaid(BudgetEntity budget, Long caseId) {

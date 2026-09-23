@@ -17,6 +17,7 @@ import java.time.LocalTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -132,6 +133,21 @@ class RepairAppointmentIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(createRequest)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.estimatedExitDate").value("2026-05-22"));
+    }
+
+    @Test
+    void shouldDeleteAnUnstartedAppointmentAndAuditTheDeletion() throws Exception {
+        RepairAppointmentCreateRequest request = new RepairAppointmentCreateRequest(LocalDate.of(2026, 5, 4), LocalTime.of(9, 0), 3, null, null, false, "Turno a cancelar", 3L, null, true);
+        Long appointmentId = objectMapper.readTree(mockMvc.perform(post("/api/v1/cases/100/appointments")
+                        .header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("id").asLong();
+
+        mockMvc.perform(delete("/api/v1/appointments/{appointmentId}", appointmentId).header("X-User-Id", "3"))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v1/cases/100/appointments").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isEmpty());
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'eliminar_turno'", Integer.class, 100L)).isEqualTo(1);
     }
 
     private void seedCases() {

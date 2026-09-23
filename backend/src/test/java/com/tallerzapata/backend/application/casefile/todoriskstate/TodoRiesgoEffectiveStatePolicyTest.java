@@ -10,9 +10,9 @@ class TodoRiesgoEffectiveStatePolicyTest {
 
     @Test
     void appliesProcedureFactsInTheirSpecifiedPriority() {
-        assertState("SIN_PRESENTAR", "EN_TRAMITE", facts(null, false, null, null, null, false, null, false, List.of()));
-        assertState("PRESENTADO_PD", "EN_TRAMITE", facts(LocalDate.now(), false, null, null, null, false, null, false, List.of()));
-        assertState("EN_TRAMITE", "EN_TRAMITE", facts(LocalDate.now(), true, null, null, null, false, null, false, List.of()));
+        assertState("SIN_PRESENTAR", "SIN_TURNO", facts(null, false, null, null, null, false, null, false, List.of()));
+        assertState("PRESENTADO_PD", "SIN_TURNO", facts(LocalDate.now(), false, null, null, null, false, null, false, List.of()));
+        assertState("EN_TRAMITE", "SIN_TURNO", facts(LocalDate.now(), true, null, null, null, false, null, false, List.of()));
         assertState("ACORDADO", "DAR_TURNO", facts(LocalDate.now(), true, LocalDate.now(), null, null, false, null, false, List.of()));
         assertState("PASADO_A_PAGOS", "DAR_TURNO", facts(null, false, LocalDate.now(), LocalDate.now(), null, false, null, false, List.of()));
         assertState("PAGADO", "DAR_TURNO", facts(null, false, LocalDate.now(), LocalDate.now(), LocalDate.now(), false, null, false, List.of()));
@@ -37,7 +37,7 @@ class TodoRiesgoEffectiveStatePolicyTest {
 
     @Test
     void derivesPartsAvailabilityFromRowsWithoutPersistedPartialAuthorization() {
-        assertState("SIN_PRESENTAR", "EN_TRAMITE", facts(null, false, null, null, null, false, null, false, pendingParts()));
+        assertState("SIN_PRESENTAR", "SIN_TURNO", facts(null, false, null, null, null, false, null, false, pendingParts()));
         assertState("ACORDADO", "FALTAN_REPUESTOS", facts(null, false, LocalDate.now(), null, null, false, null, false,
                 List.of(new TodoRiesgoEffectiveStateFacts.PartFact("AUTORIZADO", "PEDIDO"), new TodoRiesgoEffectiveStateFacts.PartFact("RECHAZADO", "RECIBIDO"))));
         assertState("ACORDADO", "DAR_TURNO", facts(null, false, LocalDate.now(), null, null, false, null, false,

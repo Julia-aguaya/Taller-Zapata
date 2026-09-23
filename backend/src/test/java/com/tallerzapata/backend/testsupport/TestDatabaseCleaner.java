@@ -43,6 +43,7 @@ public class TestDatabaseCleaner {
             "comprobantes_emitidos",
 
             // Documentos
+            "documento_cargas",
             "documento_relaciones",
             "documentos",
 

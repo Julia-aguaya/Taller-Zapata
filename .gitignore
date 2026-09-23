@@ -17,3 +17,6 @@ backend/target/
 backend/run.log
 backend/run.err
 backend/var/storage/
+
+# Coverage reports
+front2/coverage/

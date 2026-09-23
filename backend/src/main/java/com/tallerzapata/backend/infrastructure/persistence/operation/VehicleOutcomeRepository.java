@@ -11,5 +11,7 @@ public interface VehicleOutcomeRepository extends JpaRepository<VehicleOutcomeEn
 
     boolean existsByIntakeId(Long intakeId);
 
+    boolean existsByReentryAppointmentId(Long reentryAppointmentId);
+
     boolean existsByIdAndCaseId(Long id, Long caseId);
 }

@@ -3,11 +3,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, Eye, FileSearch, ImagePlus, Paperclip, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { requestJson } from '@/shared/api/http-client';
+import { uploadFileResumably } from '@/modules/cases/api/resumable-file-upload-api';
 import { Button } from '@/shared/ui/button';
 import { Label } from '@/shared/ui/label';
 
 const API = '/api/v1';
 const fetchJson = (url) => requestJson(url);
+const VISIBLE_DOCUMENT_CATEGORY_CODES = new Set(['PERSONAL', 'SEGURO', 'VEHICULO', 'OTRO']);
 
 export const DocumentacionEditor = ({ caseId, docStatus, onDocStatusChange, onSaved }) => {
   const queryClient = useQueryClient();
@@ -18,20 +20,22 @@ export const DocumentacionEditor = ({ caseId, docStatus, onDocStatusChange, onSa
   const catalogsQuery = useQuery({ queryKey: ['documents', 'catalogs'], queryFn: () => fetchJson('/documents/catalogs') });
   const docsQuery = useQuery({ queryKey: ['cases', String(caseId), 'documents'], queryFn: () => fetchJson(`/cases/${caseId}/documents`) });
 
-  const categories = catalogsQuery.data?.categories ?? [];
+  const categories = (catalogsQuery.data?.categories ?? []).filter((category) => VISIBLE_DOCUMENT_CATEGORY_CODES.has(category.code));
   const docs = docsQuery.data ?? [];
 
   const uploadMutation = useMutation({
-    mutationFn: async (file) => {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('categoryId', selectedCategory || '');
-      if (caseId) formData.append('caseId', String(caseId));
-      const res = await fetch(`${API}/documents`, { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }, body: formData });
-      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.message || 'Error al subir'); }
-      return res.json();
+    mutationFn: async (files) => {
+      const uploaded = [];
+      for (const file of files) {
+        uploaded.push(await uploadFileResumably({
+          file,
+          metadata: { caseId, categoryId: selectedCategory, originCode: 'TALLER', observations: file.name },
+          relation: { caseId: Number(caseId), entityType: 'CASO', entityId: Number(caseId), moduleCode: 'DOCUMENTACION', principal: false, visibleToCustomer: false, visualOrder: 0 },
+        }));
+      }
+      return uploaded;
     },
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'documents'] }); await onSaved?.(); toast.success('Documento subido.'); if (fileRef.current) fileRef.current.value = ''; },
+    onSuccess: async (uploaded) => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'documents'] }); await onSaved?.(); toast.success(`${uploaded.length} documento(s) subido(s).`); if (fileRef.current) fileRef.current.value = ''; },
     onError: (e) => toast.error(e.message),
   });
 
@@ -85,8 +89,8 @@ export const DocumentacionEditor = ({ caseId, docStatus, onDocStatusChange, onSa
             {categories.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
           </select>
         </div>
-        <input ref={fileRef} type="file" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadMutation.mutate(f); }} />
-        <Button size="sm" onClick={() => { if (!selectedCategory) { toast.error('Seleccioná una categoría.'); return; } fileRef.current?.click(); }} disabled={uploadMutation.isPending}>{uploadMutation.isPending ? 'Subiendo...' : 'Seleccionar archivo'}</Button>
+        <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => { const files = Array.from(e.target.files ?? []); if (files.length) uploadMutation.mutate(files); }} />
+        <Button size="sm" onClick={() => { if (!selectedCategory) { toast.error('Seleccioná una categoría.'); return; } fileRef.current?.click(); }} disabled={uploadMutation.isPending}>{uploadMutation.isPending ? 'Subiendo...' : 'Seleccionar archivos'}</Button>
       </div>
 
       {/* Lista */}
@@ -102,17 +106,17 @@ export const DocumentacionEditor = ({ caseId, docStatus, onDocStatusChange, onSa
           </div>
           <div className="grid gap-2">
             {docs.map((doc) => (
-              <div key={doc.id} className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background/70 px-4 py-3">
+              <div key={doc.relationId ?? doc.documentId} className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-background/70 px-4 py-3">
                 <div className="flex items-center gap-3 min-w-0">
                   <Paperclip className="h-4 w-4 shrink-0 text-muted-foreground" />
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{doc.originalFilename || doc.publicId}</p>
+                    <p className="truncate text-sm font-medium">{doc.fileName || doc.storageKey}</p>
                     <p className="text-xs text-muted-foreground">{getCatName(doc.categoryId)}</p>
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-1">
-                  <button type="button" className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-primary/10 hover:text-primary" onClick={() => setPreviewUrl(`${API}/cases/${caseId}/documents/${doc.id}/download`)} title="Previsualizar"><Eye className="h-4 w-4" /></button>
-                  <button type="button" className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950" onClick={() => deleteMutation.mutate(doc.id)} title="Eliminar"><Trash2 className="h-4 w-4" /></button>
+                  <button type="button" className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-primary/10 hover:text-primary" onClick={() => setPreviewUrl(`${API}/cases/${caseId}/documents/${doc.documentId}/download`)} title="Previsualizar"><Eye className="h-4 w-4" /></button>
+                  <button type="button" className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950" onClick={() => deleteMutation.mutate(doc.documentId)} title="Eliminar"><Trash2 className="h-4 w-4" /></button>
                 </div>
               </div>
             ))}

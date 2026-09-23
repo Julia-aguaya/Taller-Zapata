@@ -27,6 +27,7 @@ import com.tallerzapata.backend.infrastructure.persistence.operation.RepairAppoi
 import com.tallerzapata.backend.infrastructure.persistence.operation.RepairAppointmentRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.RepairAppointmentStatusRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleIntakeRepository;
+import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleOutcomeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.security.UserEntity;
 import com.tallerzapata.backend.infrastructure.persistence.security.UserRepository;
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
@@ -64,6 +65,7 @@ public class RepairAppointmentService {
     private final CasePartRepository casePartRepository;
     private final CleasDownstreamGate cleasDownstreamGate;
     private final VehicleIntakeRepository vehicleIntakeRepository;
+    private final VehicleOutcomeRepository vehicleOutcomeRepository;
 
     public RepairAppointmentService(
             RepairAppointmentRepository repairAppointmentRepository,
@@ -83,7 +85,8 @@ public class RepairAppointmentService {
             CaseTypeRepository caseTypeRepository,
             CasePartRepository casePartRepository,
             CleasDownstreamGate cleasDownstreamGate,
-            VehicleIntakeRepository vehicleIntakeRepository
+            VehicleIntakeRepository vehicleIntakeRepository,
+            VehicleOutcomeRepository vehicleOutcomeRepository
     ) {
         this.repairAppointmentRepository = repairAppointmentRepository;
         this.repairAppointmentStatusRepository = repairAppointmentStatusRepository;
@@ -103,6 +106,7 @@ public class RepairAppointmentService {
         this.casePartRepository = casePartRepository;
         this.cleasDownstreamGate = cleasDownstreamGate;
         this.vehicleIntakeRepository = vehicleIntakeRepository;
+        this.vehicleOutcomeRepository = vehicleOutcomeRepository;
     }
 
     @Transactional(readOnly = true)
@@ -261,6 +265,9 @@ public class RepairAppointmentService {
         cleasDownstreamGate.requireAllowed(caseEntity);
         if (vehicleIntakeRepository.existsByAppointmentId(appointmentId)) {
             throw new ConflictException("No se puede eliminar un turno que ya tiene un ingreso registrado.");
+        }
+        if (vehicleOutcomeRepository.existsByReentryAppointmentId(appointmentId)) {
+            throw new ConflictException("No se puede eliminar un turno de reingreso generado por un egreso. Modificá el egreso correspondiente.");
         }
 
         Map<String, Object> before = toAuditPayload(entity);

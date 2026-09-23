@@ -16,6 +16,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.security.MessageDigest;
+import java.util.HexFormat;
+import java.util.zip.ZipInputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -124,11 +127,28 @@ class DocumentIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(content().bytes("documento operativo".getBytes()));
 
+        Long unrelatedModuleDocumentId = uploadDocument(categoryId, 100L, "3");
+        mockMvc.perform(post("/api/v1/documents/{documentId}/relations", unrelatedModuleDocumentId)
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new DocumentRelationCreateRequest(100L, "CASO", 100L, "EGRESO_DEFINITIVO", false, false, 2))))
+                .andExpect(status().isOk());
+
+        byte[] zipBytes = mockMvc.perform(get("/api/v1/cases/100/documents/zip")
+                        .header("X-User-Id", "3")
+                        .param("documentId", documentId.toString()))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray();
+        try (ZipInputStream zip = new ZipInputStream(new java.io.ByteArrayInputStream(zipBytes))) {
+            assertThat(zip.getNextEntry().getName()).isEqualTo("orden-ingreso.txt");
+            assertThat(zip.getNextEntry()).isNull();
+        }
+
         Integer auditCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM auditoria_eventos WHERE accion_codigo IN ('subir_documento', 'relacionar_documento')",
                 Integer.class
         );
-        assertThat(auditCount).isEqualTo(2);
+        assertThat(auditCount).isEqualTo(4);
     }
 
     @Test
@@ -289,6 +309,74 @@ class DocumentIntegrationTest {
         mockMvc.perform(multipart("/api/v1/documents").file(new MockMultipartFile("file", "closed.txt", MediaType.TEXT_PLAIN_VALUE, "closed".getBytes()))
                         .param("caseId", "100").param("categoryId", categoryId.toString()).header("X-User-Id", "3"))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldAssembleMultipleResumableChunksIntoDocumentStorage() throws Exception {
+        byte[] first = new byte[5 * 1024 * 1024];
+        java.util.Arrays.fill(first, (byte) 'a');
+        byte[] second = "segundo-chunk".getBytes();
+        byte[] payload = new byte[first.length + second.length];
+        System.arraycopy(first, 0, payload, 0, first.length);
+        System.arraycopy(second, 0, payload, first.length, second.length);
+        Long categoryId = activeCategoryId("OTRO");
+        String sessionResponse = mockMvc.perform(post("/api/v1/document-uploads")
+                        .header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"caseId\":100,\"categoryId\":" + categoryId + ",\"fileName\":\"video.txt\",\"mimeType\":\"text/plain\",\"sizeBytes\":" + payload.length + ",\"checksumSha256\":\"" + sha256(payload) + "\",\"chunkCount\":2}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String uploadId = objectMapper.readTree(sessionResponse).get("uploadId").asText();
+        uploadChunk(uploadId, 0, first).andExpect(status().isOk()).andExpect(jsonPath("$.nextChunk").value(1));
+        uploadChunk(uploadId, 1, second).andExpect(status().isOk()).andExpect(jsonPath("$.nextChunk").value(2));
+        String completed = mockMvc.perform(post("/api/v1/document-uploads/{uploadId}/complete", uploadId).header("X-User-Id", "3"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        Long documentId = objectMapper.readTree(completed).get("id").asLong();
+        mockMvc.perform(post("/api/v1/documents/{documentId}/relations", documentId).header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new DocumentRelationCreateRequest(100L, "CASO", 100L, "PRESUPUESTO", false, false, 0))))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/cases/100/documents/{documentId}/download", documentId).header("X-User-Id", "3"))
+                .andExpect(status().isOk()).andExpect(content().bytes(payload));
+    }
+
+    @Test
+    void shouldRejectOutOfOrderChunksAndAcceptOnlyMatchingRetries() throws Exception {
+        byte[] payload = "abc".getBytes();
+        Long categoryId = activeCategoryId("OTRO");
+        String response = mockMvc.perform(post("/api/v1/document-uploads").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"caseId\":100,\"categoryId\":" + categoryId + ",\"fileName\":\"retry.txt\",\"mimeType\":\"text/plain\",\"sizeBytes\":3,\"checksumSha256\":\"" + sha256(payload) + "\",\"chunkCount\":1}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String uploadId = objectMapper.readTree(response).get("uploadId").asText();
+        uploadChunk(uploadId, 1, payload).andExpect(status().isConflict());
+        uploadChunk(uploadId, 0, payload).andExpect(status().isOk()).andExpect(jsonPath("$.nextChunk").value(1));
+        uploadChunk(uploadId, 0, payload).andExpect(status().isOk()).andExpect(jsonPath("$.nextChunk").value(1));
+        uploadChunk(uploadId, 0, "abd".getBytes()).andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldAllowOnlyGlobalAdminToCompleteUploadSessionWithoutCase() throws Exception {
+        byte[] payload = "logo-global".getBytes();
+        Long categoryId = activeCategoryId("OTRO");
+        String globalSession = mockMvc.perform(post("/api/v1/document-uploads").header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"categoryId\":" + categoryId + ",\"fileName\":\"logo.png\",\"mimeType\":\"image/png\",\"sizeBytes\":" + payload.length + ",\"checksumSha256\":\"" + sha256(payload) + "\",\"chunkCount\":1}"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        String uploadId = objectMapper.readTree(globalSession).get("uploadId").asText();
+        mockMvc.perform(get("/api/v1/document-uploads/{uploadId}", uploadId).header("X-User-Id", "1")).andExpect(status().isOk());
+        mockMvc.perform(multipart("/api/v1/document-uploads/{uploadId}/chunks/{index}", uploadId, 0)
+                        .file(new MockMultipartFile("file", "chunk.bin", MediaType.APPLICATION_OCTET_STREAM_VALUE, payload))
+                        .header("X-User-Id", "1").header("X-Chunk-Sha256", sha256(payload))).andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/document-uploads/{uploadId}/complete", uploadId).header("X-User-Id", "1")).andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/document-uploads").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"categoryId\":" + categoryId + ",\"fileName\":\"operator.png\",\"mimeType\":\"image/png\",\"sizeBytes\":1,\"checksumSha256\":\"" + sha256(new byte[]{'x'}) + "\",\"chunkCount\":1}"))
+                .andExpect(status().isForbidden());
+    }
+
+    private org.springframework.test.web.servlet.ResultActions uploadChunk(String uploadId, int index, byte[] content) throws Exception {
+        return mockMvc.perform(multipart("/api/v1/document-uploads/{uploadId}/chunks/{index}", uploadId, index)
+                .file(new MockMultipartFile("file", "chunk.bin", MediaType.APPLICATION_OCTET_STREAM_VALUE, content))
+                .header("X-User-Id", "3").header("X-Chunk-Sha256", sha256(content)));
+    }
+
+    private String sha256(byte[] value) throws Exception {
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value));
     }
 
     private void seedBaseData() {

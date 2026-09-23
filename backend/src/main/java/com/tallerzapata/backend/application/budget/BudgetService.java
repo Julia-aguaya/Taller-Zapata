@@ -218,7 +218,7 @@ public class BudgetService {
         if (request.accessoryWorks() != null) {
             reconcileAccessoryWorks(entity.getId(), request.accessoryWorks());
         }
-        if (request.items() != null && request.accessoryWorks() != null) {
+        if (request.items() != null || request.accessoryWorks() != null) {
             canonicalPartReconciliationService.reconcile(caseId, currentUser, httpRequest);
         }
         caseAuditService.register(currentUser.id(), caseId, "presupuestos", entity.getId(), "upsert_presupuesto", null, caseAuditService.toJson(Map.of("reportStatusCode", entity.getReportStatusCode(), "totalQuoted", entity.getTotalQuoted())), caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
@@ -410,6 +410,9 @@ public class BudgetService {
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el repuesto " + partId));
         if (!entity.getCaseId().equals(caseId))
             throw new ConflictException("El repuesto no pertenece al caso indicado");
+        if (entity.getSourceType() != CasePartSourceType.MANUAL) {
+            throw new ConflictException("El repuesto proviene del presupuesto. Eliminá o modificá su línea de origen en el presupuesto.");
+        }
         casePartRepository.delete(entity);
         caseAuditService.register(currentUser.id(), caseId, "repuestos_caso", partId,
                 "eliminar_repuesto_caso",

@@ -161,7 +161,7 @@ public class DocumentService {
                 .orElse(null);
         if (existing != null) {
             requireDocumentAccess(currentUser, existing.getId(), "documento.subir");
-            return toResponse(existing);
+            return toDocumentResponse(existing);
         }
 
         String extension = filenameExtension(request.getFile().getOriginalFilename());
@@ -194,7 +194,18 @@ public class DocumentService {
                 httpRequest
         );
 
-        return toResponse(entity);
+        return toDocumentResponse(entity);
+    }
+
+    @Transactional
+    public DocumentEntity createStoredDocument(String fileName, String mimeType, String checksum, Long categoryId, Long uploadedBy,
+            String originCode, String observations, LocalDate documentDate, DocumentStorageService.StoredDocument stored, Long caseId, HttpServletRequest httpRequest) {
+        DocumentEntity entity = buildDocumentEntity(stored, fileName, mimeType, checksum, categoryId, null, documentDate, uploadedBy, originCode, observations, null);
+        entity = documentRepository.save(entity);
+        caseAuditService.register(uploadedBy, caseId, "documentos", entity.getId(), "subir_documento", null,
+                caseAuditService.toJson(Map.of("documentId", entity.getId(), "categoryId", entity.getCategoryId(), "originCode", entity.getOriginCode())),
+                caseAuditService.toJson(Map.of("domain", "documentos")), httpRequest);
+        return entity;
     }
 
     @Transactional(readOnly = true)
@@ -202,7 +213,7 @@ public class DocumentService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         DocumentEntity document = requireActiveDocument(documentId);
         requireDocumentAccess(currentUser, documentId, "documento.ver");
-        return toResponse(document);
+        return toDocumentResponse(document);
     }
 
     @Transactional
@@ -238,7 +249,7 @@ public class DocumentService {
                 httpRequest
         );
 
-        return toResponse(entity);
+        return toDocumentResponse(entity);
     }
 
     @Transactional
@@ -429,7 +440,7 @@ public class DocumentService {
                 httpRequest
         );
 
-        return toResponse(replacement);
+        return toDocumentResponse(replacement);
     }
 
     @Transactional(readOnly = true)
@@ -483,12 +494,15 @@ public class DocumentService {
     }
 
     @Transactional(readOnly = true)
-    public byte[] downloadCaseDocumentsZip(Long caseId) {
+    public byte[] downloadCaseDocumentsZip(Long caseId, List<Long> documentIds) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
         requireOpenCaseAccess(currentUser, caseEntity, "documento.ver");
 
-        List<DocumentRelationEntity> relations = documentRelationRepository.findByCaseIdOrderByVisualOrderAscIdAsc(caseId);
+        Set<Long> requestedDocumentIds = documentIds == null ? Set.of() : new HashSet<>(documentIds);
+        List<DocumentRelationEntity> relations = documentRelationRepository.findByCaseIdOrderByVisualOrderAscIdAsc(caseId).stream()
+                .filter(relation -> requestedDocumentIds.isEmpty() || requestedDocumentIds.contains(relation.getDocumentId()))
+                .toList();
         Set<String> usedNames = new HashSet<>();
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         try (ZipOutputStream zip = new ZipOutputStream(baos)) {
@@ -700,7 +714,7 @@ public class DocumentService {
         );
     }
 
-    private DocumentResponse toResponse(DocumentEntity entity) {
+    public DocumentResponse toDocumentResponse(DocumentEntity entity) {
         return new DocumentResponse(
                 entity.getId(),
                 entity.getPublicId(),

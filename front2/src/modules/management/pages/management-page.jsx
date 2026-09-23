@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, ImagePlus, Pencil, Save, Store, Undo2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { uploadFileResumably } from '@/modules/cases/api/resumable-file-upload-api';
 import { requestJson } from '@/shared/api/http-client';
 import { useSession } from '@/modules/auth/providers/session-provider';
 import { Badge } from '@/shared/ui/badge';
@@ -90,14 +91,7 @@ export const ManagementPage = () => {
 
   const uploadLogoMutation = useMutation({
     mutationFn: async (file) => {
-      const stored = JSON.parse(window.localStorage.getItem('front2.session.v1') || '{}');
-      const form = new FormData();
-      form.append('file', file);
-      form.append('categoryId', '4');
-      form.append('originCode', 'TALLER');
-      const response = await fetch('/api/v1/documents', { method: 'POST', headers: { Authorization: `Bearer ${stored.accessToken}` }, body: form });
-      if (!response.ok) throw new Error('No pude subir el logo.');
-      return response.json();
+      return uploadFileResumably({ file, metadata: { categoryId: 4, originCode: 'TALLER', observations: file.name } });
     },
     onSuccess: (documentPayload) => {
       setOrgForm((current) => ({ ...current, logoDocumentId: documentPayload.id }));

@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.api.document;
 
 import com.tallerzapata.backend.application.document.DocumentService;
+import com.tallerzapata.backend.application.document.DocumentUploadSessionService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -18,9 +19,11 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -29,9 +32,11 @@ import java.util.List;
 public class DocumentController {
 
     private final DocumentService documentService;
+    private final DocumentUploadSessionService documentUploadSessionService;
 
-    public DocumentController(DocumentService documentService) {
+    public DocumentController(DocumentService documentService, DocumentUploadSessionService documentUploadSessionService) {
         this.documentService = documentService;
+        this.documentUploadSessionService = documentUploadSessionService;
     }
 
     @Operation(summary = "Listar catalogos de documentos", description = "Devuelve los catalogos de documentos disponibles")
@@ -51,6 +56,37 @@ public class DocumentController {
     @PostMapping("/api/v1/documents")
     public DocumentResponse upload(@ModelAttribute DocumentUploadRequest request, HttpServletRequest httpRequest) {
         return documentService.upload(request, httpRequest);
+    }
+
+    @PreAuthorize("hasAuthority('documento.subir')")
+    @PostMapping("/api/v1/document-uploads")
+    public DocumentUploadSessionResponse createUploadSession(@Valid @RequestBody DocumentUploadSessionCreateRequest request) {
+        return documentUploadSessionService.create(request);
+    }
+
+    @PreAuthorize("hasAuthority('documento.subir')")
+    @PostMapping(value = "/api/v1/document-uploads/{uploadId}/chunks/{chunkIndex}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public DocumentUploadSessionResponse uploadChunk(@PathVariable String uploadId, @PathVariable int chunkIndex,
+            @RequestHeader("X-Chunk-Sha256") String chunkChecksum, @RequestParam("file") MultipartFile file) {
+        return documentUploadSessionService.uploadChunk(uploadId, chunkIndex, chunkChecksum, file);
+    }
+
+    @PreAuthorize("hasAuthority('documento.subir')")
+    @GetMapping("/api/v1/document-uploads/{uploadId}")
+    public DocumentUploadSessionResponse getUploadSession(@PathVariable String uploadId) {
+        return documentUploadSessionService.status(uploadId);
+    }
+
+    @PreAuthorize("hasAuthority('documento.subir')")
+    @PostMapping("/api/v1/document-uploads/{uploadId}/complete")
+    public DocumentResponse completeUploadSession(@PathVariable String uploadId, HttpServletRequest request) {
+        return documentUploadSessionService.complete(uploadId, request);
+    }
+
+    @PreAuthorize("hasAuthority('documento.subir')")
+    @DeleteMapping("/api/v1/document-uploads/{uploadId}")
+    public void abortUploadSession(@PathVariable String uploadId) {
+        documentUploadSessionService.abort(uploadId);
     }
 
     @Operation(summary = "Obtener documento", description = "Devuelve los metadatos de un documento")
@@ -147,12 +183,15 @@ public class DocumentController {
         return documentService.downloadCaseDocument(caseId, documentId);
     }
 
-    @Operation(summary = "Descargar documentos en ZIP", description = "Comprime y descarga todos los documentos de un caso")
+    @Operation(summary = "Descargar documentos en ZIP", description = "Comprime y descarga los documentos seleccionados de un caso")
     @ApiResponse(responseCode = "200", description = "ZIP generado")
     @PreAuthorize("hasAuthority('documento.ver')")
     @GetMapping("/api/v1/cases/{caseId}/documents/zip")
-    public ResponseEntity<byte[]> downloadCaseDocumentsZip(@PathVariable Long caseId) {
-        byte[] zipBytes = documentService.downloadCaseDocumentsZip(caseId);
+    public ResponseEntity<byte[]> downloadCaseDocumentsZip(
+            @PathVariable Long caseId,
+            @RequestParam(name = "documentId", required = false) List<Long> documentIds
+    ) {
+        byte[] zipBytes = documentService.downloadCaseDocumentsZip(caseId, documentIds);
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=documentos-caso-" + caseId + ".zip")
                 .contentType(MediaType.parseMediaType("application/zip"))

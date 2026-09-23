@@ -6,6 +6,7 @@ import { closeCaseBudget, generateCaseBudget, upsertCaseBudget } from '@/modules
 import { BudgetComparisonPanel } from '@/modules/cases/components/budget-comparison-panel';
 import { getBudgetCatalogs } from '@/modules/cases/api/budget-catalogs-api';
 import { requestJson } from '@/shared/api/http-client';
+import { uploadFileResumably } from '@/modules/cases/api/resumable-file-upload-api';
 import { randomUuid } from '@/shared/lib/uuid';
 import { useSession } from '@/modules/auth/providers/session-provider';
 import { Button } from '@/shared/ui/button';
@@ -80,24 +81,25 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
   }), [session, caseDetail]);
 
   const [header, setHeader] = useState(() => toHeaderState(budget));
-  const [items, setItems] = useState(() => (budget?.items?.length ? budget.items.map(toItemState) : [createEmptyItem(1, defaults)]));
+  const [items, setItems] = useState(() => (budget?.items?.some((item) => item.active !== false) ? budget.items.filter((item) => item.active !== false).map(toItemState) : [createEmptyItem(1, defaults)]));
   const [activeTab, setActiveTab] = useState('content');
   const [comparisonAnnouncement, setComparisonAnnouncement] = useState('');
   const comparisonHeadingRef = useRef(null);
   const canViewComparison = session?.authorities?.includes('presupuesto.ver') ?? false;
   const canViewProviders = session?.authorities?.includes('proveedor.ver') ?? false;
+  const canUploadBudgetDocuments = (session?.authorities?.includes('documento.subir') ?? false) && (session?.authorities?.includes('documento.relacionar') ?? false);
   const tabIds = canViewComparison ? ['content', 'comparison'] : ['content'];
   const moveTab = (nextTab) => {
     setActiveTab(nextTab);
     window.setTimeout(() => document.getElementById(`budget-tab-${nextTab}`)?.focus(), 0);
   };
 
-  useEffect(() => { setHeader(toHeaderState(budget)); setItems(budget?.items?.length ? budget.items.map(toItemState) : [createEmptyItem(1, defaults)]); }, [budget, defaults, toHeaderState]);
+  useEffect(() => { setHeader(toHeaderState(budget)); setItems(budget?.items?.some((item) => item.active !== false) ? budget.items.filter((item) => item.active !== false).map(toItemState) : [createEmptyItem(1, defaults)]); }, [budget, defaults, toHeaderState]);
 
-  const normalizedItems = useMemo(() => items.map((item, index) => ({ ...item, visualOrder: index + 1 })), [items]);
+  const normalizedItems = useMemo(() => items, [items]);
   const incompleteLines = useMemo(() => normalizedItems.filter((i) => !i.affectedPiece?.trim() || !i.actionCode?.trim() || !i.damageLevelCode?.trim()), [normalizedItems]);
   const hasIncompleteLines = incompleteLines.length > 0;
-  const lastLineIncomplete = items.length > 0 && incompleteLines.some((i) => i.visualOrder === items.length);
+  const lastLineIncomplete = items.length > 0 && incompleteLines.some((i) => i.visualOrder === items.at(-1).visualOrder);
 
   const partsSum = normalizedItems.reduce((s, i) => s + toDecimal(i.partValue), 0);
   const laborWithoutVat = toDecimal(header.laborWithoutVat);
@@ -116,10 +118,10 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
   };
 
   const saveMutation = useMutation({
-    mutationFn: async ({ closeAfterSave = false }) => {
+    mutationFn: async ({ closeAfterSave = false, itemsToSave = normalizedItems }) => {
       const payload = {
         budgetDate: header.budgetDate, reportStatusCode: closeAfterSave ? 'CERRADO' : 'BORRADOR',
-        laborWithoutVat, vatRate: null, partsTotal: partsSum,
+        laborWithoutVat, vatRate: null, partsTotal: itemsToSave.reduce((sum, item) => sum + toDecimal(item.partValue), 0),
         estimatedDays: Number.parseInt(header.estimatedDays || '0', 10) || 0,
         minimumCloseAmount: toDecimal(header.minimumCloseAmount), observations: header.observations || null,
         authorizedByName: header.authorizedByName || null, interestedName: header.interestedName || null,
@@ -132,21 +134,30 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
         quotedPartsDate: header.quotedPartsDate || null, quotedPartsSupplier: header.quotedPartsSupplier || null, providerId: header.providerId,
       };
       if (closeAfterSave) {
-        const response = await generateCaseBudget(caseId, { ...payload, items: normalizedItems.map((item) => ({ visualOrder: item.visualOrder, affectedPiece: item.affectedPiece, taskCode: item.taskCode, damageLevelCode: item.damageLevelCode, partDecisionCode: item.partDecisionCode, actionCode: item.actionCode, requiresReplacement: item.requiresReplacement, partValue: toDecimal(item.partValue), estimatedHours: toDecimal(item.estimatedHours), laborAmount: toDecimal(item.laborAmount), active: item.active, providerId: item.providerId })) }, randomUuid());
+        const response = await generateCaseBudget(caseId, { ...payload, items: itemsToSave.map((item) => ({ visualOrder: item.visualOrder, affectedPiece: item.affectedPiece, taskCode: item.taskCode, damageLevelCode: item.damageLevelCode, partDecisionCode: item.partDecisionCode, actionCode: item.actionCode, requiresReplacement: item.requiresReplacement, partValue: toDecimal(item.partValue), estimatedHours: toDecimal(item.estimatedHours), laborAmount: toDecimal(item.laborAmount), active: item.active, providerId: item.providerId })) }, randomUuid());
         return response;
       }
-      await upsertCaseBudget(caseId, { ...payload, items: normalizedItems.map((item) => ({ visualOrder: item.visualOrder, affectedPiece: item.affectedPiece, taskCode: item.taskCode, damageLevelCode: item.damageLevelCode, partDecisionCode: item.partDecisionCode, actionCode: item.actionCode, requiresReplacement: item.requiresReplacement, partValue: toDecimal(item.partValue), estimatedHours: toDecimal(item.estimatedHours), laborAmount: toDecimal(item.laborAmount), active: item.active, providerId: item.providerId })) });
+      await upsertCaseBudget(caseId, { ...payload, items: itemsToSave.map((item) => ({ visualOrder: item.visualOrder, affectedPiece: item.affectedPiece, taskCode: item.taskCode, damageLevelCode: item.damageLevelCode, partDecisionCode: item.partDecisionCode, actionCode: item.actionCode, requiresReplacement: item.requiresReplacement, partValue: toDecimal(item.partValue), estimatedHours: toDecimal(item.estimatedHours), laborAmount: toDecimal(item.laborAmount), active: item.active, providerId: item.providerId })) });
         if (['PARTICULAR', 'TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode)) await syncPartsFromBudget(caseId);
        if (closeAfterSave) await closeCaseBudget(caseId, { reportStatusCode: 'CERRADO', observations: header.observations || null });
     },
     onSuccess: async (response, variables) => { await invalidateWorkspace(); if (variables.closeAfterSave) { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'budget-comparisons'] }); if (canViewComparison) { setActiveTab('comparison'); setComparisonAnnouncement(`Presupuesto generado. Se importaron ${response?.comparisonSnapshot?.importedPieceCount ?? 0} piezas para comparar.`); window.setTimeout(() => comparisonHeadingRef.current?.focus(), 0); } toast.success('Presupuesto generado y comparación creada.'); } else toast.success('Presupuesto guardado.'); },
-    onError: (error) => toast.error(error.message || 'No pude guardar.'),
+    onError: (error, variables) => {
+      if (variables.itemsBeforeDelete) setItems(variables.itemsBeforeDelete);
+      toast.error(error.message || 'No pude guardar.');
+    },
   });
 
   const guardedSave = (closeAfterSave) => {
     if (hasIncompleteLines) { toast.error(`${incompleteLines.length} línea(s) incompleta(s).`); return; }
     if (closeAfterSave && caseDetail && !caseDetail.principalVehiclePlate?.trim()) { toast.error('Completá la patente en Ficha Técnica.'); return; }
     saveMutation.mutate({ closeAfterSave });
+  };
+
+  const removeItem = (visualOrder) => {
+    const nextItems = items.filter((item) => item.visualOrder !== visualOrder);
+    setItems(nextItems);
+    saveMutation.mutate({ itemsToSave: nextItems, itemsBeforeDelete: items });
   };
 
   // Documents
@@ -174,20 +185,14 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
   });
   const uploadMutation = useMutation({
     mutationFn: async (files) => {
-      const stored = JSON.parse(window.localStorage.getItem('front2.session.v1') || '{}');
       const catalogs = await requestJson('/documents/catalogs');
       const categoryId = catalogs.categories?.find((category) => category.code === 'OTRO')?.id;
       if (!categoryId) throw new Error('No está disponible la categoría documental Otro.');
-      const uploaded = [];
-      for (const file of files) {
-        const form = new FormData(); form.append('file', file); form.append('categoryId', String(categoryId)); form.append('originCode', 'TALLER'); form.append('observations', file.name);
-        const r = await fetch('/api/v1/documents', { method: 'POST', headers: { Authorization: `Bearer ${stored.accessToken}` }, body: form });
-        if (!r.ok) throw new Error(`No se pudo subir ${file.name}`);
-        const doc = await r.json();
-        await requestJson(`/documents/${doc.id}/relations`, { method: 'POST', body: JSON.stringify({ caseId: Number(caseId), entityType: 'CASO', entityId: Number(caseId), moduleCode: 'PRESUPUESTO', principal: false, visibleToCustomer: false, visualOrder: 0 }) });
-        uploaded.push(doc);
-      }
-      return uploaded;
+      return Promise.all(files.map((file) => uploadFileResumably({
+        file,
+        metadata: { caseId, categoryId, originCode: 'TALLER', observations: file.name },
+        relation: { caseId: Number(caseId), entityType: 'CASO', entityId: Number(caseId), moduleCode: 'PRESUPUESTO', principal: false, visibleToCustomer: false, visualOrder: 0 },
+      })));
     },
     onSuccess: async (uploaded) => { await queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'documents'] }); toast.success(`${uploaded.length} archivo(s) subido(s).`); },
     onError: (error) => toast.error(error.message),
@@ -267,14 +272,14 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
                   <td className="px-4 py-2"><select className="h-10 w-full min-w-[110px] rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-primary" value={item.partDecisionCode} onChange={(e) => updateItem(setItems, index, 'partDecisionCode', e.target.value)}>{decisionOptions.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}</select></td>
                   <td className="min-w-[220px] px-4 py-2"><ProviderSelector value={item.providerSnapshot || ''} providerId={item.providerId} canSearch={canViewProviders} allowManual={false} ariaLabel={`Proveedor para ${item.affectedPiece || `línea ${index + 1}`}`} onChange={({ providerId, snapshot }) => setItems((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, providerId, providerSnapshot: snapshot } : entry))} /></td>
                   <td className="px-4 py-2"><Input className="h-10 w-28 rounded-xl text-right text-sm" type="number" min="0" step="0.01" value={item.partValue} onChange={(e) => updateItem(setItems, index, 'partValue', e.target.value)} /></td>
-                  <td className="px-2 py-2"><Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" onClick={() => setItems((c) => c.filter((_, ci) => ci !== index))}><X className="h-3.5 w-3.5" /></Button></td>
+                  <td className="px-2 py-2"><Button type="button" aria-label={`Eliminar tarea ${index + 1}`} variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" onClick={() => removeItem(item.visualOrder)} disabled={saveMutation.isPending}><X className="h-3.5 w-3.5" /></Button></td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         <div className="border-t border-border/40 px-4 py-3">
-          <Button variant="ghost" size="sm" disabled={lastLineIncomplete} onClick={() => setItems((c) => [...c, createEmptyItem(c.length + 1, defaults)])}><Plus className="mr-1.5 h-4 w-4" />+ Agregar tarea</Button>
+          <Button variant="ghost" size="sm" disabled={lastLineIncomplete} onClick={() => setItems((c) => [...c, createEmptyItem(Math.max(0, ...c.map((item) => item.visualOrder)) + 1, defaults)])}><Plus className="mr-1.5 h-4 w-4" />+ Agregar tarea</Button>
           {lastLineIncomplete ? <span className="ml-3 text-xs text-amber-600">Completá la línea actual antes de agregar otra.</span> : null}
         </div>
        </div>
@@ -336,10 +341,10 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
       {/* Fotos */}
       <div className="rounded-2xl border border-border/60 bg-card p-4">
         <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-semibold">Fotos y videos del vehículo</p>
-          <Button variant="outline" size="sm" onClick={() => photoInputRef.current?.click()}><ImagePlus className="mr-1.5 h-4 w-4" />Agregar</Button>
+          <p className="text-sm font-semibold">Archivos del presupuesto</p>
+          <Button variant="outline" size="sm" onClick={() => photoInputRef.current?.click()} disabled={!canUploadBudgetDocuments || uploadMutation.isPending} title={!canUploadBudgetDocuments ? 'Requiere permisos para subir y relacionar documentos.' : undefined}><ImagePlus className="mr-1.5 h-4 w-4" />Agregar archivos</Button>
         </div>
-        <input ref={photoInputRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e) => { const files = Array.from(e.target.files ?? []); if (files.length) uploadMutation.mutate(files); e.target.value = ''; }} />
+        <input ref={photoInputRef} type="file" multiple className="hidden" onChange={(e) => { const files = Array.from(e.target.files ?? []); if (files.length) uploadMutation.mutate(files); e.target.value = ''; }} />
         {(docsQuery.data ?? []).length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border/70 py-6 text-center text-sm text-muted-foreground">Todavía no hay archivos.</p>
         ) : (

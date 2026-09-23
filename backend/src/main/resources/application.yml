@@ -23,6 +23,10 @@ spring:
     enabled: true
     # MySQL (prod/local). Las migraciones incompatibles con H2 viven en db/migration-mysql.
     locations: classpath:db/migration,classpath:db/migration-mysql
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
 
 server:
   servlet:

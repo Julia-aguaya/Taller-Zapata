@@ -60,7 +60,7 @@ export const GestionTramiteEditor = ({ caseId, caseDetail, budget, nroCleas, set
       ) : null}
 
       {/* 5. Documentación */}
-      <DocumentsSection caseId={caseId} moduleCode="GESTION_TRAMITE" title="Documentación del trámite" />
+       <DocumentsSection caseId={caseId} moduleCode="GESTION_TRAMITE" includeHistorical={false} title="Documentación del trámite" />
 
       {/* 6. Tramitación */}
       <ProcedureSection caseId={caseId} budget={budget} />

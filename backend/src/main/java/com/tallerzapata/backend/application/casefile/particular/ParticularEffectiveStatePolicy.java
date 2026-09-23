@@ -22,7 +22,7 @@ public final class ParticularEffectiveStatePolicy {
         if (facts.hasValidNormalAppointment()) return "CON_TURNO";
         if (facts.hasUnreceivedPart()) return "FALTAN_REPUESTOS";
         if (facts.hasQualifyingReceipt()) return "DAR_TURNO";
-        return "EN_TRAMITE";
+        return "SIN_TURNO";
     }
 
     private String procedureCode(ParticularEffectiveStateFacts facts, String repairCode) {

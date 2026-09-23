@@ -26,15 +26,25 @@ public class LocalDocumentStorageService implements DocumentStorageService {
 
     @Override
     public StoredDocument store(MultipartFile file, String extension) {
+        try (InputStream inputStream = file.getInputStream()) {
+            return store(inputStream, extension);
+        } catch (IOException exception) {
+            throw new IllegalStateException("No se pudo leer el archivo recibido", exception);
+        }
+    }
+
+    @Override
+    public StoredDocument store(InputStream inputStream, String extension) {
         String normalizedExtension = extension == null || extension.isBlank() ? "bin" : extension;
         String storageKey = "documents/" + UUID.randomUUID() + "." + normalizedExtension;
         Path target = storageRoot.resolve(storageKey).normalize();
+        if (!target.startsWith(storageRoot)) {
+            throw new IllegalStateException("Ruta de storage invalida");
+        }
 
         try {
             Files.createDirectories(target.getParent());
-            try (InputStream inputStream = file.getInputStream()) {
-                Files.copy(inputStream, target, StandardCopyOption.REPLACE_EXISTING);
-            }
+            Files.copy(inputStream, target, StandardCopyOption.REPLACE_EXISTING);
             return new StoredDocument(storageKey.replace('\\', '/'), Files.size(target));
         } catch (IOException exception) {
             throw new IllegalStateException("No se pudo persistir el archivo en storage local", exception);
@@ -44,7 +54,7 @@ public class LocalDocumentStorageService implements DocumentStorageService {
     @Override
     public Resource open(String storageKey) {
         Path target = storageRoot.resolve(storageKey).normalize();
-        if (!Files.exists(target)) {
+        if (!target.startsWith(storageRoot) || !Files.exists(target)) {
             throw new IllegalStateException("No existe el archivo solicitado en storage local");
         }
         return new FileSystemResource(target);
@@ -54,7 +64,9 @@ public class LocalDocumentStorageService implements DocumentStorageService {
     public void delete(String storageKey) {
         try {
             Path target = storageRoot.resolve(storageKey).normalize();
-            Files.deleteIfExists(target);
+            if (target.startsWith(storageRoot)) {
+                Files.deleteIfExists(target);
+            }
         } catch (IOException exception) {
             // File may not exist, silently ignore
         }

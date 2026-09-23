@@ -4,6 +4,22 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DocumentsSection } from './documents-section';
 import { clearStoredAuth, saveStoredAuth } from '@/shared/auth/session-storage';
 
+vi.mock('@/modules/cases/api/resumable-file-upload-api', () => ({
+  uploadFileResumably: async ({ file, metadata, relation }) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('caseId', String(metadata.caseId));
+    form.append('categoryId', String(metadata.categoryId));
+    if (metadata.documentDate) form.append('documentDate', metadata.documentDate);
+    if (metadata.observations) form.append('observations', metadata.observations);
+    form.append('originCode', metadata.originCode);
+    const response = await fetch('/api/v1/documents', { method: 'POST', headers: new Headers({ Authorization: 'Bearer access-token' }), body: form });
+    const document = await response.json();
+    if (relation) await fetch(`/api/v1/documents/${document.id}/relations`, { method: 'POST', headers: new Headers({ Authorization: 'Bearer access-token' }), body: JSON.stringify(relation) });
+    return document;
+  },
+}));
+
 let session = {
   authorities: ['documento.subir', 'documento.eliminar'],
   scopes: [{ organizationId: null, branchId: null }],
@@ -18,11 +34,11 @@ const jsonResponse = (body) => new Response(JSON.stringify(body), {
   headers: { 'content-type': 'application/json' },
 });
 
-const renderSection = () => {
+const renderSection = (props = {}) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <DocumentsSection caseId="42" />
+      <DocumentsSection caseId="42" {...props} />
     </QueryClientProvider>,
   );
 };
@@ -40,7 +56,7 @@ describe('DocumentsSection', () => {
   it('prepopulates, allows editing, and sends documentDate in ISO format when the selected category requires it', async () => {
     saveStoredAuth({ accessToken: 'access-token', refreshToken: 'refresh-token' });
     const fetchMock = vi.fn((url, options = {}) => {
-      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [{ id: 7, name: 'Presupuesto', requiresDate: true }] }));
+      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [{ id: 7, code: 'OTRO', name: 'Otro', requiresDate: true }, { id: 8, code: 'ORDEN_CLEAS', name: 'Orden CLEAS', requiresDate: false }] }));
       if (url === '/api/v1/cases/42/documents') return Promise.resolve(jsonResponse([]));
       if (url === '/api/v1/documents' && options.method === 'POST') return Promise.resolve(jsonResponse({ id: 99 }));
       if (url === '/api/v1/documents/99/relations' && options.method === 'POST') return Promise.resolve(jsonResponse({ id: 10 }));
@@ -51,7 +67,8 @@ describe('DocumentsSection', () => {
     renderSection();
     fireEvent.click(screen.getByRole('button', { name: /agregar items/i }));
 
-    expect(await screen.findByRole('option', { name: 'Presupuesto' })).toBeInTheDocument();
+    expect(await screen.findByRole('option', { name: 'Otro' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Orden CLEAS' })).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Categoría'), { target: { value: '7' } });
     fireEvent.change(screen.getByLabelText('Archivos'), { target: { files: [new File(['content'], 'presupuesto.pdf', { type: 'application/pdf' })] } });
     expect(screen.getByLabelText('Fecha del documento *')).toBeRequired();
@@ -88,7 +105,7 @@ describe('DocumentsSection', () => {
   it('does not require or send documentDate when the selected category does not require it', async () => {
     saveStoredAuth({ accessToken: 'access-token', refreshToken: 'refresh-token' });
     const fetchMock = vi.fn((url, options = {}) => {
-      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [{ id: 8, name: 'Foto', requiresDate: false }] }));
+      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [{ id: 8, code: 'OTRO', name: 'Otro', requiresDate: false }] }));
       if (url === '/api/v1/cases/42/documents') return Promise.resolve(jsonResponse([]));
       if (url === '/api/v1/documents' && options.method === 'POST') return Promise.resolve(jsonResponse({ id: 100 }));
       if (url === '/api/v1/documents/100/relations' && options.method === 'POST') return Promise.resolve(jsonResponse({ id: 11 }));
@@ -98,7 +115,7 @@ describe('DocumentsSection', () => {
 
     renderSection();
     fireEvent.click(screen.getByRole('button', { name: /agregar items/i }));
-    expect(await screen.findByRole('option', { name: 'Foto' })).toBeInTheDocument();
+    expect(await screen.findByRole('option', { name: 'Otro' })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Categoría'), { target: { value: '8' } });
     fireEvent.change(screen.getByLabelText('Archivos'), { target: { files: [new File(['content'], 'foto.pdf', { type: 'application/pdf' })] } });
 
@@ -115,7 +132,7 @@ describe('DocumentsSection', () => {
     saveStoredAuth({ accessToken: 'access-token', refreshToken: 'refresh-token' });
     let uploadCount = 0;
     const fetchMock = vi.fn((url, options = {}) => {
-      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [{ id: 8, name: 'Otro', requiresDate: false }] }));
+      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [{ id: 8, code: 'OTRO', name: 'Otro', requiresDate: false }] }));
       if (url === '/api/v1/cases/42/documents') return Promise.resolve(jsonResponse([]));
       if (url === '/api/v1/documents' && options.method === 'POST') return Promise.resolve(jsonResponse({ id: ++uploadCount }));
       if (/\/api\/v1\/documents\/[12]\/relations/.test(url) && options.method === 'POST') return Promise.resolve(jsonResponse({ id: uploadCount }));
@@ -138,7 +155,7 @@ describe('DocumentsSection', () => {
   it('sends editable observations using the backend field name', async () => {
     saveStoredAuth({ accessToken: 'access-token', refreshToken: 'refresh-token' });
     const fetchMock = vi.fn((url, options = {}) => {
-      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [{ id: 8, name: 'Foto', requiresDate: false }] }));
+      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [{ id: 8, code: 'OTRO', name: 'Otro', requiresDate: false }] }));
       if (url === '/api/v1/cases/42/documents') return Promise.resolve(jsonResponse([]));
       if (url === '/api/v1/documents' && options.method === 'POST') return Promise.resolve(jsonResponse({ id: 100 }));
       if (url === '/api/v1/documents/100/relations' && options.method === 'POST') return Promise.resolve(jsonResponse({ id: 11 }));
@@ -148,7 +165,7 @@ describe('DocumentsSection', () => {
 
     renderSection();
     fireEvent.click(screen.getByRole('button', { name: /agregar items/i }));
-    expect(await screen.findByRole('option', { name: 'Foto' })).toBeInTheDocument();
+    expect(await screen.findByRole('option', { name: 'Otro' })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('Categoría'), { target: { value: '8' } });
     fireEvent.change(screen.getByLabelText('Archivos'), { target: { files: [new File(['content'], 'foto.pdf', { type: 'application/pdf' })] } });
     fireEvent.change(screen.getByLabelText('Observaciones'), { target: { value: '  Archivo revisado  ' } });
@@ -175,6 +192,30 @@ describe('DocumentsSection', () => {
     renderSection();
 
     expect(await screen.findByText('Archivo revisado')).toBeInTheDocument();
+  });
+
+  it('shows and downloads only documents from the current module', async () => {
+    saveStoredAuth({ accessToken: 'access-token', refreshToken: 'refresh-token' });
+    const fetchMock = vi.fn((url) => {
+      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [] }));
+      if (url === '/api/v1/cases/42/documents?moduleCode=GESTION_TRAMITE') return Promise.resolve(jsonResponse([
+        { relationId: 1, documentId: 10, moduleCode: 'GESTION_TRAMITE', fileName: 'tramite.pdf' },
+        { relationId: 2, documentId: 20, moduleCode: 'EGRESO_DEFINITIVO', fileName: 'egreso.pdf' },
+      ]));
+      if (url === '/api/v1/cases/42/documents/zip?documentId=10') return Promise.resolve(new Response(null, { status: 500 }));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderSection({ moduleCode: 'GESTION_TRAMITE' });
+
+    expect(await screen.findByText('tramite.pdf')).toBeInTheDocument();
+    expect(screen.queryByText('egreso.pdf')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /descargar todo/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      '/api/v1/cases/42/documents/zip?documentId=10',
+      expect.objectContaining({ headers: { Authorization: 'Bearer access-token' } }),
+    ));
   });
 
   it('requires an accessible confirmation before deleting a document', async () => {

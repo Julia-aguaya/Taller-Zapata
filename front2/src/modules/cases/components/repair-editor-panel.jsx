@@ -14,6 +14,7 @@ import { Textarea } from '@/shared/ui/textarea';
 import { ProviderSelector } from '@/modules/cases/components/provider-selector';
 import { ProviderCreateDialog } from '@/modules/cases/components/provider-create-dialog';
 import { DocumentsSection } from '@/modules/cases/components/documents-section';
+import { uploadFileResumably } from '@/modules/cases/api/resumable-file-upload-api';
 import { Dialog } from '@/shared/ui/dialog';
 
 const addBusinessDays = (startDateStr, days) => {
@@ -43,7 +44,6 @@ const createIntakeState = (intake, fallbackVehicleId) => ({
   vehicleId: intake?.vehicleId || fallbackVehicleId || '',
   mileage: intake?.mileage?.toString?.() || '0',
   estimatedExitDate: intake?.estimatedExitDate || '',
-  hasObservations: intake?.hasObservations ? 'SI' : 'NO',
   observationDetail: intake?.observationDetail || '',
   observationCreatedAt: intake?.observationCreatedAt || null,
 });
@@ -53,6 +53,10 @@ export const invalidateCaseProjection = async (queryClient, caseId) => {
     queryClient.invalidateQueries({ queryKey: ['cases'] }),
     queryClient.invalidateQueries({ queryKey: ['cases', String(caseId)] }),
     queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }),
+    queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'parts'] }),
+    queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'appointments'] }),
+    queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'intakes'] }),
+    queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'outcomes'] }),
     queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] }),
     queryClient.invalidateQueries({ queryKey: ['panel'] }),
   ]);
@@ -67,6 +71,11 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const appointmentsQuery = useQuery({ queryKey: ['cases', String(caseId), 'appointments'], queryFn: () => listRepairAppointments(caseId) });
   const intakesQuery = useQuery({ queryKey: ['cases', String(caseId), 'intakes'], queryFn: () => listVehicleIntakes(caseId) });
   const outcomesQuery = useQuery({ queryKey: ['cases', String(caseId), 'outcomes'], queryFn: () => listVehicleOutcomes(caseId) });
+  const auditQuery = useQuery({ queryKey: ['cases', String(caseId), 'audit'], queryFn: () => requestJson(`/cases/${caseId}/audit/events?size=100`) });
+  const deletedAppointments = useMemo(
+    () => (auditQuery.data ?? []).filter((event) => event.entityType === 'turno_reparacion' && event.actionCode === 'eliminar_turno'),
+    [auditQuery.data],
+  );
 
   const [appointment, setAppointment] = useState(() => createAppointmentState(latestAppointment));
 
@@ -80,7 +89,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   }, [appointment.appointmentDate, appointment.estimatedDays]);
 
   const [intakeModal, setIntakeModal] = useState(null);
-  const [intakeForm, setIntakeForm] = useState({ intakeAt: '', mileage: '0', hasObservations: 'NO', observationDetail: '' });
+  const [intakeForm, setIntakeForm] = useState({ intakeAt: '', mileage: '0', observationDetail: '' });
   const [egresoModal, setEgresoModal] = useState(null);
   const [egresoForm, setEgresoForm] = useState({ outcomeAt: '', definitive: 'SI', shouldReenter: 'NO', expectedReentryDate: '', estimatedReentryDays: '0', reentryStatusCode: '', repairedPhotosUploaded: 'NO', notes: '' });
   const [outcomeFiles, setOutcomeFiles] = useState([]);
@@ -131,18 +140,20 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     onSuccess: async () => {
       setAppointmentToDelete(null);
       await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'appointments'] });
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'audit'] });
       await refreshWorkspace('Turno eliminado. Podés agendar una nueva fecha.');
     },
     onError: (error) => toast.error(error.message || 'No pude eliminar el turno.'),
   });
 
   const intakeMutation = useMutation({
-    mutationFn: ({ intakeId, appointmentId, intakeAt, mileage, estimatedExitDate, hasObservations, observationDetail }) => {
+    mutationFn: ({ intakeId, appointmentId, intakeAt, mileage, estimatedExitDate, observationDetail }) => {
+      const hasObservations = Boolean(observationDetail?.trim());
       const payload = {
         appointmentId, vehicleId: Number(caseDetail.principalVehicleId), intakeAt,
         receivedByUserId: userId, deliveredByPersonId: null, mileage: Number.parseInt(mileage || '0', 10) || 0,
         fuelCode: null, estimatedExitDate: estimatedExitDate || null,
-        hasObservations: hasObservations === 'SI', observationDetail: hasObservations === 'SI' ? observationDetail || null : null,
+        hasObservations, observationDetail: hasObservations ? observationDetail.trim() : null,
       };
       return intakeId ? updateVehicleIntake(intakeId, payload) : createVehicleIntake(caseId, payload);
     },
@@ -169,10 +180,11 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     const categoryId = catalogs.categories?.find((category) => category.code === 'OTRO')?.id;
     if (!categoryId) throw new Error('No está disponible la categoría documental Otro.');
     for (const file of files) {
-      const form = new FormData();
-      form.append('file', file); form.append('categoryId', String(categoryId)); form.append('originCode', 'TALLER'); form.append('observations', file.name);
-      const document = await requestJson('/documents', { method: 'POST', body: form });
-      await requestJson(`/documents/${document.id}/relations`, { method: 'POST', body: JSON.stringify({ caseId: Number(caseId), entityType: 'EGRESO', entityId: Number(outcomeId), moduleCode: 'EGRESO_DEFINITIVO', principal: false, visibleToCustomer: false, visualOrder: 0 }) });
+      await uploadFileResumably({
+        file,
+        metadata: { caseId, categoryId, originCode: 'TALLER', observations: file.name },
+        relation: { caseId: Number(caseId), entityType: 'EGRESO', entityId: Number(outcomeId), moduleCode: 'EGRESO_DEFINITIVO', principal: false, visibleToCustomer: false, visualOrder: 0 },
+      });
     }
   };
 
@@ -618,12 +630,14 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                       </td>
                     ) : null}
                     <td className="px-3 py-3">
-                      <button type="button" className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950"
-                        onClick={() => editMode ? removeFromDraft(part._tempId || part.id) : setDeletePartConfirm(part)}
-                        title={editMode ? 'Quitar de la lista' : 'Eliminar repuesto'}>
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
+                       {part.sourceType === 'MANUAL' || editMode ? (
+                         <button type="button" className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950"
+                           onClick={() => editMode ? removeFromDraft(part._tempId || part.id) : setDeletePartConfirm(part)}
+                           title={editMode ? 'Quitar de la lista' : 'Eliminar repuesto'}>
+                           <Trash2 className="h-4 w-4" />
+                         </button>
+                       ) : <span className="text-xs text-muted-foreground">Gestionar en presupuesto</span>}
+                     </td>
                   </tr>
                 ))}
               </tbody>
@@ -740,9 +754,9 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                     </td>
                     <td className="px-3 py-3 text-xs text-muted-foreground max-w-[180px] truncate">{a.notes || '—'}</td>
                     <td className="px-3 py-3 text-right">
-                      <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setAppointmentToDelete(a)} title="Eliminar turno">
+                      {!a.reentry ? <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setAppointmentToDelete(a)} title="Eliminar turno">
                         <Trash2 className="h-4 w-4" /><span className="sr-only">Eliminar turno</span>
-                      </Button>
+                      </Button> : <span className="text-xs text-muted-foreground">Reingreso automático</span>}
                     </td>
                   </tr>
                 ))}
@@ -771,34 +785,39 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                 <tr className="border-b border-border/60 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   <th className="px-3 py-3 text-left">Fecha</th>
                   <th className="px-3 py-3 text-left">Hora</th>
-                  <th className="px-3 py-3 text-center">Días</th>
-                  <th className="px-3 py-3 text-left">Salida est.</th>
-                  <th className="px-3 py-3 text-left">Estado</th>
+                   <th className="px-3 py-3 text-center">Días</th>
+                   <th className="px-3 py-3 text-left">Salida est.</th>
+                   <th className="px-3 py-3 text-center">Km</th>
+                   <th className="px-3 py-3 text-left">Observaciones</th>
+                   <th className="px-3 py-3 text-left">Estado</th>
                   <th className="px-3 py-3 text-right"></th>
                 </tr>
               </thead>
               <tbody>
-                {appointments.map((a) => {
-                  const alreadyIngested = hasIntakeFor(a.id);
-                  const isCanceled = a.statusCode === 'CANCELADO';
+                 {appointments.map((a) => {
+                   const alreadyIngested = hasIntakeFor(a.id);
+                   const intake = intakeForAppointment(a.id);
+                   const hasObservation = Boolean(intake?.observationDetail?.trim());
+                   const isCanceled = a.statusCode === 'CANCELADO';
                   return (
                     <tr key={a.id} className={`border-b border-border/40 transition-colors ${isCanceled ? 'opacity-50 hover:bg-muted/20' : 'hover:bg-muted/30'}`}>
                       <td className="px-3 py-3 font-medium">{a.appointmentDate}</td>
                       <td className="px-3 py-3 text-muted-foreground">{a.appointmentTime || '—'}</td>
-                      <td className="px-3 py-3 text-center">{a.estimatedDays ?? '—'}</td>
-                      <td className="px-3 py-3 text-muted-foreground">{a.estimatedExitDate || '—'}</td>
-                      <td className="px-3 py-3"><span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${isCanceled ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400' : 'border-border/60 bg-muted/50'}`}>{appointmentStatusOptions.find(o => o.value === a.statusCode)?.label || a.statusCode || '—'}</span></td>
+                       <td className="px-3 py-3 text-center">{a.estimatedDays ?? '—'}</td>
+                       <td className="px-3 py-3 text-muted-foreground">{a.estimatedExitDate || '—'}</td>
+                       <td className="px-3 py-3 text-center">{intake?.mileage ?? '—'}</td>
+                       <td className="px-3 py-3">{hasObservation ? <p className="max-w-xs whitespace-pre-wrap text-xs text-muted-foreground">{intake.observationDetail}</p> : <span className="text-muted-foreground text-xs">—</span>}</td>
+                       <td className="px-3 py-3"><span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${isCanceled ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-400' : 'border-border/60 bg-muted/50'}`}>{appointmentStatusOptions.find(o => o.value === a.statusCode)?.label || a.statusCode || '—'}</span></td>
                       <td className="px-3 py-3 text-right">
                         {isCanceled ? (
                           <span className="text-xs text-red-500 dark:text-red-400 font-medium">Cancelado</span>
                         ) : alreadyIngested ? (
                           <Button size="sm" variant="outline" onClick={() => {
-                            const intake = intakeForAppointment(a.id);
-                            setIntakeModal({ appointment: a, intake });
+                             setIntakeModal({ appointment: a, intake });
                             setIntakeForm(createIntakeState(intake, caseDetail.principalVehicleId));
                           }}>Modificar</Button>
                         ) : (
-                          <Button size="sm" variant="outline" onClick={() => { setIntakeModal({ appointment: a, intake: null }); setIntakeForm({ intakeAt: new Date().toISOString().slice(0, 16), mileage: '0', hasObservations: 'NO', observationDetail: '' }); }}>Ingresar</Button>
+                          <Button size="sm" variant="outline" onClick={() => { setIntakeModal({ appointment: a, intake: null }); setIntakeForm({ intakeAt: new Date().toISOString().slice(0, 16), mileage: '0', observationDetail: '' }); }}>Ingresar</Button>
                         )}
                       </td>
                     </tr>
@@ -817,10 +836,9 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                 <Field label="Fecha y hora"><Input type="datetime-local" value={intakeForm.intakeAt} onChange={(e) => setIntakeForm((f) => ({ ...f, intakeAt: e.target.value }))} /></Field>
                 <Field label="Salida estimada"><Input type="date" value={addBusinessDays(intakeForm.intakeAt?.slice(0, 10), Number(intakeModal.appointment.estimatedDays) || 0)} readOnly className="bg-muted/50 cursor-default" /></Field>
                 <Field label="Kilometraje"><Input type="number" min="0" value={intakeForm.mileage} onChange={(e) => setIntakeForm((f) => ({ ...f, mileage: e.target.value }))} /></Field>
-                <Field label="Observaciones"><Select value={intakeForm.hasObservations} onChange={(e) => setIntakeForm((f) => ({ ...f, hasObservations: e.target.value }))} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
-                {intakeForm.hasObservations === 'SI' ? <Field label="Detalle"><Textarea rows={3} value={intakeForm.observationDetail} onChange={(e) => setIntakeForm((f) => ({ ...f, observationDetail: e.target.value }))} /></Field> : null}
+                <Field label="Observaciones"><Textarea rows={3} value={intakeForm.observationDetail} onChange={(e) => setIntakeForm((f) => ({ ...f, observationDetail: e.target.value }))} /></Field>
               </div>
-              <div className="mt-5 flex gap-3"><Button variant="outline" className="flex-1" onClick={() => setIntakeModal(null)}>Cancelar</Button><Button className="flex-1" onClick={() => intakeMutation.mutate({ intakeId: intakeModal.intake?.id, appointmentId: intakeModal.appointment.id, intakeAt: intakeForm.intakeAt, mileage: intakeForm.mileage, estimatedExitDate: addBusinessDays(intakeForm.intakeAt?.slice(0, 10), Number(intakeModal.appointment.estimatedDays) || 0), hasObservations: intakeForm.hasObservations, observationDetail: intakeForm.observationDetail })} disabled={intakeMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar</Button></div>
+              <div className="mt-5 flex gap-3"><Button variant="outline" className="flex-1" onClick={() => setIntakeModal(null)}>Cancelar</Button><Button className="flex-1" onClick={() => intakeMutation.mutate({ intakeId: intakeModal.intake?.id, appointmentId: intakeModal.appointment.id, intakeAt: intakeForm.intakeAt, mileage: intakeForm.mileage, estimatedExitDate: addBusinessDays(intakeForm.intakeAt?.slice(0, 10), Number(intakeModal.appointment.estimatedDays) || 0), observationDetail: intakeForm.observationDetail })} disabled={intakeMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar</Button></div>
             </div>
           </div>
         ) : null}
@@ -852,15 +870,16 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
               </thead>
               <tbody>
                 {intakes.map((i) => {
-                  const alreadyOutcome = hasOutcomeFor(i.id);
-                  const intakeAppointment = appointmentById[i.appointmentId];
-                  const isCanceled = intakeAppointment?.statusCode === 'CANCELADO';
+                   const alreadyOutcome = hasOutcomeFor(i.id);
+                   const intakeAppointment = appointmentById[i.appointmentId];
+                   const hasObservation = Boolean(i.observationDetail?.trim());
+                   const isCanceled = intakeAppointment?.statusCode === 'CANCELADO';
                   return (
                     <tr key={i.id} className={`border-b border-border/40 transition-colors ${isCanceled ? 'opacity-50 hover:bg-muted/20' : 'hover:bg-muted/30'}`}>
                       <td className="px-3 py-3 font-medium">{i.intakeAt?.slice(0, 16).replace('T', ' ')}</td>
                       <td className="px-3 py-3 text-muted-foreground">{i.estimatedExitDate || '—'}</td>
                       <td className="px-3 py-3 text-center">{i.mileage ?? '—'}</td>
-                      <td className="px-3 py-3">{i.hasObservations ? <div className="space-y-1"><span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">Sí</span><p className="max-w-xs whitespace-pre-wrap text-xs text-muted-foreground">{i.observationDetail || 'Sin detalle'}</p></div> : <span className="text-muted-foreground text-xs">—</span>}</td>
+                       <td className="px-3 py-3">{hasObservation ? <p className="max-w-xs whitespace-pre-wrap text-xs text-muted-foreground">{i.observationDetail}</p> : <span className="text-muted-foreground text-xs">—</span>}</td>
                       <td className="px-3 py-3 text-right">
                         {isCanceled ? (
                           <span className="text-xs text-red-500 dark:text-red-400 font-medium">Cancelado</span>
@@ -903,8 +922,9 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
           <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Clock className="h-5 w-5" /></div>
           <h4 className="text-lg font-semibold">Historial de Movimiento</h4>
           <p className="mt-1 mb-5 text-sm text-muted-foreground">Registro cronológico de turnos, ingresos y egresos.</p>
-          <div className="grid gap-4 xl:grid-cols-3">
+          <div className="grid gap-4 xl:grid-cols-4">
             <HistoryCard title="Historial de turnos" items={appointmentsQuery.data ?? []} renderItem={(item) => `${item.appointmentDate} ${item.appointmentTime || ''} → ${item.estimatedExitDate || '—'} (${item.estimatedDays || 0}d) — ${item.statusCode || 'SIN ESTADO'}`} />
+            <HistoryCard title="Turnos eliminados" items={deletedAppointments} renderItem={(item) => appointmentAuditSummary(item.beforeJson)} />
             <HistoryCard title="Historial de ingresos" items={intakesQuery.data ?? []} renderItem={(item) => `${item.intakeAt} → salida est. ${item.estimatedExitDate || '—'} — km ${item.mileage ?? 0}`} />
             <HistoryCard title="Historial de egresos" items={outcomesQuery.data ?? []} renderItem={(item) => `${item.outcomeAt} - ${item.definitive ? 'Definitivo' : 'Parcial'}${item.shouldReenter ? ' / Reingresa' : ''}`} />
           </div>
@@ -960,3 +980,12 @@ const HistoryCard = ({ title, items, renderItem }) => (
     </div>
   </div>
 );
+
+const appointmentAuditSummary = (beforeJson) => {
+  try {
+    const appointment = JSON.parse(beforeJson || '{}');
+    return `${appointment.appointmentDate || 'Sin fecha'} ${appointment.appointmentTime || ''}`.trim();
+  } catch {
+    return 'Datos del turno no disponibles';
+  }
+};

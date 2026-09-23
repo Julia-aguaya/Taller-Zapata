@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { invalidateCaseProjection } from './repair-editor-panel';
 
 const partsApi = { list: vi.fn(), sync: vi.fn(), resolveWarning: vi.fn(), catalogs: vi.fn(), update: vi.fn() };
+const requestJson = vi.fn().mockResolvedValue([]);
 vi.mock('@/modules/cases/api/parts-api', () => ({
   createCasePart: vi.fn(), deleteCasePart: vi.fn(), updateCasePart: (...args) => partsApi.update(...args),
   listCaseParts: (...args) => partsApi.list(...args), syncPartsFromBudget: (...args) => partsApi.sync(...args), resolvePartReconciliationWarning: (...args) => partsApi.resolveWarning(...args), getPartsCatalogs: (...args) => partsApi.catalogs(...args),
@@ -12,7 +13,7 @@ vi.mock('@/modules/cases/api/parts-api', () => ({
 const operationsApi = { create: vi.fn(), remove: vi.fn(), list: vi.fn().mockResolvedValue([]), intakes: vi.fn().mockResolvedValue([]), updateIntake: vi.fn() };
 vi.mock('@/modules/cases/api/operations-api', () => ({ createRepairAppointment: (...args) => operationsApi.create(...args), deleteRepairAppointment: (...args) => operationsApi.remove(...args), createVehicleIntake: vi.fn(), createVehicleOutcome: vi.fn(), getOperationCatalogs: vi.fn().mockResolvedValue({}), listRepairAppointments: (...args) => operationsApi.list(...args), listVehicleIntakes: (...args) => operationsApi.intakes(...args), listVehicleOutcomes: vi.fn().mockResolvedValue([]), updateRepairAppointment: vi.fn(), updateVehicleIntake: (...args) => operationsApi.updateIntake(...args) }));
 vi.mock('@/modules/auth/providers/session-provider', () => ({ useSession: () => ({ session: { user: { id: 1 }, scopes: [{ organizationId: null, branchId: null }] } }) }));
-vi.mock('@/shared/api/http-client', () => ({ requestJson: vi.fn() }));
+vi.mock('@/shared/api/http-client', () => ({ requestJson: (...args) => requestJson(...args) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 describe('invalidateCaseProjection', () => {
@@ -24,6 +25,10 @@ describe('invalidateCaseProjection', () => {
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases'] });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '42'] });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '42', 'workspace'] });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '42', 'parts'] });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '42', 'appointments'] });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '42', 'intakes'] });
+    expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '42', 'outcomes'] });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '42', 'insurance-processing'] });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['panel'] });
   });
@@ -223,22 +228,59 @@ describe('invalidateCaseProjection', () => {
     await waitFor(() => expect(operationsApi.remove.mock.calls[0][0]).toBe(9));
   });
 
+  it('does not offer physical deletion for an automatic reentry appointment', async () => {
+    operationsApi.list.mockResolvedValue([{ id: 9, appointmentDate: '2026-09-15', appointmentTime: '09:00', estimatedDays: 3, estimatedExitDate: '2026-09-18', statusCode: 'PENDIENTE', reentry: true, userId: 1 }]);
+    const { RepairEditorPanel } = await import('./repair-editor-panel');
+
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'PARTICULAR', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
+
+    await userEvent.setup().click(screen.getByRole('button', { name: /^Turno/ }));
+    await screen.findByText('Reingreso automático');
+    expect(screen.queryByRole('button', { name: 'Eliminar turno' })).toBeNull();
+  });
+
+  it('keeps canonical parts in the budget while allowing manual parts to be deleted', async () => {
+    partsApi.list.mockResolvedValue([
+      { id: 7, description: 'Óptica presupuestada', sourceType: 'BUDGET_ITEM', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' },
+      { id: 8, description: 'Tornillo extra', sourceType: 'MANUAL', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' },
+    ]);
+    const { RepairEditorPanel } = await import('./repair-editor-panel');
+
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'PARTICULAR', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
+
+    expect(await screen.findByText('Gestionar en presupuesto')).toBeInTheDocument();
+    expect(screen.getAllByTitle('Eliminar repuesto')).toHaveLength(1);
+  });
+
+  it('shows deleted appointments from the audit trail in repair history', async () => {
+    requestJson.mockResolvedValueOnce([{ id: 45, entityType: 'turno_reparacion', actionCode: 'eliminar_turno', actorDisplayName: 'Taller', createdAt: '2026-09-22T10:30:00', beforeJson: JSON.stringify({ appointmentDate: '2026-09-20', appointmentTime: '09:00' }) }]);
+    const { RepairEditorPanel } = await import('./repair-editor-panel');
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'PARTICULAR', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
+
+    await userEvent.setup().click(screen.getByRole('button', { name: /Historial de Movimiento/ }));
+    expect(await screen.findByText('Turnos eliminados')).toBeInTheDocument();
+    expect(await screen.findByText(/2026-09-20 09:00/)).toBeInTheDocument();
+  });
+
   it('updates an existing intake and shows its observation detail', async () => {
     const user = userEvent.setup();
     operationsApi.list.mockResolvedValue([{ id: 9, appointmentDate: '2026-09-15', appointmentTime: '09:00', estimatedDays: 3, estimatedExitDate: '2026-09-17', statusCode: 'CUMPLIDO', reentry: false, userId: 1 }]);
-    operationsApi.intakes.mockResolvedValue([{ id: 14, appointmentId: 9, intakeAt: '2026-09-15T09:00:00', vehicleId: 4, mileage: 10, estimatedExitDate: '2026-09-17', hasObservations: true, observationDetail: 'Rayón previo en paragolpes' }]);
+    operationsApi.intakes.mockResolvedValue([{ id: 14, appointmentId: 9, intakeAt: '2026-09-15T09:00:00', vehicleId: 4, mileage: 10, estimatedExitDate: '2026-09-17', hasObservations: false, observationDetail: 'Rayón previo en paragolpes' }]);
     operationsApi.updateIntake.mockResolvedValue({});
     const { RepairEditorPanel } = await import('./repair-editor-panel');
 
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'PARTICULAR', principalVehicleId: 4, visibleRepairState: {} }} latestAppointment={{ id: 9 }} latestIntake={{ id: 14 }} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
 
     await user.click(screen.getByRole('button', { name: /^Ingreso/ }));
+    expect(await screen.findByRole('columnheader', { name: 'Km' })).toBeInTheDocument();
+    expect(screen.getByText('10')).toBeInTheDocument();
+    expect(screen.getByText('Rayón previo en paragolpes')).toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: 'Modificar' }));
     const mileageInput = screen.getByDisplayValue('10');
     await user.clear(mileageInput);
     await user.type(mileageInput, '250');
     await user.click(screen.getByRole('button', { name: 'Guardar' }));
-    await waitFor(() => expect(operationsApi.updateIntake).toHaveBeenCalledWith(14, expect.objectContaining({ mileage: 250, observationDetail: 'Rayón previo en paragolpes' })));
+    await waitFor(() => expect(operationsApi.updateIntake).toHaveBeenCalledWith(14, expect.objectContaining({ mileage: 250, hasObservations: true, observationDetail: 'Rayón previo en paragolpes' })));
 
     await user.click(screen.getByRole('button', { name: /^Egreso/ }));
     expect(await screen.findByText('Rayón previo en paragolpes')).toBeInTheDocument();

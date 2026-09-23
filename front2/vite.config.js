@@ -32,6 +32,12 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setupTests.js'],
+    coverage: {
+      provider: 'v8',
+      reporter: ['text-summary', 'json', 'html'],
+      include: ['src/**/*.{js,jsx}'],
+      exclude: ['src/**/*.test.{js,jsx}', 'src/test/**'],
+    },
     deps: { inline: [/react/, /react-dom/] },
     resolve: {
       alias: {

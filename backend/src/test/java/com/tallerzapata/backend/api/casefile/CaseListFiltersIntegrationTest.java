@@ -64,7 +64,7 @@ class CaseListFiltersIntegrationTest {
                         .header("X-User-Id", "1")
                         .param("caseTypeCode", "TODO_RIESGO")
                         .param("visibleTramiteState", "En tramite")
-                        .param("visibleRepairState", "En tramite")
+                        .param("visibleRepairState", "Sin turno")
                         .param("paymentStateCode", "PENDIENTE"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(1))

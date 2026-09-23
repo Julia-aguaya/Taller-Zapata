@@ -10,6 +10,7 @@ const mockListFinancialMovements = vi.fn().mockResolvedValue([]);
 const mockListReceipts = vi.fn().mockResolvedValue([]);
 const mockSelectParticularComprobanteIntent = vi.fn().mockResolvedValue();
 const mockRequestJson = vi.fn().mockResolvedValue({});
+const mockUploadFileResumably = vi.fn().mockResolvedValue({ id: 99 });
 const mockInvalidateQueries = vi.fn();
 const mockRefetchQueries = vi.fn().mockResolvedValue(undefined);
 const mockGetExtraBudget = vi.fn();
@@ -76,6 +77,10 @@ vi.mock('@/shared/api/http-client', () => ({
   requestJson: (...args) => mockRequestJson(...args),
 }));
 
+vi.mock('@/modules/cases/api/resumable-file-upload-api', () => ({
+  uploadFileResumably: (...args) => mockUploadFileResumably(...args),
+}));
+
 vi.mock('@/modules/cases/api/extra-budget-api', () => ({
   extraBudgetQueryKey: (caseId) => ['cases', String(caseId), 'extra-budget'],
   getExtraBudget: (...args) => mockGetExtraBudget(...args),
@@ -102,6 +107,7 @@ const CleasPaymentsHarness = (props) => {
   mockCreateFinancialMovement.mockClear();
   mockCreateReceipt.mockClear();
   mockRequestJson.mockClear();
+  mockUploadFileResumably.mockClear();
   mockRegisterCleasCompanyPayment.mockClear();
   mockInvalidateQueries.mockClear();
   const props = { ...baseProps, ...overrides };
@@ -435,7 +441,6 @@ describe('PaymentsEditorPanel', () => {
   });
 
   it('uploads the payment proof before posting the CLEAS payment', async () => {
-    mockRequestJson.mockResolvedValueOnce({ id: 99 });
     useQueryData = {
       [JSON.stringify(['cases', '42', 'cleas', 'summary'])]: { caseId: 42, companyId: 7, agreedAmount: 100000, paidAmount: 0, pendingAmount: 100000 },
       [JSON.stringify(['documents', 'catalogs'])]: { categories: [{ id: 9, code: 'COMPROBANTE_PAGO_CLEAS', name: 'Comprobante de pago CLEAS' }] },
@@ -448,9 +453,12 @@ describe('PaymentsEditorPanel', () => {
     fireEvent.change(within(companyPanel).getByLabelText('O subir comprobante CLEAS'), { target: { files: [new File(['proof'], 'pago.pdf', { type: 'application/pdf' })] } });
     fireEvent.click(within(companyPanel).getByRole('button', { name: /^Registrar pago de compañía$/i }));
 
-    await waitFor(() => expect(mockRequestJson).toHaveBeenCalledWith('/documents', expect.objectContaining({ method: 'POST', body: expect.any(FormData) })));
+    await waitFor(() => expect(mockUploadFileResumably).toHaveBeenCalledWith(expect.objectContaining({
+      file: expect.any(File),
+      metadata: expect.objectContaining({ caseId: 42, categoryId: 9, originCode: 'CLEAS' }),
+    })));
     await waitFor(() => expect(mockRegisterCleasCompanyPayment).toHaveBeenCalledWith(42, expect.objectContaining({ documentId: 99, amount: 100000, retentions: [] })));
-    expect(mockRequestJson.mock.invocationCallOrder.at(-1)).toBeLessThan(mockRegisterCleasCompanyPayment.mock.invocationCallOrder.at(-1));
+    expect(mockUploadFileResumably.mock.invocationCallOrder.at(-1)).toBeLessThan(mockRegisterCleasCompanyPayment.mock.invocationCallOrder.at(-1));
   });
 
   it('shows the backend eligibility block and does not render the CLEAS company payment form', () => {

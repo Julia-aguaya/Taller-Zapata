@@ -938,7 +938,6 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
               </>
             ) : (
               <div className="grid gap-x-4 md:grid-cols-2">
-                <ReadOnlyField label="Tipo de persona" value={person?.tipoPersona} />
                 <ReadOnlyField label="Nombre visible" value={person?.nombreMostrar} />
                 <ReadOnlyField label="Nombre" value={form.nombre} />
                 <ReadOnlyField label="Apellido" value={form.apellido} />

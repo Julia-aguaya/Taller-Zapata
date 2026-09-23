@@ -900,7 +900,7 @@ class InsuranceIntegrationTest {
 
         mockMvc.perform(get("/api/v1/cases/100").header("X-User-Id", "3"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.visibleRepairState.code").value("EN_TRAMITE"));
+                .andExpect(jsonPath("$.visibleRepairState.code").value("SIN_TURNO"));
 
         mockMvc.perform(put("/api/v1/cases/100/legal")
                         .header("X-User-Id", "3")
@@ -923,7 +923,7 @@ class InsuranceIntegrationTest {
 
         mockMvc.perform(get("/api/v1/cases/100").header("X-User-Id", "3"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.visibleRepairState.code").value("EN_TRAMITE"));
+                .andExpect(jsonPath("$.visibleRepairState.code").value("SIN_TURNO"));
 
         assertThat(jdbcTemplate.queryForObject("SELECT no_repara FROM caso_tramitacion_seguro WHERE caso_id = 100", Boolean.class)).isFalse();
     }
