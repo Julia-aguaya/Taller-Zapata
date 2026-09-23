@@ -514,7 +514,8 @@ class InsuranceIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.agreedAmount").value(120000))
                 .andExpect(jsonPath("$.quotationStatusCode").value("ACEPTADA"))
-                .andExpect(jsonPath("$.amountToBillCompany").value(120000));
+                .andExpect(jsonPath("$.amountToBillCompany").value(120000))
+                .andExpect(jsonPath("$.paymentStatusCode").value("PENDIENTE"));
     }
 
     @Test

@@ -12,6 +12,8 @@ import com.tallerzapata.backend.api.cleas.CleasCompanyPaymentResponse;
 import com.tallerzapata.backend.api.cleas.CleasCompanyPaymentSummaryResponse;
 import com.tallerzapata.backend.api.cleas.CleasCustomerFranchisePaymentRequest;
 import com.tallerzapata.backend.api.cleas.CleasFranchisePaymentSummaryResponse;
+import com.tallerzapata.backend.api.cleas.CleasFinancialPlanRequest;
+import com.tallerzapata.backend.api.cleas.CleasFinancialPlanResponse;
 import com.tallerzapata.backend.api.cleas.CleasOrderCreateRequest;
 import com.tallerzapata.backend.api.cleas.CleasOrderResponse;
 import com.tallerzapata.backend.api.finance.FinancialMovementRetentionRequest;
@@ -50,6 +52,8 @@ import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMove
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialPaymentMethodRepository;
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialRetentionTypeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.finance.IssuedReceiptRepository;
+import com.tallerzapata.backend.infrastructure.persistence.cleas.CleasFinancialPlanEntity;
+import com.tallerzapata.backend.infrastructure.persistence.cleas.CleasFinancialPlanRepository;
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
 import com.tallerzapata.backend.infrastructure.security.CurrentUserService;
 import jakarta.servlet.http.HttpServletRequest;
@@ -93,8 +97,9 @@ public class CleasManagementService {
     private final FinancialRetentionTypeRepository financialRetentionTypeRepository;
     private final IssuedReceiptRepository issuedReceiptRepository;
     private final CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator;
+    private final CleasFinancialPlanRepository cleasFinancialPlanRepository;
 
-    public CleasManagementService(InsuranceService insuranceService, CaseManagementService caseManagementService, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, DocumentRepository documentRepository, DocumentCategoryRepository documentCategoryRepository, DocumentRelationRepository documentRelationRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, CaseCleasRepository caseCleasRepository, CleasClosurePolicy cleasClosurePolicy, CleasSettlementPolicy cleasSettlementPolicy, CleasLiquidationPdfService cleasLiquidationPdfService, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, FinancialMovementRepository financialMovementRepository, FinancialMovementRetentionRepository financialMovementRetentionRepository, FinancialPaymentMethodRepository financialPaymentMethodRepository, FinancialRetentionTypeRepository financialRetentionTypeRepository, IssuedReceiptRepository issuedReceiptRepository, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator) {
+    public CleasManagementService(InsuranceService insuranceService, CaseManagementService caseManagementService, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, DocumentRepository documentRepository, DocumentCategoryRepository documentCategoryRepository, DocumentRelationRepository documentRelationRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, CaseCleasRepository caseCleasRepository, CleasClosurePolicy cleasClosurePolicy, CleasSettlementPolicy cleasSettlementPolicy, CleasLiquidationPdfService cleasLiquidationPdfService, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, FinancialMovementRepository financialMovementRepository, FinancialMovementRetentionRepository financialMovementRetentionRepository, FinancialPaymentMethodRepository financialPaymentMethodRepository, FinancialRetentionTypeRepository financialRetentionTypeRepository, IssuedReceiptRepository issuedReceiptRepository, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator, CleasFinancialPlanRepository cleasFinancialPlanRepository) {
         this.insuranceService = insuranceService;
         this.caseManagementService = caseManagementService;
         this.caseRepository = caseRepository;
@@ -117,6 +122,7 @@ public class CleasManagementService {
         this.financialRetentionTypeRepository = financialRetentionTypeRepository;
         this.issuedReceiptRepository = issuedReceiptRepository;
         this.cleasEffectiveStateRecalculator = cleasEffectiveStateRecalculator;
+        this.cleasFinancialPlanRepository = cleasFinancialPlanRepository;
     }
 
     @Transactional(readOnly = true)
@@ -130,6 +136,33 @@ public class CleasManagementService {
 
     @Transactional
     public CaseInsuranceResponse upsertInsurance(Long caseId, CaseInsuranceUpsertRequest request, HttpServletRequest httpRequest) { requireEditableCleasCase(caseId); return insuranceService.upsertCaseInsurance(caseId, request, httpRequest); }
+
+    @Transactional(readOnly = true)
+    public CleasFinancialPlanResponse financialPlan(Long caseId) {
+        requireCleasCase(caseId);
+        return toFinancialPlanResponse(cleasFinancialPlanRepository.findById(caseId).orElse(null), caseId);
+    }
+
+    @Transactional
+    public CleasFinancialPlanResponse saveFinancialPlan(Long caseId, CleasFinancialPlanRequest request, HttpServletRequest httpRequest) {
+        CaseEntity caseEntity = requireEditableCleasCase(caseId);
+        AuthenticatedUser currentUser = requireAccess(caseEntity, "seguro.crear");
+        var definition = caseCleasRepository.findByCaseId(caseId).orElseThrow(() -> new ConflictException("El caso no tiene definicion CLEAS"));
+        if (!"A_FAVOR".equals(definition.getOpinionCode())) throw new ConflictException("El plan financiero solo aplica a CLEAS A_FAVOR");
+        Long ownCompanyId = caseInsuranceRepository.findByCaseId(caseId).map(value -> value.getInsuranceCompanyId()).orElse(null);
+        Long thirdPartyCompanyId = caseInsuranceRepository.findByCaseId(caseId).map(value -> value.getThirdPartyCompanyId()).orElse(null);
+        if (request.billableCompanyId() == null || (!request.billableCompanyId().equals(ownCompanyId) && !request.billableCompanyId().equals(thirdPartyCompanyId))) {
+            throw new ConflictException("La compañía facturable debe ser la propia o la del tercero configurada en el caso");
+        }
+        CleasFinancialPlanEntity plan = cleasFinancialPlanRepository.findById(caseId).orElseGet(CleasFinancialPlanEntity::new);
+        plan.setCaseId(caseId);
+        plan.setBillableCompanyId(request.billableCompanyId());
+        plan.setSignedConformity(Boolean.TRUE.equals(request.signedConformity()));
+        plan = cleasFinancialPlanRepository.save(plan);
+        caseAuditService.register(currentUser.id(), caseId, "cleas_financial_plans", caseId, "guardar_plan_financiero_cleas", null,
+                caseAuditService.toJson(Map.of("billableCompanyId", plan.getBillableCompanyId(), "signedConformity", plan.getSignedConformity())), caseAuditService.toJson(Map.of("domain", CLEAS_MODULE)), httpRequest);
+        return toFinancialPlanResponse(plan, caseId);
+    }
 
     @Transactional(readOnly = true)
     public CleasIncidentResponse getIncident(Long caseId) {
@@ -552,8 +585,12 @@ public class CleasManagementService {
                 || ("DANIO_TOTAL".equals(cleas.getScopeCode()) && "CULPA_COMPARTIDA".equals(cleas.getOpinionCode()))
                 || ("FRANQUICIA".equals(cleas.getScopeCode()) && "EN_CONTRA".equals(cleas.getOpinionCode()));
         if (!eligibleOpinion) throw new ConflictException("El pago de compania no aplica al dictamen CLEAS actual");
-        Long companyId = caseInsuranceRepository.findByCaseId(caseEntity.getId()).map(value -> value.getInsuranceCompanyId())
+        var insurance = caseInsuranceRepository.findByCaseId(caseEntity.getId())
                 .orElseThrow(() -> new ConflictException("El caso no tiene compania aseguradora configurada"));
+        Long companyId = "A_FAVOR".equals(cleas.getOpinionCode())
+                ? cleasFinancialPlanRepository.findById(caseEntity.getId()).map(CleasFinancialPlanEntity::getBillableCompanyId)
+                    .orElseThrow(() -> new ConflictException("Seleccioná la compañía facturable para CLEAS A_FAVOR"))
+                : insurance.getInsuranceCompanyId();
         BigDecimal agreedAmount = insuranceProcessingRepository.findByCaseId(caseEntity.getId()).map(value -> money(value.getAgreedAmount())).orElse(BigDecimal.ZERO);
         if (agreedAmount.signum() <= 0) throw new ConflictException("No hay un monto acordado de la compania para registrar el pago");
         BigDecimal target = cleasSettlementPolicy.settle(cleas, agreedAmount).amountToBillCompany();
@@ -573,6 +610,10 @@ public class CleasManagementService {
     private BigDecimal signedGrossAmount(FinancialMovementEntity movement) {
         BigDecimal amount = money(movement.getGrossAmount());
         return "INGRESO".equals(normalizeCode(movement.getMovementTypeCode())) || ("AJUSTE".equals(normalizeCode(movement.getMovementTypeCode())) && amount.signum() >= 0) ? amount : amount.negate();
+    }
+
+    private CleasFinancialPlanResponse toFinancialPlanResponse(CleasFinancialPlanEntity plan, Long caseId) {
+        return new CleasFinancialPlanResponse(caseId, plan == null ? null : plan.getBillableCompanyId(), plan != null && Boolean.TRUE.equals(plan.getSignedConformity()));
     }
 
     private BigDecimal signedNetAmount(FinancialMovementEntity movement) {

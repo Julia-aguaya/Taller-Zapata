@@ -82,6 +82,48 @@ class CleasManagementIntegrationTest {
     }
 
     @Test
+    void shouldPersistTheSelectedBillableCompanyOnlyForFavorableCleas() throws Exception {
+        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, activo) VALUES (2, '00000000-0000-0000-0000-000000004002', 'SANCOR', 'Sancor', true)");
+        mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scopeCode\":\"DANIO_TOTAL\",\"opinionCode\":\"A_FAVOR\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/cases/100/cleas/insurance").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"insuranceCompanyId\":1,\"thirdPartyCompanyId\":2}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/v1/cases/100/cleas/financial-plan").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"billableCompanyId\":1,\"signedConformity\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.billableCompanyId").value(1));
+
+        mockMvc.perform(put("/api/v1/cases/100/cleas/financial-plan").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"billableCompanyId\":2,\"signedConformity\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.billableCompanyId").value(2))
+                .andExpect(jsonPath("$.signedConformity").value(true));
+
+        mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-08-02\",\"agreedAmount\":1000}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":1000,\"paymentMethodCode\":\"TRANSFERENCIA\",\"documentId\":201}"))
+                .andExpect(status().isOk());
+        assertThat(jdbcTemplate.queryForObject("SELECT contraparte_compania_id FROM movimientos_financieros WHERE caso_id = ?", Long.class, 100L)).isEqualTo(2L);
+
+        mockMvc.perform(get("/api/v1/cases/100/cleas/financial-plan").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.billableCompanyId").value(2));
+        assertThat(jdbcTemplate.queryForObject("SELECT compania_facturable_id FROM cleas_financial_plans WHERE caso_id = ?", Long.class, 100L)).isEqualTo(2L);
+
+        mockMvc.perform(put("/api/v1/cases/100/cleas/definition").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scopeCode\":\"FRANQUICIA\",\"opinionCode\":\"EN_CONTRA\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/cases/100/cleas/financial-plan").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"billableCompanyId\":1,\"signedConformity\":false}"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
     void shouldRejectAnInvalidThirdPartyPlateWithBadRequest() throws Exception {
         mockMvc.perform(put("/api/v1/cases/100/cleas/incident").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"incident\":{\"incidentDate\":\"2026-08-01\"},\"thirdPartyPlate\":\"invalid\"}"))
@@ -124,6 +166,10 @@ class CleasManagementIntegrationTest {
                 .andExpect(status().isConflict());
         mockMvc.perform(get("/api/v1/cases/100/cleas/liquidation-pdf").header("X-User-Id", "3"))
                 .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":100,\"paymentMethodCode\":\"TRANSFERENCIA\",\"documentId\":201}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("El caso CLEAS esta cerrado y no admite nuevas acciones"));
     }
 
     @Test
@@ -225,6 +271,9 @@ class CleasManagementIntegrationTest {
 
         mockMvc.perform(put("/api/v1/cases/100/cleas/insurance").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"insuranceCompanyId\":1}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/cases/100/cleas/financial-plan").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"billableCompanyId\":1}"))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/cases/100/cleas/summary").header("X-User-Id", "3"))
@@ -343,6 +392,14 @@ class CleasManagementIntegrationTest {
                 .andExpect(status().isOk());
         mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"presentedAt\":\"2026-08-02\",\"agreedAmount\":1000}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/cases/100/cleas/company-payments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\":400,\"paymentMethodCode\":\"TRANSFERENCIA\",\"documentId\":201}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Seleccioná la compañía facturable para CLEAS A_FAVOR"));
+        mockMvc.perform(put("/api/v1/cases/100/cleas/financial-plan").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"billableCompanyId\":1}"))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/cases/100/cleas/summary").header("X-User-Id", "3"))
@@ -659,6 +716,9 @@ class CleasManagementIntegrationTest {
         mockMvc.perform(put("/api/v1/cases/100/cleas/insurance").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"insuranceCompanyId\":1}"))
                 .andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/cases/100/cleas/financial-plan").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"billableCompanyId\":1}"))
+                .andExpect(status().isOk());
         mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"presentedAt\":\"2026-08-02\",\"agreedAmount\":2000}"))
                 .andExpect(status().isOk());
@@ -742,6 +802,9 @@ class CleasManagementIntegrationTest {
                 .andExpect(status().isOk());
         mockMvc.perform(put("/api/v1/cases/100/cleas/insurance").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"insuranceCompanyId\":1}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/cases/100/cleas/financial-plan").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"billableCompanyId\":1}"))
                 .andExpect(status().isOk());
         mockMvc.perform(patch("/api/v1/cases/100/cleas/processing").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"presentedAt\":\"2026-08-02\",\"agreedAmount\":1000}"))

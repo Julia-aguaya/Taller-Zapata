@@ -58,6 +58,7 @@ public class TestDatabaseCleaner {
             "legal_novedades",
             "caso_legal",
             "caso_terceros",
+            "cleas_financial_plans",
             "caso_cleas",
             "caso_franquicia",
             "caso_tramitacion_seguro",

@@ -50,6 +50,14 @@ public class CleasManagementController {
     @PutMapping("/insurance")
     public CaseInsuranceResponse upsertInsurance(@PathVariable Long caseId, @Valid @RequestBody CaseInsuranceUpsertRequest request, HttpServletRequest httpRequest) { return service.upsertInsurance(caseId, request, httpRequest); }
 
+    @PreAuthorize("hasAuthority('seguro.ver')")
+    @GetMapping("/financial-plan")
+    public CleasFinancialPlanResponse financialPlan(@PathVariable Long caseId) { return service.financialPlan(caseId); }
+
+    @PreAuthorize("hasAuthority('seguro.crear')")
+    @PutMapping("/financial-plan")
+    public CleasFinancialPlanResponse saveFinancialPlan(@PathVariable Long caseId, @RequestBody CleasFinancialPlanRequest request, HttpServletRequest httpRequest) { return service.saveFinancialPlan(caseId, request, httpRequest); }
+
     @PreAuthorize("hasAuthority('caso.ver')")
     @GetMapping("/incident")
     public CleasIncidentResponse getIncident(@PathVariable Long caseId) { return service.getIncident(caseId); }

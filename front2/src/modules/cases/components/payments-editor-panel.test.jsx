@@ -16,6 +16,8 @@ const mockGetExtraBudget = vi.fn();
 const mockAnnulExtraBudgetPayment = vi.fn();
 const mockRegisterExtraBudgetPayment = vi.fn().mockResolvedValue({});
 const mockGetCleasCompanyPaymentSummary = vi.fn();
+const mockGetCleasFinancialPlan = vi.fn();
+const mockSaveCleasFinancialPlan = vi.fn();
 const mockRegisterCleasCompanyPayment = vi.fn().mockResolvedValue({ id: 12 });
 const mockAnnulCleasCompanyPayment = vi.fn().mockResolvedValue({});
 const mockDownloadCleasLiquidationPdf = vi.fn().mockResolvedValue(new Blob(['pdf'], { type: 'application/pdf' }));
@@ -41,6 +43,8 @@ vi.mock('@/modules/cases/api/finance-api', () => ({
 
 vi.mock('@/modules/cases/api/cleas-api', () => ({
   getCleasCompanyPaymentSummary: (...a) => mockGetCleasCompanyPaymentSummary(...a),
+  getCleasFinancialPlan: (...a) => mockGetCleasFinancialPlan(...a),
+  saveCleasFinancialPlan: (...a) => mockSaveCleasFinancialPlan(...a),
   registerCleasCompanyPayment: (...a) => mockRegisterCleasCompanyPayment(...a),
   annulCleasCompanyPayment: (...a) => mockAnnulCleasCompanyPayment(...a),
   downloadCleasLiquidationPdf: (...a) => mockDownloadCleasLiquidationPdf(...a),
@@ -156,16 +160,16 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.queryByLabelText('A facturar Cía.')).toBeNull();
   });
 
-  it('updates insurance payment dates through the partial processing contract', async () => {
+  it('updates the estimated insurance payment date through the partial processing contract', async () => {
     mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'TODO_RIESGO' } });
 
-    fireEvent.change(screen.getByLabelText('Fecha pasado a pagos'), { target: { value: '2026-08-23' } });
+    fireEvent.change(screen.getByLabelText('Fecha estimada de pago'), { target: { value: '2026-08-23' } });
 
     await waitFor(() => expect(mockRequestJson).toHaveBeenCalledWith('/cases/42/insurance-processing', {
       method: 'PATCH',
-      body: JSON.stringify({ expectedVersion: 0, passedToPaymentsAt: '2026-08-23' }),
+      body: JSON.stringify({ expectedVersion: 0, estimatedPaymentDate: '2026-08-23' }),
     }));
-    await waitFor(() => expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '42', 'workspace'] }));
+    await waitFor(() => expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '42', 'insurance-processing'] }));
   });
 
   it('uses the full insurer agreement and suppresses franchise payment UI for GRANIZO', () => {
@@ -332,7 +336,8 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.getByLabelText('Pagos del cliente')).toHaveTextContent('Los trabajos adicionales se gestionan por separado');
     expect(screen.queryByRole('button', { name: /^Registrar pago de franquicia$/i })).toBeNull();
     expect(screen.queryByText('Cotizado (según cpte.)')).toBeNull();
-    expect(screen.getByText('Facturación y Pago — Compañía')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Facturación' })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: 'Pagos' })).toHaveLength(2);
     expect(screen.getByRole('button', { name: /^Guardar pago de la compañía$/i })).toBeInTheDocument();
   });
 
@@ -360,6 +365,9 @@ describe('PaymentsEditorPanel', () => {
   it('persists a CLEAS invoice using the agreed amount and lists invoices from the case', async () => {
     useQueryData = {
       [JSON.stringify(['cases', '42', 'cleas', 'summary'])]: { caseId: 42, companyId: 7, agreedAmount: 125000, paidAmount: 0, pendingAmount: 125000 },
+      [JSON.stringify(['cases', '42', 'cleas', 'financial-plan'])]: { caseId: 42, billableCompanyId: 7, signedConformity: true },
+      [JSON.stringify(['cases', '42', 'cleas', 'insurance'])]: { insuranceCompanyId: 7, cleasNumber: 'CLEAS-42', claimNumber: 'SIN-42' },
+      [JSON.stringify(['cases', '42', 'cleas', 'processing'])]: { agreedAmount: 125000 },
       [JSON.stringify(['cases', '42', 'receipts'])]: [{ id: 9, receiptTypeCode: 'FACTURA', receiptNumber: '0001-9', receiverBusinessName: 'Aseguradora SA', total: 125000 }],
     };
     render(<CleasPaymentsHarness {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }} />);
@@ -503,6 +511,24 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.getByLabelText('Fecha pago a compañía')).toHaveValue(new Date().toISOString().slice(0, 10));
     expect(screen.getByLabelText('Comprobante pago cliente a compañía')).toHaveValue('');
     expect(screen.getByLabelText('Subir comprobante pago cliente a compañía')).toBeInTheDocument();
+  });
+
+  it('renders Todo Riesgo billing separately and keeps its six fixed retentions', () => {
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'insurance'])]: { insuranceCompanyId: 7 },
+      [JSON.stringify(['cases', '42', 'franchise'])]: { franchiseStatusCode: 'COBRAR_CLIENTE' },
+      [JSON.stringify(['cases', '42', 'insurance-processing'])]: { amountToBillCompany: 100000, estimatedPaymentDate: '2026-08-20', paymentStatusCode: 'PENDIENTE' },
+      [JSON.stringify(['cases', '42', 'finance', 'payment-breakdown'])]: { insurer: { companyId: 7, total: 100000, paid: 0, pending: 100000 } },
+    };
+
+    render(<PaymentsEditorPanel {...baseProps} caseDetail={{ ...baseProps.caseDetail, caseTypeCode: 'TODO_RIESGO' }} />);
+
+    expect(screen.getByRole('heading', { name: 'Facturación' })).toBeInTheDocument();
+    expect(screen.getAllByRole('heading', { name: 'Pagos' })).toHaveLength(2);
+    expect(screen.getByText('Estado de franquicia').parentElement).toHaveTextContent('COBRAR CLIENTE');
+    expect(screen.getByLabelText('Fecha estimada de pago')).toHaveValue('2026-08-20');
+    expect(screen.getByLabelText('Fecha real de pago')).toHaveValue('');
+    ['IVA', 'Ganancias', 'Contr. Patr.', 'IIBB', 'DREI', 'Otra'].forEach((name) => expect(screen.getByLabelText(`Monto ${name}`)).toBeInTheDocument());
   });
 
   it('derives the adverse franchise customer charge from the persisted CLEAS definition', () => {
@@ -664,21 +690,19 @@ describe('PaymentsEditorPanel', () => {
 
   it('registers Todo Riesgo company retentions as part of the payment', async () => {
     useQueryData = {
-      [JSON.stringify(['finance', 'catalogs'])]: { retentionTypeCodes: [{ code: 'DREI', name: 'DReI' }] },
       [JSON.stringify(['cases', '42', 'insurance-processing'])]: { amountToBillCompany: 100000 },
       [JSON.stringify(['cases', '42', 'finance', 'payment-breakdown'])]: { insurer: { companyId: 7, total: 100000, paid: 0, pending: 100000 } },
     };
     mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'TODO_RIESGO' } });
 
     fireEvent.change(screen.getByLabelText('Bruto que cancela'), { target: { value: '100000' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Agregar retención' }));
-    fireEvent.change(screen.getByLabelText('Monto retención de compañía 1'), { target: { value: '1000' } });
+    fireEvent.change(screen.getByLabelText('Monto IVA'), { target: { value: '1000' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar pago de la compañía' }));
 
     await waitFor(() => expect(mockCreateFinancialMovement).toHaveBeenCalledWith(42, expect.objectContaining({
       grossAmount: 100000,
       netAmount: 99000,
-      retentions: [{ retentionTypeCode: 'DREI', amount: 1000, detail: null }],
+      retentions: [{ retentionTypeCode: 'IVA', amount: 1000, detail: null }],
     })));
   });
 

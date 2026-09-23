@@ -7,6 +7,8 @@ export const saveCleasDefinition = (caseId, payload) => requestJson(`${basePath(
 
 export const getCleasInsurance = (caseId) => requestJson(`${basePath(caseId)}/insurance`);
 export const saveCleasInsurance = (caseId, payload) => requestJson(`${basePath(caseId)}/insurance`, { method: 'PUT', body: JSON.stringify(payload) });
+export const getCleasFinancialPlan = (caseId) => requestJson(`${basePath(caseId)}/financial-plan`);
+export const saveCleasFinancialPlan = (caseId, payload) => requestJson(`${basePath(caseId)}/financial-plan`, { method: 'PUT', body: JSON.stringify(payload) });
 
 export const getCleasIncident = (caseId) => requestJson(`${basePath(caseId)}/incident`);
 export const saveCleasIncident = (caseId, payload) => requestJson(`${basePath(caseId)}/incident`, { method: 'PUT', body: JSON.stringify(payload) });

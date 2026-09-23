@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ban, Building2, CheckCircle, FileDown, Receipt, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { createFinancialMovement, createReceipt, getClientPaymentPdfUrl, getFinanceCatalogs, getReceiptPdfUrl, listFinancialMovements, listReceipts, selectParticularComprobanteIntent } from '@/modules/cases/api/finance-api';
-import { annulCleasCompanyPayment, annulCleasCustomerFranchisePayment, downloadCleasLiquidationPdf, getCleasCompanyPaymentSummary, getCleasFranchisePaymentSummary, registerCleasCompanyFranchisePayment, registerCleasCompanyPayment, registerCleasCustomerFranchisePayment } from '@/modules/cases/api/cleas-api';
+import { annulCleasCompanyPayment, annulCleasCustomerFranchisePayment, downloadCleasLiquidationPdf, getCleasCompanyPaymentSummary, getCleasFinancialPlan, getCleasFranchisePaymentSummary, registerCleasCompanyFranchisePayment, registerCleasCompanyPayment, registerCleasCustomerFranchisePayment, saveCleasFinancialPlan } from '@/modules/cases/api/cleas-api';
 import { extraBudgetQueryKey, registerExtraBudgetPayment } from '@/modules/cases/api/extra-budget-api';
 import { requestJson } from '@/shared/api/http-client';
 import { readStoredAuth } from '@/shared/auth/session-storage';
@@ -47,6 +47,22 @@ const PAYMENT_METHODS = [
   { value: 'OTRO', label: 'Otro' },
 ];
 
+const COMPANY_RETENTIONS = [
+  { retentionTypeCode: 'IVA', label: 'IVA' },
+  { retentionTypeCode: 'GANANCIAS', label: 'Ganancias' },
+  { retentionTypeCode: 'CONTRIB_PATRIMONIAL', label: 'Contr. Patr.' },
+  { retentionTypeCode: 'IIBB', label: 'IIBB' },
+  { retentionTypeCode: 'DREI', label: 'DREI' },
+  { retentionTypeCode: 'OTRA', label: 'Otra' },
+];
+
+const newCompanyPayment = () => ({
+  amount: '',
+  movementAt: new Date().toISOString().slice(0, 16),
+  paymentMethodCode: 'TRANSFERENCIA',
+  retentions: COMPANY_RETENTIONS.map(({ retentionTypeCode }) => ({ retentionTypeCode, amount: '', detail: '' })),
+});
+
 export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFinanceSummary, clientPaymentRequest, onClientPaymentRequestHandled, nroCleas, cleasAgreedAmount, cleasFranchiseDistribution, cleasOver, cleasOpinion, cleasClosedAt, cleasWorkflowGuard, onSaved }) => {
   const queryClient = useQueryClient();
   const { session } = useSession();
@@ -85,11 +101,11 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
     if (particularFinanceSummary?.comprobanteIntentCode) setComprobanteTipo(particularFinanceSummary.comprobanteIntentCode);
   }, [particularFinanceSummary?.comprobanteIntentCode]);
 
-  const financeCatalogsQuery = useQuery({ queryKey: ['finance', 'catalogs'], queryFn: getFinanceCatalogs });
   const movementsQuery = useQuery({ queryKey: ['cases', String(caseId), 'financial-movements'], queryFn: () => listFinancialMovements(caseId) });
   const receiptsQuery = useQuery({ queryKey: ['cases', String(caseId), 'receipts'], queryFn: () => listReceipts(caseId) });
   const insuranceProcessingQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance-processing'], queryFn: () => requestJson(`/cases/${caseId}/insurance-processing`), enabled: caseDetail?.caseTypeCode === 'TODO_RIESGO' || caseDetail?.caseTypeCode === 'GRANIZO' });
   const caseInsuranceQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance'], queryFn: () => requestJson(`/cases/${caseId}/insurance`), enabled: caseDetail?.caseTypeCode === 'TODO_RIESGO' || caseDetail?.caseTypeCode === 'GRANIZO' });
+  const franchiseQuery = useQuery({ queryKey: ['cases', String(caseId), 'franchise'], queryFn: () => requestJson(`/cases/${caseId}/franchise`), enabled: caseDetail?.caseTypeCode === 'TODO_RIESGO' });
   const paymentBreakdownQuery = useQuery({ queryKey: ['cases', String(caseId), 'finance', 'payment-breakdown'], queryFn: () => requestJson(`/cases/${caseId}/finance/payment-breakdown`), enabled: caseDetail?.caseTypeCode !== 'GRANIZO' });
   const cleasDefinitionQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'definition'], queryFn: () => requestJson(`/cases/${caseId}/cleas/definition`), enabled: caseDetail?.caseTypeCode === 'CLEAS' });
   const processing = insuranceProcessingQuery.data;
@@ -256,29 +272,29 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
     onError: (error) => toast.error(error.message || 'No pude guardar el tipo de comprobante.'),
   });
 
-  const [ciaPayment, setCiaPayment] = useState({ amount: '', movementAt: new Date().toISOString().slice(0, 16), paymentMethodCode: 'TRANSFERENCIA', retentions: [] });
+  const [ciaPayment, setCiaPayment] = useState(newCompanyPayment);
   const ciaPaymentMutation = useMutation({
     mutationFn: (payload) => createFinancialMovement(caseId, payload),
-    onSuccess: async () => { companyPaymentSubmittingRef.current = false; await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'finance', 'payment-breakdown'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); await onSaved?.(); toast.success('Pago de la Cía. registrado.'); setCiaPayment({ amount: '', movementAt: new Date().toISOString().slice(0, 16), paymentMethodCode: 'TRANSFERENCIA', retentions: [] }); },
+    onSuccess: async () => { companyPaymentSubmittingRef.current = false; await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'finance', 'payment-breakdown'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); await onSaved?.(); toast.success('Pago de la Cía. registrado.'); setCiaPayment(newCompanyPayment()); },
     onError: (error) => { companyPaymentSubmittingRef.current = false; toast.error(error.message || 'No pude registrar el pago de la compañía.'); },
   });
 
   // ── Derived for insurance ──
-  const ciaMovements = (movementsQuery.data ?? []).filter(m => m.flowOriginCode === 'ASEGURADORA' && m.counterpartyTypeCode === 'COMPANIA' && m.cancellationTypeCode === 'COMPANIA');
+  const ciaMovements = (movementsQuery.data ?? []).filter(m => m.movementTypeCode === 'INGRESO' && m.flowOriginCode === 'ASEGURADORA' && m.counterpartyTypeCode === 'COMPANIA' && m.cancellationTypeCode === 'COMPANIA');
+  const ciaNetDeposited = (movementsQuery.data ?? []).filter(m => m.flowOriginCode === 'ASEGURADORA' && m.counterpartyTypeCode === 'COMPANIA' && m.cancellationTypeCode === 'COMPANIA').reduce((total, movement) => total + (['INGRESO', 'AJUSTE'].includes(movement.movementTypeCode) ? toAmount(movement.netAmount) : -toAmount(movement.netAmount)), 0);
   const fallbackCiaPaid = ciaMovements.reduce((sum, m) => sum + toAmount(m.netAmount || 0), 0);
   const fallbackAmountToPay = toAmount(isGranizo ? processing?.agreedAmount : processing?.amountToBillCompany || processing?.agreedAmount || 0);
   const insurerBreakdown = paymentBreakdownQuery.data?.insurer;
   const amountToPay = toAmount(insurerBreakdown?.total ?? fallbackAmountToPay);
   const ciaTotalPaid = toAmount(insurerBreakdown?.paid ?? fallbackCiaPaid);
   const ciaPending = toAmount(insurerBreakdown?.pending ?? Math.max(0, fallbackAmountToPay - fallbackCiaPaid));
-  const companyRetentionTypes = financeCatalogsQuery.data?.retentionTypeCodes ?? [];
   const companyRetentionsAmount = ciaPayment.retentions.reduce((total, retention) => total + toAmount(retention.amount), 0);
   const companyNetAmount = Math.max(0, toAmount(ciaPayment.amount) - companyRetentionsAmount);
   const updateCompanyRetention = (index, field, value) => setCiaPayment((current) => ({ ...current, retentions: current.retentions.map((retention, retentionIndex) => retentionIndex === index ? { ...retention, [field]: value } : retention) }));
 
   const paymentStatus = useMemo(() => {
     const estimated = processing?.estimatedPaymentDate;
-    if (!estimated) return ciaPending <= 0 ? 'Pagado' : 'Pendiente';
+    if (!estimated) return processing?.paymentStatusCode === 'COBRADO' ? 'Cobrado' : processing?.paymentStatusCode === 'NO_APLICA' ? 'No aplica' : 'Pendiente';
     const today = new Date().toISOString().slice(0, 10);
     const hasPayment = ciaTotalPaid >= amountToPay && amountToPay > 0;
     if (!hasPayment) return today > estimated ? 'Atrasado' : 'Pendiente';
@@ -286,12 +302,12 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
     const lastPaymentDate = payments.length > 0
       ? payments.reduce((latest, m) => (m.movementAt > latest ? m.movementAt : latest), '').slice(0, 10)
       : null;
-    return lastPaymentDate && lastPaymentDate > estimated ? 'Pagado con mora' : 'Pagado a término';
-  }, [processing?.estimatedPaymentDate, ciaPending, ciaTotalPaid, amountToPay, ciaMovements]);
+    return lastPaymentDate && lastPaymentDate > estimated ? 'Atrasado' : 'A tiempo';
+  }, [processing?.estimatedPaymentDate, processing?.paymentStatusCode, ciaPending, ciaTotalPaid, amountToPay, ciaMovements]);
 
-  const paymentStatusColor = paymentStatus === 'Pagado a término' || paymentStatus === 'Pagado'
+  const paymentStatusColor = paymentStatus === 'A tiempo' || paymentStatus === 'Cobrado'
     ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
-    : paymentStatus === 'Atrasado' || paymentStatus === 'Pagado con mora'
+    : paymentStatus === 'Atrasado'
     ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
     : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400';
 
@@ -316,42 +332,35 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
         </div>
       </div>
 
-      {/* ── Pago de la Compañía (TODO_RIESGO) ── */}
-       {isInsurance ? (
-        <div className="rounded-3xl border border-border/70 bg-card p-5">
-          <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Building2 className="h-5 w-5" /></div>
-          <h4 className="text-lg font-semibold">Facturación y Pago — Compañía</h4>
-          <div className="mt-4 grid gap-3 md:grid-cols-4">
-            <MiniCard label="A facturar Cía." value={formatCurrency(amountToPay)} highlight />
-            <MiniCard label="Pagado Cía." value={formatCurrency(ciaTotalPaid)} />
-            <MiniCard label="Pendiente Cía." value={formatCurrency(ciaPending)} highlight={ciaPending > 0} />
-            <div className="space-y-1">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Estado</span>
-              <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${paymentStatusColor}`}>{paymentStatus}</span>
-            </div>
-          </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
-            <Field label="Fecha pasado a pagos">
-              <Input type="date" value={processing?.passedToPaymentsAt ?? ''}
-                onChange={async (e) => {
-                  await requestJson(`/cases/${caseId}/insurance-processing`, { method: 'PATCH', body: JSON.stringify({ expectedVersion: processing?.version ?? 0, passedToPaymentsAt: e.target.value || null }) });
-                  await Promise.all([
-                    queryClient.invalidateQueries({ queryKey: ['cases'] }),
-                    queryClient.invalidateQueries({ queryKey: ['cases', String(caseId)] }),
-                    queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }),
-                    queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] }),
-                    queryClient.invalidateQueries({ queryKey: ['panel'] }),
-                  ]);
-                }} />
-            </Field>
-            <Field label="Fecha estimada de pago">
-              <Input type="date" value={processing?.estimatedPaymentDate ?? ''}
+       {/* ── Facturación y pago de la Compañía ── */}
+        {isInsurance ? (
+         <>
+         <div className="rounded-3xl border border-border/70 bg-card p-5">
+           <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Building2 className="h-5 w-5" /></div>
+           <h4 className="text-lg font-semibold">Facturación</h4>
+           <div className="mt-4 grid gap-3 md:grid-cols-2">
+             <MiniCard label="A facturar Cía." value={formatCurrency(amountToPay)} highlight />
+             <MiniCard label="Estado de franquicia" value={franchiseQuery.data?.franchiseStatusCode?.replaceAll('_', ' ') || 'Sin definir'} />
+           </div>
+         </div>
+         <div className="rounded-3xl border border-border/70 bg-card p-5">
+           <h4 className="text-lg font-semibold">Pagos</h4>
+           <div className="mt-4 grid gap-3 md:grid-cols-4">
+             <MiniCard label="Monto bruto" value={formatCurrency(ciaTotalPaid)} />
+             <MiniCard label="Monto depositado" value={formatCurrency(ciaNetDeposited)} />
+             <MiniCard label="Pendiente Cía." value={formatCurrency(ciaPending)} highlight={ciaPending > 0} />
+             <div className="space-y-1"><span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Estado</span><span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${paymentStatusColor}`}>{paymentStatus}</span></div>
+           </div>
+           <div className="mt-4 grid gap-3 md:grid-cols-3">
+             <Field label="Fecha estimada de pago">
+               <Input type="date" value={processing?.estimatedPaymentDate ?? ''}
                 onChange={async (e) => {
                   await requestJson(`/cases/${caseId}/insurance-processing`, { method: 'PATCH', body: JSON.stringify({ expectedVersion: processing?.version ?? 0, estimatedPaymentDate: e.target.value || null }) });
                   queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] });
-                }} />
-            </Field>
-          </div>
+                 }} />
+             </Field>
+             <Field label="Fecha real de pago"><Input type="date" value={ciaMovements.reduce((latest, movement) => movement.movementAt && movement.movementAt > latest ? movement.movementAt : latest, '').slice(0, 10)} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
+           </div>
           <div className="mt-4 rounded-2xl border border-border/60 bg-background/70 p-4">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Registrar pago de la Cía.</p>
             <div className="grid gap-3 md:grid-cols-3">
@@ -360,24 +369,24 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
               <Field label="Neto depositado"><Input value={formatCurrency(companyNetAmount)} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
             </div>
             <div className="mt-4 rounded-2xl border border-border/60 p-4">
-              <div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold">Retenciones</p><Button type="button" size="sm" variant="outline" onClick={() => setCiaPayment((current) => ({ ...current, retentions: [...current.retentions, { retentionTypeCode: companyRetentionTypes[0]?.code ?? '', amount: '', detail: '' }] }))} disabled={!companyRetentionTypes.length}>Agregar retención</Button></div>
-              {ciaPayment.retentions.map((retention, index) => <div key={index} className="mt-3 grid gap-3 md:grid-cols-[1fr_150px_1fr_auto]">
-                <Select aria-label={`Tipo de retención de compañía ${index + 1}`} value={retention.retentionTypeCode} onChange={(event) => updateCompanyRetention(index, 'retentionTypeCode', event.target.value)} options={[{ value: '', label: 'Tipo de retención...' }, ...companyRetentionTypes.map((type) => ({ value: type.code, label: type.name || type.code }))]} />
-                <Input aria-label={`Monto retención de compañía ${index + 1}`} type="number" min="0" step="0.01" value={retention.amount} onChange={(event) => updateCompanyRetention(index, 'amount', event.target.value)} />
-                <Input aria-label={`Detalle retención de compañía ${index + 1}`} value={retention.detail} onChange={(event) => updateCompanyRetention(index, 'detail', event.target.value)} placeholder="Detalle opcional" />
-                <Button type="button" variant="ghost" onClick={() => setCiaPayment((current) => ({ ...current, retentions: current.retentions.filter((_, retentionIndex) => retentionIndex !== index) }))}>Quitar</Button>
-              </div>)}
+              <p className="text-sm font-semibold">Retenciones</p>
+               {ciaPayment.retentions.map((retention, index) => <div key={retention.retentionTypeCode} className="mt-3 grid gap-3 md:grid-cols-[1fr_150px_1fr]">
+                 <Input value={COMPANY_RETENTIONS[index].label} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" />
+                 <Input aria-label={`Monto ${COMPANY_RETENTIONS[index].label}`} type="number" min="0" step="0.01" value={retention.amount} onChange={(event) => updateCompanyRetention(index, 'amount', event.target.value)} />
+                 <Input aria-label={`Detalle ${COMPANY_RETENTIONS[index].label}`} value={retention.detail} onChange={(event) => updateCompanyRetention(index, 'detail', event.target.value)} placeholder="Detalle opcional" />
+               </div>)}
               {companyRetentionsAmount > toAmount(ciaPayment.amount) ? <p role="alert" className="mt-3 text-xs text-destructive">Las retenciones no pueden superar el bruto que cancela.</p> : null}
             </div>
             <div className="mt-4 flex justify-end"><Button onClick={() => { if (ciaPaymentMutation.isPending || companyPaymentSubmittingRef.current) return; const m = toAmount(ciaPayment.amount); const companyId = insurerBreakdown?.companyId ?? caseInsuranceQuery.data?.insuranceCompanyId; if (m <= 0) { toast.error('Ingresá un monto.'); return; } if (m > ciaPending) { toast.error('El pago no puede superar el saldo pendiente de la compañía.'); return; } if (companyRetentionsAmount > m) { toast.error('Las retenciones no pueden superar el bruto que cancela.'); return; } if (!companyId) { toast.error('El caso no tiene compañía aseguradora configurada.'); return; } companyPaymentSubmittingRef.current = true; ciaPaymentMutation.mutate({ movementTypeCode: 'INGRESO', flowOriginCode: 'ASEGURADORA', counterpartyTypeCode: 'COMPANIA', counterpartyPersonId: null, counterpartyCompanyId: companyId, movementAt: ciaPayment.movementAt, grossAmount: m, netAmount: companyNetAmount, paymentMethodCode: ciaPayment.paymentMethodCode, paymentMethodDetail: null, cancellationTypeCode: 'COMPANIA', advancePayment: false, bonification: false, reason: 'Pago de compañía', externalReference: null, retentions: ciaPayment.retentions.filter((retention) => retention.retentionTypeCode && toAmount(retention.amount) > 0).map((retention) => ({ retentionTypeCode: retention.retentionTypeCode, amount: toAmount(retention.amount), detail: retention.detail.trim() || null })), applications: [] }); }} disabled={ciaPaymentMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar pago de la compañía</Button></div>
           </div>
-          {ciaMovements.length > 0 ? <div className="mt-3"><p className="text-xs text-muted-foreground">{ciaMovements.length} pago(s) de la Cía.</p></div> : null}
-        </div>
-      ) : null}
+           {ciaMovements.length > 0 ? <div className="mt-3"><p className="text-xs text-muted-foreground">{ciaMovements.length} pago(s) de la Cía.</p></div> : null}
+         </div>
+         </>
+       ) : null}
 
-      {isCleas && !blockCleasPayments ? <CleasInvoicePanel caseId={caseId} onSaved={onSaved} /> : null}
+       {isCleas && cleasScope !== 'franchise' && cleasDirection !== 'unfavorable' && !blockCleasPayments ? <CleasInvoicePanel caseId={caseId} onSaved={onSaved} /> : null}
 
-      {isCleas ? <CleasCompanyPaymentPanel caseId={caseId} receipts={receiptsQuery.data ?? []} onSaved={onSaved} /> : null}
+       {isCleas && !blockCleasPayments ? <CleasCompanyPaymentPanel caseId={caseId} receipts={receiptsQuery.data ?? []} onSaved={onSaved} /> : null}
 
       {/* Comprobante + Formulario */}
         {!blockCleasPayments && !isInsurance && !isFavorableFranchise && canCreatePayments ? (
@@ -658,6 +667,8 @@ const CleasCompanyPaymentPanel = ({ caseId, receipts, onSaved }) => {
     queryFn: () => requestJson('/documents/catalogs'),
   });
   const financeCatalogsQuery = useQuery({ queryKey: ['finance', 'catalogs'], queryFn: getFinanceCatalogs });
+  const movementsQuery = useQuery({ queryKey: ['cases', String(caseId), 'financial-movements'], queryFn: () => listFinancialMovements(caseId) });
+  const processingQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'processing'], queryFn: () => requestJson(`/cases/${caseId}/cleas/processing`) });
   const [form, setForm] = useState({
     amount: '',
     movementAt: new Date().toISOString().slice(0, 16),
@@ -729,6 +740,12 @@ const CleasCompanyPaymentPanel = ({ caseId, receipts, onSaved }) => {
   const summary = summaryQuery.data;
   if (!summary) return null;
   const pendingGrossAmount = toAmount(summary.pendingGrossAmount ?? summary.pendingAmount);
+  const companyMovements = (movementsQuery.data ?? []).filter((movement) => movement.flowOriginCode === 'ASEGURADORA' && movement.cancellationTypeCode === 'COMPANIA' && movement.movementTypeCode === 'INGRESO');
+  const actualPaymentDate = companyMovements.reduce((latest, movement) => movement.movementAt && movement.movementAt > latest ? movement.movementAt : latest, '').slice(0, 10);
+  const estimatedPaymentDate = processingQuery.data?.estimatedPaymentDate;
+  const paymentTiming = pendingGrossAmount <= 0 && actualPaymentDate
+    ? (!estimatedPaymentDate || actualPaymentDate <= estimatedPaymentDate ? 'A tiempo' : 'Atrasado')
+    : (estimatedPaymentDate && estimatedPaymentDate < new Date().toISOString().slice(0, 10) ? 'Atrasado' : 'Pendiente');
   const grossAmount = toAmount(form.amount);
   const retentionsAmount = form.retentions.reduce((total, retention) => total + toAmount(retention.amount), 0);
   const netAmount = Math.max(0, grossAmount - retentionsAmount);
@@ -753,8 +770,11 @@ const CleasCompanyPaymentPanel = ({ caseId, receipts, onSaved }) => {
         <MiniCard label="Bruto cancelado" value={formatCurrency(summary.paidGrossAmount ?? summary.paidAmount)} />
         <MiniCard label="Neto depositado" value={formatCurrency(summary.paidAmount)} />
         <MiniCard label="Saldo bruto" value={formatCurrency(pendingGrossAmount)} highlight={pendingGrossAmount > 0} />
-        <MiniCard label="Estado del pago" value={pendingGrossAmount <= 0 ? 'Pagado' : toAmount(summary.paidGrossAmount ?? summary.paidAmount) > 0 ? 'Pago parcial' : 'Pendiente'} variant={pendingGrossAmount <= 0 ? 'success' : 'warning'} />
-        <MiniCard label="Retenciones de este pago" value={formatCurrency(retentionsAmount)} />
+       <MiniCard label="Estado del pago" value={pendingGrossAmount <= 0 ? 'Pagado' : toAmount(summary.paidGrossAmount ?? summary.paidAmount) > 0 ? 'Pago parcial' : 'Pendiente'} variant={pendingGrossAmount <= 0 ? 'success' : 'warning'} />
+       <MiniCard label="Retenciones de este pago" value={formatCurrency(retentionsAmount)} />
+       <MiniCard label="Fecha real" value={actualPaymentDate || 'Sin cobro'} />
+       <MiniCard label="Fecha estimada" value={estimatedPaymentDate || 'Sin fecha'} />
+       <MiniCard label="A tiempo / atrasado" value={paymentTiming} variant={paymentTiming === 'A tiempo' ? 'success' : paymentTiming === 'Atrasado' ? 'warning' : undefined} />
       </div>
       {pendingGrossAmount > 0 ? (
         <>
@@ -794,6 +814,9 @@ const CleasInvoicePanel = ({ caseId, onSaved }) => {
   const canCreateCreditNotes = hasExceptionalFinancePermission && hasGlobalAdminScope(session);
   const lacksGlobalCreditNoteScope = hasExceptionalFinancePermission && !hasGlobalAdminScope(session);
   const summaryQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'summary'], queryFn: () => getCleasCompanyPaymentSummary(caseId) });
+  const planQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'financial-plan'], queryFn: () => getCleasFinancialPlan(caseId) });
+  const insuranceQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'insurance'], queryFn: () => requestJson(`/cases/${caseId}/cleas/insurance`) });
+  const processingQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'processing'], queryFn: () => requestJson(`/cases/${caseId}/cleas/processing`) });
   const receiptsQuery = useQuery({ queryKey: ['cases', String(caseId), 'receipts'], queryFn: () => listReceipts(caseId) });
   const [form, setForm] = useState({ fiscalTypeCode: 'A', salePoint: '0001', fiscalNumber: '', receiverBusinessName: '', issuedDate: new Date().toISOString().slice(0, 10) });
   const [creditForm, setCreditForm] = useState({ originalReceiptId: '', fiscalTypeCode: 'A', salePoint: '0001', fiscalNumber: '', issuedDate: new Date().toISOString().slice(0, 10), amount: '' });
@@ -801,6 +824,16 @@ const CleasInvoicePanel = ({ caseId, onSaved }) => {
   const invoices = receipts.filter((receipt) => receipt.receiptTypeCode === 'FACTURA');
   const creditNotes = receipts.filter((receipt) => receipt.receiptTypeCode === 'NOTA_CREDITO');
   const selectedInvoice = invoices.find((invoice) => String(invoice.id) === creditForm.originalReceiptId);
+  const [plan, setPlan] = useState({ billableCompanyId: '', signedConformity: false });
+  useEffect(() => {
+    if (!planQuery.data) return;
+    setPlan({ billableCompanyId: planQuery.data.billableCompanyId ? String(planQuery.data.billableCompanyId) : '', signedConformity: Boolean(planQuery.data.signedConformity) });
+  }, [planQuery.data]);
+  const planMutation = useMutation({
+    mutationFn: () => saveCleasFinancialPlan(caseId, { billableCompanyId: Number(plan.billableCompanyId), signedConformity: plan.signedConformity }),
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'financial-plan'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'cleas', 'summary'] }); toast.success('Plan financiero CLEAS guardado.'); },
+    onError: (error) => toast.error(error.message || 'No pude guardar el plan financiero CLEAS.'),
+  });
   const invoiceMutation = useMutation({
     mutationFn: () => createReceipt(caseId, {
       receiptTypeCode: 'FACTURA', receiptNumber: fiscalReceiptDisplayNumber(form.salePoint, form.fiscalNumber), receiverBusinessName: form.receiverBusinessName.trim(), issuedDate: form.issuedDate,
@@ -833,17 +866,33 @@ const CleasInvoicePanel = ({ caseId, onSaved }) => {
     onError: (error) => toast.error(error.message || 'No pude registrar la nota de crédito.'),
   });
 
-  if (summaryQuery.isLoading || receiptsQuery.isLoading) return null;
-  if (summaryQuery.isError) return null;
-  if (!summaryQuery.data) return null;
+  if (summaryQuery.isLoading || receiptsQuery.isLoading || planQuery.isLoading || insuranceQuery.isLoading || processingQuery.isLoading) return null;
 
-  const agreedAmount = toAmount(summaryQuery.data.agreedAmount);
+  const processing = processingQuery.data;
+  const ownCompanyId = insuranceQuery.data?.insuranceCompanyId;
+  const thirdPartyCompanyId = insuranceQuery.data?.thirdPartyCompanyId;
+  const companies = [
+    ownCompanyId ? { value: String(ownCompanyId), label: 'Compañía propia' } : null,
+    thirdPartyCompanyId ? { value: String(thirdPartyCompanyId), label: 'Compañía del tercero' } : null,
+  ].filter(Boolean);
+  const agreedAmount = toAmount(summaryQuery.data?.agreedAmount ?? processing?.agreedAmount);
   const hasValidFiscalIdentity = (currentForm) => /^\d{4}$/.test(currentForm.salePoint) && /^\d{8}$/.test(currentForm.fiscalNumber);
-  const canSubmit = agreedAmount > 0 && hasValidFiscalIdentity(form) && Boolean(form.receiverBusinessName.trim()) && Boolean(form.issuedDate) && !invoiceMutation.isPending;
+  const canSubmit = Boolean(planQuery.data?.billableCompanyId) && agreedAmount > 0 && hasValidFiscalIdentity(form) && Boolean(form.receiverBusinessName.trim()) && Boolean(form.issuedDate) && !invoiceMutation.isPending;
 
   return (
   <Card data-testid="cleas-invoice-panel" className="rounded-3xl border-border/70 p-5">
     <h4 className="text-lg font-semibold">Facturación</h4>
+    <div className="mt-4 rounded-2xl border border-border/60 bg-background/70 p-4">
+      <p className="text-sm font-semibold">Plan financiero CLEAS A FAVOR</p>
+      <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <Field label="Compañía facturable"><Select value={plan.billableCompanyId} onChange={(event) => setPlan((current) => ({ ...current, billableCompanyId: event.target.value }))} options={[{ value: '', label: 'Seleccionar...' }, ...companies]} /></Field>
+        <MiniCard label="N.º siniestro / CLEAS" value={`${insuranceQuery.data?.claimNumber || 'Sin siniestro'} / ${insuranceQuery.data?.cleasNumber || 'Sin CLEAS'}`} />
+        <MiniCard label="Importe a facturar" value={formatCurrency(agreedAmount)} highlight />
+        <MiniCard label="Fecha acuerdo" value={processing?.agreementDate || 'Sin fecha'} />
+      </div>
+      <label className="mt-4 flex items-center gap-2 text-sm"><input type="checkbox" checked={plan.signedConformity} onChange={(event) => setPlan((current) => ({ ...current, signedConformity: event.target.checked }))} />Firma conforme</label>
+      <div className="mt-3"><Button type="button" variant="outline" disabled={!plan.billableCompanyId || planMutation.isPending} onClick={() => planMutation.mutate()}>Guardar compañía facturable</Button></div>
+    </div>
     <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       <Field label="Monto acordado"><Input value={formatCurrency(agreedAmount)} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
       <Field label="Tipo fiscal"><Select value={form.fiscalTypeCode} onChange={(event) => setForm((current) => ({ ...current, fiscalTypeCode: event.target.value }))} options={['A', 'B', 'C', 'M', 'E'].map((value) => ({ value, label: `Factura ${value}` }))} /></Field>
@@ -851,6 +900,8 @@ const CleasInvoicePanel = ({ caseId, onSaved }) => {
       <Field label="Número fiscal"><Input inputMode="numeric" maxLength="8" value={form.fiscalNumber} onChange={(event) => setForm((current) => ({ ...current, fiscalNumber: event.target.value }))} /></Field>
       <Field label="Razón social"><Input value={form.receiverBusinessName} onChange={(event) => setForm((current) => ({ ...current, receiverBusinessName: event.target.value }))} /></Field>
       <Field label="Fecha de emisión"><Input type="date" value={form.issuedDate} onChange={(event) => setForm((current) => ({ ...current, issuedDate: event.target.value }))} /></Field>
+      <MiniCard label="Pasado a pagos" value={processing?.passedToPaymentsAt || 'Pendiente'} />
+      <MiniCard label="Fecha estimada de pago" value={processing?.estimatedPaymentDate || 'Sin fecha'} />
     </div>
     <div className="mt-5"><Button type="button" disabled={!canSubmit} onClick={() => invoiceMutation.mutate()}>+ Registrar factura</Button></div>
     {lacksGlobalCreditNoteScope ? <p role="alert" className="mt-3 text-sm text-destructive">No tenés alcance administrativo global para registrar notas de crédito.</p> : null}
