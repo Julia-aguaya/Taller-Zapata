@@ -5,6 +5,7 @@ import com.tallerzapata.backend.api.casefile.CaseCreateWithInsuranceRequest;
 import com.tallerzapata.backend.api.casefile.CaseCreateWithReferenciadorRequest;
 import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
+import com.tallerzapata.backend.application.casefile.cleasstate.CleasEffectiveStateRecalculator;
 import com.tallerzapata.backend.api.casefile.CaseCatalogsResponse;
 import com.tallerzapata.backend.api.casefile.CasePageResponse;
 import com.tallerzapata.backend.api.casefile.CaseVisibleStateResponse;
@@ -117,6 +118,7 @@ public class CaseService {
     private final CaseVisibleStateResolver caseVisibleStateResolver;
     private final ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
     private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
+    private final CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator;
 
     public CaseService(
             CaseRepository caseRepository,
@@ -149,7 +151,7 @@ public class CaseService {
             CurrentUserService currentUserService,
             CaseAccessControlService caseAccessControlService,
             CaseVisibleStateResolver caseVisibleStateResolver, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator,
-            TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator
+            TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator
     ) {
         this.caseRepository = caseRepository;
         this.caseTypeRepository = caseTypeRepository;
@@ -183,6 +185,7 @@ public class CaseService {
         this.caseVisibleStateResolver = caseVisibleStateResolver;
         this.particularEffectiveStateRecalculator = particularEffectiveStateRecalculator;
         this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
+        this.cleasEffectiveStateRecalculator = cleasEffectiveStateRecalculator;
     }
 
     @Transactional(readOnly = true)
@@ -452,6 +455,7 @@ public class CaseService {
         );
         particularEffectiveStateRecalculator.recalculate(entity.getId());
         todoRiesgoEffectiveStateRecalculator.recalculate(entity.getId());
+        cleasEffectiveStateRecalculator.recalculate(entity.getId());
 
         return toResponse(entity);
     }

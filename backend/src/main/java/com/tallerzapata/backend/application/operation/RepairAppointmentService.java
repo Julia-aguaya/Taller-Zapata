@@ -8,6 +8,7 @@ import com.tallerzapata.backend.application.casefile.CaseWorkflowService;
 import com.tallerzapata.backend.application.cleas.CleasDownstreamGate;
 import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
+import com.tallerzapata.backend.application.casefile.cleasstate.CleasEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
@@ -57,6 +58,7 @@ public class RepairAppointmentService {
     private final BusinessDayCalculator businessDayCalculator;
     private final ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
     private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
+    private final CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator;
     private final InsuranceProcessingRepository insuranceProcessingRepository;
     private final CaseTypeRepository caseTypeRepository;
     private final CasePartRepository casePartRepository;
@@ -76,6 +78,7 @@ public class RepairAppointmentService {
             BusinessDayCalculator businessDayCalculator,
             ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator,
             TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator,
+            CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator,
             InsuranceProcessingRepository insuranceProcessingRepository,
             CaseTypeRepository caseTypeRepository,
             CasePartRepository casePartRepository,
@@ -94,6 +97,7 @@ public class RepairAppointmentService {
         this.businessDayCalculator = businessDayCalculator;
         this.particularEffectiveStateRecalculator = particularEffectiveStateRecalculator;
         this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
+        this.cleasEffectiveStateRecalculator = cleasEffectiveStateRecalculator;
         this.insuranceProcessingRepository = insuranceProcessingRepository;
         this.caseTypeRepository = caseTypeRepository;
         this.casePartRepository = casePartRepository;
@@ -201,6 +205,7 @@ public class RepairAppointmentService {
         );
         particularEffectiveStateRecalculator.recalculate(caseId);
         todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+        cleasEffectiveStateRecalculator.recalculate(caseId);
 
         return toResponse(entity);
     }
@@ -241,6 +246,7 @@ public class RepairAppointmentService {
         );
         particularEffectiveStateRecalculator.recalculate(entity.getCaseId());
         todoRiesgoEffectiveStateRecalculator.recalculate(entity.getCaseId());
+        cleasEffectiveStateRecalculator.recalculate(entity.getCaseId());
 
         return toResponse(entity);
     }
@@ -272,6 +278,7 @@ public class RepairAppointmentService {
         );
         particularEffectiveStateRecalculator.recalculate(entity.getCaseId());
         todoRiesgoEffectiveStateRecalculator.recalculate(entity.getCaseId());
+        cleasEffectiveStateRecalculator.recalculate(entity.getCaseId());
     }
 
     @Transactional
@@ -320,6 +327,7 @@ public class RepairAppointmentService {
         );
         particularEffectiveStateRecalculator.recalculate(caseId);
         todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+        cleasEffectiveStateRecalculator.recalculate(caseId);
 
         return entity;
     }
@@ -370,6 +378,7 @@ public class RepairAppointmentService {
         );
         particularEffectiveStateRecalculator.recalculate(entity.getCaseId());
         todoRiesgoEffectiveStateRecalculator.recalculate(entity.getCaseId());
+        cleasEffectiveStateRecalculator.recalculate(entity.getCaseId());
 
         return entity;
     }
@@ -398,6 +407,7 @@ public class RepairAppointmentService {
         );
         particularEffectiveStateRecalculator.recalculate(entity.getCaseId());
         todoRiesgoEffectiveStateRecalculator.recalculate(entity.getCaseId());
+        cleasEffectiveStateRecalculator.recalculate(entity.getCaseId());
     }
 
     private CaseEntity requireCase(Long caseId) {

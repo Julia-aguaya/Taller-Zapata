@@ -582,6 +582,9 @@ public class FinanceService {
 
     private void requireCompanyPaymentAllowed(CaseEntity caseEntity, FinancialMovementCreateRequest request) {
         if (!"COMPANIA".equals(normalizeCode(request.cancellationTypeCode()))) return;
+        if (isCleas(caseEntity)) {
+            throw new ConflictException("El pago de compania CLEAS debe registrarse por su flujo canonico");
+        }
         if (!"ASEGURADORA".equals(normalizeCode(request.flowOriginCode()))
                 || !"COMPANIA".equals(normalizeCode(request.counterpartyTypeCode()))) {
             throw new ConflictException("El pago de compania debe registrarse para la aseguradora");

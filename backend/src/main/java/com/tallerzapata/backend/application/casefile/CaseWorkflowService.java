@@ -12,6 +12,7 @@ import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
 import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
+import com.tallerzapata.backend.application.casefile.cleasstate.CleasEffectiveStateRecalculator;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
@@ -56,6 +57,7 @@ public class CaseWorkflowService {
     private final ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
     private final CaseTypeRepository caseTypeRepository;
     private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
+    private final CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator;
     private final CasePartRepository casePartRepository;
     private final UserRoleRepository userRoleRepository;
     private final NotificationRepository notificationRepository;
@@ -70,7 +72,7 @@ public class CaseWorkflowService {
             CaseAccessControlService caseAccessControlService,
             ObjectMapper objectMapper,
             CaseVisibleStateResolver caseVisibleStateResolver, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator,
-            CaseTypeRepository caseTypeRepository, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator,
+            CaseTypeRepository caseTypeRepository, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator,
             CasePartRepository casePartRepository, UserRoleRepository userRoleRepository, NotificationRepository notificationRepository
     ) {
         this.caseRepository = caseRepository;
@@ -85,6 +87,7 @@ public class CaseWorkflowService {
         this.particularEffectiveStateRecalculator = particularEffectiveStateRecalculator;
         this.caseTypeRepository = caseTypeRepository;
         this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
+        this.cleasEffectiveStateRecalculator = cleasEffectiveStateRecalculator;
         this.casePartRepository = casePartRepository;
         this.userRoleRepository = userRoleRepository;
         this.notificationRepository = notificationRepository;
@@ -128,6 +131,11 @@ public class CaseWorkflowService {
                 todoRiesgoEffectiveStateRecalculator.markNoRepair(caseId, request.reason(), currentUser.id());
                 notifyGlobalAdminsNoRepair(caseEntity, currentUser, request.reason());
             }
+        } else if (isCleas(caseEntity)) {
+            if (stateCode != null && !List.of("RECHAZADO", "DESISTIDO").contains(stateCode)) {
+                throw new ConflictException("CLEAS solo admite overrides terminales");
+            }
+            cleasEffectiveStateRecalculator.override(caseId, domain, stateCode, currentUser.id(), request.reason());
         } else if ("tramite".equals(domain)) {
             caseEntity.setVisibleCaseStateOverrideCode(stateCode);
         } else {
@@ -156,6 +164,7 @@ public class CaseWorkflowService {
                 httpRequest
         );
         todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+        cleasEffectiveStateRecalculator.recalculate(caseId);
     }
 
     @Transactional
@@ -166,7 +175,7 @@ public class CaseWorkflowService {
         caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "caso.ver");
         requireGlobalAdmin(currentUser);
         requireNoRepairPartsEligible(caseId);
-        todoRiesgoEffectiveStateRecalculator.markNoRepair(caseId, reason, currentUser.id());
+        if (isCleas(caseEntity)) cleasEffectiveStateRecalculator.markNoRepair(caseId, reason, currentUser.id()); else todoRiesgoEffectiveStateRecalculator.markNoRepair(caseId, reason, currentUser.id());
         notifyGlobalAdminsNoRepair(caseEntity, currentUser, reason);
     }
 
@@ -177,7 +186,7 @@ public class CaseWorkflowService {
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
         caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "caso.ver");
         requireGlobalAdmin(currentUser);
-        todoRiesgoEffectiveStateRecalculator.revertNoRepair(caseId, reason, currentUser.id());
+        if (isCleas(caseEntity)) cleasEffectiveStateRecalculator.revertNoRepair(caseId, reason, currentUser.id()); else todoRiesgoEffectiveStateRecalculator.revertNoRepair(caseId, reason, currentUser.id());
     }
 
     @Transactional
@@ -188,10 +197,10 @@ public class CaseWorkflowService {
         caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "caso.ver");
         // This exceptional pre-presentation completion is intentionally restricted to global admins.
         requireGlobalAdmin(currentUser);
-        if (!caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> "TODO_RIESGO".equalsIgnoreCase(type.getCode())).orElse(false)) {
-            throw new ConflictException("La reparacion urgente solo aplica a TODO_RIESGO");
+        if (!caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> "TODO_RIESGO".equalsIgnoreCase(type.getCode()) || "CLEAS".equalsIgnoreCase(type.getCode())).orElse(false)) {
+            throw new ConflictException("La reparacion urgente solo aplica a TODO_RIESGO o CLEAS");
         }
-        todoRiesgoEffectiveStateRecalculator.markUrgentRepaired(caseId, reason, currentUser.id());
+        if (isCleas(caseEntity)) cleasEffectiveStateRecalculator.markUrgentRepaired(caseId, reason, currentUser.id()); else todoRiesgoEffectiveStateRecalculator.markUrgentRepaired(caseId, reason, currentUser.id());
     }
 
     private void requireGlobalAdmin(AuthenticatedUser currentUser) {
@@ -210,9 +219,10 @@ public class CaseWorkflowService {
     }
 
     private void notifyGlobalAdminsNoRepair(CaseEntity caseEntity, AuthenticatedUser actor, String reason) {
+        String notificationType = isCleas(caseEntity) ? "CLEAS_NO_REPARA" : "TODO_RIESGO_NO_REPARA";
         for (Long adminUserId : userRoleRepository.findActiveGlobalUserIdsByRoleCode("ROLE_ADMIN")) {
             NotificationEntity notification = new NotificationEntity();
-            notification.setUserId(adminUserId); notification.setCaseId(caseEntity.getId()); notification.setTypeCode("TODO_RIESGO_NO_REPARA");
+            notification.setUserId(adminUserId); notification.setCaseId(caseEntity.getId()); notification.setTypeCode(notificationType);
             notification.setTitle("Caso marcado como no debe repararse");
             notification.setMessage("Caso " + caseEntity.getFolderCode() + ". Actor: " + actor.displayName() + ". Motivo: " + reason.trim());
             notification.setActionUrl("/cases/" + caseEntity.getId()); notification.setEntityType("caso"); notification.setEntityId(caseEntity.getId());
@@ -304,6 +314,7 @@ public class CaseWorkflowService {
         // La documentación forma parte de los facts del estado efectivo de TODO_RIESGO/GRANIZO.
         // Sin este recálculo, Presentado (PD) podía quedar visible aun con documentación completa.
         todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+        cleasEffectiveStateRecalculator.recalculate(caseId);
     }
 
     @Transactional(readOnly = true)
@@ -470,6 +481,10 @@ public class CaseWorkflowService {
 
     private boolean isParticular(CaseEntity caseEntity) {
         return caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> "PARTICULAR".equalsIgnoreCase(type.getCode())).orElse(false);
+    }
+
+    private boolean isCleas(CaseEntity caseEntity) {
+        return caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> "CLEAS".equalsIgnoreCase(type.getCode())).orElse(false);
     }
 
     private boolean isInsuranceRepair(CaseEntity caseEntity) {

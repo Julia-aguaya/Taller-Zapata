@@ -9,6 +9,7 @@ import com.tallerzapata.backend.application.casefile.CaseWorkflowService;
 import com.tallerzapata.backend.application.cleas.CleasDownstreamGate;
 import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
+import com.tallerzapata.backend.application.casefile.cleasstate.CleasEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
@@ -51,6 +52,7 @@ public class VehicleOutcomeService {
     private final ParticularCaseClosureService particularCaseClosureService;
     private final ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
     private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
+    private final CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator;
     private final CleasDownstreamGate cleasDownstreamGate;
 
     public VehicleOutcomeService(
@@ -65,7 +67,7 @@ public class VehicleOutcomeService {
             CaseAuditService caseAuditService,
             CaseWorkflowService caseWorkflowService,
             RepairAppointmentService repairAppointmentService,
-                ParticularCaseClosureService particularCaseClosureService, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasDownstreamGate cleasDownstreamGate
+                ParticularCaseClosureService particularCaseClosureService, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator, CleasDownstreamGate cleasDownstreamGate
     ) {
         this.vehicleOutcomeRepository = vehicleOutcomeRepository;
         this.vehicleIntakeRepository = vehicleIntakeRepository;
@@ -81,6 +83,7 @@ public class VehicleOutcomeService {
         this.particularCaseClosureService = particularCaseClosureService;
         this.particularEffectiveStateRecalculator = particularEffectiveStateRecalculator;
         this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
+        this.cleasEffectiveStateRecalculator = cleasEffectiveStateRecalculator;
         this.cleasDownstreamGate = cleasDownstreamGate;
     }
 
@@ -162,6 +165,7 @@ public class VehicleOutcomeService {
         particularCaseClosureService.syncClosure(caseId);
         particularEffectiveStateRecalculator.recalculate(caseId);
         todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+        cleasEffectiveStateRecalculator.recalculate(caseId);
 
         return toResponse(entity);
     }
@@ -224,6 +228,7 @@ public class VehicleOutcomeService {
         particularCaseClosureService.syncClosure(caseEntity.getId());
         particularEffectiveStateRecalculator.recalculate(caseEntity.getId());
         todoRiesgoEffectiveStateRecalculator.recalculate(caseEntity.getId());
+        cleasEffectiveStateRecalculator.recalculate(caseEntity.getId());
 
         return toResponse(entity);
     }

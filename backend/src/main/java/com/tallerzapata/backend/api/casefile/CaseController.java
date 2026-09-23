@@ -237,6 +237,13 @@ public class CaseController {
         return caseService.getById(caseId);
     }
 
+    @PostMapping("/{caseId}/cleas/no-repair")
+    public CaseResponse markCleasNoRepair(@PathVariable Long caseId, @Valid @RequestBody TodoRiesgoNoRepairRequest request) { caseWorkflowService.markTodoRiesgoNoRepair(caseId, request.reason()); return caseService.getById(caseId); }
+    @PostMapping("/{caseId}/cleas/no-repair/revert")
+    public CaseResponse revertCleasNoRepair(@PathVariable Long caseId, @Valid @RequestBody TodoRiesgoNoRepairRequest request) { caseWorkflowService.revertTodoRiesgoNoRepair(caseId, request.reason()); return caseService.getById(caseId); }
+    @PostMapping("/{caseId}/cleas/urgent-repaired")
+    public CaseResponse markCleasUrgentRepaired(@PathVariable Long caseId, @Valid @RequestBody TodoRiesgoNoRepairRequest request) { caseWorkflowService.markTodoRiesgoUrgentRepaired(caseId, request.reason()); return caseService.getById(caseId); }
+
     @Operation(summary = "Agregar nota al caso", description = "Registra una anotacion manual en la auditoria del caso")
     @ApiResponse(responseCode = "200", description = "OK")
     @PostMapping("/{caseId}/notes")

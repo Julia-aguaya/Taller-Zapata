@@ -6,6 +6,7 @@ import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.ParticularCaseClosureService;
 import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
+import com.tallerzapata.backend.application.casefile.cleasstate.CleasEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.cleas.CleasDownstreamGate;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
@@ -65,6 +66,7 @@ public class BudgetService {
     private final BranchRepository branchRepository;
     private final ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
     private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
+    private final CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator;
     private final ProviderRepository providerRepository;
     private final BudgetComparisonService budgetComparisonService;
     private final CanonicalPartReconciliationService canonicalPartReconciliationService;
@@ -73,7 +75,7 @@ public class BudgetService {
     private final VehicleRepository vehicleRepository;
 
     public BudgetService(BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, BudgetAccessoryWorkRepository budgetAccessoryWorkRepository, CasePartRepository casePartRepository, CaseRepository caseRepository, BudgetReportStatusRepository budgetReportStatusRepository, BudgetTaskRepository budgetTaskRepository, DamageLevelRepository damageLevelRepository, PartDecisionRepository partDecisionRepository, BudgetActionRepository budgetActionRepository, PartStatusRepository partStatusRepository, PartPurchaserRepository partPurchaserRepository, PartPaymentStatusRepository partPaymentStatusRepository, InsurancePartsAuthorizationRepository insurancePartsAuthorizationRepository, PersonRepository personRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService,             BudgetPdfService budgetPdfService, ParticularCaseClosureService particularCaseClosureService,
-            OrganizationRepository organizationRepository, BranchRepository branchRepository, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, ProviderRepository providerRepository, BudgetComparisonService budgetComparisonService, CanonicalPartReconciliationService canonicalPartReconciliationService, CasePartReconciliationWarningRepository warningRepository, CleasDownstreamGate cleasDownstreamGate, VehicleRepository vehicleRepository) {
+            OrganizationRepository organizationRepository, BranchRepository branchRepository, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator, ProviderRepository providerRepository, BudgetComparisonService budgetComparisonService, CanonicalPartReconciliationService canonicalPartReconciliationService, CasePartReconciliationWarningRepository warningRepository, CleasDownstreamGate cleasDownstreamGate, VehicleRepository vehicleRepository) {
         this.budgetRepository = budgetRepository;
         this.budgetItemRepository = budgetItemRepository;
         this.budgetAccessoryWorkRepository = budgetAccessoryWorkRepository;
@@ -98,6 +100,7 @@ public class BudgetService {
         this.branchRepository = branchRepository;
         this.particularEffectiveStateRecalculator = particularEffectiveStateRecalculator;
         this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
+        this.cleasEffectiveStateRecalculator = cleasEffectiveStateRecalculator;
         this.providerRepository = providerRepository;
         this.budgetComparisonService = budgetComparisonService;
         this.canonicalPartReconciliationService = canonicalPartReconciliationService;
@@ -222,6 +225,7 @@ public class BudgetService {
         particularCaseClosureService.syncClosure(caseId);
         particularEffectiveStateRecalculator.recalculate(caseId);
         todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+        cleasEffectiveStateRecalculator.recalculate(caseId);
         List<BudgetItemResponse> items = budgetItemRepository.findByBudgetIdOrderByVisualOrderAsc(entity.getId()).stream().map(this::toBudgetItemResponse).toList();
         return toBudgetResponse(entity, items);
     }
@@ -241,6 +245,7 @@ public class BudgetService {
         particularCaseClosureService.syncClosure(caseId);
         particularEffectiveStateRecalculator.recalculate(caseId);
         todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+        cleasEffectiveStateRecalculator.recalculate(caseId);
         List<BudgetItemResponse> items = budgetItemRepository.findByBudgetIdOrderByVisualOrderAsc(entity.getId()).stream().map(this::toBudgetItemResponse).toList();
         return toBudgetResponse(entity, items);
     }
@@ -363,6 +368,7 @@ public class BudgetService {
         caseAuditService.register(currentUser.id(), caseId, "repuestos_caso", entity.getId(), "crear_repuesto_caso", null, caseAuditService.toJson(Map.of("description", entity.getDescription(), "statusCode", entity.getStatusCode())), caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
         particularEffectiveStateRecalculator.recalculate(caseId);
         todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+        cleasEffectiveStateRecalculator.recalculate(caseId);
         return toCasePartResponse(entity);
     }
 
@@ -391,6 +397,7 @@ public class BudgetService {
         caseAuditService.register(currentUser.id(), caseId, "repuestos_caso", entity.getId(), "actualizar_repuesto_caso", null, caseAuditService.toJson(Map.of("description", entity.getDescription(), "statusCode", entity.getStatusCode())), caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
         particularEffectiveStateRecalculator.recalculate(caseId);
         todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+        cleasEffectiveStateRecalculator.recalculate(caseId);
         return toCasePartResponse(entity);
     }
 
@@ -411,6 +418,7 @@ public class BudgetService {
                 caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
         particularEffectiveStateRecalculator.recalculate(caseId);
         todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+        cleasEffectiveStateRecalculator.recalculate(caseId);
     }
 
     @Transactional
@@ -424,6 +432,7 @@ public class BudgetService {
         if (!result.isEmpty()) {
             particularEffectiveStateRecalculator.recalculate(caseId);
             todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+            cleasEffectiveStateRecalculator.recalculate(caseId);
         }
         return result;
     }

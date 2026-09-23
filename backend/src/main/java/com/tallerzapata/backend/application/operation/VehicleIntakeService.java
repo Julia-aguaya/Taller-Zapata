@@ -10,6 +10,7 @@ import com.tallerzapata.backend.application.casefile.CaseWorkflowService;
 import com.tallerzapata.backend.application.cleas.CleasDownstreamGate;
 import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
+import com.tallerzapata.backend.application.casefile.cleasstate.CleasEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
@@ -61,6 +62,7 @@ public class VehicleIntakeService {
     private final CaseWorkflowService caseWorkflowService;
     private final ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
     private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
+    private final CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator;
     private final CleasDownstreamGate cleasDownstreamGate;
 
     public VehicleIntakeService(
@@ -79,7 +81,7 @@ public class VehicleIntakeService {
             CaseAccessControlService caseAccessControlService,
             CaseAuditService caseAuditService,
             CaseWorkflowService caseWorkflowService,
-            ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasDownstreamGate cleasDownstreamGate
+            ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator, CleasDownstreamGate cleasDownstreamGate
     ) {
         this.vehicleIntakeRepository = vehicleIntakeRepository;
         this.vehicleIntakeItemRepository = vehicleIntakeItemRepository;
@@ -98,6 +100,7 @@ public class VehicleIntakeService {
         this.caseWorkflowService = caseWorkflowService;
         this.particularEffectiveStateRecalculator = particularEffectiveStateRecalculator;
         this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
+        this.cleasEffectiveStateRecalculator = cleasEffectiveStateRecalculator;
         this.cleasDownstreamGate = cleasDownstreamGate;
     }
 
@@ -171,6 +174,7 @@ public class VehicleIntakeService {
         );
         particularEffectiveStateRecalculator.recalculate(caseId);
         todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+        cleasEffectiveStateRecalculator.recalculate(caseId);
 
         return toResponse(entity);
     }
@@ -220,6 +224,7 @@ public class VehicleIntakeService {
         );
         particularEffectiveStateRecalculator.recalculate(caseEntity.getId());
         todoRiesgoEffectiveStateRecalculator.recalculate(caseEntity.getId());
+        cleasEffectiveStateRecalculator.recalculate(caseEntity.getId());
 
         return toResponse(entity);
     }

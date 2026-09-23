@@ -24,6 +24,7 @@ import com.tallerzapata.backend.api.insurance.InsuranceProcessingPatchRequest;
 import com.tallerzapata.backend.api.insurance.InsuranceProcessingResponse;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.CaseManagementService;
+import com.tallerzapata.backend.application.casefile.cleasstate.CleasEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.insurance.InsuranceService;
@@ -91,8 +92,9 @@ public class CleasManagementService {
     private final FinancialPaymentMethodRepository financialPaymentMethodRepository;
     private final FinancialRetentionTypeRepository financialRetentionTypeRepository;
     private final IssuedReceiptRepository issuedReceiptRepository;
+    private final CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator;
 
-    public CleasManagementService(InsuranceService insuranceService, CaseManagementService caseManagementService, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, DocumentRepository documentRepository, DocumentCategoryRepository documentCategoryRepository, DocumentRelationRepository documentRelationRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, CaseCleasRepository caseCleasRepository, CleasClosurePolicy cleasClosurePolicy, CleasSettlementPolicy cleasSettlementPolicy, CleasLiquidationPdfService cleasLiquidationPdfService, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, FinancialMovementRepository financialMovementRepository, FinancialMovementRetentionRepository financialMovementRetentionRepository, FinancialPaymentMethodRepository financialPaymentMethodRepository, FinancialRetentionTypeRepository financialRetentionTypeRepository, IssuedReceiptRepository issuedReceiptRepository) {
+    public CleasManagementService(InsuranceService insuranceService, CaseManagementService caseManagementService, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, DocumentRepository documentRepository, DocumentCategoryRepository documentCategoryRepository, DocumentRelationRepository documentRelationRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, CaseCleasRepository caseCleasRepository, CleasClosurePolicy cleasClosurePolicy, CleasSettlementPolicy cleasSettlementPolicy, CleasLiquidationPdfService cleasLiquidationPdfService, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, FinancialMovementRepository financialMovementRepository, FinancialMovementRetentionRepository financialMovementRetentionRepository, FinancialPaymentMethodRepository financialPaymentMethodRepository, FinancialRetentionTypeRepository financialRetentionTypeRepository, IssuedReceiptRepository issuedReceiptRepository, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator) {
         this.insuranceService = insuranceService;
         this.caseManagementService = caseManagementService;
         this.caseRepository = caseRepository;
@@ -114,13 +116,14 @@ public class CleasManagementService {
         this.financialPaymentMethodRepository = financialPaymentMethodRepository;
         this.financialRetentionTypeRepository = financialRetentionTypeRepository;
         this.issuedReceiptRepository = issuedReceiptRepository;
+        this.cleasEffectiveStateRecalculator = cleasEffectiveStateRecalculator;
     }
 
     @Transactional(readOnly = true)
     public CaseCleasResponse getDefinition(Long caseId) { requireCleasCase(caseId); return insuranceService.getCaseCleas(caseId); }
 
     @Transactional
-    public CaseCleasResponse upsertDefinition(Long caseId, CaseCleasUpsertRequest request, HttpServletRequest httpRequest) { requireEditableCleasCase(caseId); return insuranceService.upsertCaseCleas(caseId, request, httpRequest); }
+    public CaseCleasResponse upsertDefinition(Long caseId, CaseCleasUpsertRequest request, HttpServletRequest httpRequest) { requireEditableCleasCase(caseId); CaseCleasResponse response = insuranceService.upsertCaseCleas(caseId, request, httpRequest); cleasEffectiveStateRecalculator.recalculate(caseId); return response; }
 
     @Transactional(readOnly = true)
     public CaseInsuranceResponse getInsurance(Long caseId) { requireCleasCase(caseId); return insuranceService.getCaseInsurance(caseId); }
@@ -152,7 +155,7 @@ public class CleasManagementService {
     public InsuranceProcessingResponse getProcessing(Long caseId) { requireCleasCase(caseId); return insuranceService.getCaseInsuranceProcessing(caseId); }
 
     @Transactional
-    public InsuranceProcessingResponse patchProcessing(Long caseId, InsuranceProcessingPatchRequest request, HttpServletRequest httpRequest) { requireEditableCleasCase(caseId); return insuranceService.patchCaseInsuranceProcessing(caseId, request, httpRequest); }
+    public InsuranceProcessingResponse patchProcessing(Long caseId, InsuranceProcessingPatchRequest request, HttpServletRequest httpRequest) { requireEditableCleasCase(caseId); InsuranceProcessingResponse response = insuranceService.patchCaseInsuranceProcessing(caseId, request, httpRequest); if (request.has("agreementDate")) cleasEffectiveStateRecalculator.recordAgreement(caseId, request.agreementDate() == null || request.agreementDate().isNull() ? null : LocalDate.parse(request.agreementDate().asText())); else cleasEffectiveStateRecalculator.recalculate(caseId); return response; }
 
     @Transactional(readOnly = true)
     public List<CleasOrderResponse> listOrders(Long caseId) {
@@ -209,6 +212,7 @@ public class CleasManagementService {
         LocalDateTime closedAt = LocalDateTime.now();
         caseEntity.setClosedAt(closedAt);
         caseRepository.save(caseEntity);
+        cleasEffectiveStateRecalculator.recalculate(caseId);
         caseAuditService.register(currentUser.id(), caseId, "casos", caseId, "cerrar_cleas_dictamen_en_contra", null,
                 caseAuditService.toJson(Map.of("closedAt", closedAt)), caseAuditService.toJson(Map.of("domain", CLEAS_MODULE)), httpRequest);
         return new CleasClosureResponse(caseId, closedAt);
@@ -290,6 +294,7 @@ public class CleasManagementService {
         caseAuditService.register(currentUser.id(), caseId, "documento_relaciones", documentRelation.getId(), "vincular_comprobante_pago_cleas", null,
                 caseAuditService.toJson(Map.of("documentId", document.getId(), "movementId", movementId)), caseAuditService.toJson(Map.of("domain", CLEAS_MODULE)), httpRequest);
         List<FinancialMovementRetentionResponse> retentionResponses = savedRetentions.stream().map(retention -> new FinancialMovementRetentionResponse(retention.getId(), retention.getRetentionTypeCode(), retention.getAmount(), retention.getDetail())).toList();
+        cleasEffectiveStateRecalculator.recalculate(caseId);
         return new CleasCompanyPaymentResponse(movement.getId(), movement.getPublicId(), grossAmount, movement.getMovementAt(), movement.getPaymentMethodCode(), movement.getPaymentMethodDetail(), movement.getReceiptId(), movement.getExternalReference(), movement.getReason(), grossAmount, retentionsAmount, netAmount, document.getId(), retentionResponses);
     }
 
@@ -338,6 +343,7 @@ public class CleasManagementService {
         caseAuditService.register(currentUser.id(), caseId, "movimientos_financieros", reversal.getId(), "anular_pago_compania_cleas", null,
                 caseAuditService.toJson(Map.of("movementId", movementId, "reversalMovementId", reversal.getId(), "grossAmount", grossAmount, "netAmount", netAmount)), caseAuditService.toJson(Map.of("domain", CLEAS_MODULE)), httpRequest);
 
+        cleasEffectiveStateRecalculator.recalculate(caseId);
         return companyPaymentSummary(caseEntity);
     }
 
@@ -395,6 +401,7 @@ public class CleasManagementService {
         caseAuditService.register(currentUser.id(), caseId, "movimientos_financieros", movement.getId(), "registrar_pago_franquicia_cleas", null,
                 caseAuditService.toJson(Map.of("grossAmount", grossAmount, "movementId", movement.getId())), caseAuditService.toJson(Map.of("domain", CLEAS_MODULE)), httpRequest);
 
+        cleasEffectiveStateRecalculator.recalculate(caseId);
         return updated;
     }
 
@@ -411,6 +418,7 @@ public class CleasManagementService {
         reversal.setCaseId(caseId); reversal.setMovementTypeCode("EGRESO"); reversal.setFlowOriginCode("CLIENTE"); reversal.setCounterpartyTypeCode("PERSONA"); reversal.setCounterpartyPersonId(original.getCounterpartyPersonId()); reversal.setMovementAt(LocalDateTime.now()); reversal.setGrossAmount(money(original.getGrossAmount())); reversal.setNetAmount(money(original.getNetAmount())); reversal.setPaymentMethodCode(original.getPaymentMethodCode()); reversal.setCancellationTypeCode("FRANQUICIA"); reversal.setAdvancePayment(false); reversal.setBonification(false); reversal.setExternalReference(original.getPublicId()); reversal.setReason(request == null || blankToNull(request.reason()) == null ? "Anulacion de pago de franquicia CLEAS" : blankToNull(request.reason())); reversal.setRegisteredBy(currentUser.id()); financialMovementRepository.saveAndFlush(reversal);
         CleasFranchisePaymentSummaryResponse updated = franchiseSummary(caseEntity);
         caseAuditService.register(currentUser.id(), caseId, "movimientos_financieros", movementId, "anular_pago_franquicia_cleas", null, caseAuditService.toJson(Map.of("movementId", movementId)), caseAuditService.toJson(Map.of("domain", CLEAS_MODULE)), httpRequest);
+        cleasEffectiveStateRecalculator.recalculate(caseId);
         return updated;
     }
 
@@ -458,6 +466,7 @@ public class CleasManagementService {
         paymentAudit.put("documentId", request.documentId());
         caseAuditService.register(currentUser.id(), caseId, "caso_cleas", cleas.getId(), "registrar_pago_compania_franquicia_cleas", null,
                 caseAuditService.toJson(paymentAudit), caseAuditService.toJson(Map.of("domain", CLEAS_MODULE)), httpRequest);
+        cleasEffectiveStateRecalculator.recalculate(caseId);
         return franchiseSummary(caseEntity);
     }
 

@@ -234,11 +234,11 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     () => (partsCatalogsQuery.data?.authorizationCodes ?? []).map((item) => ({ value: item.code, label: item.name || item.code })),
     [partsCatalogsQuery.data?.authorizationCodes],
   );
-  const isInsuranceRepair = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
+  const isInsuranceRepair = ['TODO_RIESGO', 'GRANIZO', 'CLEAS'].includes(caseDetail?.caseTypeCode);
   const syncsCanonicalParts = ['PARTICULAR', 'TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
-  const supportsNoRepair = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
+  const supportsNoRepair = ['TODO_RIESGO', 'GRANIZO', 'CLEAS'].includes(caseDetail?.caseTypeCode);
   const canManageExceptionalRepair = hasGlobalAdminScope(session);
-  const supportsUrgentRepair = caseDetail?.caseTypeCode === 'TODO_RIESGO' && caseDetail?.visibleTramiteState?.code === 'SIN_PRESENTAR';
+  const supportsUrgentRepair = ['TODO_RIESGO', 'CLEAS'].includes(caseDetail?.caseTypeCode) && caseDetail?.visibleTramiteState?.code === 'SIN_PRESENTAR';
   const isNoRepair = caseDetail?.visibleRepairState?.code === 'NO_DEBE_REPARARSE';
   const [noRepairDialog, setNoRepairDialog] = useState(null);
   const [noRepairReason, setNoRepairReason] = useState('');
@@ -246,7 +246,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const [urgentRepairReason, setUrgentRepairReason] = useState('');
 
   const noRepairMutation = useMutation({
-    mutationFn: ({ revert, reason }) => requestJson(`/cases/${caseId}/todo-riesgo/no-repair${revert ? '/revert' : ''}`, {
+    mutationFn: ({ revert, reason }) => requestJson(`/cases/${caseId}/${caseDetail?.caseTypeCode === 'CLEAS' ? 'cleas' : 'todo-riesgo'}/no-repair${revert ? '/revert' : ''}`, {
       method: 'POST',
       body: JSON.stringify({ reason }),
     }),
@@ -259,7 +259,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   });
 
   const urgentRepairMutation = useMutation({
-    mutationFn: (reason) => requestJson(`/cases/${caseId}/todo-riesgo/urgent-repaired`, { method: 'POST', body: JSON.stringify({ reason }) }),
+    mutationFn: (reason) => requestJson(`/cases/${caseId}/${caseDetail?.caseTypeCode === 'CLEAS' ? 'cleas' : 'todo-riesgo'}/urgent-repaired`, { method: 'POST', body: JSON.stringify({ reason }) }),
     onSuccess: async () => { setUrgentRepairDialog(false); setUrgentRepairReason(''); await refreshWorkspace('Reparación urgente registrada.'); },
     onError: (error) => toast.error(error.message || 'No pude registrar la reparación urgente.'),
   });
