@@ -616,6 +616,25 @@ class CaseReadinessIntegrationTest {
     }
 
     @Test
+    void shouldCompleteRepairReadinessWhenEffectiveStateIsNoRepair() throws Exception {
+        Long caseId = createTodoRiesgoCase();
+
+        mockMvc.perform(post("/api/v1/cases/{caseId}/todo-riesgo/no-repair", caseId)
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"reason\":\"Dano estructural\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.visibleRepairState.code").value("NO_DEBE_REPARARSE"));
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
+                .andExpect(jsonPath("$.tabs[3].completed").value(true))
+                .andExpect(jsonPath("$.tabs[3].colorHint").value("BLUE"));
+    }
+
+    @Test
     void shouldAllowBudgetWithoutFranchiseWhenOtherTodoRiesgoRequirementsAreComplete() throws Exception {
         Long caseId = createTodoRiesgoCase();
         completeVehicle(caseId);

@@ -85,6 +85,7 @@ public class CaseReadinessService {
     private final CaseLegalRepository caseLegalRepository;
     private final LegalLesionadoRepository legalLesionadoRepository;
     private final CleasClosurePolicy cleasClosurePolicy;
+    private final CaseVisibleStateResolver caseVisibleStateResolver;
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService caseAccessControlService;
     private final InsuranceRepairCasePolicy insuranceRepairCasePolicy = new InsuranceRepairCasePolicy();
@@ -112,6 +113,7 @@ public class CaseReadinessService {
             CaseLegalRepository caseLegalRepository,
             LegalLesionadoRepository legalLesionadoRepository,
             CleasClosurePolicy cleasClosurePolicy,
+            CaseVisibleStateResolver caseVisibleStateResolver,
             CurrentUserService currentUserService,
             CaseAccessControlService caseAccessControlService
     ) {
@@ -137,6 +139,7 @@ public class CaseReadinessService {
         this.caseLegalRepository = caseLegalRepository;
         this.legalLesionadoRepository = legalLesionadoRepository;
         this.cleasClosurePolicy = cleasClosurePolicy;
+        this.caseVisibleStateResolver = caseVisibleStateResolver;
         this.currentUserService = currentUserService;
         this.caseAccessControlService = caseAccessControlService;
     }
@@ -173,7 +176,7 @@ public class CaseReadinessService {
             tabs.add(tramiteTab);
             CaseReadinessTabResponse budgetTab = buildTodoRiesgoPresupuestoReadiness(caseId, principalVehicle, gestionTramiteCompleted);
             tabs.add(budgetTab);
-            tabs.add(buildTodoRiesgoReparacionReadiness(caseId, hasGeneratedBudget(caseId)));
+            tabs.add(buildTodoRiesgoReparacionReadiness(caseEntity, hasGeneratedBudget(caseId)));
             tabs.add(buildTodoRiesgoPagosReadiness(caseId));
         } else if ("GRANIZO".equals(caseType.getCode())) {
             CaseReadinessTabResponse tramiteTab = buildTodoRiesgoGestionTramiteReadiness(caseId);
@@ -181,7 +184,7 @@ public class CaseReadinessService {
             CaseReadinessTabResponse budgetTab = buildGranizoPresupuestoReadiness(
                     caseId, principalVehicle, collectInsuranceRepairBudgetAccessBlockingReasons(caseId));
             tabs.add(budgetTab);
-            tabs.add(buildTodoRiesgoReparacionReadiness(caseId, hasGeneratedBudget(caseId)));
+            tabs.add(buildTodoRiesgoReparacionReadiness(caseEntity, hasGeneratedBudget(caseId)));
             tabs.add(buildInsuranceRepairPagosReadiness(caseId, false));
         } else if ("CLEAS".equals(caseType.getCode())) {
             CaseCleasEntity definition = caseCleasRepository.findByCaseId(caseId).orElse(null);
@@ -189,7 +192,7 @@ public class CaseReadinessService {
                 CaseReadinessTabResponse tramiteTab = buildTodoRiesgoGestionTramiteReadiness(caseId);
                 tabs.add(tramiteTab);
                 tabs.add(buildTodoRiesgoPresupuestoReadiness(caseId, principalVehicle, tramiteTab.completed()));
-                tabs.add(buildTodoRiesgoReparacionReadiness(caseId, hasGeneratedBudget(caseId)));
+                tabs.add(buildTodoRiesgoReparacionReadiness(caseEntity, hasGeneratedBudget(caseId)));
                 tabs.add(buildTodoRiesgoPagosReadiness(caseId));
             } else {
                 tabs.add(buildCleasGestionTramiteReadiness(definition));
@@ -205,7 +208,7 @@ public class CaseReadinessService {
             if (enablesRepair) {
                 CaseReadinessTabResponse budgetTab = buildTramiteGatedPresupuestoReadiness(caseId, principalVehicle, tramiteTab.completed());
                 tabs.add(budgetTab);
-                tabs.add(buildTodoRiesgoReparacionReadiness(caseId, hasGeneratedBudget(caseId)));
+                tabs.add(buildTodoRiesgoReparacionReadiness(caseEntity, hasGeneratedBudget(caseId)));
             }
             tabs.add(buildFranchiseRecoveryPagosReadiness(tramiteTab.completed()));
         } else if (insuranceRepairCasePolicy.isThirdPartyClaim(caseType.getCode())) {
@@ -220,7 +223,7 @@ public class CaseReadinessService {
             // la tramitacion toma sus montos desde el presupuesto, no al reves.
             CaseReadinessTabResponse budgetTab = buildBudgetCompletionReadiness(caseId, principalVehicle);
             tabs.add(budgetTab);
-            tabs.add(buildTercerosReparacionReadiness(caseId, legal));
+            tabs.add(buildTercerosReparacionReadiness(caseEntity));
             if (lawyerManaged) {
                 tabs.add(buildLegalPagosReadiness(legal));
             } else {
@@ -480,12 +483,11 @@ public class CaseReadinessService {
         return toTab("PRESUPUESTO", true, blocking, List.of());
     }
 
-    private CaseReadinessTabResponse buildTodoRiesgoReparacionReadiness(Long caseId, boolean budgetGenerated) {
+    private CaseReadinessTabResponse buildTodoRiesgoReparacionReadiness(CaseEntity caseEntity, boolean budgetGenerated) {
+        Long caseId = caseEntity.getId();
         List<String> blocking = new ArrayList<>();
-        InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
 
-        // NO_DEBE_REPARARSE → completada automáticamente
-        if (processing != null && Boolean.TRUE.equals(processing.getNoRepair())) {
+        if (isRepairSuppressed(caseEntity)) {
             return new CaseReadinessTabResponse("GESTION_REPARACION", true, true, "BLUE", List.of(), List.of());
         }
 
@@ -617,12 +619,15 @@ public class CaseReadinessService {
         );
     }
 
-    private CaseReadinessTabResponse buildTercerosReparacionReadiness(Long caseId, CaseLegalEntity legal) {
-        // "No repara vehiculo" anula la gestion de reparacion: la solapa queda completa en azul.
-        if (legal != null && Boolean.FALSE.equals(legal.getRepairsVehicle())) {
+    private CaseReadinessTabResponse buildTercerosReparacionReadiness(CaseEntity caseEntity) {
+        if (isRepairSuppressed(caseEntity)) {
             return new CaseReadinessTabResponse("GESTION_REPARACION", true, true, "BLUE", List.of(), List.of());
         }
-        return buildTodoRiesgoReparacionReadiness(caseId, hasGeneratedBudget(caseId));
+        return buildTodoRiesgoReparacionReadiness(caseEntity, hasGeneratedBudget(caseEntity.getId()));
+    }
+
+    private boolean isRepairSuppressed(CaseEntity caseEntity) {
+        return "NO_DEBE_REPARARSE".equals(caseVisibleStateResolver.resolveForCase(caseEntity).get("reparacion").code());
     }
 
     /**
