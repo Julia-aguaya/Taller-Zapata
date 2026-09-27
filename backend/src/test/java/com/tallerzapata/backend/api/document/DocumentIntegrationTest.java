@@ -346,7 +346,7 @@ class DocumentIntegrationTest {
         Long categoryId = activeCategoryId("OTRO");
         String sessionResponse = mockMvc.perform(post("/api/v1/document-uploads")
                         .header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"caseId\":100,\"categoryId\":" + categoryId + ",\"fileName\":\"video.txt\",\"mimeType\":\"text/plain\",\"sizeBytes\":" + payload.length + ",\"checksumSha256\":\"" + sha256(payload) + "\",\"chunkCount\":2}"))
+                        .content("{\"caseId\":100,\"categoryId\":" + categoryId + ",\"fileName\":\"video.txt\",\"mimeType\":\"text/plain\",\"sizeBytes\":" + payload.length + ",\"chunkCount\":2}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         String uploadId = objectMapper.readTree(sessionResponse).get("uploadId").asText();
         uploadChunk(uploadId, 0, first).andExpect(status().isOk()).andExpect(jsonPath("$.nextChunk").value(1));
@@ -354,6 +354,7 @@ class DocumentIntegrationTest {
         String completed = mockMvc.perform(post("/api/v1/document-uploads/{uploadId}/complete", uploadId).header("X-User-Id", "3"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         Long documentId = objectMapper.readTree(completed).get("id").asLong();
+        assertThat(objectMapper.readTree(completed).get("checksumSha256").asText()).isEqualTo(sha256(payload));
         mockMvc.perform(post("/api/v1/documents/{documentId}/relations", documentId).header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(new DocumentRelationCreateRequest(100L, "CASO", 100L, "PRESUPUESTO", false, false, 0))))
                 .andExpect(status().isOk());
@@ -366,7 +367,7 @@ class DocumentIntegrationTest {
         byte[] payload = "abc".getBytes();
         Long categoryId = activeCategoryId("OTRO");
         String response = mockMvc.perform(post("/api/v1/document-uploads").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"caseId\":100,\"categoryId\":" + categoryId + ",\"fileName\":\"retry.txt\",\"mimeType\":\"text/plain\",\"sizeBytes\":3,\"checksumSha256\":\"" + sha256(payload) + "\",\"chunkCount\":1}"))
+                        .content("{\"caseId\":100,\"categoryId\":" + categoryId + ",\"fileName\":\"retry.txt\",\"mimeType\":\"text/plain\",\"sizeBytes\":3,\"chunkCount\":1}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         String uploadId = objectMapper.readTree(response).get("uploadId").asText();
         uploadChunk(uploadId, 1, payload).andExpect(status().isConflict());
@@ -380,23 +381,23 @@ class DocumentIntegrationTest {
         byte[] payload = "logo-global".getBytes();
         Long categoryId = activeCategoryId("OTRO");
         String globalSession = mockMvc.perform(post("/api/v1/document-uploads").header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"categoryId\":" + categoryId + ",\"fileName\":\"logo.png\",\"mimeType\":\"image/png\",\"sizeBytes\":" + payload.length + ",\"checksumSha256\":\"" + sha256(payload) + "\",\"chunkCount\":1}"))
+                        .content("{\"categoryId\":" + categoryId + ",\"fileName\":\"logo.png\",\"mimeType\":\"image/png\",\"sizeBytes\":" + payload.length + ",\"chunkCount\":1}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         String uploadId = objectMapper.readTree(globalSession).get("uploadId").asText();
         mockMvc.perform(get("/api/v1/document-uploads/{uploadId}", uploadId).header("X-User-Id", "1")).andExpect(status().isOk());
         mockMvc.perform(multipart("/api/v1/document-uploads/{uploadId}/chunks/{index}", uploadId, 0)
                         .file(new MockMultipartFile("file", "chunk.bin", MediaType.APPLICATION_OCTET_STREAM_VALUE, payload))
-                        .header("X-User-Id", "1").header("X-Chunk-Sha256", sha256(payload))).andExpect(status().isOk());
+                        .header("X-User-Id", "1")).andExpect(status().isOk());
         mockMvc.perform(post("/api/v1/document-uploads/{uploadId}/complete", uploadId).header("X-User-Id", "1")).andExpect(status().isOk());
         mockMvc.perform(post("/api/v1/document-uploads").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"categoryId\":" + categoryId + ",\"fileName\":\"operator.png\",\"mimeType\":\"image/png\",\"sizeBytes\":1,\"checksumSha256\":\"" + sha256(new byte[]{'x'}) + "\",\"chunkCount\":1}"))
+                        .content("{\"categoryId\":" + categoryId + ",\"fileName\":\"operator.png\",\"mimeType\":\"image/png\",\"sizeBytes\":1,\"chunkCount\":1}"))
                 .andExpect(status().isForbidden());
     }
 
     private org.springframework.test.web.servlet.ResultActions uploadChunk(String uploadId, int index, byte[] content) throws Exception {
         return mockMvc.perform(multipart("/api/v1/document-uploads/{uploadId}/chunks/{index}", uploadId, index)
                 .file(new MockMultipartFile("file", "chunk.bin", MediaType.APPLICATION_OCTET_STREAM_VALUE, content))
-                .header("X-User-Id", "3").header("X-Chunk-Sha256", sha256(content)));
+                .header("X-User-Id", "3"));
     }
 
     private String sha256(byte[] value) throws Exception {

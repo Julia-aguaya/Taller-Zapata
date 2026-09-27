@@ -145,7 +145,9 @@ class FinanceIntegrationTest {
         jdbcTemplate.update("INSERT INTO caso_seguro (caso_id, compania_seguro_id) VALUES (?, ?)", caseId, 1L);
         jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_cotizacion, monto_acordado, monto_facturar_compania) VALUES (?, ?, ?, ?)", caseId, LocalDate.of(2026, 5, 11), new BigDecimal("500.00"), new BigDecimal("400.00"));
 
-        postFranchiseMovement(caseId, "INGRESO", "40.00").andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId).header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"CLIENTE\",\"counterpartyTypeCode\":\"PERSONA\",\"counterpartyPersonId\":10,\"movementAt\":\"2026-05-11T10:30:00\",\"grossAmount\":40,\"netAmount\":36,\"paymentMethodCode\":\"TRANSFERENCIA\",\"cancellationTypeCode\":\"FRANQUICIA\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[{\"retentionTypeCode\":\"IIBB\",\"amount\":4}],\"applications\":[]}"))
+                .andExpect(status().isOk());
         mockMvc.perform(get("/api/v1/cases/{caseId}/finance/payment-breakdown", caseId).header("X-User-Id", "3"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.client.franchisePaid").value(40.00))

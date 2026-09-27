@@ -18,7 +18,7 @@ import static org.mockito.Mockito.when;
 
 class V1ParticularFinancialBalanceServiceTest {
     @Test
-    void calculatesQuotedTotalMinusSignedCustomerNetMovementsOnly() {
+    void calculatesQuotedTotalMinusSignedCustomerGrossMovementsOnly() {
         BudgetRepository budgets = mock(BudgetRepository.class);
         FinancialMovementRepository movements = mock(FinancialMovementRepository.class);
         BudgetEntity budget = new BudgetEntity();
@@ -70,10 +70,27 @@ class V1ParticularFinancialBalanceServiceTest {
         assertEquals(new BigDecimal("110.00"), service.balanceFor(7L));
     }
 
+    @Test
+    void treatsRetainedAmountsAsPartOfTheCustomerDebtCancellation() {
+        BudgetRepository budgets = mock(BudgetRepository.class);
+        FinancialMovementRepository movements = mock(FinancialMovementRepository.class);
+        BudgetEntity budget = new BudgetEntity();
+        budget.setTotalQuoted(new BigDecimal("100.00"));
+        when(budgets.findByCaseId(7L)).thenReturn(Optional.of(budget));
+
+        FinancialMovementEntity payment = movement("CLIENTE", "INGRESO", "100.00");
+        payment.setNetAmount(new BigDecimal("90.00"));
+        when(movements.findByCaseId(org.mockito.ArgumentMatchers.eq(7L), any())).thenReturn(List.of(payment));
+
+        V1ParticularFinancialBalanceService service = new V1ParticularFinancialBalanceService(budgets, movements);
+        assertEquals(0, BigDecimal.ZERO.compareTo(service.balanceFor(7L)));
+    }
+
     private FinancialMovementEntity movement(String origin, String type, String amount) {
         FinancialMovementEntity movement = new FinancialMovementEntity();
         movement.setFlowOriginCode(origin);
         movement.setMovementTypeCode(type);
+        movement.setGrossAmount(new BigDecimal(amount));
         movement.setNetAmount(new BigDecimal(amount));
         return movement;
     }

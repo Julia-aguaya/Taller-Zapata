@@ -7,6 +7,7 @@ import com.tallerzapata.backend.api.casefile.CaseWorkspaceResponse;
 import com.tallerzapata.backend.api.casefile.CaseWorkspaceWidgetsResponse;
 import com.tallerzapata.backend.api.casefile.CaseWorkshopInfoResponse;
 import com.tallerzapata.backend.api.finance.FinanceCaseSummaryResponse;
+import com.tallerzapata.backend.api.finance.FinancePaymentBreakdownResponse;
 import com.tallerzapata.backend.api.finance.FinanceParticularSummaryResponse;
 import com.tallerzapata.backend.api.operation.RepairAppointmentResponse;
 import com.tallerzapata.backend.api.operation.VehicleIntakeResponse;
@@ -80,6 +81,7 @@ public class CaseWorkspaceService {
         var workflowActions = caseWorkflowService.getAvailableActions(caseId, null);
         FinanceCaseSummaryResponse financeSummary = financeService.summarizeCase(caseId);
         FinanceParticularSummaryResponse particularFinanceSummary = financeService.summarizeParticularCase(caseId);
+        FinancePaymentBreakdownResponse paymentBreakdown = financeService.paymentBreakdown(caseId);
 
         BudgetResponse budget = null;
         if (budgetRepository.findByCaseId(caseId).isPresent()) {
@@ -106,6 +108,7 @@ public class CaseWorkspaceService {
                 workflowActions,
                 financeSummary,
                 particularFinanceSummary,
+                paymentBreakdown,
                 budget,
                 latestAppointment,
                 latestIntake,

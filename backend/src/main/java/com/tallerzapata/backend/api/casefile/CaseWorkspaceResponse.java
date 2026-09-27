@@ -2,6 +2,7 @@ package com.tallerzapata.backend.api.casefile;
 
 import com.tallerzapata.backend.api.budget.BudgetResponse;
 import com.tallerzapata.backend.api.finance.FinanceCaseSummaryResponse;
+import com.tallerzapata.backend.api.finance.FinancePaymentBreakdownResponse;
 import com.tallerzapata.backend.api.finance.FinanceParticularSummaryResponse;
 import com.tallerzapata.backend.api.operation.RepairAppointmentResponse;
 import com.tallerzapata.backend.api.operation.VehicleIntakeResponse;
@@ -13,6 +14,7 @@ public record CaseWorkspaceResponse(
         CaseWorkflowActionsResponse workflowActions,
         FinanceCaseSummaryResponse financeSummary,
         FinanceParticularSummaryResponse particularFinanceSummary,
+        FinancePaymentBreakdownResponse paymentBreakdown,
         BudgetResponse budget,
         RepairAppointmentResponse latestAppointment,
         VehicleIntakeResponse latestIntake,

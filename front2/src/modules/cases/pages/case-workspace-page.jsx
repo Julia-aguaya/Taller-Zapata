@@ -32,6 +32,21 @@ const currency = new Intl.NumberFormat('es-AR', { style: 'currency', currency: '
 const formatCurrency = (value) => (value == null ? '-' : currency.format(value));
 const formatDate = (value) => (!value ? '-' : new Date(value).toLocaleDateString('es-AR'));
 const formatDateTime = (value) => (!value ? '-' : new Date(value).toLocaleString('es-AR'));
+const formatDateOnly = (value) => {
+  if (!value) return '-';
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
+};
+
+const amount = (value) => Number(value) || 0;
+
+const paymentSummaryForCase = (caseTypeCode, particularFinanceSummary, paymentBreakdown) => {
+  if (!['TODO_RIESGO', 'GRANIZO'].includes(caseTypeCode) || !paymentBreakdown) return particularFinanceSummary;
+  const quotedTotal = amount(paymentBreakdown.client?.total) + amount(paymentBreakdown.insurer?.total);
+  const paid = amount(paymentBreakdown.client?.paid) + amount(paymentBreakdown.insurer?.paid);
+  const pendingBalance = amount(paymentBreakdown.client?.pending) + amount(paymentBreakdown.insurer?.pending);
+  return { ...particularFinanceSummary, quotedTotal, customerPaid: paid, pendingBalance, paidInFull: quotedTotal > 0 && pendingBalance <= 0 };
+};
 
 const updatePerson = (personId, payload) => requestJson(`/persons/${personId}`, { method: 'PUT', body: JSON.stringify(payload) });
 const updateVehicle = (vehicleId, payload) => requestJson(`/vehicles/${vehicleId}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -237,7 +252,8 @@ export const CaseWorkspacePage = () => {
   if (workspaceQuery.isLoading) return <FullScreenLoader label="Abriendo carpeta..." compact />;
   if (workspaceQuery.isError) return <EmptyState title="No pude abrir la carpeta" description={workspaceQuery.error.message} />;
 
-  const { caseDetail, budget, particularFinanceSummary, latestAppointment, latestIntake, latestOutcome, widgets, workshopInfo } = workspaceQuery.data;
+  const { caseDetail, budget, particularFinanceSummary, paymentBreakdown, latestAppointment, latestIntake, latestOutcome, widgets, workshopInfo } = workspaceQuery.data;
+  const paymentSummary = paymentSummaryForCase(caseDetail?.caseTypeCode, particularFinanceSummary, paymentBreakdown);
   const handleCleasFranchiseDistributionChange = (updater) => {
     setCleasFranchiseDistribution((current) => {
       const next = typeof updater === 'function' ? updater(current) : updater;
@@ -260,7 +276,7 @@ export const CaseWorkspacePage = () => {
   const completedStages = countCompletedStages(effectiveTabs);
   const taskSnapshot = getTaskSnapshot(tasksQuery.data?.items ?? []);
   const navigationHint = getHelpfulBlockingMessage(stageTabs.find((tab) => !tab.allowed && tab.blockingReasons?.length)?.blockingReasons?.[0]);
-  const nextStep = getNextStepDescriptor({ tabs: effectiveTabs, budget, widgets, particularFinanceSummary, visibleTramiteState: caseDetail?.visibleTramiteState });
+  const nextStep = getNextStepDescriptor({ tabs: effectiveTabs, budget, widgets, particularFinanceSummary: paymentSummary, visibleTramiteState: caseDetail?.visibleTramiteState });
 
   return (
     <div className="space-y-5">
@@ -388,7 +404,7 @@ export const CaseWorkspacePage = () => {
             <CaseDetailsPanel
               caseDetail={caseDetail}
               budget={budget}
-              particularFinanceSummary={particularFinanceSummary}
+              paymentSummary={paymentSummary}
               widgets={widgets}
               latestAppointment={latestAppointment}
               latestIntake={latestIntake}
@@ -411,7 +427,7 @@ export const CaseWorkspacePage = () => {
               latestAppointment={latestAppointment}
               latestIntake={latestIntake}
               latestOutcome={latestOutcome}
-              particularFinanceSummary={particularFinanceSummary}
+              particularFinanceSummary={paymentSummary}
               onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })}
             />
           ) : currentTab?.tabCode === 'PRESUPUESTO' ? (
@@ -1200,12 +1216,13 @@ const DetallesTabButton = ({ selectedTab, setSelectedTab }) => {
   );
 };
 
-const CaseDetailsPanel = ({ caseDetail, budget, particularFinanceSummary, widgets, latestAppointment, latestIntake, latestOutcome, taskSnapshot, nextStep, onOpenTab, overrideModal, setOverrideModal, overrideReason, setOverrideReason, overrideMutation }) => {
+const CaseDetailsPanel = ({ caseDetail, budget, paymentSummary, widgets, latestAppointment, latestIntake, latestOutcome, taskSnapshot, nextStep, onOpenTab, overrideModal, setOverrideModal, overrideReason, setOverrideReason, overrideMutation }) => {
+  const isInsuranceCase = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
   const paymentsState = !widgets?.budget?.exists
     ? 'Pendiente de presupuesto'
-    : particularFinanceSummary?.paidInFull
+    : paymentSummary?.paidInFull
       ? 'Pagado'
-      : (particularFinanceSummary?.customerPaid ?? 0) > 0
+      : (paymentSummary?.customerPaid ?? 0) > 0
         ? 'Parcial'
         : 'Sin pagos';
 
@@ -1218,7 +1235,7 @@ const CaseDetailsPanel = ({ caseDetail, budget, particularFinanceSummary, widget
         : 'Pendiente de turno';
 
   const appointmentLabel = latestAppointment?.appointmentDate
-    ? `${formatDate(latestAppointment.appointmentDate)}${latestAppointment.appointmentTime ? ` · ${String(latestAppointment.appointmentTime).slice(0, 5)}` : ''}`
+    ? `${formatDateOnly(latestAppointment.appointmentDate)}${latestAppointment.appointmentTime ? ` · ${String(latestAppointment.appointmentTime).slice(0, 5)}` : ''}`
     : 'Sin turno asignado';
 
   return (
@@ -1248,10 +1265,10 @@ const CaseDetailsPanel = ({ caseDetail, budget, particularFinanceSummary, widget
           {latestOutcome?.outcomeAt ? <WidgetRow label="Ultimo egreso" value={formatDateTime(latestOutcome.outcomeAt)} /> : null}
         </MiniCard>
 
-        <MiniCard label="Pagos" value={paymentsState} color={particularFinanceSummary?.paidInFull ? 'emerald' : widgets?.budget?.exists ? 'amber' : 'slate'}>
-          <WidgetRow label="Total cotizado" value={widgets?.budget?.exists ? formatCurrency(particularFinanceSummary?.quotedTotal) : 'Pendiente de presupuesto'} />
-          <WidgetRow label="Pagado por cliente" value={formatCurrency(particularFinanceSummary?.customerPaid)} />
-          <WidgetRow label="Saldo pendiente" value={widgets?.budget?.exists ? formatCurrency(particularFinanceSummary?.pendingBalance) : 'Pendiente de presupuesto'} />
+        <MiniCard label="Pagos" value={paymentsState} color={paymentSummary?.paidInFull ? 'emerald' : widgets?.budget?.exists ? 'amber' : 'slate'}>
+          <WidgetRow label={isInsuranceCase ? 'Total a cancelar' : 'Total cotizado'} value={widgets?.budget?.exists ? formatCurrency(paymentSummary?.quotedTotal) : 'Pendiente de presupuesto'} />
+          <WidgetRow label={isInsuranceCase ? 'Pagado (cliente + Cía.)' : 'Pagado por cliente'} value={formatCurrency(paymentSummary?.customerPaid)} />
+          <WidgetRow label="Saldo pendiente" value={widgets?.budget?.exists ? formatCurrency(paymentSummary?.pendingBalance) : 'Pendiente de presupuesto'} />
           <WidgetRow label="Estado" value={paymentsState} />
         </MiniCard>
 

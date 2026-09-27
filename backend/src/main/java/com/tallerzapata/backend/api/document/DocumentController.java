@@ -67,8 +67,8 @@ public class DocumentController {
     @PreAuthorize("hasAuthority('documento.subir')")
     @PostMapping(value = "/api/v1/document-uploads/{uploadId}/chunks/{chunkIndex}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public DocumentUploadSessionResponse uploadChunk(@PathVariable String uploadId, @PathVariable int chunkIndex,
-            @RequestHeader("X-Chunk-Sha256") String chunkChecksum, @RequestParam("file") MultipartFile file) {
-        return documentUploadSessionService.uploadChunk(uploadId, chunkIndex, chunkChecksum, file);
+            @RequestParam("file") MultipartFile file) {
+        return documentUploadSessionService.uploadChunk(uploadId, chunkIndex, file);
     }
 
     @PreAuthorize("hasAuthority('documento.subir')")

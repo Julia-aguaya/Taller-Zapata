@@ -8,5 +8,5 @@ import java.time.LocalDate;
 
 public record DocumentUploadSessionCreateRequest(
         Long caseId, @NotNull Long categoryId, @NotBlank String fileName, @NotBlank String mimeType,
-        @Min(1) long sizeBytes, @NotBlank String checksumSha256, @Min(1) int chunkCount, String originCode, String observations, LocalDate documentDate
+        @Min(1) long sizeBytes, String checksumSha256, @Min(1) int chunkCount, String originCode, String observations, LocalDate documentDate
 ) { }

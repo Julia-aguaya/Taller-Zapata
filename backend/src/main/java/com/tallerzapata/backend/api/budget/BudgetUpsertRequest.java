@@ -1,5 +1,7 @@
 package com.tallerzapata.backend.api.budget;
 
+import jakarta.validation.constraints.Size;
+
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -26,7 +28,7 @@ public record BudgetUpsertRequest(
         Boolean electricalWorkApplies,
         String electricalDetail,
         Boolean mechanicalWorkApplies,
-        String mechanicalWorkCode,
+        @Size(max = 255) String mechanicalWorkCode,
         LocalDate quotedPartsDate,
         String quotedPartsSupplier,
         Long providerId,

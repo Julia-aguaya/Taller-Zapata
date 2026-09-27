@@ -1,22 +1,16 @@
 import { requestJson } from '@/shared/api/http-client';
 
 export const FILE_UPLOAD_CHUNK_SIZE = 5 * 1024 * 1024;
-export const RESUMABLE_UPLOAD_STORAGE_KEY = 'taller-zapata.resumable-document-uploads.v1';
+export const RESUMABLE_UPLOAD_STORAGE_KEY = 'taller-zapata.resumable-document-uploads.v2';
 const MAX_ATTEMPTS = 3;
 
-const sha256 = async (blob) => {
-  const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
-};
-
 const uploadChunk = async (uploadId, index, chunk) => {
-  const checksum = await sha256(chunk);
   const form = new FormData();
   form.append('file', chunk, 'chunk.bin');
   let lastError;
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
     try {
-      return await requestJson(`/document-uploads/${uploadId}/chunks/${index}`, { method: 'POST', headers: { 'X-Chunk-Sha256': checksum }, body: form });
+      return await requestJson(`/document-uploads/${uploadId}/chunks/${index}`, { method: 'POST', body: form });
     } catch (error) {
       lastError = error;
       try {
@@ -97,7 +91,6 @@ const createRelation = async (document, relation) => {
 
 export const uploadFileResumably = async ({ file, metadata, relation }) => {
   const chunkCount = Math.ceil(file.size / FILE_UPLOAD_CHUNK_SIZE);
-  const checksumSha256 = await sha256(file);
   const createRequest = {
     ...metadata,
     caseId: metadata.caseId == null ? null : Number(metadata.caseId),
@@ -105,10 +98,9 @@ export const uploadFileResumably = async ({ file, metadata, relation }) => {
     fileName: file.name,
     mimeType: file.type || 'application/octet-stream',
     sizeBytes: file.size,
-    checksumSha256,
     chunkCount,
   };
-  const fileIdentity = JSON.stringify({ checksumSha256, name: file.name, type: file.type || 'application/octet-stream', size: file.size, lastModified: file.lastModified });
+  const fileIdentity = JSON.stringify({ name: file.name, type: file.type || 'application/octet-stream', size: file.size, lastModified: file.lastModified, webkitRelativePath: file.webkitRelativePath || '' });
   const requestFingerprint = JSON.stringify({ createRequest, relation: relation ?? null });
   const mapping = readUploadMappings()[fileIdentity];
   let session;

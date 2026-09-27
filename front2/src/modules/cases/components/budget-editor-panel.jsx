@@ -301,7 +301,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
               <select className="h-10 w-20 rounded-xl border border-input bg-background px-2 text-sm outline-none focus:border-primary" value={header[appliesKey] || 'NO'} onChange={(e) => setHeader((c) => ({ ...c, [appliesKey]: e.target.value }))}>
                 {yesNoAV.map((o) => <option key={o} value={o}>{o}</option>)}
               </select>
-              <Input className="h-10 flex-1 min-w-[200px] rounded-xl text-sm" value={header[detailKey] || ''} onChange={(e) => setHeader((c) => ({ ...c, [detailKey]: e.target.value }))} placeholder="Detalle" />
+              <Input className="h-10 flex-1 min-w-[200px] rounded-xl text-sm" value={header[detailKey] || ''} onChange={(e) => setHeader((c) => ({ ...c, [detailKey]: e.target.value }))} placeholder="Detalle" maxLength={detailKey === 'mechanicalWorkCode' ? 255 : undefined} />
             </div>
           ))}
         </div>

@@ -107,6 +107,7 @@ const baseWorkspace = {
   latestAppointment: null,
   latestIntake: null,
   latestOutcome: null,
+  paymentBreakdown: null,
   widgets: {
     budget: { exists: false, reportStatusCode: null, totalQuoted: null },
     repair: { hasAppointment: false, hasIntake: false, hasDefinitiveOutcome: false },
@@ -265,6 +266,34 @@ describe('CaseWorkspacePage UI', () => {
     expect(screen.getByRole('tab', { name: /pagos/i })).toHaveAttribute('aria-disabled', 'false');
     expect(screen.getByRole('tab', { name: /gesti[oó]n reparaci[oó]n/i })).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByText('0 de 4 etapas completas')).toBeInTheDocument();
+  });
+
+  it('preserva el día del turno en el resumen', async () => {
+    await renderPage({
+      ...baseWorkspace,
+      latestAppointment: { appointmentDate: '2026-08-31', appointmentTime: '09:00' },
+      widgets: { ...baseWorkspace.widgets, repair: { ...baseWorkspace.widgets.repair, hasAppointment: true } },
+    });
+
+    expect(screen.getByText('31/08/2026 · 09:00')).toBeInTheDocument();
+    expect(screen.queryByText('30/08/2026 · 09:00')).toBeNull();
+  });
+
+  it('considera pagos de compañía y franquicia al cancelar un Todo Riesgo', async () => {
+    await renderPage({
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'TODO_RIESGO' },
+      budget: { reportStatusCode: 'CERRADO' },
+      widgets: { ...baseWorkspace.widgets, budget: { exists: true, reportStatusCode: 'CERRADO', totalQuoted: 2178000 } },
+      paymentBreakdown: {
+        client: { total: 800000, paid: 800000, pending: 0 },
+        insurer: { total: 1150000, paid: 1150000, pending: 0 },
+      },
+    });
+
+    expect(screen.getAllByText('Pagado')).toHaveLength(2);
+    expect(within(screen.getByText('Pagado (cliente + Cía.)').parentElement).getByText(/\$.*1\.950\.000,00/)).toBeInTheDocument();
+    expect(within(screen.getByText('Saldo pendiente').parentElement).getByText(/\$.*0,00/)).toBeInTheDocument();
   });
 
   it('abre Presupuesto para Todo Riesgo cuando el readiness del servidor lo habilita aunque Gestión del Trámite siga pendiente', async () => {

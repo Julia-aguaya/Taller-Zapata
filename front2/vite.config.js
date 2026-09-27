@@ -31,6 +31,10 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
+    isolate: true,
+    pool: 'forks',
+    maxWorkers: 1,
+    fileParallelism: false,
     setupFiles: ['./src/test/setupTests.js'],
     coverage: {
       provider: 'v8',

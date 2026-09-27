@@ -183,7 +183,7 @@ public class ParticularCaseClosureService {
                 continue;
             }
 
-            BigDecimal amount = scale(movement.getNetAmount());
+            BigDecimal amount = scale(movement.getGrossAmount());
             String type = normalizeCode(movement.getMovementTypeCode());
             if ("INGRESO".equals(type) || ("AJUSTE".equals(type) && amount.signum() >= 0)) {
                 accumulated = accumulated.add(amount);
@@ -221,7 +221,7 @@ public class ParticularCaseClosureService {
                 continue;
             }
 
-            BigDecimal amount = scale(movement.getNetAmount());
+            BigDecimal amount = scale(movement.getGrossAmount());
             String type = normalizeCode(movement.getMovementTypeCode());
             if ("INGRESO".equals(type) || ("AJUSTE".equals(type) && amount.signum() >= 0)) {
                 accumulated = accumulated.add(amount);

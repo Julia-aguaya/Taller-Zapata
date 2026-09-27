@@ -96,14 +96,15 @@ class CaseReadinessIntegrationTest {
         mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId)
                         .header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"CLIENTE\",\"counterpartyTypeCode\":\"PERSONA\",\"counterpartyPersonId\":10,\"movementAt\":\"2026-01-15T12:00:00\",\"grossAmount\":100000,\"netAmount\":100000,\"paymentMethodCode\":\"EFECTIVO\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[],\"applications\":[]}"))
+                        .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"CLIENTE\",\"counterpartyTypeCode\":\"PERSONA\",\"counterpartyPersonId\":10,\"movementAt\":\"2026-01-15T12:00:00\",\"grossAmount\":121000,\"netAmount\":111000,\"paymentMethodCode\":\"EFECTIVO\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[{\"retentionTypeCode\":\"IIBB\",\"amount\":10000}],\"applications\":[]}"))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
                         .header("X-User-Id", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.tabs[3].tabCode").value("PAGOS"))
-                .andExpect(jsonPath("$.tabs[3].allowed").value(true));
+                .andExpect(jsonPath("$.tabs[3].allowed").value(true))
+                .andExpect(jsonPath("$.tabs[3].completed").value(true));
     }
 
     @Test
@@ -346,6 +347,7 @@ class CaseReadinessIntegrationTest {
                 .andExpect(jsonPath("$.workflowActions.caseId").value(caseId))
                 .andExpect(jsonPath("$.financeSummary.caseId").value(caseId))
                 .andExpect(jsonPath("$.particularFinanceSummary.caseId").value(caseId))
+                .andExpect(jsonPath("$.paymentBreakdown.caseId").value(caseId))
                 .andExpect(jsonPath("$.particularFinanceSummary.quotedTotal").value(1210.00))
                 .andExpect(jsonPath("$.particularFinanceSummary.pendingBalance").value(1210.00))
                 .andExpect(jsonPath("$.budget.caseId").value(caseId))

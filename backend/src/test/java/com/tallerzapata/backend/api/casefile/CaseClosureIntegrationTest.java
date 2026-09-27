@@ -136,7 +136,7 @@ class CaseClosureIntegrationTest {
         Long caseId = createGranizoCase();
         seedInsurance(caseId);
         createDefinitiveOutcome(caseId);
-        addCompanyPayment(caseId, new BigDecimal("100000"));
+        addCompanyPaymentWithRetention(caseId, new BigDecimal("100000"), new BigDecimal("90000"), new BigDecimal("10000"));
 
         mockMvc.perform(get("/api/v1/cases/{caseId}", caseId)
                 .header("X-User-Id", "1"))
@@ -226,6 +226,13 @@ class CaseClosureIntegrationTest {
         mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId)
                 .header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
                 .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"ASEGURADORA\",\"counterpartyTypeCode\":\"PERSONA\",\"counterpartyPersonId\":10,\"movementAt\":\"2026-01-20T12:00:00\",\"grossAmount\":" + amount + ",\"netAmount\":" + amount + ",\"paymentMethodCode\":\"TRANSFERENCIA\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[],\"applications\":[]}"))
+                .andExpect(status().isOk());
+    }
+
+    private void addCompanyPaymentWithRetention(Long caseId, BigDecimal grossAmount, BigDecimal netAmount, BigDecimal retentionAmount) throws Exception {
+        mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId)
+                .header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"ASEGURADORA\",\"counterpartyTypeCode\":\"PERSONA\",\"counterpartyPersonId\":10,\"movementAt\":\"2026-01-20T12:00:00\",\"grossAmount\":" + grossAmount + ",\"netAmount\":" + netAmount + ",\"paymentMethodCode\":\"TRANSFERENCIA\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[{\"retentionTypeCode\":\"IIBB\",\"amount\":" + retentionAmount + "}],\"applications\":[]}"))
                 .andExpect(status().isOk());
     }
 

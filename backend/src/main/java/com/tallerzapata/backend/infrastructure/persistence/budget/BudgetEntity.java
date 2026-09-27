@@ -98,7 +98,7 @@ public class BudgetEntity {
     @Column(name = "trabajos_mecanicos_aplica")
     private Boolean mechanicalWorkApplies;
 
-    @Column(name = "trabajos_mecanicos_codigo")
+    @Column(name = "trabajos_mecanicos_codigo", length = 255)
     private String mechanicalWorkCode;
 
     @Column(name = "repuestos_cotizados_fecha")

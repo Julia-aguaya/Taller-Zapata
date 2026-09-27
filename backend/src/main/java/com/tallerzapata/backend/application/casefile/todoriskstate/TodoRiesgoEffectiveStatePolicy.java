@@ -40,12 +40,13 @@ public final class TodoRiesgoEffectiveStatePolicy {
             String authorization = normalize(part.authorizationCode());
             if ("RECHAZADO".equals(authorization)) continue;
             if (authorization.isEmpty() || "PENDIENTE".equals(authorization)) pendingAuthorization = true;
-            if ("AUTORIZADO".equals(authorization) && !"RECIBIDO".equals(normalize(part.statusCode()))) authorizedUnreceived = true;
+            if ("AUTORIZADO".equals(authorization) && !isAvailable(part.statusCode())) authorizedUnreceived = true;
         }
         return new PartsAvailability(pendingAuthorization, authorizedUnreceived);
     }
 
     private String normalize(String value) { return value == null ? "" : value.trim().toUpperCase(); }
+    private boolean isAvailable(String statusCode) { return "RECIBIDO".equals(normalize(statusCode)) || "INSTALADO".equals(normalize(statusCode)); }
     private boolean hasAgreement(TodoRiesgoEffectiveStateFacts facts) {
         return facts.quotationAccepted() && facts.agreementDate() != null;
     }

@@ -511,13 +511,13 @@ public class CleasManagementService {
                 .filter(movement -> "CLIENTE".equals(normalizeCode(movement.getFlowOriginCode()))
                         && "FRANQUICIA".equals(normalizeCode(movement.getCancellationTypeCode())))
                 .toList();
-        BigDecimal customerPaid = customerPayments.stream().map(this::signedNetAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal customerPaid = customerPayments.stream().map(this::signedGrossAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal customerPending = settlement.customerChargeAmount().subtract(customerPaid).max(BigDecimal.ZERO);
         LocalDate customerCollectionDate = null;
         if (settlement.customerChargeAmount().signum() > 0 && customerPending.signum() <= 0) {
             BigDecimal collected = BigDecimal.ZERO;
             for (FinancialMovementEntity payment : customerPayments) {
-                collected = collected.add(signedNetAmount(payment));
+                collected = collected.add(signedGrossAmount(payment));
                 if (collected.compareTo(settlement.customerChargeAmount()) >= 0) {
                     customerCollectionDate = payment.getMovementAt().toLocalDate();
                     break;

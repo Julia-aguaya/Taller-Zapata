@@ -161,6 +161,10 @@ Header: `Authorization: Bearer <token>`
 |--------|----------|-------------|---------|
 | GET | /api/v1/documents/catalogs | Listar catalogos | documento.ver |
 | POST | /api/v1/documents | Subir documento | documento.crear |
+| POST | /api/v1/document-uploads | Crear carga resumible | documento.subir |
+| POST | /api/v1/document-uploads/{uploadId}/chunks/{chunkIndex} | Subir chunk | documento.subir |
+| GET | /api/v1/document-uploads/{uploadId} | Consultar carga resumible | documento.subir |
+| POST | /api/v1/document-uploads/{uploadId}/complete | Completar carga resumible | documento.subir |
 | GET | /api/v1/documents/{documentId} | Obtener documento | documento.ver |
 | PUT | /api/v1/documents/{documentId} | Actualizar documento | documento.crear |
 | POST | /api/v1/documents/{documentId}/relations | Crear relacion | documento.crear |
@@ -168,6 +172,8 @@ Header: `Authorization: Bearer <token>`
 | POST | /api/v1/documents/{documentId}/replace | Reemplazar documento | documento.crear |
 | GET | /api/v1/cases/{caseId}/documents | Listar documentos de caso | documento.ver |
 | GET | /api/v1/cases/{caseId}/documents/{documentId}/download | Descargar documento | documento.ver |
+
+Las cargas resumibles no requieren hashes en el navegador: el servidor calcula y persiste SHA-256 al completar el archivo. Las cabeceras de checksum de clientes anteriores se ignoran.
 
 ### Seguros y Legal
 | Metodo | Endpoint | Descripcion | Permiso |

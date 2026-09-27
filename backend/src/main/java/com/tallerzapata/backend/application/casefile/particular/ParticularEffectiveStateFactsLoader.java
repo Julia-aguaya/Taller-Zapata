@@ -54,7 +54,7 @@ public class ParticularEffectiveStateFactsLoader {
         );
     }
 
-    private boolean isValidNormalAppointment(RepairAppointmentEntity appointment) { return !Boolean.TRUE.equals(appointment.getReentry()) && isAssigned(appointment); }
+    private boolean isValidNormalAppointment(RepairAppointmentEntity appointment) { return !Boolean.TRUE.equals(appointment.getReentry()) && isCurrent(appointment); }
     private boolean hasQualifyingReceiptOrIntent(Long caseId, ParticularEffectiveStateEntity projection) {
         return isComprobanteIntent(projection == null ? null : projection.getComprobanteIntentCode())
                 || receiptRepository.findByCaseId(caseId, Sort.unsorted()).stream()
@@ -99,9 +99,6 @@ public class ParticularEffectiveStateFactsLoader {
     private boolean isCurrent(RepairAppointmentEntity appointment) {
         String status = normalize(appointment.getStatusCode());
         return "PENDIENTE".equals(status) || "REPROGRAMADO".equals(status);
-    }
-    private boolean isAssigned(RepairAppointmentEntity appointment) {
-        return isCurrent(appointment) || "CUMPLIDO".equals(normalize(appointment.getStatusCode()));
     }
     private String normalize(String value) { return value == null ? "" : value.trim().toUpperCase(); }
     private boolean isComprobanteIntent(String value) { return "A".equals(normalize(value)) || "C".equals(normalize(value)) || "R".equals(normalize(value)); }

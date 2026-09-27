@@ -372,26 +372,26 @@ public class CaseReadinessService {
             return toTab("PAGOS", true, blockingReasons, warningReasons);
         }
 
-        BigDecimal customerNet = BigDecimal.ZERO;
+        BigDecimal customerPaid = BigDecimal.ZERO;
         boolean hasAdvancePayment = false;
         for (FinancialMovementEntity movement : movements) {
             if (!"CLIENTE".equals(normalizeCode(movement.getFlowOriginCode()))) {
                 continue;
             }
-            BigDecimal amount = scale(movement.getNetAmount());
+            BigDecimal amount = scale(movement.getGrossAmount());
             if ("INGRESO".equals(normalizeCode(movement.getMovementTypeCode()))
                     || ("AJUSTE".equals(normalizeCode(movement.getMovementTypeCode())) && amount.signum() >= 0)) {
-                customerNet = customerNet.add(amount);
+                customerPaid = customerPaid.add(amount);
             } else {
-                customerNet = customerNet.subtract(amount.abs());
+                customerPaid = customerPaid.subtract(amount.abs());
             }
             if (Boolean.TRUE.equals(movement.getAdvancePayment())) {
                 hasAdvancePayment = true;
             }
         }
 
-        BigDecimal pendingBalance = expectedTotal.subtract(customerNet);
-        if (customerNet.compareTo(BigDecimal.ZERO) <= 0) {
+        BigDecimal pendingBalance = expectedTotal.subtract(customerPaid);
+        if (customerPaid.compareTo(BigDecimal.ZERO) <= 0) {
             blockingReasons.add("Todavia no se registraron pagos imputables al cliente");
         } else if (pendingBalance.compareTo(BigDecimal.ZERO) > 0) {
             blockingReasons.add("Queda saldo pendiente del cliente: " + pendingBalance.toPlainString());
@@ -539,7 +539,7 @@ public class CaseReadinessService {
         if (amountToBill != null && amountToBill.compareTo(BigDecimal.ZERO) > 0) {
             BigDecimal ciaPaid = financialMovementRepository.findByCaseId(caseId, Sort.by(Sort.Direction.DESC, "id")).stream()
                     .filter(m -> "ASEGURADORA".equals(normalizeCode(m.getFlowOriginCode())))
-                    .map(m -> m.getNetAmount() == null ? BigDecimal.ZERO : m.getNetAmount())
+                    .map(m -> m.getGrossAmount() == null ? BigDecimal.ZERO : m.getGrossAmount())
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
             if (ciaPaid.compareTo(amountToBill) < 0) {
                 blocking.add("La Cia. aun no completo el pago");

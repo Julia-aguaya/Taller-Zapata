@@ -23,12 +23,12 @@ public class V1ParticularFinancialBalanceService implements ParticularFinancialB
         BigDecimal totalQuoted = budgetRepository.findByCaseId(caseId)
                 .map(budget -> zeroWhenNull(budget.getTotalQuoted()))
                 .orElse(BigDecimal.ZERO);
-        BigDecimal customerNet = financialMovementRepository.findByCaseId(caseId, MOVEMENT_SORT).stream()
+        BigDecimal customerPaid = financialMovementRepository.findByCaseId(caseId, MOVEMENT_SORT).stream()
                 .filter(movement -> "CLIENTE".equals(normalize(movement.getFlowOriginCode())))
                 .filter(movement -> !"TRABAJOS_EXTRAS".equals(normalize(movement.getCancellationTypeCode())))
-                .map(movement -> signedMovement(movement.getMovementTypeCode(), movement.getNetAmount()))
+                .map(movement -> signedMovement(movement.getMovementTypeCode(), movement.getGrossAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        return totalQuoted.subtract(customerNet);
+        return totalQuoted.subtract(customerPaid);
     }
 
     @Override

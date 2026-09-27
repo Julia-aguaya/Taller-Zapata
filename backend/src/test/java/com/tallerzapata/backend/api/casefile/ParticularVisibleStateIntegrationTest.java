@@ -86,6 +86,25 @@ class ParticularVisibleStateIntegrationTest {
     }
 
     @Test
+    void requiresAReasonForParticularTerminalOverrides() throws Exception {
+        long caseId = createCase("PARTICULAR");
+        int before = countHistory(caseId);
+
+        mockMvc.perform(put("/api/v1/cases/{caseId}/visible-states", caseId).header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"domain\":\"reparacion\",\"stateCode\":\"RECHAZADO\",\"reason\":\" \"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Debe indicar un motivo para Rechazado o Desistido"));
+
+        mockMvc.perform(put("/api/v1/cases/{caseId}/visible-states", caseId).header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"domain\":\"tramite\",\"stateCode\":\"DESISTIDO\",\"reason\":null}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Debe indicar un motivo para Rechazado o Desistido"));
+
+        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
+        assertThat(countHistory(caseId)).isEqualTo(before);
+    }
+
+    @Test
     void enforcesProjectionAndHistoryDomainsWhileApplicationWritesAppendNewHistoryRows() throws Exception {
         long caseId = createCase("PARTICULAR");
         Long firstHistoryId = jdbcTemplate.queryForObject("SELECT id FROM particular_effective_state_history WHERE caso_id = ?", Long.class, caseId);
@@ -148,7 +167,7 @@ class ParticularVisibleStateIntegrationTest {
         updateAppointment(appointmentId, "CANCELADO", false);
         assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
         updateAppointment(appointmentId, "CUMPLIDO", false);
-        assertProjection(caseId, "INGRESADO", "CON_TURNO");
+        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
 
         createAppointment(caseId, "CANCELADO", false);
         createAppointment(caseId, "REPROGRAMADO", false);
@@ -196,7 +215,7 @@ class ParticularVisibleStateIntegrationTest {
         assertProjection(caseId, "INGRESADO", "DEBE_REINGRESAR");
 
         createIntake(caseId, 2);
-        assertProjection(caseId, "INGRESADO", "CON_TURNO");
+        assertProjection(caseId, "INGRESADO", "EN_TRAMITE");
         updateOutcome(outcomeId, true, false);
         assertProjection(caseId, "INGRESADO", "REPARADO");
     }
@@ -211,9 +230,9 @@ class ParticularVisibleStateIntegrationTest {
         long appointmentId = createAppointment(caseId, "PENDIENTE", false);
         assertProjection(caseId, "INGRESADO", "CON_TURNO");
         updateAppointment(appointmentId, "CUMPLIDO", false);
-        assertProjection(caseId, "INGRESADO", "CON_TURNO");
+        assertProjection(caseId, "INGRESADO", "FALTAN_REPUESTOS");
         updatePart(caseId, partId, "RECIBIDO");
-        assertProjection(caseId, "INGRESADO", "CON_TURNO");
+        assertProjection(caseId, "INGRESADO", "DAR_TURNO");
     }
 
     @Test
@@ -222,7 +241,7 @@ class ParticularVisibleStateIntegrationTest {
         createReceipt(caseId, "RECIBO");
         createAppointment(caseId, "CUMPLIDO", false);
 
-        assertProjection(caseId, "INGRESADO", "CON_TURNO");
+        assertProjection(caseId, "INGRESADO", "DAR_TURNO");
     }
 
     @Test

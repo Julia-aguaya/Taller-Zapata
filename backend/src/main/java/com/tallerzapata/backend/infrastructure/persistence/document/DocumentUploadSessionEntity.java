@@ -22,7 +22,7 @@ public class DocumentUploadSessionEntity {
     @Column(name = "nombre_archivo", nullable = false) private String fileName;
     @Column(name = "mime_type", nullable = false) private String mimeType;
     @Column(name = "tamano_bytes", nullable = false) private Long sizeBytes;
-    @Column(name = "checksum_sha256", nullable = false, columnDefinition = "char(64)") private String checksumSha256;
+    @Column(name = "checksum_sha256", columnDefinition = "char(64)") private String checksumSha256;
     @Column(name = "cantidad_chunks", nullable = false) private Integer chunkCount;
     @Column(name = "siguiente_chunk", nullable = false) private Integer nextChunk;
     @Column(name = "bytes_recibidos", nullable = false) private Long receivedBytes;

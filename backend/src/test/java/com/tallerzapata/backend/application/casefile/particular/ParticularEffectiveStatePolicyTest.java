@@ -29,6 +29,14 @@ class ParticularEffectiveStatePolicyTest {
     }
 
     @Test
+    void returnsToRepairInProgressAfterTheVehiclePhysicallyReenters() {
+        ParticularEffectiveStateFacts.OutcomeFact reentryAlreadyIntaken = new ParticularEffectiveStateFacts.OutcomeFact(
+                1L, LocalDateTime.now(), false, true, false, true);
+
+        assertState("INGRESADO", "EN_TRAMITE", facts(null, null, reentryAlreadyIntaken, false, false, false, "10"));
+    }
+
+    @Test
     void procedureOverrideAndPaymentPrecedenceAreIndependent() {
         assertState("DESISTIDO", "REPARADO", facts(null, "DESISTIDO", outcome(true, false, false), false, false, false, "0"));
         assertState("INGRESADO", "REPARADO", facts(null, null, outcome(true, false, false), false, false, false, "0"));

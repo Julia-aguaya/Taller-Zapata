@@ -71,7 +71,7 @@ public class BudgetController {
     @Operation(summary = "Generar presupuesto y snapshot de comparación")
     @PreAuthorize("hasAuthority('presupuesto.crear')")
     @PostMapping("/cases/{caseId}/budget/generate")
-    public BudgetGenerateResponse generateBudget(@PathVariable Long caseId, @RequestHeader("Idempotency-Key") String idempotencyKey, @RequestBody BudgetUpsertRequest request, HttpServletRequest httpRequest) {
+    public BudgetGenerateResponse generateBudget(@PathVariable Long caseId, @RequestHeader("Idempotency-Key") String idempotencyKey, @Valid @RequestBody BudgetUpsertRequest request, HttpServletRequest httpRequest) {
         return budgetService.generateBudget(caseId, request, idempotencyKey, httpRequest);
     }
 

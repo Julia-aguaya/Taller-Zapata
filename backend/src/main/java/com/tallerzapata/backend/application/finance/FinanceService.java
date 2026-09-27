@@ -270,7 +270,7 @@ public class FinanceService {
                 continue;
             }
 
-            BigDecimal amount = scale(movement.getNetAmount());
+            BigDecimal amount = scale(movement.getGrossAmount());
             String movementTypeCode = normalizeCode(movement.getMovementTypeCode());
             if ("INGRESO".equals(movementTypeCode) || ("AJUSTE".equals(movementTypeCode) && amount.signum() >= 0)) {
                 customerPaid = customerPaid.add(amount);
@@ -658,7 +658,7 @@ public class FinanceService {
         return movementRepository.findByCaseId(caseId, Sort.unsorted()).stream()
                 .filter(movement -> origin.equals(normalizeCode(movement.getFlowOriginCode())) && concept.equals(normalizeCode(movement.getCancellationTypeCode())))
                 .map(movement -> {
-                    BigDecimal amount = money(movement.getNetAmount());
+                    BigDecimal amount = money(movement.getGrossAmount());
                     return "INGRESO".equals(normalizeCode(movement.getMovementTypeCode())) || ("AJUSTE".equals(normalizeCode(movement.getMovementTypeCode())) && amount.signum() >= 0)
                             ? amount : amount.negate();
                 })

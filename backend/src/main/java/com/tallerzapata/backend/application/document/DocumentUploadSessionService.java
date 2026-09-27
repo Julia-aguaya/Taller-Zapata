@@ -68,7 +68,7 @@ public class DocumentUploadSessionService {
         userRepository.findById(user.id()).orElseThrow(() -> new ResourceNotFoundException("No existe el usuario autenticado " + user.id()));
         DocumentUploadSessionEntity session = new DocumentUploadSessionEntity();
         session.setCaseId(request.caseId()); session.setCategoryId(request.categoryId()); session.setFileName(safeFileName(request.fileName()));
-        session.setMimeType(request.mimeType().trim()); session.setSizeBytes(request.sizeBytes()); session.setChecksumSha256(request.checksumSha256().toLowerCase());
+        session.setMimeType(request.mimeType().trim()); session.setSizeBytes(request.sizeBytes());
         session.setChunkCount(request.chunkCount()); session.setNextChunk(0); session.setReceivedBytes(0L); session.setUploadedBy(user.id());
         session.setOriginCode(normalizeCode(request.originCode(), "TALLER")); session.setObservations(blankToNull(request.observations()));
         session.setDocumentDate(request.documentDate());
@@ -77,11 +77,11 @@ public class DocumentUploadSessionService {
     }
 
     @Transactional
-    public DocumentUploadSessionResponse uploadChunk(String uploadId, int chunkIndex, String chunkChecksum, MultipartFile chunk) {
+    public DocumentUploadSessionResponse uploadChunk(String uploadId, int chunkIndex, MultipartFile chunk) {
         DocumentUploadSessionEntity session = requireOwnedActiveSession(uploadId);
-        if (chunk == null || chunk.isEmpty() || chunk.getSize() > CHUNK_SIZE || !isSha256(chunkChecksum)) throw new ConflictException("Chunk invalido");
+        if (chunk == null || chunk.isEmpty() || chunk.getSize() > CHUNK_SIZE) throw new ConflictException("Chunk invalido");
         if (chunkIndex < session.getNextChunk()) {
-            if (temporaryStorage.matches(uploadId, chunkIndex, chunk.getSize(), chunkChecksum)) return response(session, null);
+            if (temporaryStorage.matches(uploadId, chunkIndex, chunk)) return response(session, null);
             throw new ConflictException("El reintento no coincide con el chunk recibido");
         }
         if (chunkIndex != session.getNextChunk()) throw new ConflictException("Los chunks deben cargarse en orden");
@@ -89,11 +89,7 @@ public class DocumentUploadSessionService {
         long remaining = session.getSizeBytes() - session.getReceivedBytes();
         long expectedMaximum = Math.min(CHUNK_SIZE, remaining);
         if (chunk.getSize() > expectedMaximum || (chunkIndex == session.getChunkCount() - 1 && chunk.getSize() != remaining)) throw new ConflictException("Tamano de chunk invalido");
-        String storedChecksum = temporaryStorage.storeChunk(uploadId, chunkIndex, chunk);
-        if (!storedChecksum.equalsIgnoreCase(chunkChecksum)) {
-            temporaryStorage.delete(uploadId);
-            throw new ConflictException("Checksum de chunk invalido");
-        }
+        temporaryStorage.storeChunk(uploadId, chunkIndex, chunk);
         session.setNextChunk(chunkIndex + 1); session.setReceivedBytes(session.getReceivedBytes() + chunk.getSize());
         session.setExpiresAt(LocalDateTime.now().plusHours(24));
         return response(sessionRepository.save(session), null);
@@ -114,13 +110,16 @@ public class DocumentUploadSessionService {
             throw new IllegalStateException("No se pudo cerrar la carga", exception);
         }
         try {
+            String calculatedChecksum;
             try (InputStream input = documentStorageService.open(stored.storageKey()).getInputStream()) {
-                if (stored.sizeBytes() != session.getSizeBytes() || !checksum(input).equalsIgnoreCase(session.getChecksumSha256())) {
+                calculatedChecksum = checksum(input);
+                if (stored.sizeBytes() != session.getSizeBytes()) {
                     documentStorageService.delete(stored.storageKey());
                     throw new ConflictException("El archivo ensamblado no supera la verificacion de integridad");
                 }
             }
-            DocumentEntity document = documentService.createStoredDocument(session.getFileName(), session.getMimeType(), session.getChecksumSha256(), session.getCategoryId(), session.getUploadedBy(), session.getOriginCode(), session.getObservations(), session.getDocumentDate(), stored, session.getCaseId(), request);
+            session.setChecksumSha256(calculatedChecksum);
+            DocumentEntity document = documentService.createStoredDocument(session.getFileName(), session.getMimeType(), calculatedChecksum, session.getCategoryId(), session.getUploadedBy(), session.getOriginCode(), session.getObservations(), session.getDocumentDate(), stored, session.getCaseId(), request);
             session.setStatus(COMPLETED); session.setDocumentId(document.getId()); sessionRepository.save(session); temporaryStorage.delete(uploadId);
             return documentService.toDocumentResponse(document);
         } catch (IOException exception) {
@@ -148,8 +147,7 @@ public class DocumentUploadSessionService {
         if (!caseAccessControlService.hasGlobalScope(user) && caseEntity.getClosedAt() != null) throw new ConflictException("El caso esta cerrado; debe ser reabierto por un administrador para modificar documentos");
     }
     private DocumentCategoryEntity requireActiveCategory(Long categoryId) { DocumentCategoryEntity category = categoryRepository.findById(categoryId).orElseThrow(() -> new ResourceNotFoundException("No existe la categoria documental " + categoryId)); if (!Boolean.TRUE.equals(category.getActive())) throw new ConflictException("La categoria documental esta inactiva"); return category; }
-    private void validateCreateRequest(DocumentUploadSessionCreateRequest request) { if (request.sizeBytes() > MAX_FILE_SIZE || request.chunkCount() != Math.toIntExact((request.sizeBytes() + CHUNK_SIZE - 1) / CHUNK_SIZE) || !isSha256(request.checksumSha256())) throw new ConflictException("Metadatos de carga invalidos"); }
-    private boolean isSha256(String value) { return value != null && value.matches("[0-9a-fA-F]{64}"); }
+    private void validateCreateRequest(DocumentUploadSessionCreateRequest request) { if (request.sizeBytes() > MAX_FILE_SIZE || request.chunkCount() != Math.toIntExact((request.sizeBytes() + CHUNK_SIZE - 1) / CHUNK_SIZE)) throw new ConflictException("Metadatos de carga invalidos"); }
     private DocumentUploadSessionResponse response(DocumentUploadSessionEntity session, Long documentId) { return new DocumentUploadSessionResponse(session.getPublicId(), session.getChunkCount(), session.getNextChunk(), session.getReceivedBytes(), session.getStatus(), session.getExpiresAt(), documentId == null ? session.getDocumentId() : documentId); }
     private String checksum(InputStream input) { try { MessageDigest digest = MessageDigest.getInstance("SHA-256"); byte[] buffer = new byte[8192]; for (int read; (read = input.read(buffer)) != -1; ) digest.update(buffer, 0, read); return HexFormat.of().formatHex(digest.digest()); } catch (Exception exception) { throw new IllegalStateException("No se pudo calcular el checksum", exception); } }
     private String safeFileName(String value) { String name = value == null ? "archivo.bin" : value.replace('\\', '_').replace('/', '_').replace("..", "_").trim(); return name.isBlank() ? "archivo.bin" : name; }

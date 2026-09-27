@@ -16,13 +16,14 @@ public final class ParticularEffectiveStatePolicy {
         ParticularEffectiveStateFacts.OutcomeFact outcome = facts.latestOutcome();
         if (outcome != null && outcome.isRepaired()) return "REPARADO";
         if (outcome != null && outcome.requiresReentry()) {
-            if (outcome.hasLaterValidReentryAppointment() || outcome.hasLaterAdvancedFact()) return "CON_TURNO";
+            if (outcome.hasLaterValidReentryAppointment()) return "CON_TURNO";
+            if (outcome.hasLaterAdvancedFact()) return "EN_TRAMITE";
             return "DEBE_REINGRESAR";
         }
         if (facts.hasValidNormalAppointment()) return "CON_TURNO";
         if (facts.hasUnreceivedPart()) return "FALTAN_REPUESTOS";
         if (facts.hasQualifyingReceipt()) return "DAR_TURNO";
-        return "SIN_TURNO";
+        return "EN_TRAMITE";
     }
 
     private String procedureCode(ParticularEffectiveStateFacts facts, String repairCode) {

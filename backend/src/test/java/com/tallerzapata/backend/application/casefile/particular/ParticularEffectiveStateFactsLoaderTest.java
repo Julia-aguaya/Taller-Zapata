@@ -112,6 +112,11 @@ class ParticularEffectiveStateFactsLoaderTest {
     }
 
     @Test
+    void doesNotTreatACompletedNormalAppointmentAsAnActiveTurn() {
+        assertFalse(load(List.of(), List.of(appointment(2L, CASE_ID, T2, "CUMPLIDO", false)), List.of()).hasValidNormalAppointment());
+    }
+
+    @Test
     void treatsOnlyReceivedPartsAsResolvedAndOnlyFacturaOrReciboAsQualifying() {
         assertTrue(load(List.of(), List.of(), List.of(), List.of(part("AUTORIZADO")), List.of()).hasUnreceivedPart());
         assertFalse(load(List.of(), List.of(), List.of(), List.of(part("RECIBIDO")), List.of()).hasUnreceivedPart());

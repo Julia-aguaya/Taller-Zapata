@@ -104,6 +104,7 @@ public class CaseWorkflowService {
         String domain = caseVisibleStateResolver.normalizeDomain(request.domain());
         String stateCode = caseVisibleStateResolver.normalizeCode(request.stateCode());
         caseVisibleStateResolver.validateOverrideCode(domain, stateCode);
+        requireReasonForTerminalOverride(stateCode, request.reason());
 
         if (isParticular(caseEntity)) {
             if (stateCode != null && !"RECHAZADO".equals(stateCode) && !"DESISTIDO".equals(stateCode)) {
@@ -663,5 +664,11 @@ public class CaseWorkflowService {
             return leftString.startsWith(rightString);
         }
         throw new ConflictException("El operador STARTS_WITH requiere valores string");
+    }
+
+    private void requireReasonForTerminalOverride(String stateCode, String reason) {
+        if (("RECHAZADO".equals(stateCode) || "DESISTIDO".equals(stateCode)) && (reason == null || reason.isBlank())) {
+            throw new ConflictException("Debe indicar un motivo para Rechazado o Desistido");
+        }
     }
 }

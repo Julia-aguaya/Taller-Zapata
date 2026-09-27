@@ -157,7 +157,7 @@ public class CaseVisibleStateResolver {
                 return result;
             }).orElseGet(() -> Map.of(
                     DOMAIN_TRAMITE, buildVisibleState(DOMAIN_TRAMITE, "INGRESADO", null),
-                    DOMAIN_REPARACION, buildVisibleState(DOMAIN_REPARACION, "SIN_TURNO", null)
+                    DOMAIN_REPARACION, buildVisibleState(DOMAIN_REPARACION, "EN_TRAMITE", null)
             ));
         }
         if (insuranceRepairCasePolicy.isInsuranceRepair(caseType.getCode())) {
@@ -168,7 +168,7 @@ public class CaseVisibleStateResolver {
                 return result;
             }).orElseGet(() -> Map.of(
                     DOMAIN_TRAMITE, buildVisibleState(DOMAIN_TRAMITE, "SIN_PRESENTAR", null),
-                    DOMAIN_REPARACION, buildVisibleState(DOMAIN_REPARACION, "SIN_TURNO", normalizeCode(caseEntity.getVisibleRepairStateOverrideCode()))
+                    DOMAIN_REPARACION, buildVisibleState(DOMAIN_REPARACION, "EN_TRAMITE", normalizeCode(caseEntity.getVisibleRepairStateOverrideCode()))
             ));
         }
         if ("CLEAS".equals(normalizeCode(caseType.getCode()))) {
@@ -431,10 +431,10 @@ public class CaseVisibleStateResolver {
         if (expectedTotal.signum() <= 0) {
             return false;
         }
-        BigDecimal customerNet = financialMovementRepository.findByCaseId(caseId, FINANCE_SORT).stream()
+        BigDecimal customerPaid = financialMovementRepository.findByCaseId(caseId, FINANCE_SORT).stream()
                 .filter(movement -> "CLIENTE".equals(normalizeCode(movement.getFlowOriginCode())))
                 .map(movement -> {
-                    BigDecimal amount = movement.getNetAmount() == null ? BigDecimal.ZERO : movement.getNetAmount();
+                    BigDecimal amount = movement.getGrossAmount() == null ? BigDecimal.ZERO : movement.getGrossAmount();
                     String type = normalizeCode(movement.getMovementTypeCode());
                     if ("INGRESO".equals(type) || ("AJUSTE".equals(type) && amount.signum() >= 0)) {
                         return amount;
@@ -443,7 +443,7 @@ public class CaseVisibleStateResolver {
                 })
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        return customerNet.compareTo(expectedTotal) >= 0;
+        return customerPaid.compareTo(expectedTotal) >= 0;
     }
 
     private boolean hasPositiveAmount(BigDecimal value) {

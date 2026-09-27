@@ -35,10 +35,10 @@ public class LocalDocumentUploadTemporaryStorage {
         }
     }
 
-    public boolean matches(String uploadId, int chunkIndex, long size, String checksum) {
+    public boolean matches(String uploadId, int chunkIndex, MultipartFile chunk) {
         Path path = chunkPath(uploadId, chunkIndex);
         try {
-            return Files.exists(path) && Files.size(path) == size && checksum(path).equalsIgnoreCase(checksum);
+            return Files.exists(path) && Files.size(path) == chunk.getSize() && checksum(path).equalsIgnoreCase(checksum(chunk));
         } catch (IOException exception) {
             return false;
         }
@@ -94,6 +94,17 @@ public class LocalDocumentUploadTemporaryStorage {
 
     private String checksum(Path path) throws IOException {
         try (InputStream input = Files.newInputStream(path)) {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] buffer = new byte[8192];
+            for (int read; (read = input.read(buffer)) != -1; ) digest.update(buffer, 0, read);
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 no disponible", exception);
+        }
+    }
+
+    private String checksum(MultipartFile chunk) throws IOException {
+        try (InputStream input = chunk.getInputStream()) {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] buffer = new byte[8192];
             for (int read; (read = input.read(buffer)) != -1; ) digest.update(buffer, 0, read);
