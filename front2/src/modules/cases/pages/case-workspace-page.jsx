@@ -23,8 +23,8 @@ import { FranchiseRecoveryEditor } from '@/modules/cases/components/franchise-re
 import { FranchiseRecoveryPaymentsEditor } from '@/modules/cases/components/franchise-recovery-payments-editor';
 import { ThirdPartyLawyerEditor } from '@/modules/cases/components/third-party-lawyer-editor';
 import { requestJson } from '@/shared/api/http-client';
-import { searchPersons } from '@/modules/cases/api/new-case-api';
-import { addCasePerson, getCasePersons } from '@/modules/cases/api/third-party-api';
+import { createPerson, searchPersons } from '@/modules/cases/api/new-case-api';
+import { addCasePerson, deleteCasePerson, getCasePersons, updateCasePerson } from '@/modules/cases/api/third-party-api';
 import { getCleasTabs, getOperationalTabs, getTabIcon, getTabLabel } from '@/modules/cases/lib/tab-registry';
 import { useSession } from '@/modules/auth/providers/session-provider';
 
@@ -265,8 +265,9 @@ export const CaseWorkspacePage = () => {
   const isCleasAdverseTotal = caseDetail.caseTypeCode === 'CLEAS' && cleasOver === 'damage' && cleasOpinion === 'unfavorable';
   const isCleasClosed = caseDetail.caseTypeCode === 'CLEAS' && Boolean(caseDetail.closedAt);
   const isInsuranceRepair = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail.caseTypeCode);
-  const canOverrideVisibleState = Boolean(session?.capabilities?.canOverrideVisibleStates) && !isInsuranceRepair && !isCleasClosed;
-  const canOverrideRepairState = Boolean(session?.capabilities?.canOverrideVisibleStates) && !isCleasClosed;
+  const isThirdPartyWorkshop = caseDetail.caseTypeCode === 'RECLAMO_TERCEROS';
+  const canOverrideVisibleState = Boolean(session?.capabilities?.canOverrideVisibleStates) && !isInsuranceRepair && !isThirdPartyWorkshop && !isCleasClosed;
+  const canOverrideRepairState = Boolean(session?.capabilities?.canOverrideVisibleStates) && !isThirdPartyWorkshop && !isCleasClosed;
   const handleCleasOverChange = (value) => setCleasOver(value);
   const handleCleasOpinionChange = (value) => setCleasOpinion(value);
   const overrideOptions = caseDetail.caseTypeCode === 'PARTICULAR'
@@ -1019,18 +1020,19 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
             )}
           </div>
         </div>
-        {['RECLAMO_TERCEROS', 'RECLAMO_TERCEROS_ABOGADO'].includes(caseDetail.caseTypeCode) ? <RegistryOwnershipSection caseId={caseId} caseDetail={caseDetail} /> : null}
+        {['RECLAMO_TERCEROS', 'RECLAMO_TERCEROS_ABOGADO'].includes(caseDetail.caseTypeCode) ? <RegistryOwnershipSection caseId={caseId} caseDetail={caseDetail} editable={caseDetail.caseTypeCode === 'RECLAMO_TERCEROS'} /> : null}
       </div>
       ) : null}
     </Card>
   );
 };
 
-const RegistryOwnershipSection = ({ caseId, caseDetail }) => {
+export const RegistryOwnershipSection = ({ caseId, caseDetail, editable = false }) => {
   const queryClient = useQueryClient();
   const [firstPersonId, setFirstPersonId] = useState(caseDetail.principalCustomerPersonId ? String(caseDetail.principalCustomerPersonId) : '');
   const [secondPersonId, setSecondPersonId] = useState('');
   const [percentage, setPercentage] = useState('100');
+  const [addOpen, setAddOpen] = useState(false); const [newPersonId, setNewPersonId] = useState(''); const [newPercentage, setNewPercentage] = useState(''); const [createOpen, setCreateOpen] = useState(false); const [newPersonName, setNewPersonName] = useState('');
   const personsQuery = useQuery({ queryKey: ['cases', String(caseId), 'persons'], queryFn: () => getCasePersons(caseId) });
   const owners = (personsQuery.data ?? []).filter((person) => person.caseRoleCode === 'TITULAR' && person.vehicleId === caseDetail.principalVehicleId);
   const saveMutation = useMutation({
@@ -1042,9 +1044,14 @@ const RegistryOwnershipSection = ({ caseId, caseDetail }) => {
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'persons'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); toast.success('Titularidad registral guardada.'); },
     onError: (error) => toast.error(error.message || 'No se pudo guardar la titularidad.'),
   });
+  const updateMutation = useMutation({ mutationFn: ({ owner, percentage }) => updateCasePerson(caseId, owner.id, { caseRoleCode: 'TITULAR', vehicleId: caseDetail.principalVehicleId, notes: owner.notes, porcentajeTitularidad: Number(percentage) }), onSuccess: () => queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'persons'] }) });
+  const deleteMutation = useMutation({ mutationFn: (ownerId) => deleteCasePerson(caseId, ownerId), onSuccess: () => queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'persons'] }) });
+  const createMutation = useMutation({ mutationFn: () => createPerson({ tipoPersona: 'fisica', nombre: newPersonName.trim(), apellido: '', activo: true }), onSuccess: (person) => { setNewPersonId(String(person.id)); setCreateOpen(false); setNewPersonName(''); } });
+  const total = owners.reduce((sum, owner) => sum + (owner.registryOwnershipPercentage || 0), 0); const remaining = 100 - total; const requested = Number(newPercentage) || 0; const canAdd = Boolean(newPersonId) && requested > 0 && requested <= remaining;
+  const addOwnerMutation = useMutation({ mutationFn: () => addCasePerson(caseId, { personId: Number(newPersonId), caseRoleCode: 'TITULAR', vehicleId: caseDetail.principalVehicleId, isMain: false, notes: 'Titular registral', porcentajeTitularidad: requested }), onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'persons'] }); setAddOpen(false); setNewPersonId(''); setNewPercentage(''); toast.success('Titular agregado.'); }, onError: (error) => toast.error(error.message || 'No se pudo agregar el titular.') });
 
   if (owners.length) {
-    return <section className="mt-5 rounded-2xl border border-border/60 bg-background/70 p-5"><h4 className="font-semibold">Titularidad registral</h4><p className="mt-1 text-sm text-muted-foreground">La identificación de la carpeta toma al primer titular registrado.</p><ul className="mt-3 space-y-2">{owners.map((owner) => <li key={owner.id} className="rounded-xl border border-border/50 px-3 py-2 text-sm"><strong>{owner.displayName}</strong> · {owner.registryOwnershipPercentage}%</li>)}</ul></section>;
+    return <section className="mt-5 rounded-2xl border border-border/60 bg-background/70 p-5"><div className="flex items-center justify-between"><h4 className="font-semibold">Titularidad registral</h4>{editable ? <Button size="sm" onClick={() => setAddOpen(true)}>Agregar titular</Button> : null}</div><p className="mt-1 text-sm text-muted-foreground">Total: {total}% · Restante: {remaining}%.</p><ul className="mt-3 space-y-2">{owners.map((owner) => <li key={owner.id} className="flex items-center justify-between rounded-xl border border-border/50 px-3 py-2 text-sm"><strong>{owner.displayName}</strong>{editable ? <span className="flex gap-2"><Input aria-label={`Porcentaje de ${owner.displayName}`} className="h-8 w-20" type="number" min="1" max="100" defaultValue={owner.registryOwnershipPercentage} onBlur={(event) => updateMutation.mutate({ owner, percentage: event.target.value })} /><Button size="sm" variant="ghost" onClick={() => deleteMutation.mutate(owner.id)}>Quitar</Button></span> : <span>· {owner.registryOwnershipPercentage}%</span>}</li>)}</ul><Dialog open={addOpen} onClose={() => setAddOpen(false)} title="Agregar titular" description={`Podés asignar hasta ${remaining}% de titularidad.`}><RegistryPersonPicker label="Persona" personId={newPersonId} onPersonIdChange={setNewPersonId} /><Button className="mt-2" variant="outline" onClick={() => setCreateOpen(true)}>Crear nueva persona</Button><Label className="mt-3 block">Porcentaje<Input aria-label="Porcentaje nuevo titular" type="number" min="1" max={remaining} value={newPercentage} onChange={(event) => setNewPercentage(event.target.value)} /></Label>{requested > remaining ? <p className="mt-2 text-sm text-destructive">Supera el 100% acumulado.</p> : null}<Button className="mt-4 w-full" onClick={() => addOwnerMutation.mutate()} disabled={!canAdd || addOwnerMutation.isPending}>Agregar titular</Button></Dialog><Dialog open={createOpen} onClose={() => setCreateOpen(false)} title="Nueva persona" description="Se creará en el padrón y quedará seleccionada."><Input aria-label="Nombre nueva persona" value={newPersonName} onChange={(event) => setNewPersonName(event.target.value)} /><Button className="mt-4 w-full" onClick={() => createMutation.mutate()} disabled={!newPersonName.trim() || createMutation.isPending}>Crear persona</Button></Dialog></section>;
   }
 
   const canSave = Boolean(firstPersonId) && (percentage === '100' || Boolean(secondPersonId));

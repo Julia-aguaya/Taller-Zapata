@@ -16,6 +16,7 @@ import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -112,6 +113,56 @@ class CaseManagementIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(new CasePersonAddRequest(11L, "TITULAR", 10L, false, null, 50))))
                 .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldUpdateWorkshopOwnerPercentage() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = 5 WHERE id = 100");
+        jdbcTemplate.update("INSERT INTO caso_personas (id, caso_id, persona_id, rol_caso_codigo, vehiculo_id, es_principal, notas, porcentaje_titularidad) VALUES (5, 100, 11, 'TITULAR', 10, false, 'Titular registral', 50)");
+
+        mockMvc.perform(put("/api/v1/cases/100/persons/5").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CasePersonUpdateRequest("TITULAR", 10L, "Titular registral", 75))))
+                .andExpect(status().isOk());
+
+        assertThat(jdbcTemplate.queryForObject("SELECT porcentaje_titularidad FROM caso_personas WHERE id = 5", Integer.class)).isEqualTo(75);
+    }
+
+    @Test
+    void shouldRejectOwnerUpdateAboveWorkshopOwnershipTotal() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = 5 WHERE id = 100");
+        jdbcTemplate.update("INSERT INTO caso_personas (id, caso_id, persona_id, rol_caso_codigo, vehiculo_id, es_principal, notas, porcentaje_titularidad) VALUES (5, 100, 11, 'TITULAR', 10, false, null, 50)");
+        jdbcTemplate.update("INSERT INTO personas (id, public_id, tipo_persona, nombre, nombre_mostrar, activo) VALUES (12, '00000000-0000-0000-0000-000000001012', 'fisica', 'Beto', 'Beto Test', true)");
+        jdbcTemplate.update("INSERT INTO caso_personas (id, caso_id, persona_id, rol_caso_codigo, vehiculo_id, es_principal, notas, porcentaje_titularidad) VALUES (6, 100, 12, 'TITULAR', 10, false, null, 30)");
+
+        mockMvc.perform(put("/api/v1/cases/100/persons/5").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CasePersonUpdateRequest("TITULAR", 10L, null, 80))))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldDeleteOwnerLinkWithoutDeletingGeneralPerson() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = 5 WHERE id = 100");
+        jdbcTemplate.update("INSERT INTO caso_personas (id, caso_id, persona_id, rol_caso_codigo, vehiculo_id, es_principal, notas, porcentaje_titularidad) VALUES (5, 100, 11, 'TITULAR', 10, false, null, 50)");
+
+        mockMvc.perform(delete("/api/v1/cases/100/persons/5").header("X-User-Id", "3")).andExpect(status().isOk());
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM caso_personas WHERE id = 5", Integer.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM personas WHERE id = 11", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void shouldRejectDeletingPrincipalClientLink() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = 5 WHERE id = 100");
+        mockMvc.perform(delete("/api/v1/cases/100/persons/1").header("X-User-Id", "3")).andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldRejectOperationForLinkInAnotherCase() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = 5 WHERE id = 100");
+        jdbcTemplate.update("INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, estado_tramite_actual_id, estado_reparacion_actual_id, estado_pago_actual_id, estado_documentacion_actual_id, estado_legal_actual_id, prioridad_codigo) VALUES (101, '00000000-0000-0000-0000-000000003101', '0101PZ', 101, 5, 1, 1, 10, 10, false, 1, 1, 4, 7, 9, 11, 'MEDIA')");
+        jdbcTemplate.update("INSERT INTO caso_personas (id, caso_id, persona_id, rol_caso_codigo, vehiculo_id, es_principal, notas, porcentaje_titularidad) VALUES (5, 101, 11, 'TITULAR', 10, false, null, 50)");
+
+        mockMvc.perform(delete("/api/v1/cases/100/persons/5").header("X-User-Id", "3")).andExpect(status().isNotFound());
     }
 
     @Test

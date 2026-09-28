@@ -7,6 +7,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -43,6 +44,16 @@ public class CaseManagementController {
     @GetMapping("/cases/{caseId}/persons")
     public List<CasePersonResponse> listCasePersons(@PathVariable Long caseId) {
         return caseManagementService.listCasePersons(caseId);
+    }
+
+    @PutMapping("/cases/{caseId}/persons/{relationId}")
+    public void updateCasePerson(@PathVariable Long caseId, @PathVariable Long relationId, @Valid @RequestBody CasePersonUpdateRequest request, HttpServletRequest httpRequest) {
+        caseManagementService.updateCasePerson(caseId, relationId, request, httpRequest);
+    }
+
+    @DeleteMapping("/cases/{caseId}/persons/{relationId}")
+    public void removeCasePerson(@PathVariable Long caseId, @PathVariable Long relationId, HttpServletRequest httpRequest) {
+        caseManagementService.removeCasePerson(caseId, relationId, httpRequest);
     }
 
     @Operation(summary = "Agregar vehiculo a caso", description = "Asocia un vehiculo existente a un caso")

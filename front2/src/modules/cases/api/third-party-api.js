@@ -20,3 +20,5 @@ export const createLegalRecoverable = (caseId, payload) => requestJson(`${casePa
 export const collectLegalRecoverable = (caseId, itemId) => requestJson(`${casePath(caseId)}/legal-recoverables/${itemId}/collect`, { method: 'POST' });
 export const getCasePersons = (caseId) => requestJson(`${casePath(caseId)}/persons`);
 export const addCasePerson = (caseId, payload) => requestJson(`${casePath(caseId)}/persons`, { method: 'POST', body: JSON.stringify(payload) });
+export const updateCasePerson = (caseId, relationId, payload) => requestJson(`${casePath(caseId)}/persons/${relationId}`, { method: 'PUT', body: JSON.stringify(payload) });
+export const deleteCasePerson = (caseId, relationId) => requestJson(`${casePath(caseId)}/persons/${relationId}`, { method: 'DELETE' });
