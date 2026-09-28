@@ -3,6 +3,7 @@ package com.tallerzapata.backend.application.budget;
 import com.tallerzapata.backend.api.budget.*;
 import com.tallerzapata.backend.api.casefile.CodeCatalogResponse;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
+import com.tallerzapata.backend.application.casefile.InsuranceRepairCasePolicy;
 import com.tallerzapata.backend.application.casefile.ParticularCaseClosureService;
 import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
@@ -14,6 +15,7 @@ import com.tallerzapata.backend.application.security.CaseAccessControlService;
 import com.tallerzapata.backend.infrastructure.persistence.budget.*;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsurancePartsAuthorizationRepository;
 import com.tallerzapata.backend.infrastructure.persistence.organization.BranchEntity;
 import com.tallerzapata.backend.infrastructure.persistence.organization.BranchRepository;
@@ -73,9 +75,11 @@ public class BudgetService {
     private final CasePartReconciliationWarningRepository warningRepository;
     private final CleasDownstreamGate cleasDownstreamGate;
     private final VehicleRepository vehicleRepository;
+    private final CaseTypeRepository caseTypeRepository;
+    private final InsuranceRepairCasePolicy insuranceRepairCasePolicy = new InsuranceRepairCasePolicy();
 
     public BudgetService(BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, BudgetAccessoryWorkRepository budgetAccessoryWorkRepository, CasePartRepository casePartRepository, CaseRepository caseRepository, BudgetReportStatusRepository budgetReportStatusRepository, BudgetTaskRepository budgetTaskRepository, DamageLevelRepository damageLevelRepository, PartDecisionRepository partDecisionRepository, BudgetActionRepository budgetActionRepository, PartStatusRepository partStatusRepository, PartPurchaserRepository partPurchaserRepository, PartPaymentStatusRepository partPaymentStatusRepository, InsurancePartsAuthorizationRepository insurancePartsAuthorizationRepository, PersonRepository personRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService,             BudgetPdfService budgetPdfService, ParticularCaseClosureService particularCaseClosureService,
-            OrganizationRepository organizationRepository, BranchRepository branchRepository, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator, ProviderRepository providerRepository, BudgetComparisonService budgetComparisonService, CanonicalPartReconciliationService canonicalPartReconciliationService, CasePartReconciliationWarningRepository warningRepository, CleasDownstreamGate cleasDownstreamGate, VehicleRepository vehicleRepository) {
+            OrganizationRepository organizationRepository, BranchRepository branchRepository, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator, ProviderRepository providerRepository, BudgetComparisonService budgetComparisonService, CanonicalPartReconciliationService canonicalPartReconciliationService, CasePartReconciliationWarningRepository warningRepository, CleasDownstreamGate cleasDownstreamGate, VehicleRepository vehicleRepository, CaseTypeRepository caseTypeRepository) {
         this.budgetRepository = budgetRepository;
         this.budgetItemRepository = budgetItemRepository;
         this.budgetAccessoryWorkRepository = budgetAccessoryWorkRepository;
@@ -107,6 +111,7 @@ public class BudgetService {
         this.warningRepository = warningRepository;
         this.cleasDownstreamGate = cleasDownstreamGate;
         this.vehicleRepository = vehicleRepository;
+        this.caseTypeRepository = caseTypeRepository;
     }
 
     @Transactional(readOnly = true)
@@ -438,6 +443,21 @@ public class BudgetService {
             cleasEffectiveStateRecalculator.recalculate(caseId);
         }
         return result;
+    }
+
+    @Transactional
+    public WorkshopPartsSyncResponse syncWorkshopReplacementParts(Long caseId, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCaseForUpdate(caseId);
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "presupuesto.crear");
+        if (!caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(type.getCode())).orElse(false)) throw new ConflictException("La actualización de repuestos sólo aplica a Reclamo de terceros gestionado por Taller");
+        int before = casePartRepository.findByCaseIdOrderByIdAsc(caseId).size();
+        List<CasePartEntity> synchronizedParts = canonicalPartReconciliationService.reconcile(caseId, currentUser, httpRequest);
+        int after = casePartRepository.findByCaseIdOrderByIdAsc(caseId).size();
+        int incorporated = Math.max(0, after - before);
+        int existing = Math.max(0, synchronizedParts.size() - incorporated);
+        if (!synchronizedParts.isEmpty()) todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+        return new WorkshopPartsSyncResponse(incorporated, 0, existing, Math.max(0, synchronizedParts.size() - incorporated - existing));
     }
 
     @Transactional

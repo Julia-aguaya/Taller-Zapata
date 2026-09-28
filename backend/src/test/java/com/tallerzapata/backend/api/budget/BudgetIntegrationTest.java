@@ -65,6 +65,22 @@ class BudgetIntegrationTest {
     }
 
     @Test
+    void syncsWorkshopReplacementDecisionsWithoutDuplicatesAndPreservesSafeReconciliation() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = 5 WHERE id = 100");
+        saveBudget(List.of(comparisonItem(1, "Óptica", "DEBE_REEMPLAZARSE", "REEMPLAZAR", 250)));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM repuestos_caso WHERE caso_id = 100", Integer.class)).isEqualTo(1);
+
+        mockMvc.perform(post("/api/v1/cases/100/parts/sync-workshop-replacements").header("X-User-Id", "3"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.incorporated").value(0)).andExpect(jsonPath("$.alreadyExisted").value(1));
+        mockMvc.perform(post("/api/v1/cases/100/parts/sync-workshop-replacements").header("X-User-Id", "3"))
+                .andExpect(status().isOk());
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM repuestos_caso WHERE caso_id = 100", Integer.class)).isEqualTo(1);
+
+        saveBudget(List.of(comparisonItem(1, "Óptica", "PUEDE_REPARARSE", "REEMPLAZAR", 250)));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM repuestos_caso WHERE caso_id = 100", Integer.class)).isZero();
+    }
+
+    @Test
     void shouldUpsertBudget() throws Exception {
         mockMvc.perform(put("/api/v1/cases/100/budget")
                         .header("X-User-Id", "3")

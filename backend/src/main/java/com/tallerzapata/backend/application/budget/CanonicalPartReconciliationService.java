@@ -47,7 +47,7 @@ public class CanonicalPartReconciliationService {
         Set<Long> activeItems = new HashSet<>();
         List<CasePartEntity> changed = new ArrayList<>();
         for (BudgetItemEntity item : items.findByBudgetIdOrderByVisualOrderAsc(budget.getId())) {
-            if (!Boolean.TRUE.equals(item.getActive()) || !isReplacementAction(item.getActionCode())) continue;
+            if (!Boolean.TRUE.equals(item.getActive()) || !isReplacementSource(caseEntity, item)) continue;
             activeItems.add(item.getId());
             Optional<CasePartEntity> existing = parts.findByCaseIdAndBudgetItemIdAndSourceTypeAndNonCanonicalFalse(caseId, item.getId(), CasePartSourceType.BUDGET_ITEM);
             if (existing.isEmpty() && parts.existsByCaseIdAndBudgetItemId(caseId, item.getId())) continue;
@@ -92,7 +92,12 @@ public class CanonicalPartReconciliationService {
 
     private boolean supportsCanonicalParts(String caseTypeCode) {
         return insuranceRepairCasePolicy.isInsuranceRepair(caseTypeCode)
+                || insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeCode)
                 || "PARTICULAR".equals(insuranceRepairCasePolicy.normalize(caseTypeCode));
+    }
+    private boolean isReplacementSource(CaseEntity caseEntity, BudgetItemEntity item) {
+        boolean workshop = caseTypes.findById(caseEntity.getCaseTypeId()).map(type -> insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(type.getCode())).orElse(false);
+        return isReplacementAction(item.getActionCode()) && (!workshop || "DEBE_REEMPLAZARSE".equals(item.getPartDecisionCode()));
     }
 
     private CasePartEntity newBudgetPart(Long caseId, BudgetItemEntity item) {

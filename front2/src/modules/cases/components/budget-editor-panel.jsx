@@ -15,7 +15,7 @@ import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
 import { ProviderSelector, providerPayload } from '@/modules/cases/components/provider-selector';
-import { syncPartsFromBudget } from '@/modules/cases/api/parts-api';
+import { syncPartsFromBudget, syncWorkshopReplacementParts } from '@/modules/cases/api/parts-api';
 
 const currency = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 });
 const fmt = (v) => (v == null ? '-' : currency.format(v));
@@ -147,6 +147,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
       toast.error(error.message || 'No pude guardar.');
     },
   });
+  const workshopPartsMutation = useMutation({ mutationFn: () => syncWorkshopReplacementParts(caseId), onSuccess: async (result) => { await invalidateWorkspace(); toast.success(`Repuestos: ${result.incorporated} incorporados, ${result.updated} actualizados, ${result.alreadyExisted} ya existentes, ${result.unchanged} sin cambios.`); }, onError: (error) => toast.error(error.message || 'No pude actualizar los repuestos.') });
 
   const guardedSave = (closeAfterSave) => {
     if (hasIncompleteLines) { toast.error(`${incompleteLines.length} línea(s) incompleta(s).`); return; }
@@ -212,6 +213,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
             <Button className="bg-emerald-600 hover:bg-emerald-700" size="sm" onClick={async () => { const stored = JSON.parse(window.localStorage.getItem('front2.session.v1') || '{}'); const r = await fetch(`/api/v1/cases/${caseId}/budget/pdf`, { headers: { Authorization: `Bearer ${stored.accessToken}` } }); if (!r.ok) return toast.error('No se pudo descargar.'); const b = await r.blob(); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = `presupuesto-${caseId}.pdf`; a.click(); URL.revokeObjectURL(u); }}><FileDown className="mr-1.5 h-4 w-4" />Descargar PDF</Button>
         ) : null}
         <div className="ml-auto flex gap-2">
+          {caseDetail?.caseTypeCode === 'RECLAMO_TERCEROS' ? <Button variant="outline" onClick={() => workshopPartsMutation.mutate()} disabled={workshopPartsMutation.isPending}>Forzar actualización de repuestos</Button> : null}
           <Button variant="outline" onClick={() => guardedSave(false)} disabled={saveMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar cambios</Button>
           <Button onClick={() => guardedSave(true)} disabled={saveMutation.isPending}><ShieldCheck className="mr-1.5 h-4 w-4" />Generar presupuesto</Button>
         </div>

@@ -139,6 +139,12 @@ public class BudgetController {
         return budgetService.syncPartsFromBudget(caseId, httpRequest);
     }
 
+    @PostMapping("/cases/{caseId}/parts/sync-workshop-replacements")
+    @PreAuthorize("hasAuthority('presupuesto.crear')")
+    public WorkshopPartsSyncResponse syncWorkshopReplacementParts(@PathVariable Long caseId, HttpServletRequest httpRequest) {
+        return budgetService.syncWorkshopReplacementParts(caseId, httpRequest);
+    }
+
     @Operation(summary = "Resolver advertencia de reconciliación", description = "Registra una resolución manual sin borrar actividad operativa")
     @PreAuthorize("hasAuthority('presupuesto.crear')")
     @PostMapping("/cases/{caseId}/parts/{partId}/reconciliation-warnings/{warningId}/resolve")

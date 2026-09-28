@@ -6,6 +6,7 @@ const mockUpsertCaseBudget = vi.fn().mockResolvedValue({});
 const mockCreateCaseBudgetItem = vi.fn().mockResolvedValue({});
 const mockGenerateCaseBudget = vi.fn().mockResolvedValue({ comparisonSnapshot: { importedPieceCount: 1 } });
 const mockSyncPartsFromBudget = vi.fn().mockResolvedValue([]);
+const mockSyncWorkshopReplacementParts = vi.fn().mockResolvedValue({ incorporated: 1, updated: 0, alreadyExisted: 0, unchanged: 0 });
 const mockInvalidateQueries = vi.fn().mockResolvedValue({});
 const requestJson = vi.fn().mockResolvedValue([]);
 const session = { user: { displayName: 'Taller' }, authorities: ['presupuesto.ver', 'proveedor.ver', 'documento.subir', 'documento.relacionar'] };
@@ -31,7 +32,7 @@ vi.mock('@/modules/cases/api/budget-api', () => ({
   generateCaseBudget: (...args) => mockGenerateCaseBudget(...args),
 }));
 vi.mock('@/modules/cases/api/budget-catalogs-api', () => ({ getBudgetCatalogs: vi.fn() }));
-vi.mock('@/modules/cases/api/parts-api', () => ({ syncPartsFromBudget: (...args) => mockSyncPartsFromBudget(...args) }));
+vi.mock('@/modules/cases/api/parts-api', () => ({ syncPartsFromBudget: (...args) => mockSyncPartsFromBudget(...args), syncWorkshopReplacementParts: (...args) => mockSyncWorkshopReplacementParts(...args) }));
 vi.mock('@/modules/cases/components/provider-selector', () => ({ ProviderSelector: () => <input />, providerPayload: vi.fn() }));
 vi.mock('@/modules/auth/providers/session-provider', () => ({ useSession: () => ({ session }) }));
 vi.mock('@/shared/api/http-client', () => ({ requestJson: (...args) => requestJson(...args) }));
@@ -43,6 +44,7 @@ const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f
 const controlFor = (label) => screen.getByText(label).parentElement.querySelector('input, select');
 const particularCaseDetail = { caseTypeCode: 'PARTICULAR', principalCustomerName: 'Juan', principalVehiclePlate: 'ABC123' };
 const insuranceCaseDetail = { caseTypeCode: 'TODO_RIESGO', principalCustomerName: 'Juan', principalVehiclePlate: 'ABC123' };
+const workshopCaseDetail = { caseTypeCode: 'RECLAMO_TERCEROS', principalCustomerName: 'Juan', principalVehiclePlate: 'ABC123' };
 
 afterEach(() => {
   catalogsReady = true;
@@ -52,6 +54,11 @@ afterEach(() => {
 });
 
 describe('BudgetEditorPanel comparison tabs', () => {
+  it('shows and executes the workshop replacement-parts refresh with its result', async () => {
+    render(<BudgetEditorPanel caseId="42" budget={validBudget} caseDetail={workshopCaseDetail} workshopInfo={{}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Forzar actualización de repuestos' }));
+    await waitFor(() => expect(mockSyncWorkshopReplacementParts).toHaveBeenCalledWith('42'));
+  });
   it('keeps hydration stable while catalog queries have no data and updates for a new budget', () => {
     catalogsReady = false;
     const view = render(<BudgetEditorPanel caseId="42" budget={validBudget} caseDetail={particularCaseDetail} workshopInfo={{}} />);

@@ -15,6 +15,7 @@ export const updateCasePart = (caseId, partId, payload) => requestJson(`/cases/$
 export const syncPartsFromBudget = (caseId) => requestJson(`/cases/${caseId}/parts/sync-from-budget`, {
   method: 'POST',
 });
+export const syncWorkshopReplacementParts = (caseId) => requestJson(`/cases/${caseId}/parts/sync-workshop-replacements`, { method: 'POST' });
 
 export const resolvePartReconciliationWarning = (caseId, partId, warningId, resolution) => requestJson(`/cases/${caseId}/parts/${partId}/reconciliation-warnings/${warningId}/resolve`, {
   method: 'POST',
