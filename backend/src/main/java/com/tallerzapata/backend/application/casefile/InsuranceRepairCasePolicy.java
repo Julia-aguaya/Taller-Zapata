@@ -13,6 +13,14 @@ public final class InsuranceRepairCasePolicy {
         return "TODO_RIESGO".equals(normalized) || "GRANIZO".equals(normalized);
     }
 
+    /**
+     * Casos que comparten la proyección automática de estados de TODO_RIESGO.
+     * RECLAMO_TERCEROS_ABOGADO conserva su circuito legal propio.
+     */
+    public boolean usesTodoRiesgoEffectiveState(String caseTypeCode) {
+        return isInsuranceRepair(caseTypeCode) || isThirdPartyWorkshopClaim(caseTypeCode);
+    }
+
     public boolean isInsuranceCase(String caseTypeCode) {
         String normalized = normalize(caseTypeCode);
         return isInsuranceRepair(normalized) || "CLEAS".equals(normalized) || isThirdPartyClaim(normalized);

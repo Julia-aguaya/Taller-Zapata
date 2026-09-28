@@ -40,7 +40,7 @@ export const buildProcessingPatch = (form, processing) => {
   return patch;
 };
 
-export const ProcedureSection = ({ caseId }) => {
+export const ProcedureSection = ({ caseId, thirdPartyWorkshop = false }) => {
   const queryClient = useQueryClient();
   const [form, setForm] = useState(() => processingForm(null));
   const [belowMinimum, setBelowMinimum] = useState(null);
@@ -51,7 +51,10 @@ export const ProcedureSection = ({ caseId }) => {
   const modalityCodes = catalogsQuery.data?.modalityCodes ?? [];
   const quotationStatuses = catalogsQuery.data?.quotationStatusCodes ?? [];
 
-  useEffect(() => setForm(processingForm(processing)), [processing]);
+  useEffect(() => {
+    const next = processingForm(processing);
+    setForm(thirdPartyWorkshop ? { ...next, opinionCode: processing?.opinionCode || 'APROBADO' } : next);
+  }, [processing, thirdPartyWorkshop]);
 
   const invalidateProcessing = async () => {
     await Promise.all([
@@ -83,6 +86,7 @@ export const ProcedureSection = ({ caseId }) => {
 
   const save = (reason = null) => {
     const patch = buildProcessingPatch(form, processing);
+    if (thirdPartyWorkshop && form.opinionCode !== processing?.opinionCode) patch.opinionCode = form.opinionCode;
     if (!Object.keys(patch).length) return;
     mutation.mutate({ expectedVersion: processing?.version ?? 0, ...patch, ...(reason ? { belowMinimumReason: reason } : {}) });
   };
@@ -109,6 +113,7 @@ export const ProcedureSection = ({ caseId }) => {
       {approval ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"><span>Acuerdo bajo minimo: {approval.status === 'PENDIENTE' ? 'pendiente de aprobacion de un administrador global.' : 'aprobado por un administrador global.'}</span>{approval.status === 'PENDIENTE' && approval.canApprove ? <Button type="button" size="sm" onClick={() => approveMutation.mutate()} disabled={approveMutation.isPending}>Aprobar acuerdo</Button> : null}</div> : null}
       <div className="mt-4 grid gap-x-6 gap-y-3 md:grid-cols-4">
         <Field label="Fecha de presentación"><Input aria-label="Fecha presentado" type="date" value={form.presentedAt} onChange={(event) => setField('presentedAt', event.target.value)} /></Field>
+        {thirdPartyWorkshop ? <Field label="Dictamen"><select aria-label="Dictamen" value={form.opinionCode || 'APROBADO'} onChange={(event) => setField('opinionCode', event.target.value)} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"><option value="APROBADO">A favor</option><option value="RECHAZADO">En contra</option></select></Field> : null}
         <Field label="Derivado a inspeccion"><Input aria-label="Derivado a inspeccion" type="date" value={form.inspectionForwardedAt} disabled={!hasPresentedAt} onChange={(event) => setField('inspectionForwardedAt', event.target.value)} /></Field>
         <Field label="Fecha inspeccion"><Input aria-label="Fecha inspeccion" type="date" value={form.inspectionDate} disabled={!hasInspectionForwarded} onChange={(event) => setField('inspectionDate', event.target.value)} /></Field>
         <Field label="Modalidad"><select aria-label="Modalidad" value={form.modalityCode} disabled={!hasInspectionForwarded} onChange={(event) => setField('modalityCode', event.target.value)} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm disabled:opacity-50"><option value="">-</option>{modalityCodes.map((item) => <option key={item.code} value={item.code}>{item.name || item.code}</option>)}</select></Field>

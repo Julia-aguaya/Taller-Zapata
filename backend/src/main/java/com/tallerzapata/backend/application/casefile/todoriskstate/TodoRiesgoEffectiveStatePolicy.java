@@ -8,6 +8,7 @@ public final class TodoRiesgoEffectiveStatePolicy {
     }
 
     private String procedureCode(TodoRiesgoEffectiveStateFacts facts) {
+        if (facts.procedureRejected()) return "RECHAZADO";
         if (facts.paymentDate() != null) return "PAGADO";
         if (facts.passedToPaymentsDate() != null) return "PASADO_A_PAGOS";
         if (hasAgreement(facts)) return "ACORDADO";

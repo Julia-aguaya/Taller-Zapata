@@ -54,6 +54,17 @@ describe('ProcedureSection processing contract', () => {
     expect(screen.queryByLabelText('Final a favor Taller')).not.toBeInTheDocument();
   });
 
+  it('shows and persists the two workshop third-party opinions only', async () => {
+    requestJson.mockResolvedValue({});
+    render(<ProcedureSection caseId="42" thirdPartyWorkshop />);
+
+    expect(Array.from(screen.getByLabelText('Dictamen').options).map((option) => option.textContent)).toEqual(['A favor', 'En contra']);
+    fireEvent.change(screen.getByLabelText('Dictamen'), { target: { value: 'RECHAZADO' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    await waitFor(() => expect(requestJson).toHaveBeenCalledWith('/cases/42/insurance-processing', expect.objectContaining({ method: 'PATCH', body: expect.stringContaining('"opinionCode":"RECHAZADO"') })));
+  });
+
   it('persists a selected catalog provider as its id and server-owned snapshot', async () => {
     requestJson.mockResolvedValue({ providerId: 702, partsSupplierText: 'Proveedor Seguro' });
     render(<ProcedureSection caseId="42" />);

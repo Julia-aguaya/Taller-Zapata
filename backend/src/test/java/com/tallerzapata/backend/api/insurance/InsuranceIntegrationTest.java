@@ -294,8 +294,42 @@ class InsuranceIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(request)))
                 .andExpect(status().isOk())
                 // A facturar Cia. (3800) - Total final repuestos (2100) = 1700
+                .andExpect(jsonPath("$.minimumPartsAmount").value(2100.00))
                 .andExpect(jsonPath("$.finalAmountForWorkshop").value(1700.00))
                 .andExpect(jsonPath("$.finalPartsTotal").value(2100.00));
+    }
+
+    @Test
+    void shouldKeepCompanyAmountWhenClientProvidesThirdPartyParts() throws Exception {
+        setCaseType("RECLAMO_TERCEROS");
+        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, cuit, requiere_fotos_reparado, dias_pago_esperados, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 2L, "00000000-0000-0000-0000-000000004002", "SANCOR", "Sancor", "30711222335", false, 20, true);
+        setThirdPartyAgreement(new BigDecimal("3800.00"));
+
+        mockMvc.perform(put("/api/v1/cases/100/third-party")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CaseThirdPartyUpsertRequest(2L, "REC-CLIENTE", "ACEPTADA", true, "CLIENTE", new BigDecimal("1"), new BigDecimal("2"), new BigDecimal("3"), new BigDecimal("4"), new BigDecimal("5"), new BigDecimal("9999")))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.partsProvisionModeCode").value("CLIENTE"))
+                .andExpect(jsonPath("$.finalPartsTotal").doesNotExist())
+                .andExpect(jsonPath("$.finalAmountForWorkshop").value(3800.00));
+    }
+
+    @Test
+    void shouldPersistThirdPartyWorkshopOpinionAndProjectRejectedProcedure() throws Exception {
+        setCaseType("RECLAMO_TERCEROS");
+
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2026-01-10\",\"opinionCode\":\"RECHAZADO\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.opinionCode").value("RECHAZADO"));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT dictamen_codigo FROM caso_tramitacion_seguro WHERE caso_id = 100", String.class)).isEqualTo("RECHAZADO");
+        mockMvc.perform(get("/api/v1/cases/100").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.visibleTramiteState.code").value("RECHAZADO"));
     }
 
     @Test
@@ -442,6 +476,8 @@ class InsuranceIntegrationTest {
         Long budgetItemId = jdbcTemplate.queryForObject("SELECT id FROM presupuesto_items WHERE presupuesto_id = (SELECT id FROM presupuestos WHERE caso_id = ?)", Long.class, 100L);
         jdbcTemplate.update("INSERT INTO repuestos_caso (id, caso_id, presupuesto_item_id, descripcion, autorizado_codigo, estado_codigo, precio_presupuestado, precio_final, usado, devuelto, source_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'BUDGET_ITEM')",
                 502L, 100L, budgetItemId, "Puerta", "AUTORIZADO", "PEDIDO", finalPartPrice, finalPartPrice, false, false);
+        jdbcTemplate.update("INSERT INTO cotizaciones_repuesto (repuesto_id, proveedor, importe, facturacion_codigo, medio_pago_codigo) VALUES (?, ?, ?, ?, ?)",
+                502L, "Proveedor prueba", finalPartPrice, "A", "CONTADO");
     }
 
     private void insertThirdPartyWithStoredAmounts() {
@@ -562,6 +598,27 @@ class InsuranceIntegrationTest {
 
         Integer auditCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'crear_legal_gasto'", Integer.class, 100L);
         assertThat(auditCount).isEqualTo(1);
+    }
+
+    @Test
+    void shouldPersistWorkshopDocumentationIdempotentlyAndRestoreItsPendingState() throws Exception {
+        setCaseType("RECLAMO_TERCEROS");
+        // El front puede representar “sin proveedor” como cadena vacía: debe normalizarse,
+        // no fallar la validación de catálogo con 409.
+        CaseThirdPartyUpsertRequest complete = new CaseThirdPartyUpsertRequest(null, null, "ACEPTADA", true, "", null, null, null, null, null, null);
+
+        mockMvc.perform(put("/api/v1/cases/100/third-party").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(complete)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.documentationStatusCode").value("ACEPTADA")).andExpect(jsonPath("$.documentationAccepted").value(true));
+        mockMvc.perform(put("/api/v1/cases/100/third-party").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(complete)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.documentationAccepted").value(true));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM caso_terceros WHERE caso_id = 100", Integer.class)).isEqualTo(1);
+
+        mockMvc.perform(get("/api/v1/cases/100/third-party").header("X-User-Id", "3"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.documentationStatusCode").value("ACEPTADA")).andExpect(jsonPath("$.documentationAccepted").value(true));
+
+        CaseThirdPartyUpsertRequest incomplete = new CaseThirdPartyUpsertRequest(null, null, "PENDIENTE", false, null, null, null, null, null, null, null);
+        mockMvc.perform(put("/api/v1/cases/100/third-party").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(incomplete)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.documentationStatusCode").value("PENDIENTE")).andExpect(jsonPath("$.documentationAccepted").value(false));
     }
 
     @Test

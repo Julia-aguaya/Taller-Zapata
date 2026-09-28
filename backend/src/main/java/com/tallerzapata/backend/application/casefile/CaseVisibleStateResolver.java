@@ -160,7 +160,7 @@ public class CaseVisibleStateResolver {
                     DOMAIN_REPARACION, buildVisibleState(DOMAIN_REPARACION, "EN_TRAMITE", null)
             ));
         }
-        if (insuranceRepairCasePolicy.isInsuranceRepair(caseType.getCode())) {
+        if (insuranceRepairCasePolicy.usesTodoRiesgoEffectiveState(caseType.getCode())) {
             return todoRiesgoEffectiveStateRepository.findByCaseId(caseEntity.getId()).map(state -> {
                 Map<String, CaseVisibleStateResponse> result = new LinkedHashMap<>();
                 result.put(DOMAIN_TRAMITE, buildVisibleState(DOMAIN_TRAMITE, state.getProcedureCode(), null));

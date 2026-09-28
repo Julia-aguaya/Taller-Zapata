@@ -2,6 +2,7 @@ package com.tallerzapata.backend.application.casefile.todoriskstate;
 
 import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.RepairAppointmentEntity;
 import com.tallerzapata.backend.infrastructure.persistence.operation.RepairAppointmentRepository;
@@ -19,15 +20,16 @@ import java.util.List;
 public class TodoRiesgoEffectiveStateFactsLoader {
     private final TodoRiesgoStateFactsRepository factsRepository;
     private final InsuranceProcessingRepository insuranceProcessingRepository;
+    private final CaseTypeRepository caseTypeRepository;
     private final WorkflowStateRepository workflowStateRepository;
     private final CasePartRepository partRepository;
     private final RepairAppointmentRepository appointmentRepository;
     private final VehicleOutcomeRepository outcomeRepository;
 
-    public TodoRiesgoEffectiveStateFactsLoader(TodoRiesgoStateFactsRepository factsRepository, InsuranceProcessingRepository insuranceProcessingRepository,
+    public TodoRiesgoEffectiveStateFactsLoader(TodoRiesgoStateFactsRepository factsRepository, InsuranceProcessingRepository insuranceProcessingRepository, CaseTypeRepository caseTypeRepository,
                                                WorkflowStateRepository workflowStateRepository, CasePartRepository partRepository,
                                                RepairAppointmentRepository appointmentRepository, VehicleOutcomeRepository outcomeRepository) {
-        this.factsRepository = factsRepository; this.insuranceProcessingRepository = insuranceProcessingRepository;
+        this.factsRepository = factsRepository; this.insuranceProcessingRepository = insuranceProcessingRepository; this.caseTypeRepository = caseTypeRepository;
         this.workflowStateRepository = workflowStateRepository; this.partRepository = partRepository;
         this.appointmentRepository = appointmentRepository; this.outcomeRepository = outcomeRepository;
     }
@@ -38,12 +40,14 @@ public class TodoRiesgoEffectiveStateFactsLoader {
         List<RepairAppointmentEntity> appointments = appointmentRepository.findByCaseId(caseId, Sort.unsorted());
         List<VehicleOutcomeEntity> outcomes = outcomeRepository.findByCaseId(caseId, Sort.unsorted());
         VehicleOutcomeEntity latestOutcome = outcomes.stream().max(Comparator.comparing(VehicleOutcomeEntity::getOutcomeAt).thenComparing(VehicleOutcomeEntity::getId)).orElse(null);
+        var processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
         return new TodoRiesgoEffectiveStateFacts(
-                insuranceProcessingRepository.findByCaseId(caseId).map(processing -> processing.getPresentedAt()).orElse(null),
+                processing == null ? null : processing.getPresentedAt(),
                 documentationComplete(caseEntity),
-                insuranceProcessingRepository.findByCaseId(caseId).map(processing -> isAccepted(processing.getQuotationStatusCode())).orElse(false),
+                isThirdPartyWorkshop(caseEntity) && processing != null && "RECHAZADO".equals(normalize(processing.getOpinionCode())),
+                processing != null && isAccepted(processing.getQuotationStatusCode()),
                 facts == null ? null : facts.getAgreementDate(), facts == null ? null : facts.getPassedToPaymentsDate(), facts == null ? null : facts.getPaymentDate(),
-                facts != null && Boolean.TRUE.equals(facts.getNoRepairActive()),
+                (facts != null && Boolean.TRUE.equals(facts.getNoRepairActive())) || (processing != null && Boolean.TRUE.equals(processing.getNoRepair())),
                 facts != null && Boolean.TRUE.equals(facts.getUrgentRepairActive()),
                 latestOutcome == null ? null : new TodoRiesgoEffectiveStateFacts.OutcomeFact(latestOutcome.getId(), isRepaired(latestOutcome), Boolean.TRUE.equals(latestOutcome.getShouldReenter()), hasSatisfiedReentry(latestOutcome, appointments)),
                 appointments.stream().anyMatch(this::isValidNormalAppointment),
@@ -63,4 +67,5 @@ public class TodoRiesgoEffectiveStateFactsLoader {
     private boolean isCurrent(RepairAppointmentEntity appointment) { String status = normalize(appointment.getStatusCode()); return "PENDIENTE".equals(status) || "REPROGRAMADO".equals(status); }
     private String normalize(String value) { return value == null ? "" : value.trim().toUpperCase(); }
     private boolean isAccepted(String quotationStatusCode) { String code = normalize(quotationStatusCode); return "ACEPTADA".equals(code) || "ACORDADA".equals(code); }
+    private boolean isThirdPartyWorkshop(CaseEntity caseEntity) { return caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> "RECLAMO_TERCEROS".equals(normalize(type.getCode()))).orElse(false); }
 }

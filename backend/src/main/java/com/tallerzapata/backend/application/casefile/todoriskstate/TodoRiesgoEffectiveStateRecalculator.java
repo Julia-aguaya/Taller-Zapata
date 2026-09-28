@@ -36,7 +36,7 @@ public class TodoRiesgoEffectiveStateRecalculator {
 
     @Transactional
     public void recordProcedureFacts(Long caseId, LocalDate agreementDate, LocalDate passedToPaymentsDate, LocalDate paymentDate, Long actorUserId) {
-        requireInsuranceRepair(caseId);
+        requireTodoRiesgoEffectiveState(caseId);
         TodoRiesgoStateFactsEntity facts = factsRepository.findById(caseId).orElseGet(() -> newFacts(caseId));
         facts.setAgreementDate(agreementDate); facts.setPassedToPaymentsDate(passedToPaymentsDate); facts.setPaymentDate(paymentDate);
         factsRepository.save(facts); recalculate(caseId);
@@ -44,7 +44,7 @@ public class TodoRiesgoEffectiveStateRecalculator {
 
     @Transactional
     public void recordInsuranceProcedureFacts(Long caseId, LocalDate agreementDate, LocalDate passedToPaymentsDate, Long actorUserId) {
-        if (!isInsuranceRepair(caseId)) return;
+        if (!usesTodoRiesgoEffectiveState(caseId)) return;
         TodoRiesgoStateFactsEntity facts = factsRepository.findById(caseId).orElseGet(() -> newFacts(caseId));
         facts.setAgreementDate(agreementDate); facts.setPassedToPaymentsDate(passedToPaymentsDate);
         factsRepository.save(facts); recalculate(caseId);
@@ -52,7 +52,7 @@ public class TodoRiesgoEffectiveStateRecalculator {
 
     @Transactional
     public void recordPaymentFact(Long caseId, LocalDate paymentDate, Long actorUserId) {
-        if (!isInsuranceRepair(caseId)) return;
+        if (!usesTodoRiesgoEffectiveState(caseId)) return;
         TodoRiesgoStateFactsEntity facts = factsRepository.findById(caseId).orElseGet(() -> newFacts(caseId));
         facts.setPaymentDate(paymentDate);
         factsRepository.save(facts); recalculate(caseId);
@@ -60,7 +60,7 @@ public class TodoRiesgoEffectiveStateRecalculator {
 
     @Transactional
     public void markNoRepair(Long caseId, String reason, Long actorUserId) {
-        requireActorAndReason(actorUserId, reason); requireInsuranceRepair(caseId);
+        requireActorAndReason(actorUserId, reason); requireTodoRiesgoEffectiveState(caseId);
         TodoRiesgoStateFactsEntity facts = factsRepository.findById(caseId).orElseGet(() -> newFacts(caseId));
         if (Boolean.TRUE.equals(facts.getNoRepairActive())) return;
         facts.setNoRepairActive(true); facts.setNoRepairReason(reason.trim()); facts.setNoRepairAt(LocalDateTime.now()); facts.setNoRepairActorUserId(actorUserId);
@@ -69,7 +69,7 @@ public class TodoRiesgoEffectiveStateRecalculator {
 
     @Transactional
     public void revertNoRepair(Long caseId, String reason, Long actorUserId) {
-        requireActorAndReason(actorUserId, reason); requireInsuranceRepair(caseId);
+        requireActorAndReason(actorUserId, reason); requireTodoRiesgoEffectiveState(caseId);
         TodoRiesgoStateFactsEntity facts = factsRepository.findById(caseId).orElseThrow(() -> new ConflictException("El caso no tiene una accion no debe repararse"));
         if (!Boolean.TRUE.equals(facts.getNoRepairActive())) return;
         facts.setNoRepairActive(false); facts.setNoRepairRevertedAt(LocalDateTime.now()); facts.setNoRepairRevertedActorUserId(actorUserId); facts.setNoRepairRevertedReason(reason.trim());
@@ -93,7 +93,7 @@ public class TodoRiesgoEffectiveStateRecalculator {
 
     private RecalculationResult calculate(Long caseId, boolean persist) {
         CaseEntity caseEntity = caseRepository.findByIdForUpdate(caseId).orElseThrow();
-        if (!caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> insuranceRepairCasePolicy.isInsuranceRepair(type.getCode())).orElse(false)) return RecalculationResult.notInsuranceRepair();
+        if (!caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> insuranceRepairCasePolicy.usesTodoRiesgoEffectiveState(type.getCode())).orElse(false)) return RecalculationResult.notInsuranceRepair();
         Optional<TodoRiesgoEffectiveStateEntity> existing = stateRepository.findByCaseIdForUpdate(caseId);
         TodoRiesgoEffectiveStateEntity state = existing.orElseGet(() -> newState(caseId));
         TodoRiesgoEffectiveStatePolicy.TodoRiesgoEffectiveState calculated = policy.evaluate(factsLoader.load(caseEntity));
@@ -112,6 +112,8 @@ public class TodoRiesgoEffectiveStateRecalculator {
     private TodoRiesgoStateFactsEntity newFacts(Long caseId) { TodoRiesgoStateFactsEntity facts = new TodoRiesgoStateFactsEntity(); facts.setCaseId(caseId); facts.setNoRepairActive(false); facts.setUrgentRepairActive(false); return facts; }
     private void requireInsuranceRepair(Long caseId) { if (!isInsuranceRepair(caseId)) throw new ConflictException("La accion solo aplica a casos de reparacion con seguro"); }
     private boolean isInsuranceRepair(Long caseId) { return caseTypeRepository.findById(caseRepository.findByIdForUpdate(caseId).orElseThrow().getCaseTypeId()).map(type -> insuranceRepairCasePolicy.isInsuranceRepair(type.getCode())).orElse(false); }
+    private void requireTodoRiesgoEffectiveState(Long caseId) { if (!usesTodoRiesgoEffectiveState(caseId)) throw new ConflictException("La accion solo aplica a casos con proyeccion de estados de Todo Riesgo"); }
+    private boolean usesTodoRiesgoEffectiveState(Long caseId) { return caseTypeRepository.findById(caseRepository.findByIdForUpdate(caseId).orElseThrow().getCaseTypeId()).map(type -> insuranceRepairCasePolicy.usesTodoRiesgoEffectiveState(type.getCode())).orElse(false); }
     private void requireActorAndReason(Long actorUserId, String reason) { if (actorUserId == null || reason == null || reason.isBlank()) throw new ConflictException("Motivo y actor son obligatorios"); }
     private void appendActionHistory(Long caseId, String scope, String cause, Long actorUserId, String reason) {
         TodoRiesgoEffectiveStatePolicy.TodoRiesgoEffectiveState calculated = policy.evaluate(factsLoader.load(caseRepository.findByIdForUpdate(caseId).orElseThrow()));

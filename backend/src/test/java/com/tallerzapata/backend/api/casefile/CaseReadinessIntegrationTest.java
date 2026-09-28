@@ -8,6 +8,7 @@ import com.tallerzapata.backend.api.finance.FinancialMovementCreateRequest;
 import com.tallerzapata.backend.api.operation.RepairAppointmentCreateRequest;
 import com.tallerzapata.backend.api.operation.VehicleIntakeCreateRequest;
 import com.tallerzapata.backend.api.operation.VehicleOutcomeCreateRequest;
+import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
 import com.tallerzapata.backend.testsupport.TestDatabaseCleaner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -49,6 +50,9 @@ class CaseReadinessIntegrationTest {
 
     @Autowired
     private TestDatabaseCleaner cleaner;
+
+    @Autowired
+    private TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
 
     @BeforeEach
     void setUp() {
@@ -859,6 +863,22 @@ class CaseReadinessIntegrationTest {
                 .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))
                 .andExpect(jsonPath("$.tabs[4].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("Falta acordar cotizacion con la Cia. antes de registrar pagos"));
+    }
+
+    @Test
+    void shouldCompleteThirdPartyWorkshopRepairWhenProcessingSaysNoRepair() throws Exception {
+        Long caseId = createThirdPartyWorkshopCase();
+        jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, no_repara) VALUES (?, ?)", caseId, true);
+        todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}", caseId).header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.visibleRepairState.code").value("NO_DEBE_REPARARSE"));
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId).header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
+                .andExpect(jsonPath("$.tabs[3].completed").value(true))
+                .andExpect(jsonPath("$.tabs[3].colorHint").value("BLUE"));
     }
 
     @Test

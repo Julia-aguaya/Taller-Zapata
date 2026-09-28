@@ -74,6 +74,55 @@ class TodoRiesgoEffectiveStateIntegrationTest {
     }
 
     @Test
+    void projectsTodoRiesgoStatesForThirdPartyWorkshopWithoutAParallelWorkflow() throws Exception {
+        long repairCaseId = createCase("RECLAMO_TERCEROS");
+        assertProjection(repairCaseId, "SIN_PRESENTAR", "EN_TRAMITE"); // estado inicial
+
+        upsertInsuranceProcessing(repairCaseId, "2026-08-09", "ACEPTADA", "2026-08-10", "2026-08-10", null);
+        assertProjection(repairCaseId, "ACORDADO", "DAR_TURNO");
+        long partId = createPart(repairCaseId, "PEDIDO");
+        jdbcTemplate.update("UPDATE repuestos_caso SET autorizado_codigo = 'AUTORIZADO' WHERE id = ?", partId);
+        recalculator.recalculate(repairCaseId);
+        assertProjection(repairCaseId, "ACORDADO", "FALTAN_REPUESTOS"); // repuestos pendientes
+        jdbcTemplate.update("UPDATE repuestos_caso SET estado_codigo = 'RECIBIDO' WHERE id = ?", partId);
+        recalculator.recalculate(repairCaseId);
+        assertProjection(repairCaseId, "ACORDADO", "DAR_TURNO");
+
+        createAppointment(repairCaseId, "PENDIENTE", false);
+        assertProjection(repairCaseId, "ACORDADO", "CON_TURNO"); // turno asignado
+        long intakeId = createIntake(repairCaseId);
+        assertProjection(repairCaseId, "ACORDADO", "CON_TURNO"); // ingreso
+        createOutcome(repairCaseId, intakeId, true, false);
+        assertProjection(repairCaseId, "ACORDADO", "REPARADO"); // egreso definitivo
+
+        long reentryCaseId = createCase("RECLAMO_TERCEROS");
+        long reentryIntakeId = createIntake(reentryCaseId);
+        long reentryOutcomeId = createOutcome(reentryCaseId, reentryIntakeId, false, true);
+        Long reentryAppointmentId = jdbcTemplate.queryForObject("SELECT turno_reingreso_id FROM egresos_vehiculo WHERE id = ?", Long.class, reentryOutcomeId);
+        updateAppointment(reentryAppointmentId, "CANCELADO", true);
+        assertProjection(reentryCaseId, "SIN_PRESENTAR", "DEBE_REINGRESAR"); // reingreso
+    }
+
+    @Test
+    void projectsAgreementPaymentAndProcessingNoRepairForThirdPartyWorkshop() throws Exception {
+        long paymentCaseId = createCase("RECLAMO_TERCEROS");
+        upsertInsuranceProcessing(paymentCaseId, "2026-08-09", "ACEPTADA", "2026-08-10", "2026-08-10", "2026-08-11");
+        assertProjection(paymentCaseId, "PASADO_A_PAGOS", "DAR_TURNO");
+        upsertAgreedAmount(paymentCaseId, "50000");
+        createInsurancePayment(paymentCaseId, "2026-08-12T12:00:00", "50000");
+        assertProjection(paymentCaseId, "PAGADO", "DAR_TURNO"); // acuerdo y pago
+
+        long noRepairCaseId = createCase("RECLAMO_TERCEROS");
+        jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, no_repara) VALUES (?, ?)", noRepairCaseId, true);
+        recalculator.recalculate(noRepairCaseId);
+        assertProjection(noRepairCaseId, "SIN_PRESENTAR", "NO_DEBE_REPARARSE");
+        mockMvc.perform(get("/api/v1/cases/{caseId}", noRepairCaseId).header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.visibleRepairState.code").value("NO_DEBE_REPARARSE"))
+                .andExpect(jsonPath("$.visibleRepairState.source").value("automatic"));
+    }
+
+    @Test
     void recalculatesPartsForEveryAuthorizationAndReceiptCombination() throws Exception {
         long caseId = createCase("TODO_RIESGO");
         upsertInsuranceProcessing(caseId, "2026-08-09", "ACEPTADA", "2026-08-10", "2026-08-10", null);

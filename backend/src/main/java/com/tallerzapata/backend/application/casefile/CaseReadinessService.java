@@ -622,7 +622,7 @@ public class CaseReadinessService {
                 blocking.add("Falta registrar fecha de presentacion del tramite");
             }
         }
-        if (thirdParty == null || !"ACEPTADA".equals(normalizeCode(thirdParty.getDocumentationStatusCode()))) {
+        if (thirdParty == null || (!"ACEPTADA".equals(normalizeCode(thirdParty.getDocumentationStatusCode())) && !Boolean.TRUE.equals(thirdParty.getDocumentationAccepted()))) {
             warnings.add("Carpeta con documentacion pendiente");
         }
         return new CaseReadinessTabResponse(

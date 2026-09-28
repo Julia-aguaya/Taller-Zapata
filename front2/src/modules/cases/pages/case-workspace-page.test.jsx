@@ -744,6 +744,21 @@ describe('CaseWorkspacePage UI', () => {
     expect(screen.getByText('Cambiar estado de Reparación')).toBeInTheDocument();
   });
 
+  it('mantiene los estados de RECLAMO_TERCEROS Taller como proyección automática', async () => {
+    await renderPage({
+      ...baseWorkspace,
+      caseDetail: {
+        ...baseWorkspace.caseDetail,
+        caseTypeCode: 'RECLAMO_TERCEROS',
+        visibleTramiteState: { code: 'ACORDADO', label: 'Acordado' },
+        visibleRepairState: { code: 'FALTAN_REPUESTOS', label: 'Faltan repuestos' },
+      },
+    });
+
+    expect(screen.getByRole('button', { name: /trámite: acordado/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /reparación: faltan repuestos/i })).toBeDisabled();
+  });
+
   it('muestra el proximo paso operativo en resumen', async () => {
     await renderPage();
 
