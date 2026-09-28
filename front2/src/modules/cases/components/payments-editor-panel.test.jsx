@@ -7,6 +7,9 @@ const mockCreateFinancialMovement = vi.fn().mockResolvedValue({ id: 1 });
 const mockCreateReceipt = vi.fn().mockResolvedValue({ id: 10 });
 const mockGetFinanceCatalogs = vi.fn().mockResolvedValue({ paymentMethodCodes: [], cancellationTypeCodes: [] });
 const mockListFinancialMovements = vi.fn().mockResolvedValue([]);
+const mockGetThirdPartyWorkshopCompanyPaymentSummary = vi.fn().mockResolvedValue({});
+const mockGetThirdPartyWorkshopRetentions = vi.fn().mockResolvedValue({ version: 0, retentions: [] });
+const mockSaveThirdPartyWorkshopRetentions = vi.fn().mockResolvedValue({ version: 1, retentions: [] });
 const mockListReceipts = vi.fn().mockResolvedValue([]);
 const mockSelectParticularComprobanteIntent = vi.fn().mockResolvedValue();
 const mockRequestJson = vi.fn().mockResolvedValue({});
@@ -37,8 +40,11 @@ vi.mock('@/modules/cases/api/finance-api', () => ({
   createReceipt: (...a) => mockCreateReceipt(...a),
   getFinanceCatalogs: (...a) => mockGetFinanceCatalogs(...a),
   listFinancialMovements: (...a) => mockListFinancialMovements(...a),
+  getThirdPartyWorkshopCompanyPaymentSummary: (...a) => mockGetThirdPartyWorkshopCompanyPaymentSummary(...a),
+  getThirdPartyWorkshopRetentions: (...a) => mockGetThirdPartyWorkshopRetentions(...a),
   listReceipts: (...a) => mockListReceipts(...a),
   selectParticularComprobanteIntent: (...a) => mockSelectParticularComprobanteIntent(...a),
+  saveThirdPartyWorkshopRetentions: (...a) => mockSaveThirdPartyWorkshopRetentions(...a),
   getReceiptPdfUrl: (id) => `/api/v1/receipts/${id}/pdf`,
 }));
 
@@ -537,6 +543,29 @@ describe('PaymentsEditorPanel', () => {
     expect(screen.getByLabelText('Fecha estimada de pago')).toHaveValue('2026-08-20');
     expect(screen.getByLabelText('Fecha real de pago')).toHaveValue('');
     ['IVA', 'Ganancias', 'Contr. Patr.', 'IIBB', 'DREI', 'Otra'].forEach((name) => expect(screen.getByLabelText(`Monto ${name}`)).toBeInTheDocument());
+  });
+
+  it('saves workshop retentions independently from the company payment', async () => {
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'third-party'])]: { thirdPartyCompanyId: 7, partsProvisionModeCode: 'TALLER' },
+      [JSON.stringify(['cases', '42', 'third-party', 'company-payment-summary'])]: { agreedAmount: 100000, validPaymentsNetAmount: 0, validRetentionsAmount: 0, netCompanyBalance: 100000 },
+      [JSON.stringify(['cases', '42', 'third-party', 'retentions'])]: { version: 0, retentions: [] },
+    };
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'RECLAMO_TERCEROS' } });
+
+    expect(screen.getByRole('heading', { name: 'Facturación a la compañía' })).toBeInTheDocument();
+    expect(screen.getByText('Saldo neto Cía.').parentElement).toHaveTextContent('100.000');
+    fireEvent.change(screen.getByLabelText('Bruto que cancela'), { target: { value: '10000' } });
+    fireEvent.change(screen.getByLabelText('Monto independiente IVA'), { target: { value: '1000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar retenciones' }));
+    await waitFor(() => expect(mockSaveThirdPartyWorkshopRetentions).toHaveBeenCalledWith(42, {
+      expectedVersion: 0, retentions: [{ retentionTypeCode: 'IVA', amount: 1000, detail: null }],
+    }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar pago de la compañía' }));
+
+    await waitFor(() => expect(mockCreateFinancialMovement).toHaveBeenCalledWith(42, expect.objectContaining({
+      counterpartyCompanyId: 7, grossAmount: 10000, netAmount: 10000, retentions: [],
+    })));
   });
 
   it('derives the adverse franchise customer charge from the persisted CLEAS definition', () => {

@@ -112,6 +112,11 @@ public class FinanceController {
     @GetMapping("/cases/{caseId}/finance/payment-breakdown")
     public FinancePaymentBreakdownResponse paymentBreakdown(@PathVariable Long caseId) { return financeService.paymentBreakdown(caseId); }
 
+    @Operation(summary = "Resumen de cobranza de contraparte para Taller")
+    @PreAuthorize("hasAuthority('finanza.ver')")
+    @GetMapping("/cases/{caseId}/third-party/company-payment-summary")
+    public ThirdPartyWorkshopCompanyPaymentSummaryResponse thirdPartyWorkshopCompanyPaymentSummary(@PathVariable Long caseId) { return financeService.thirdPartyWorkshopCompanyPaymentSummary(caseId); }
+
     @Operation(summary = "Agregar retenciones", description = "Agrega retenciones a un movimiento financiero")
     @ApiResponse(responseCode = "200", description = "OK")
     @PreAuthorize("hasAuthority('finanza.retencion.gestionar')")

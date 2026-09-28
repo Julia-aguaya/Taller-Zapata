@@ -93,6 +93,7 @@ public class CaseReadinessService {
     private final CaseVisibleStateResolver caseVisibleStateResolver;
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService caseAccessControlService;
+    private final ThirdPartyWorkshopCompanyPaymentProjection thirdPartyWorkshopCompanyPaymentProjection;
     private final InsuranceRepairCasePolicy insuranceRepairCasePolicy = new InsuranceRepairCasePolicy();
 
     public CaseReadinessService(
@@ -122,7 +123,8 @@ public class CaseReadinessService {
             CleasClosurePolicy cleasClosurePolicy,
             CaseVisibleStateResolver caseVisibleStateResolver,
             CurrentUserService currentUserService,
-            CaseAccessControlService caseAccessControlService
+            CaseAccessControlService caseAccessControlService,
+            ThirdPartyWorkshopCompanyPaymentProjection thirdPartyWorkshopCompanyPaymentProjection
     ) {
         this.caseRepository = caseRepository;
         this.caseTypeRepository = caseTypeRepository;
@@ -151,6 +153,7 @@ public class CaseReadinessService {
         this.caseVisibleStateResolver = caseVisibleStateResolver;
         this.currentUserService = currentUserService;
         this.caseAccessControlService = caseAccessControlService;
+        this.thirdPartyWorkshopCompanyPaymentProjection = thirdPartyWorkshopCompanyPaymentProjection;
     }
 
     @Transactional(readOnly = true)
@@ -659,13 +662,12 @@ public class CaseReadinessService {
         if (!isQuotationAgreed(processing)) {
             blocking.add("Falta acordar cotizacion con la Cia. antes de registrar pagos");
         } else {
-            BigDecimal agreed = processing.getAgreedAmount();
             CaseThirdPartyEntity thirdParty = caseThirdPartyRepository.findByCaseId(caseId).orElse(null);
             if (thirdParty == null || thirdParty.getThirdPartyCompanyId() == null) {
                 blocking.add("Falta seleccionar la compañía contraparte para validar el pago");
             } else {
-                BigDecimal companyPaid = validThirdPartyCompanyPayment(caseId, thirdParty.getThirdPartyCompanyId());
-                if (companyPaid.compareTo(agreed) < 0) blocking.add("La compañía contraparte aún no completó el pago");
+                BigDecimal pendingBalance = thirdPartyWorkshopCompanyPaymentProjection.summarize(caseId).netCompanyBalance();
+                if (pendingBalance.signum() > 0) blocking.add("La compañía contraparte aún no completó el pago");
             }
         }
         ExtraBudgetEntity extras = extraBudgetRepository.findByCaseId(caseId).orElse(null);
@@ -682,29 +684,6 @@ public class CaseReadinessService {
             if (!customerCollectionExists) blocking.add("Falta el movimiento financiero del cobro por culpa compartida");
         }
         return toTab("PAGOS", true, blocking, List.of());
-    }
-
-    /**
-     * Sólo cancela el reclamo el pago identificado como COMPANIA de la contraparte cargada.
-     * Los egresos/anulaciones reducen el neto en vez de mantener como válido el ingreso original.
-     */
-    private BigDecimal validThirdPartyCompanyPayment(Long caseId, Long thirdPartyCompanyId) {
-        return financialMovementRepository.findByCaseId(caseId, Sort.by(Sort.Direction.DESC, "id")).stream()
-                .filter(movement -> "ASEGURADORA".equals(normalizeCode(movement.getFlowOriginCode())))
-                .filter(movement -> "COMPANIA".equals(normalizeCode(movement.getCounterpartyTypeCode())))
-                .filter(movement -> thirdPartyCompanyId.equals(movement.getCounterpartyCompanyId()))
-                .filter(movement -> "COMPANIA".equals(normalizeCode(movement.getCancellationTypeCode())))
-                .map(this::signedNetAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-    }
-
-    private BigDecimal signedNetAmount(FinancialMovementEntity movement) {
-        BigDecimal netAmount = movement.getNetAmount() == null ? BigDecimal.ZERO : movement.getNetAmount();
-        String movementType = normalizeCode(movement.getMovementTypeCode());
-        if ("INGRESO".equals(movementType) || ("AJUSTE".equals(movementType) && netAmount.signum() >= 0)) {
-            return netAmount;
-        }
-        return netAmount.abs().negate();
     }
 
     private String caseTypeCode(CaseEntity caseEntity) {

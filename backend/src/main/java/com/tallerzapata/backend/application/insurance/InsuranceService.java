@@ -801,6 +801,13 @@ public class InsuranceService {
         return toLegalExpenseResponse(entity);
     }
 
+    @Transactional
+    public void refreshThirdPartyWorkshopAmounts(Long caseId) {
+        CaseEntity caseEntity = caseRepository.findById(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
+        if (!insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeCode(caseEntity))) return;
+        caseThirdPartyRepository.findByCaseId(caseId).ifPresent(entity -> { synchronizeThirdPartyAmounts(entity, caseId); caseThirdPartyRepository.save(entity); });
+    }
+
     /** Exportación exclusiva del expediente legal; no mezcla documentación ni finanzas operativas. */
     @Transactional(readOnly = true)
     public byte[] exportCaseLegalExpenses(Long caseId) {

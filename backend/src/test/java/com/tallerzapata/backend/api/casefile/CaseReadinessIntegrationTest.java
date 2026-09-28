@@ -947,6 +947,26 @@ class CaseReadinessIntegrationTest {
     }
 
     @Test
+    void shouldCompleteThirdPartyPagosWhenCompanyPaymentIsSplitBetweenDepositAndRetentions() throws Exception {
+        Long caseId = prepareThirdPartyPaymentsCase();
+        mockMvc.perform(put("/api/v1/cases/{caseId}/third-party/retentions", caseId)
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\":0,\"retentions\":[{\"retentionTypeCode\":\"IVA\",\"amount\":10000,\"detail\":null}]}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId)
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"ASEGURADORA\",\"counterpartyTypeCode\":\"COMPANIA\",\"counterpartyCompanyId\":1,\"movementAt\":\"2026-02-01T12:00:00\",\"grossAmount\":90000,\"netAmount\":90000,\"paymentMethodCode\":\"EFECTIVO\",\"cancellationTypeCode\":\"COMPANIA\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[],\"applications\":[]}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[4].completed").value(true));
+    }
+
+    @Test
     void shouldKeepThirdPartyPaymentsPendingWhenAnotherCompanyPays() throws Exception {
         Long caseId = prepareThirdPartyPaymentsCase();
         jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, activo) VALUES (?,?,?,?,?)",

@@ -2,7 +2,7 @@ import { cloneElement, useEffect, useId, useMemo, useRef, useState } from 'react
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Ban, Building2, CheckCircle, FileDown, Receipt, Save } from 'lucide-react';
 import { toast } from 'sonner';
-import { createFinancialMovement, createReceipt, getClientPaymentPdfUrl, getFinanceCatalogs, getReceiptPdfUrl, listFinancialMovements, listReceipts, selectParticularComprobanteIntent } from '@/modules/cases/api/finance-api';
+import { createFinancialMovement, createReceipt, getClientPaymentPdfUrl, getFinanceCatalogs, getReceiptPdfUrl, getThirdPartyWorkshopCompanyPaymentSummary, getThirdPartyWorkshopRetentions, listFinancialMovements, listReceipts, saveThirdPartyWorkshopRetentions, selectParticularComprobanteIntent } from '@/modules/cases/api/finance-api';
 import { annulCleasCompanyPayment, annulCleasCustomerFranchisePayment, downloadCleasLiquidationPdf, getCleasCompanyPaymentSummary, getCleasFinancialPlan, getCleasFranchisePaymentSummary, registerCleasCompanyFranchisePayment, registerCleasCompanyPayment, registerCleasCustomerFranchisePayment, saveCleasFinancialPlan } from '@/modules/cases/api/cleas-api';
 import { extraBudgetQueryKey, registerExtraBudgetPayment } from '@/modules/cases/api/extra-budget-api';
 import { requestJson } from '@/shared/api/http-client';
@@ -277,26 +277,41 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   });
 
   const [ciaPayment, setCiaPayment] = useState(newCompanyPayment);
+  const [workshopRetentions, setWorkshopRetentions] = useState(newCompanyPayment().retentions);
   const ciaPaymentMutation = useMutation({
     mutationFn: (payload) => createFinancialMovement(caseId, payload),
-    onSuccess: async () => { companyPaymentSubmittingRef.current = false; await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'finance', 'payment-breakdown'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); await onSaved?.(); toast.success('Pago de la Cía. registrado.'); setCiaPayment(newCompanyPayment()); },
+    onSuccess: async () => { companyPaymentSubmittingRef.current = false; await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'financial-movements'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'finance', 'payment-breakdown'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'third-party', 'company-payment-summary'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); await onSaved?.(); toast.success('Pago de la Cía. registrado.'); setCiaPayment(newCompanyPayment()); },
     onError: (error) => { companyPaymentSubmittingRef.current = false; toast.error(error.message || 'No pude registrar el pago de la compañía.'); },
   });
 
-  // ── Derived for insurance ──
-  const ciaMovements = (movementsQuery.data ?? []).filter(m => m.movementTypeCode === 'INGRESO' && m.flowOriginCode === 'ASEGURADORA' && m.counterpartyTypeCode === 'COMPANIA' && m.cancellationTypeCode === 'COMPANIA');
+  const thirdPartyCompanyPaymentSummaryQuery = useQuery({ queryKey: ['cases', String(caseId), 'third-party', 'company-payment-summary'], queryFn: () => getThirdPartyWorkshopCompanyPaymentSummary(caseId), enabled: isThirdPartyWorkshop });
+  const thirdPartyRetentionsQuery = useQuery({ queryKey: ['cases', String(caseId), 'third-party', 'retentions'], queryFn: () => getThirdPartyWorkshopRetentions(caseId), enabled: isThirdPartyWorkshop });
+  const thirdPartyCompanyPaymentSummary = thirdPartyCompanyPaymentSummaryQuery.data;
+  useEffect(() => {
+    if (!isThirdPartyWorkshop || !thirdPartyRetentionsQuery.data) return;
+    const persisted = new Map((thirdPartyRetentionsQuery.data.retentions ?? []).map((retention) => [retention.retentionTypeCode, retention]));
+    setWorkshopRetentions(COMPANY_RETENTIONS.map(({ retentionTypeCode }) => ({ retentionTypeCode, amount: persisted.get(retentionTypeCode)?.amount ?? '', detail: persisted.get(retentionTypeCode)?.detail ?? '' })));
+  }, [isThirdPartyWorkshop, thirdPartyRetentionsQuery.data]);
+  const workshopRetentionsMutation = useMutation({
+    mutationFn: () => saveThirdPartyWorkshopRetentions(caseId, { expectedVersion: thirdPartyRetentionsQuery.data?.version ?? 0, retentions: workshopRetentions.filter((retention) => toAmount(retention.amount) > 0).map((retention) => ({ retentionTypeCode: retention.retentionTypeCode, amount: toAmount(retention.amount), detail: retention.detail.trim() || null })) }),
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'third-party', 'retentions'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'third-party', 'company-payment-summary'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); await onSaved?.(); toast.success('Retenciones guardadas.'); },
+    onError: (error) => toast.error(error.message || 'No pude guardar las retenciones.'),
+  });
+
+  // ── Derived for insurance / third-party workshop ──
+  const ciaMovements = (movementsQuery.data ?? []).filter(m => m.movementTypeCode === 'INGRESO' && m.flowOriginCode === 'ASEGURADORA' && m.counterpartyTypeCode === 'COMPANIA' && m.cancellationTypeCode === 'COMPANIA' && (!isThirdPartyWorkshop || String(m.counterpartyCompanyId) === String(thirdPartyQuery.data?.thirdPartyCompanyId)));
   const ciaNetDeposited = (movementsQuery.data ?? []).filter(m => m.flowOriginCode === 'ASEGURADORA' && m.counterpartyTypeCode === 'COMPANIA' && m.cancellationTypeCode === 'COMPANIA').reduce((total, movement) => total + (['INGRESO', 'AJUSTE'].includes(movement.movementTypeCode) ? toAmount(movement.netAmount) : -toAmount(movement.netAmount)), 0);
   const fallbackCiaPaid = ciaMovements.reduce((sum, m) => sum + toAmount(m.netAmount || 0), 0);
-  const fallbackAmountToPay = toAmount(isThirdPartyWorkshop
-    ? thirdPartyQuery.data?.amountToBillCompany
-    : isGranizo ? processing?.agreedAmount : processing?.amountToBillCompany || processing?.agreedAmount || 0);
+  const fallbackAmountToPay = toAmount(isGranizo ? processing?.agreedAmount : processing?.amountToBillCompany || processing?.agreedAmount || 0);
   const insurerBreakdown = paymentBreakdownQuery.data?.insurer;
-  const amountToPay = toAmount(insurerBreakdown?.total ?? fallbackAmountToPay);
-  const ciaTotalPaid = toAmount(insurerBreakdown?.paid ?? fallbackCiaPaid);
-  const ciaPending = toAmount(insurerBreakdown?.pending ?? Math.max(0, fallbackAmountToPay - fallbackCiaPaid));
+  const amountToPay = isThirdPartyWorkshop ? toAmount(thirdPartyCompanyPaymentSummary?.agreedAmount) : toAmount(insurerBreakdown?.total ?? fallbackAmountToPay);
+  const ciaTotalPaid = isThirdPartyWorkshop ? toAmount(thirdPartyCompanyPaymentSummary?.validPaymentsNetAmount) : toAmount(insurerBreakdown?.paid ?? fallbackCiaPaid);
+  const ciaPending = isThirdPartyWorkshop ? toAmount(thirdPartyCompanyPaymentSummary?.netCompanyBalance) : toAmount(insurerBreakdown?.pending ?? Math.max(0, fallbackAmountToPay - fallbackCiaPaid));
+  const accumulatedCompanyRetentions = isThirdPartyWorkshop ? toAmount(thirdPartyCompanyPaymentSummary?.validRetentionsAmount) : 0;
   const companyRetentionsAmount = ciaPayment.retentions.reduce((total, retention) => total + toAmount(retention.amount), 0);
   const companyNetAmount = Math.max(0, toAmount(ciaPayment.amount) - companyRetentionsAmount);
   const updateCompanyRetention = (index, field, value) => setCiaPayment((current) => ({ ...current, retentions: current.retentions.map((retention, retentionIndex) => retentionIndex === index ? { ...retention, [field]: value } : retention) }));
+  const updateWorkshopRetention = (index, field, value) => setWorkshopRetentions((current) => current.map((retention, retentionIndex) => retentionIndex === index ? { ...retention, [field]: value } : retention));
 
   const paymentStatus = useMemo(() => {
     const estimated = processing?.estimatedPaymentDate;
@@ -354,18 +369,18 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
          <>
          <div className="rounded-3xl border border-border/70 bg-card p-5">
            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Building2 className="h-5 w-5" /></div>
-           <h4 className="text-lg font-semibold">Facturación</h4>
-           <div className="mt-4 grid gap-3 md:grid-cols-2">
-             <MiniCard label="A facturar Cía." value={formatCurrency(amountToPay)} highlight />
+            <h4 className="text-lg font-semibold">{isThirdPartyWorkshop ? 'Facturación a la compañía' : 'Facturación'}</h4>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <MiniCard label={isThirdPartyWorkshop ? 'Monto acordado con la Cía.' : 'A facturar Cía.'} value={formatCurrency(amountToPay)} highlight />
               <MiniCard label={isThirdPartyWorkshop ? 'Provisión de repuestos' : 'Estado de franquicia'} value={isThirdPartyWorkshop ? thirdPartyQuery.data?.partsProvisionModeCode?.replaceAll('_', ' ') || 'Sin definir' : franchiseQuery.data?.franchiseStatusCode?.replaceAll('_', ' ') || 'Sin definir'} />
            </div>
          </div>
          <div className="rounded-3xl border border-border/70 bg-card p-5">
-           <h4 className="text-lg font-semibold">Pagos</h4>
-           <div className="mt-4 grid gap-3 md:grid-cols-4">
-             <MiniCard label="Monto bruto" value={formatCurrency(ciaTotalPaid)} />
-             <MiniCard label="Monto depositado" value={formatCurrency(ciaNetDeposited)} />
-             <MiniCard label="Pendiente Cía." value={formatCurrency(ciaPending)} highlight={ciaPending > 0} />
+             <h4 className="text-lg font-semibold">{isThirdPartyWorkshop ? 'Cobro de compañía' : 'Pagos'}</h4>
+            <div className="mt-4 grid gap-3 md:grid-cols-4">
+              <MiniCard label={isThirdPartyWorkshop ? 'Cobrado neto' : 'Monto bruto'} value={formatCurrency(ciaTotalPaid)} />
+              <MiniCard label={isThirdPartyWorkshop ? 'Retenciones acumuladas' : 'Monto depositado'} value={formatCurrency(isThirdPartyWorkshop ? accumulatedCompanyRetentions : ciaNetDeposited)} />
+              <MiniCard label={isThirdPartyWorkshop ? 'Saldo neto Cía.' : 'Pendiente Cía.'} value={formatCurrency(ciaPending)} highlight={ciaPending > 0} />
              <div className="space-y-1"><span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Estado</span><span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${paymentStatusColor}`}>{paymentStatus}</span></div>
            </div>
            <div className="mt-4 grid gap-3 md:grid-cols-3">
@@ -381,24 +396,41 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
           <div className="mt-4 rounded-2xl border border-border/60 bg-background/70 p-4">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Registrar pago de la Cía.</p>
             <div className="grid gap-3 md:grid-cols-3">
-              <Field label="Bruto que cancela"><Input type="number" min="0" max={ciaPending} step="0.01" value={ciaPayment.amount} onChange={(e) => setCiaPayment((c) => ({ ...c, amount: e.target.value }))} /></Field>
+               <Field label="Bruto que cancela"><Input type="number" min="0" max={ciaPending} step="0.01" value={ciaPayment.amount} onChange={(e) => setCiaPayment((c) => ({ ...c, amount: e.target.value }))} /></Field>
               <Field label="Fecha"><Input type="datetime-local" value={ciaPayment.movementAt} onChange={(e) => setCiaPayment((c) => ({ ...c, movementAt: e.target.value }))} /></Field>
               <Field label="Neto depositado"><Input value={formatCurrency(companyNetAmount)} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
             </div>
-            <div className="mt-4 rounded-2xl border border-border/60 p-4">
-              <p className="text-sm font-semibold">Retenciones</p>
+             {!isThirdPartyWorkshop ? <div className="mt-4 rounded-2xl border border-border/60 p-4">
+               <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-semibold">Retenciones</p></div></div>
                {ciaPayment.retentions.map((retention, index) => <div key={retention.retentionTypeCode} className="mt-3 grid gap-3 md:grid-cols-[1fr_150px_1fr]">
                  <Input value={COMPANY_RETENTIONS[index].label} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" />
                  <Input aria-label={`Monto ${COMPANY_RETENTIONS[index].label}`} type="number" min="0" step="0.01" value={retention.amount} onChange={(event) => updateCompanyRetention(index, 'amount', event.target.value)} />
                  <Input aria-label={`Detalle ${COMPANY_RETENTIONS[index].label}`} value={retention.detail} onChange={(event) => updateCompanyRetention(index, 'detail', event.target.value)} placeholder="Detalle opcional" />
                </div>)}
               {companyRetentionsAmount > toAmount(ciaPayment.amount) ? <p role="alert" className="mt-3 text-xs text-destructive">Las retenciones no pueden superar el bruto que cancela.</p> : null}
-            </div>
-            <div className="mt-4 flex justify-end"><Button onClick={() => { if (ciaPaymentMutation.isPending || companyPaymentSubmittingRef.current) return; const m = toAmount(ciaPayment.amount); const companyId = isThirdPartyWorkshop ? thirdPartyQuery.data?.thirdPartyCompanyId : insurerBreakdown?.companyId ?? caseInsuranceQuery.data?.insuranceCompanyId; if (m <= 0) { toast.error('Ingresá un monto.'); return; } if (m > ciaPending) { toast.error('El pago no puede superar el saldo pendiente de la compañía.'); return; } if (companyRetentionsAmount > m) { toast.error('Las retenciones no pueden superar el bruto que cancela.'); return; } if (!companyId) { toast.error(isThirdPartyWorkshop ? 'El caso no tiene compañía contraparte configurada.' : 'El caso no tiene compañía aseguradora configurada.'); return; } companyPaymentSubmittingRef.current = true; ciaPaymentMutation.mutate({ movementTypeCode: 'INGRESO', flowOriginCode: 'ASEGURADORA', counterpartyTypeCode: 'COMPANIA', counterpartyPersonId: null, counterpartyCompanyId: companyId, movementAt: ciaPayment.movementAt, grossAmount: m, netAmount: companyNetAmount, paymentMethodCode: ciaPayment.paymentMethodCode, paymentMethodDetail: null, cancellationTypeCode: 'COMPANIA', advancePayment: false, bonification: false, reason: isThirdPartyWorkshop ? 'Pago de compañía contraparte' : 'Pago de compañía', externalReference: null, retentions: ciaPayment.retentions.filter((retention) => retention.retentionTypeCode && toAmount(retention.amount) > 0).map((retention) => ({ retentionTypeCode: retention.retentionTypeCode, amount: toAmount(retention.amount), detail: retention.detail.trim() || null })), applications: [] }); }} disabled={ciaPaymentMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar pago de la compañía</Button></div>
+             </div> : null}
+             <div className="mt-4 flex justify-end"><Button onClick={() => { if (ciaPaymentMutation.isPending || companyPaymentSubmittingRef.current) return; const m = toAmount(ciaPayment.amount); const companyId = isThirdPartyWorkshop ? thirdPartyQuery.data?.thirdPartyCompanyId : insurerBreakdown?.companyId ?? caseInsuranceQuery.data?.insuranceCompanyId; if (m <= 0) { toast.error('Ingresá un monto.'); return; } if (m > ciaPending) { toast.error('El pago no puede superar el saldo pendiente de la compañía.'); return; } if (companyRetentionsAmount > m) { toast.error('Las retenciones no pueden superar el bruto que cancela.'); return; } if (!companyId) { toast.error(isThirdPartyWorkshop ? 'El caso no tiene compañía contraparte configurada.' : 'El caso no tiene compañía aseguradora configurada.'); return; } companyPaymentSubmittingRef.current = true; ciaPaymentMutation.mutate({ movementTypeCode: 'INGRESO', flowOriginCode: 'ASEGURADORA', counterpartyTypeCode: 'COMPANIA', counterpartyPersonId: null, counterpartyCompanyId: companyId, movementAt: ciaPayment.movementAt, grossAmount: m, netAmount: isThirdPartyWorkshop ? m : companyNetAmount, paymentMethodCode: ciaPayment.paymentMethodCode, paymentMethodDetail: null, cancellationTypeCode: 'COMPANIA', advancePayment: false, bonification: false, reason: isThirdPartyWorkshop ? 'Pago de compañía contraparte' : 'Pago de compañía', externalReference: null, retentions: isThirdPartyWorkshop ? [] : ciaPayment.retentions.filter((retention) => retention.retentionTypeCode && toAmount(retention.amount) > 0).map((retention) => ({ retentionTypeCode: retention.retentionTypeCode, amount: toAmount(retention.amount), detail: retention.detail.trim() || null })), applications: [] }); }} disabled={ciaPaymentMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar pago de la compañía</Button></div>
           </div>
            {ciaMovements.length > 0 ? <div className="mt-3"><p className="text-xs text-muted-foreground">{ciaMovements.length} pago(s) de la Cía.</p></div> : null}
          </div>
-         </>
+         {isThirdPartyWorkshop ? <div className="rounded-3xl border border-primary/30 bg-card p-5">
+           <h4 className="text-lg font-semibold">Retenciones</h4>
+           <p className="mt-1 text-sm text-muted-foreground">Planilla independiente del cobro de compañía. Guardar, editar o quitar una retención no crea ni modifica movimientos de pago.</p>
+           <div className="mt-4 grid gap-3 md:grid-cols-5">
+             <MiniCard label="Acordado bruto" value={formatCurrency(amountToPay)} highlight />
+             <MiniCard label="Retenciones acumuladas" value={formatCurrency(accumulatedCompanyRetentions)} />
+             <MiniCard label="Neto exigible" value={formatCurrency(Math.max(0, amountToPay - accumulatedCompanyRetentions))} />
+             <MiniCard label="Pagos netos válidos" value={formatCurrency(ciaTotalPaid)} />
+             <MiniCard label="Saldo pendiente" value={formatCurrency(ciaPending)} highlight={ciaPending > 0} />
+           </div>
+           {workshopRetentions.map((retention, index) => <div key={retention.retentionTypeCode} className="mt-3 grid gap-3 md:grid-cols-[1fr_150px_1fr]">
+             <Input value={COMPANY_RETENTIONS[index].label} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" />
+             <Input aria-label={`Monto independiente ${COMPANY_RETENTIONS[index].label}`} type="number" min="0" step="0.01" value={retention.amount} onChange={(event) => updateWorkshopRetention(index, 'amount', event.target.value)} />
+             <Input aria-label={`Detalle independiente ${COMPANY_RETENTIONS[index].label}`} value={retention.detail} onChange={(event) => updateWorkshopRetention(index, 'detail', event.target.value)} placeholder="Detalle opcional" />
+           </div>)}
+           <div className="mt-4 flex justify-end"><Button type="button" onClick={() => workshopRetentionsMutation.mutate()} disabled={workshopRetentionsMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar retenciones</Button></div>
+         </div> : null}
+          </>
        ) : null}
 
        {isCleas && cleasScope !== 'franchise' && cleasDirection !== 'unfavorable' && !blockCleasPayments ? <CleasInvoicePanel caseId={caseId} onSaved={onSaved} /> : null}

@@ -284,7 +284,7 @@ class DocumentIntegrationTest {
         Long categoryId = activeCategoryId("OTRO");
         Long documentId = uploadDocument(categoryId, 100L, "3");
 
-        for (String moduleCode : java.util.List.of("GESTION_TRAMITE", "PRESUPUESTO")) {
+        for (String moduleCode : java.util.List.of("GESTION_TRAMITE", "PRESUPUESTO", "EGRESO_DEFINITIVO")) {
             mockMvc.perform(post("/api/v1/documents/{documentId}/relations", documentId)
                             .header("X-User-Id", "3")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -301,6 +301,10 @@ class DocumentIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].moduleCode").value("PRESUPUESTO"));
+        mockMvc.perform(get("/api/v1/cases/100/documents").header("X-User-Id", "3").param("moduleCode", "EGRESO_DEFINITIVO"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].moduleCode").value("EGRESO_DEFINITIVO"));
     }
 
     @Test

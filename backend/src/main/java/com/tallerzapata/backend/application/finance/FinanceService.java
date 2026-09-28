@@ -4,6 +4,7 @@ import com.tallerzapata.backend.api.finance.*;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.InsuranceRepairCasePolicy;
 import com.tallerzapata.backend.application.casefile.ParticularCaseClosureService;
+import com.tallerzapata.backend.application.casefile.ThirdPartyWorkshopCompanyPaymentProjection;
 import com.tallerzapata.backend.application.cleas.CleasDownstreamGate;
 import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
@@ -85,8 +86,9 @@ public class FinanceService {
     private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
     private final CleasDownstreamGate cleasDownstreamGate;
     private final ParticularEffectiveStateRepository particularEffectiveStateRepository;
+    private final ThirdPartyWorkshopCompanyPaymentProjection thirdPartyWorkshopCompanyPaymentProjection;
 
-    public FinanceService(FinancialMovementRepository movementRepository, FinancialMovementRetentionRepository retentionRepository, FinancialMovementApplicationRepository applicationRepository, IssuedReceiptRepository receiptRepository, ExtraBudgetRepository extraBudgetRepository, ExtraBudgetPaymentApplicationRepository extraBudgetPaymentApplications, CaseFranchiseRepository caseFranchiseRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, BudgetRepository budgetRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, PersonRepository personRepository, UserRepository userRepository, DocumentRepository documentRepository, FinancialMovementTypeRepository movementTypeRepository, FinancialFlowOriginRepository flowOriginRepository, FinancialCounterpartyTypeRepository counterpartyTypeRepository, FinancialPaymentMethodRepository paymentMethodRepository, FinancialCancellationTypeRepository cancellationTypeRepository, FinancialRetentionTypeRepository retentionTypeRepository, FinancialApplicationConceptRepository applicationConceptRepository, IssuedReceiptTypeRepository issuedReceiptTypeRepository, InsuranceCompanyRepository companyRepository, OrganizationRepository organizationRepository, BranchRepository branchRepository, ReceiptPdfService receiptPdfService, ClientPaymentPdfService clientPaymentPdfService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, ParticularCaseClosureService particularCaseClosureService, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasDownstreamGate cleasDownstreamGate, ParticularEffectiveStateRepository particularEffectiveStateRepository) {
+    public FinanceService(FinancialMovementRepository movementRepository, FinancialMovementRetentionRepository retentionRepository, FinancialMovementApplicationRepository applicationRepository, IssuedReceiptRepository receiptRepository, ExtraBudgetRepository extraBudgetRepository, ExtraBudgetPaymentApplicationRepository extraBudgetPaymentApplications, CaseFranchiseRepository caseFranchiseRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, BudgetRepository budgetRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, PersonRepository personRepository, UserRepository userRepository, DocumentRepository documentRepository, FinancialMovementTypeRepository movementTypeRepository, FinancialFlowOriginRepository flowOriginRepository, FinancialCounterpartyTypeRepository counterpartyTypeRepository, FinancialPaymentMethodRepository paymentMethodRepository, FinancialCancellationTypeRepository cancellationTypeRepository, FinancialRetentionTypeRepository retentionTypeRepository, FinancialApplicationConceptRepository applicationConceptRepository, IssuedReceiptTypeRepository issuedReceiptTypeRepository, InsuranceCompanyRepository companyRepository, OrganizationRepository organizationRepository, BranchRepository branchRepository, ReceiptPdfService receiptPdfService, ClientPaymentPdfService clientPaymentPdfService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, ParticularCaseClosureService particularCaseClosureService, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasDownstreamGate cleasDownstreamGate, ParticularEffectiveStateRepository particularEffectiveStateRepository, ThirdPartyWorkshopCompanyPaymentProjection thirdPartyWorkshopCompanyPaymentProjection) {
         this.movementRepository = movementRepository;
         this.retentionRepository = retentionRepository;
         this.applicationRepository = applicationRepository;
@@ -123,6 +125,7 @@ public class FinanceService {
         this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
         this.cleasDownstreamGate = cleasDownstreamGate;
         this.particularEffectiveStateRepository = particularEffectiveStateRepository;
+        this.thirdPartyWorkshopCompanyPaymentProjection = thirdPartyWorkshopCompanyPaymentProjection;
     }
 
     @Transactional(readOnly = true)
@@ -345,6 +348,14 @@ public class FinanceService {
         return new FinancePaymentBreakdownResponse(caseId,
                 new FinancePaymentBreakdownResponse.Client(franchise, franchisePaid, franchisePending, extrasTotal, extrasPaid, extrasPending, franchise.add(extrasTotal), franchisePaid.add(extrasPaid), franchisePending.add(extrasPending)),
                 new FinancePaymentBreakdownResponse.Insurer(companyId, agreement, franchise, insurerTotal, insurerPaid, insurerTotal.subtract(insurerPaid).max(BigDecimal.ZERO)));
+    }
+
+    @Transactional(readOnly = true)
+    public ThirdPartyWorkshopCompanyPaymentSummaryResponse thirdPartyWorkshopCompanyPaymentSummary(Long caseId) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "finanza.ver");
+        return thirdPartyWorkshopCompanyPaymentProjection.summarize(caseId);
     }
 
     @Transactional

@@ -9,6 +9,15 @@ export const createFinancialMovement = (caseId, payload) => requestJson(`/cases/
 
 export const listFinancialMovements = (caseId) => requestJson(`/cases/${caseId}/financial-movements`);
 
+export const getThirdPartyWorkshopCompanyPaymentSummary = (caseId) => requestJson(`/cases/${caseId}/third-party/company-payment-summary`);
+
+export const getThirdPartyWorkshopRetentions = (caseId) => requestJson(`/cases/${caseId}/third-party/retentions`);
+
+export const saveThirdPartyWorkshopRetentions = (caseId, payload) => requestJson(`/cases/${caseId}/third-party/retentions`, {
+  method: 'PUT',
+  body: JSON.stringify(payload),
+});
+
 export const createReceipt = (caseId, payload) => requestJson(`/cases/${caseId}/receipts`, {
   method: 'POST',
   body: JSON.stringify(payload),

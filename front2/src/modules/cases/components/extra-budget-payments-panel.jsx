@@ -9,7 +9,7 @@ const currency = new Intl.NumberFormat('es-AR', { style: 'currency', currency: '
 export const ExtraBudgetPaymentsPanel = ({ caseId, caseTypeCode, onSaved, onRegisterClientPayment }) => {
   const queryClient = useQueryClient();
   const { session } = useSession();
-  const supportsExtraBudget = ['TODO_RIESGO', 'GRANIZO', 'CLEAS'].includes(caseTypeCode);
+  const supportsExtraBudget = ['TODO_RIESGO', 'GRANIZO', 'CLEAS', 'RECLAMO_TERCEROS'].includes(caseTypeCode);
   const extraQuery = useQuery({ queryKey: extraBudgetQueryKey(caseId), queryFn: () => getExtraBudget(caseId), retry: false, enabled: supportsExtraBudget });
   const extra = extraQuery.data;
   const canPay = extra?.customerConfirmation === 'SI' && extra?.currentStatus === 'ACEPTADO' && Number(extra.balance) > 0;

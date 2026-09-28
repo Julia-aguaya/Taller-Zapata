@@ -18,7 +18,7 @@ vi.mock('@/modules/cases/api/third-party-api', () => ({ getThirdParty: vi.fn(), 
 vi.mock('@/modules/cases/api/new-case-api', () => ({ createPerson: vi.fn(), listInsuranceCompanies: vi.fn(), searchPersons: vi.fn() }));
 vi.mock('@/shared/api/http-client', () => ({ requestJson: vi.fn() }));
 vi.mock('@/modules/cases/components/claim-data-section', () => ({ ClaimDataSection: () => null }));
-vi.mock('@/modules/cases/components/documents-section', () => ({ DocumentsSection: () => null }));
+vi.mock('@/modules/cases/components/documents-section', () => ({ DocumentsSection: ({ moduleCode, includeHistorical, title }) => <output data-testid="tramite-documents">{`${moduleCode}:${includeHistorical}:${title}`}</output> }));
 vi.mock('@/modules/cases/components/procedure-section', () => ({ ProcedureSection: () => null }));
 vi.mock('@/modules/cases/components/task-agenda', () => ({ TaskAgenda: () => null }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -53,6 +53,11 @@ describe('ThirdPartyWorkshopEditor', () => {
     expect(screen.getByLabelText('Referencia de reclamo')).toHaveValue('REC-42');
     expect(screen.getByLabelText('Documentación')).toHaveValue('ACEPTADA');
     expect(screen.getByLabelText('A facturar compañía')).toHaveValue('3000');
+  });
+
+  it('keeps only trámite documents in this context and delegates budget/egress files to their own modules', () => {
+    renderEditor();
+    expect(screen.getByTestId('tramite-documents')).toHaveTextContent('GESTION_TRAMITE:true:Documentación del trámite');
   });
 
   it.each(['COMPANIA', 'CLIENTE'])('does not show orders total when %s provides parts', async (partsProvisionModeCode) => {

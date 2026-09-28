@@ -67,7 +67,7 @@ export const ThirdPartyWorkshopEditor = ({ caseId, caseDetail, budget }) => {
       </div>
       {budget ? <p className="mt-3 text-xs text-muted-foreground">El presupuesto cerrado y la gestión de pedidos determinan los mínimos y los repuestos definitivos.</p> : null}
     </section>
-    <DocumentsSection caseId={caseId} />
+    <DocumentsSection caseId={caseId} moduleCode="GESTION_TRAMITE" includeHistorical title="Documentación del trámite" />
     <ProcedureSection caseId={caseId} budget={budget} thirdPartyWorkshop />
     <TaskAgenda caseId={caseId} organizationId={caseDetail?.organizationId} branchId={caseDetail?.branchId} />
     <Dialog open={!acknowledged && !thirdPartyQuery.isLoading && !documentationComplete} onClose={() => setAcknowledged(true)} title="Carpeta con documentación pendiente" description="La documentación del reclamo todavía no fue marcada como completa. Revisala antes de continuar."><Button className="w-full" onClick={() => setAcknowledged(true)}><AlertTriangle className="mr-2 h-4 w-4" />Aceptar</Button></Dialog>

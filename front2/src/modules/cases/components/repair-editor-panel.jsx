@@ -16,6 +16,7 @@ import { ProviderCreateDialog } from '@/modules/cases/components/provider-create
 import { DocumentsSection } from '@/modules/cases/components/documents-section';
 import { uploadFileResumably } from '@/modules/cases/api/resumable-file-upload-api';
 import { Dialog } from '@/shared/ui/dialog';
+import { getThirdParty } from '@/modules/cases/api/third-party-api';
 
 const addBusinessDays = (startDateStr, days) => {
   if (!startDateStr || !days || days <= 0) return startDateStr || '';
@@ -212,6 +213,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
 
   // Parts
   const partsQuery = useQuery({ queryKey: ['cases', String(caseId), 'parts'], queryFn: () => listCaseParts(caseId) });
+  const thirdPartyQuery = useQuery({ queryKey: ['cases', String(caseId), 'third-party'], queryFn: () => getThirdParty(caseId), enabled: caseDetail?.caseTypeCode === 'RECLAMO_TERCEROS' });
   const partsCatalogsQuery = useQuery({ queryKey: ['parts', 'catalogs'], queryFn: getPartsCatalogs });
 
   const statusCodeOptions = useMemo(
@@ -247,6 +249,8 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     [partsCatalogsQuery.data?.authorizationCodes],
   );
   const isInsuranceRepair = ['TODO_RIESGO', 'GRANIZO', 'CLEAS'].includes(caseDetail?.caseTypeCode);
+  const isThirdPartyWorkshop = caseDetail?.caseTypeCode === 'RECLAMO_TERCEROS';
+  const partsProvidedByWorkshop = !isThirdPartyWorkshop || thirdPartyQuery.data?.partsProvisionModeCode === 'TALLER';
   const syncsCanonicalParts = ['PARTICULAR', 'TODO_RIESGO', 'GRANIZO', 'RECLAMO_TERCEROS'].includes(caseDetail?.caseTypeCode);
   const supportsNoRepair = ['TODO_RIESGO', 'GRANIZO', 'CLEAS'].includes(caseDetail?.caseTypeCode);
   const canManageExceptionalRepair = hasGlobalAdminScope(session);
@@ -476,7 +480,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
       {/* Sub-tabs */}
       <div className="flex flex-wrap gap-2">
         {[
-          ['repuestos', 'Repuestos', PackagePlus],
+          ['repuestos', isThirdPartyWorkshop ? 'Gestión de pedidos' : 'Repuestos', PackagePlus],
           ['turno', 'Turno', CalendarPlus2],
           ['ingreso', 'Ingreso', CarFront],
           ['egreso', 'Egreso', Flag],
@@ -521,8 +525,9 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><PackagePlus className="h-5 w-5" /></div>
-            <h4 className="text-lg font-semibold">Repuestos</h4>
+            <h4 className="text-lg font-semibold">{isThirdPartyWorkshop ? 'Gestión de pedidos' : 'Repuestos'}</h4>
             <p className="mt-1 text-sm text-muted-foreground">Total de repuestos: {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(partsTotal)}. Los trabajos extra no se incluyen.</p>
+            {isThirdPartyWorkshop && !partsProvidedByWorkshop ? <p className="mt-2 text-sm text-muted-foreground">No se requiere gestionar pedidos: los repuestos los provee {thirdPartyQuery.data?.partsProvisionModeCode === 'COMPANIA' ? 'la compañía' : 'el cliente'}.</p> : null}
           </div>
           {supportsNoRepair && canManageExceptionalRepair ? (
             <Button variant={isNoRepair ? 'outline' : 'destructive'} size="sm" onClick={() => setNoRepairDialog(isNoRepair ? 'revert' : 'apply')}>
@@ -530,17 +535,17 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
             </Button>
           ) : null}
           {supportsUrgentRepair && canManageExceptionalRepair ? <Button variant="outline" size="sm" onClick={() => setUrgentRepairDialog(true)}>Reparado urgente</Button> : null}
-          {editMode ? (
+          {editMode && partsProvidedByWorkshop ? (
             <div className="ml-auto flex gap-2">
               <Button variant="outline" size="sm" onClick={() => setNewPartDialogOpen(true)}>Agregar repuesto extra</Button>
               <Button variant="outline" size="sm" onClick={cancelEdit}>Cancelar</Button>
               <Button size="sm" onClick={saveAllChanges} disabled={saving}>{saving ? 'Guardando...' : 'Guardar cambios'}</Button>
             </div>
-          ) : (
+          ) : partsProvidedByWorkshop ? (
             <div className="ml-auto flex gap-2">
               <Button variant="outline" size="sm" onClick={enterEditMode}>Editar</Button>
             </div>
-          )}
+          ) : null}
         </div>
         {openWarnings.length > 0 ? <section className="mb-4 rounded-2xl border border-amber-400 bg-amber-50 p-4 text-amber-950 dark:bg-amber-950 dark:text-amber-50" aria-labelledby="reconciliation-warnings-heading" role="alert"><h5 id="reconciliation-warnings-heading" className="font-semibold">Requiere resolución manual</h5><p className="mt-1 text-sm">La fuente canónica dejó de ser REEMPLAZAR o fue removida. Estos repuestos tienen actividad y no se modificaron ni eliminaron.</p><div className="mt-3 space-y-2">{openWarnings.map((warning) => <div key={warning.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-background/60 p-3 text-sm"><span><strong>{warning.part.description}</strong>: {warning.reason}</span><Button size="sm" variant="outline" onClick={() => setWarningToResolve(warning)}>Resolver manualmente</Button></div>)}</div></section> : null}
         {displayParts.length === 0 ? (

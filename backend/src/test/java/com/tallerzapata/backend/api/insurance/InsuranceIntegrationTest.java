@@ -474,10 +474,15 @@ class InsuranceIntegrationTest {
     private void setThirdPartyAgreementAndPartPrices(BigDecimal agreedAmount, BigDecimal finalPartPrice) throws Exception {
         setThirdPartyAgreement(agreedAmount);
         Long budgetItemId = jdbcTemplate.queryForObject("SELECT id FROM presupuesto_items WHERE presupuesto_id = (SELECT id FROM presupuestos WHERE caso_id = ?)", Long.class, 100L);
-        jdbcTemplate.update("INSERT INTO repuestos_caso (id, caso_id, presupuesto_item_id, descripcion, autorizado_codigo, estado_codigo, precio_presupuestado, precio_final, usado, devuelto, source_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'BUDGET_ITEM')",
-                502L, 100L, budgetItemId, "Puerta", "AUTORIZADO", "PEDIDO", finalPartPrice, finalPartPrice, false, false);
+        Long partId = jdbcTemplate.query("SELECT id FROM repuestos_caso WHERE caso_id = ? AND presupuesto_item_id = ?", rs -> rs.next() ? rs.getLong(1) : null, 100L, budgetItemId);
+        if (partId == null) {
+            partId = 502L;
+            jdbcTemplate.update("INSERT INTO repuestos_caso (id, caso_id, presupuesto_item_id, descripcion, autorizado_codigo, estado_codigo, precio_presupuestado, precio_final, usado, devuelto, source_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'BUDGET_ITEM')", partId, 100L, budgetItemId, "Puerta", "AUTORIZADO", "PEDIDO", finalPartPrice, finalPartPrice, false, false);
+        } else {
+            jdbcTemplate.update("UPDATE repuestos_caso SET autorizado_codigo = 'AUTORIZADO', estado_codigo = 'PEDIDO', precio_presupuestado = ?, precio_final = ? WHERE id = ?", finalPartPrice, finalPartPrice, partId);
+        }
         jdbcTemplate.update("INSERT INTO cotizaciones_repuesto (repuesto_id, proveedor, importe, facturacion_codigo, medio_pago_codigo) VALUES (?, ?, ?, ?, ?)",
-                502L, "Proveedor prueba", finalPartPrice, "A", "CONTADO");
+                partId, "Proveedor prueba", finalPartPrice, "A", "CONTADO");
     }
 
     private void insertThirdPartyWithStoredAmounts() {

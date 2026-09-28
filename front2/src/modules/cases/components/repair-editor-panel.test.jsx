@@ -6,6 +6,8 @@ import { invalidateCaseProjection } from './repair-editor-panel';
 
 const partsApi = { list: vi.fn(), sync: vi.fn(), resolveWarning: vi.fn(), catalogs: vi.fn(), update: vi.fn() };
 const requestJson = vi.fn().mockResolvedValue([]);
+const getThirdParty = vi.fn().mockResolvedValue({ partsProvisionModeCode: 'TALLER' });
+vi.mock('@/modules/cases/api/third-party-api', () => ({ getThirdParty: (...args) => getThirdParty(...args) }));
 vi.mock('@/modules/cases/api/parts-api', () => ({
   createCasePart: vi.fn(), deleteCasePart: vi.fn(), updateCasePart: (...args) => partsApi.update(...args),
   listCaseParts: (...args) => partsApi.list(...args), syncPartsFromBudget: (...args) => partsApi.sync(...args), resolvePartReconciliationWarning: (...args) => partsApi.resolveWarning(...args), getPartsCatalogs: (...args) => partsApi.catalogs(...args),
@@ -17,6 +19,15 @@ vi.mock('@/shared/api/http-client', () => ({ requestJson: (...args) => requestJs
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 describe('invalidateCaseProjection', () => {
+  it('shows Gestión de pedidos for Taller and explains when the company provides parts', async () => {
+    partsApi.list.mockResolvedValue([{ id: 7, description: 'Óptica', finalPrice: 120, statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' }]); partsApi.catalogs.mockResolvedValue({}); partsApi.sync.mockResolvedValue([]);
+    getThirdParty.mockResolvedValueOnce({ partsProvisionModeCode: 'COMPANIA' });
+    const { RepairEditorPanel } = await import('./repair-editor-panel');
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'RECLAMO_TERCEROS', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
+    expect(await screen.findByRole('button', { name: /gestión de pedidos/i })).toBeInTheDocument();
+    expect(await screen.findByText(/los repuestos los provee la compañía/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Editar' })).toBeNull();
+  });
   it('invalidates workspace, detail, list, and panel queries after state-affecting mutations', async () => {
     const queryClient = { invalidateQueries: vi.fn().mockResolvedValue(undefined) };
 

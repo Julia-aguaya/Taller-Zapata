@@ -4,6 +4,7 @@ import com.tallerzapata.backend.api.budget.*;
 import com.tallerzapata.backend.api.casefile.CodeCatalogResponse;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.InsuranceRepairCasePolicy;
+import com.tallerzapata.backend.application.insurance.InsuranceService;
 import com.tallerzapata.backend.application.casefile.ParticularCaseClosureService;
 import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
@@ -77,9 +78,10 @@ public class BudgetService {
     private final VehicleRepository vehicleRepository;
     private final CaseTypeRepository caseTypeRepository;
     private final InsuranceRepairCasePolicy insuranceRepairCasePolicy = new InsuranceRepairCasePolicy();
+    private final InsuranceService insuranceService;
 
     public BudgetService(BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, BudgetAccessoryWorkRepository budgetAccessoryWorkRepository, CasePartRepository casePartRepository, CaseRepository caseRepository, BudgetReportStatusRepository budgetReportStatusRepository, BudgetTaskRepository budgetTaskRepository, DamageLevelRepository damageLevelRepository, PartDecisionRepository partDecisionRepository, BudgetActionRepository budgetActionRepository, PartStatusRepository partStatusRepository, PartPurchaserRepository partPurchaserRepository, PartPaymentStatusRepository partPaymentStatusRepository, InsurancePartsAuthorizationRepository insurancePartsAuthorizationRepository, PersonRepository personRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService,             BudgetPdfService budgetPdfService, ParticularCaseClosureService particularCaseClosureService,
-            OrganizationRepository organizationRepository, BranchRepository branchRepository, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator, ProviderRepository providerRepository, BudgetComparisonService budgetComparisonService, CanonicalPartReconciliationService canonicalPartReconciliationService, CasePartReconciliationWarningRepository warningRepository, CleasDownstreamGate cleasDownstreamGate, VehicleRepository vehicleRepository, CaseTypeRepository caseTypeRepository) {
+            OrganizationRepository organizationRepository, BranchRepository branchRepository, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator, ProviderRepository providerRepository, BudgetComparisonService budgetComparisonService, CanonicalPartReconciliationService canonicalPartReconciliationService, CasePartReconciliationWarningRepository warningRepository, CleasDownstreamGate cleasDownstreamGate, VehicleRepository vehicleRepository, CaseTypeRepository caseTypeRepository, InsuranceService insuranceService) {
         this.budgetRepository = budgetRepository;
         this.budgetItemRepository = budgetItemRepository;
         this.budgetAccessoryWorkRepository = budgetAccessoryWorkRepository;
@@ -112,6 +114,7 @@ public class BudgetService {
         this.cleasDownstreamGate = cleasDownstreamGate;
         this.vehicleRepository = vehicleRepository;
         this.caseTypeRepository = caseTypeRepository;
+        this.insuranceService = insuranceService;
     }
 
     @Transactional(readOnly = true)
@@ -457,6 +460,7 @@ public class BudgetService {
         int incorporated = Math.max(0, after - before);
         int existing = Math.max(0, synchronizedParts.size() - incorporated);
         if (!synchronizedParts.isEmpty()) todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+        insuranceService.refreshThirdPartyWorkshopAmounts(caseId);
         return new WorkshopPartsSyncResponse(incorporated, 0, existing, Math.max(0, synchronizedParts.size() - incorporated - existing));
     }
 
