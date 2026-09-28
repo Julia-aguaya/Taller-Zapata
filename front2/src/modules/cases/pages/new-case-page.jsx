@@ -306,7 +306,9 @@ export const NewCasePage = () => {
     }
   };
 
-  const caseTypeOptions = caseCatalogsQuery.data?.caseTypes ?? [];
+  // El recupero se crea desde la franquicia de la carpeta Todo Riesgo. Darlo de
+  // alta desde este formulario produciría una carpeta sin su vínculo ni datos base.
+  const caseTypeOptions = (caseCatalogsQuery.data?.caseTypes ?? []).filter((type) => type.code !== 'RECUPERO_FRANQUICIA');
   const brandOptions = brandsQuery.data ?? [];
   const modelOptions = modelsQuery.data ?? [];
   const vehicleTypeOptions = vehicleCatalogsQuery.data?.vehicleTypeCodes ?? [];

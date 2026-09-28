@@ -53,6 +53,21 @@ describe('DocumentsSection', () => {
     vi.unstubAllGlobals();
   });
 
+  it('isolates and collapses legal-case documentation by module', async () => {
+    const fetchMock = vi.fn((url) => {
+      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [{ id: 31, code: 'EXPEDIENTE_LEGAL', name: 'Expediente legal', requiresDate: false }, { id: 8, code: 'OTRO', name: 'Otro', requiresDate: false }] }));
+      if (url === '/api/v1/cases/42/documents?moduleCode=LEGAL') return Promise.resolve(jsonResponse([{ documentId: 7, relationId: 7, moduleCode: 'LEGAL', categoryId: 31, fileName: 'demanda.pdf' }]));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    renderSection({ moduleCode: 'LEGAL', includeHistorical: false, title: 'Documentación Expediente', categoryCodes: new Set(['EXPEDIENTE_LEGAL']), collapsible: true, showCompleteAction: false });
+    const toggle = await screen.findByRole('button', { name: /documentación expediente/i });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(toggle);
+    expect(await screen.findByText('demanda.pdf')).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/cases/42/documents?moduleCode=LEGAL', expect.anything());
+  });
+
   it('prepopulates, allows editing, and sends documentDate in ISO format when the selected category requires it', async () => {
     saveStoredAuth({ accessToken: 'access-token', refreshToken: 'refresh-token' });
     const fetchMock = vi.fn((url, options = {}) => {

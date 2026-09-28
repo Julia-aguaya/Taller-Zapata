@@ -35,4 +35,8 @@ public class FranchiseRecoveryController {
     @PreAuthorize("hasAuthority('recupero.crear')")
     @PutMapping("/cases/{caseId}/franchise-recovery")
     public FranchiseRecoveryResponse upsertFranchiseRecovery(@PathVariable Long caseId, @RequestBody FranchiseRecoveryUpsertRequest request, HttpServletRequest httpRequest) { return franchiseRecoveryService.upsertFranchiseRecovery(caseId, request, httpRequest); }
+
+    @PreAuthorize("hasAuthority('recupero.crear')")
+    @PostMapping("/cases/{caseId}/franchise-recovery/lower-agreement-approval")
+    public FranchiseRecoveryResponse approveLowerAgreement(@PathVariable Long caseId, @RequestBody @jakarta.validation.Valid FranchiseRecoveryApprovalRequest request, HttpServletRequest httpRequest) { return franchiseRecoveryService.approveLowerAgreement(caseId, request.reason(), httpRequest); }
 }

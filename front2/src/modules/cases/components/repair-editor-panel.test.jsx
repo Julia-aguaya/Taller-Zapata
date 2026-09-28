@@ -62,6 +62,17 @@ describe('invalidateCaseProjection', () => {
     await waitFor(() => expect(partsApi.sync).toHaveBeenCalledWith('42'));
   });
 
+  it('synchronizes canonical parts for Taller third-party claims only', async () => {
+    partsApi.sync.mockClear();
+    partsApi.list.mockResolvedValue([]);
+    partsApi.catalogs.mockResolvedValue({});
+    const { RepairEditorPanel } = await import('./repair-editor-panel');
+
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'RECLAMO_TERCEROS', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
+
+    await waitFor(() => expect(partsApi.sync).toHaveBeenCalledWith('42'));
+  });
+
   it('adds manual parts through an accessible modal instead of an inline form', async () => {
     const user = userEvent.setup();
     partsApi.list.mockResolvedValue([]);

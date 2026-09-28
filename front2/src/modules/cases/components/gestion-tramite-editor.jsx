@@ -19,7 +19,7 @@ export const GestionTramiteEditor = ({ caseId, caseDetail, budget, nroCleas, set
     return <CleasGestionTramiteEditor caseId={caseId} caseDetail={caseDetail} nroCleas={nroCleas} setNroCleas={setNroCleas} insurance={cleasInsurance} onInsuranceChange={onCleasInsuranceChange} cleasAgreedAmount={cleasAgreedAmount} setCleasAgreedAmount={setCleasAgreedAmount} cleasFranchiseDistribution={cleasFranchiseDistribution} onCleasFranchiseDistributionChange={onCleasFranchiseDistributionChange} cleasOver={cleasOver} opinion={cleasOpinion} onCleasOverChange={onCleasOverChange} onOpinionChange={onCleasOpinionChange} cleasClosedAt={cleasClosedAt} onRequestClosure={onRequestCleasClosure} />;
   }
 
-  if (caseTypeCode === 'RECLAMO_TERCEROS' || caseTypeCode === 'RECLAMO_TERCEROS_ABOGADO') {
+  if (caseTypeCode === 'RECLAMO_TERCEROS') {
     return <ThirdPartyWorkshopEditor caseId={caseId} caseDetail={caseDetail} budget={budget} />;
   }
 

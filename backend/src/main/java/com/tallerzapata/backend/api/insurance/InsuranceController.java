@@ -180,6 +180,15 @@ public class InsuranceController {
     public LegalExpenseResponse createCaseLegalExpense(@PathVariable Long caseId, @RequestBody LegalExpenseCreateRequest request, HttpServletRequest httpRequest) { return insuranceService.createCaseLegalExpense(caseId, request, httpRequest); }
 
     @PreAuthorize("hasAuthority('seguro.ver')")
+    @GetMapping("/cases/{caseId}/legal-expenses/export")
+    public ResponseEntity<byte[]> exportCaseLegalExpenses(@PathVariable Long caseId) {
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=erogaciones-legales-" + caseId + ".xlsx")
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(insuranceService.exportCaseLegalExpenses(caseId));
+    }
+
+    @PreAuthorize("hasAuthority('seguro.ver')")
     @GetMapping("/cases/{caseId}/legal-recoverables")
     public List<LegalRecoverableItemResponse> listLegalRecoverables(@PathVariable Long caseId) { return legalRecoverableItemService.list(caseId); }
 

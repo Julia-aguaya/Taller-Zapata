@@ -4,9 +4,9 @@ import { AlertTriangle, FolderOpen, ReceiptText, Save } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { requestJson } from '@/shared/api/http-client';
+import { getCasePersons, getThirdParty } from '@/modules/cases/api/third-party-api';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
-import { Textarea } from '@/shared/ui/textarea';
 
 const selectClass = 'h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20';
 
@@ -27,9 +27,19 @@ export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
   const catalogsQuery = useQuery({ queryKey: ['recovery', 'catalogs'], queryFn: () => requestJson('/recovery/catalogs') });
 
   const recovery = recoveryQuery.data;
-  const managerCodes = catalogsQuery.data?.managerCodes ?? [];
+  const baseCaseId = recovery?.baseCaseId;
+  const baseInsuranceQuery = useQuery({ queryKey: ['cases', String(baseCaseId), 'insurance'], queryFn: () => requestJson(`/cases/${baseCaseId}/insurance`), enabled: Boolean(baseCaseId) });
+  const baseIncidentQuery = useQuery({ queryKey: ['cases', String(baseCaseId), 'incident'], queryFn: () => requestJson(`/cases/${baseCaseId}/incident`), enabled: Boolean(baseCaseId) });
+  const baseThirdPartyQuery = useQuery({ queryKey: ['cases', String(baseCaseId), 'third-party'], queryFn: () => getThirdParty(baseCaseId), enabled: Boolean(baseCaseId) });
+  const basePeopleQuery = useQuery({ queryKey: ['cases', String(baseCaseId), 'persons'], queryFn: () => getCasePersons(baseCaseId), enabled: Boolean(baseCaseId) });
+  const managerCodes = (catalogsQuery.data?.managerCodes ?? []).filter(({ code }) => ['TALLER', 'ABOGADO'].includes(code));
   const opinionCodes = catalogsQuery.data?.opinionCodes ?? [];
   const paymentStatusCodes = catalogsQuery.data?.paymentStatusCodes ?? [];
+  const baseInsurance = baseInsuranceQuery.data;
+  const baseIncident = baseIncidentQuery.data;
+  const baseThirdParty = baseThirdPartyQuery.data;
+  const basePeople = Array.isArray(basePeopleQuery.data) ? basePeopleQuery.data : [];
+  const personName = (personId) => basePeople.find((person) => String(person.personId ?? person.id) === String(personId))?.personDisplayName ?? basePeople.find((person) => String(person.personId ?? person.id) === String(personId))?.displayName ?? 'Sin informar';
 
   const mutation = useMutation({
     mutationFn: (payload) => requestJson(`/cases/${caseId}/franchise-recovery`, { method: 'PUT', body: JSON.stringify(payload) }),
@@ -37,6 +47,7 @@ export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
       queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'franchise-recovery'] });
       queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
       toast.success('Recupero guardado.');
+      onSaved?.();
     },
     onError: (e) => toast.error(e.message),
   });
@@ -58,6 +69,7 @@ export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
   const agreed = toAmount(agreedAmount);
   const toRecover = toAmount(recoveryAmount);
   const culpaCompartida = dictamen === 'CULPA_COMPARTIDA';
+  const clientShare = culpaCompartida ? toRecover / 2 : null;
   const showLowerAgreementWarning = agreed > 0 && toRecover > 0 && toRecover < agreed && !culpaCompartida;
 
   const handleSave = () => {
@@ -78,8 +90,8 @@ export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
       clientAmount: recuperaCliente ? (toAmount(fd.get('clientAmount')) || null) : null,
       clientPaymentStatusCode: recuperaCliente ? (fd.get('clientPaymentStatusCode') || null) : null,
       clientPaymentDate: recuperaCliente ? (fd.get('clientPaymentDate') || null) : null,
-      approvedLowerAgreement: showLowerAgreementWarning && fd.get('approvedLowerAgreement') === 'SI',
-      approvalNote: fd.get('approvalNote') || null,
+      approvedLowerAgreement: false,
+      approvalNote: null,
       reusesBaseData: true,
     });
   };
@@ -107,6 +119,22 @@ export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
       ) : (
         <p className="mt-3 rounded-xl border border-dashed border-border/60 px-3 py-2 text-xs text-muted-foreground">Sin carpeta asociada.</p>
       )}
+
+      {recovery?.baseCaseId ? <div className="mt-3 rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs" aria-label="Datos provenientes de la carpeta asociada">
+        <p className="font-semibold text-primary">Datos provenientes de la carpeta asociada</p>
+        <p className="mt-1 text-muted-foreground">Esta información se consulta desde Todo Riesgo y no se edita desde Recupero.</p>
+        <div className="mt-3 grid gap-2 md:grid-cols-3">
+          <span><b>Cía. propia:</b> {baseInsurance?.insuranceCompanyId ?? 'Sin informar'}</span>
+          <span><b>Cía. tercero:</b> {baseThirdParty?.thirdPartyCompanyId ?? baseInsurance?.thirdPartyCompanyId ?? 'Sin informar'}</span>
+          <span><b>N.º siniestro:</b> {baseInsurance?.claimNumber ?? 'Sin informar'}</span>
+          <span><b>Referencia tercero:</b> {baseThirdParty?.claimReference ?? 'Sin informar'}</span>
+          <span><b>Tramitador:</b> {personName(baseInsurance?.processorPersonId)}</span>
+          <span><b>Inspector:</b> {personName(baseInsurance?.inspectorPersonId)}</span>
+          <span><b>Siniestro:</b> {baseIncident?.incidentDate ?? 'Sin fecha'} · {baseIncident?.incidentPlace ?? 'Sin lugar'}</span>
+          <span className="md:col-span-2"><b>Dinámica:</b> {baseIncident?.incidentDynamics ?? 'Sin informar'}</span>
+          <span className="md:col-span-3"><b>Terceros involucrados:</b> {basePeople.filter((person) => !person.principal && !['TRAMITADOR', 'INSPECTOR'].includes(person.caseRoleCode)).map((person) => person.personDisplayName ?? person.displayName ?? person.personId).join(', ') || 'Sin informar'}</span>
+        </div>
+      </div> : null}
 
       <form id="franchise-recovery-form" key={recovery?.id ?? 'new'} className="mt-4 space-y-3">
         <div className="grid gap-x-6 gap-y-3 md:grid-cols-3">
@@ -147,16 +175,16 @@ export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
             </Field>
             {culpaCompartida || recoversClient === 'SI' ? (
               <>
-                <Field label="Monto cliente">
-                  <Input name="clientAmount" type="number" min="0" step="0.01" defaultValue={recovery?.clientAmount ?? ''} placeholder={culpaCompartida ? '50% del recupero' : '0'} />
+                <Field label={culpaCompartida ? 'Monto a cargo del cliente (50%)' : 'Monto a reintegrar al cliente'}>
+                  <Input name="clientAmount" type="number" min="0" step="0.01" value={culpaCompartida ? clientShare : undefined} defaultValue={culpaCompartida ? undefined : recovery?.clientAmount ?? ''} readOnly={culpaCompartida} placeholder={culpaCompartida ? '50% del recupero' : '0'} />
                 </Field>
-                <Field label="Estado cobro cliente">
+                <Field label={culpaCompartida ? 'Estado de cobro al cliente' : 'Estado del reintegro'}>
                   <select name="clientPaymentStatusCode" defaultValue={recovery?.clientPaymentStatusCode ?? ''} className={selectClass}>
                     <option value="">—</option>
                     {paymentStatusCodes.map((p) => (<option key={p.code} value={p.code}>{p.name || p.code}</option>))}
                   </select>
                 </Field>
-                <Field label="Fecha cobro">
+                <Field label={culpaCompartida ? 'Fecha de cobro' : 'Fecha de reintegro'}>
                   <Input name="clientPaymentDate" type="date" defaultValue={recovery?.clientPaymentDate ?? ''} />
                 </Field>
               </>
@@ -171,20 +199,7 @@ export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
           </div>
         ) : null}
 
-        {showLowerAgreementWarning ? (
-          <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
-            <Field label="Aprobado por administrador">
-              <select name="approvedLowerAgreement" defaultValue={recovery?.approvedLowerAgreement ? 'SI' : 'NO'} className={selectClass}>
-                <option value="NO">NO</option>
-                <option value="SI">SI</option>
-              </select>
-            </Field>
-          </div>
-        ) : null}
-
-        <Field label="Nota de aprobación">
-          <Textarea name="approvalNote" defaultValue={recovery?.approvalNote ?? ''} placeholder="Motivo de la autorización u observaciones..." className="min-h-[60px] resize-y" />
-        </Field>
+        {recovery?.approvedLowerAgreement ? <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">Excepción aprobada por administrador.</p> : null}
       </form>
     </div>
   );

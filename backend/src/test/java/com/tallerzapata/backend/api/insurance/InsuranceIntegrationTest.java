@@ -299,6 +299,90 @@ class InsuranceIntegrationTest {
     }
 
     @Test
+    void shouldSynchronizeThirdPartyAmountsOnlyForWorkshopClaims() throws Exception {
+        setCaseType("RECLAMO_TERCEROS");
+        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, cuit, requiere_fotos_reparado, dias_pago_esperados, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 2L, "00000000-0000-0000-0000-000000004002", "SANCOR", "Sancor", "30711222335", false, 20, true);
+        createBudgetWithReplacementPart(100L);
+        setThirdPartyAgreementAndPartPrices(new BigDecimal("3800.00"), new BigDecimal("2100.00"));
+
+        mockMvc.perform(put("/api/v1/cases/100/third-party")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CaseThirdPartyUpsertRequest(2L, "REC-TALLER", "ACEPTADA", true, "TALLER", new BigDecimal("1"), new BigDecimal("2"), new BigDecimal("3"), new BigDecimal("4"), new BigDecimal("5"), new BigDecimal("6")))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.amountToBillCompany").value(3800.00))
+                .andExpect(jsonPath("$.finalPartsTotal").value(2100.00))
+                .andExpect(jsonPath("$.finalAmountForWorkshop").value(1700.00));
+    }
+
+    @Test
+    void shouldNotSynchronizeThirdPartyAmountsForCleas() throws Exception {
+        setCaseType("CLEAS");
+        insertThirdPartyWithStoredAmounts();
+
+        mockMvc.perform(put("/api/v1/cases/100/third-party")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CaseThirdPartyUpsertRequest(null, "CLEAS-REF", "ACEPTADA", true, "COMPANIA", new BigDecimal("1"), new BigDecimal("2"), new BigDecimal("3"), new BigDecimal("4"), new BigDecimal("5"), new BigDecimal("6")))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.minimumLaborAmount").value(111.00))
+                .andExpect(jsonPath("$.minimumPartsAmount").value(222.00))
+                .andExpect(jsonPath("$.bestQuotationSubtotal").value(333.00))
+                .andExpect(jsonPath("$.finalPartsTotal").value(444.00))
+                .andExpect(jsonPath("$.amountToBillCompany").value(555.00))
+                .andExpect(jsonPath("$.finalAmountForWorkshop").value(666.00));
+    }
+
+    @Test
+    void shouldNotSynchronizeThirdPartyAmountsForLawyerClaims() throws Exception {
+        setCaseType("RECLAMO_TERCEROS_ABOGADO");
+        insertThirdPartyWithStoredAmounts();
+
+        mockMvc.perform(put("/api/v1/cases/100/third-party")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CaseThirdPartyUpsertRequest(null, "ABOGADO-REF", "ACEPTADA", true, "COMPANIA", new BigDecimal("1"), new BigDecimal("2"), new BigDecimal("3"), new BigDecimal("4"), new BigDecimal("5"), new BigDecimal("6")))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.minimumLaborAmount").value(111.00))
+                .andExpect(jsonPath("$.minimumPartsAmount").value(222.00))
+                .andExpect(jsonPath("$.bestQuotationSubtotal").value(333.00))
+                .andExpect(jsonPath("$.finalPartsTotal").value(444.00))
+                .andExpect(jsonPath("$.amountToBillCompany").value(555.00))
+                .andExpect(jsonPath("$.finalAmountForWorkshop").value(666.00));
+    }
+
+    @Test
+    void shouldRejectSharedProvisionModesForWorkshopThirdPartyClaims() throws Exception {
+        setCaseType("RECLAMO_TERCEROS");
+
+        mockMvc.perform(put("/api/v1/cases/100/third-party")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CaseThirdPartyUpsertRequest(null, "TALLER-REF", "PENDIENTE", false, "TERCERO", null, null, null, null, null, null))))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldKeepSharedProvisionModesCompatibleForCleasAndLawyerClaims() throws Exception {
+        setCaseType("CLEAS");
+        mockMvc.perform(put("/api/v1/cases/100/third-party")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CaseThirdPartyUpsertRequest(null, "CLEAS-REF", "PENDIENTE", false, "TERCERO", null, null, null, null, null, null))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.partsProvisionModeCode").value("TERCERO"));
+
+        jdbcTemplate.update("DELETE FROM caso_terceros WHERE caso_id = ?", 100L);
+        setCaseType("RECLAMO_TERCEROS_ABOGADO");
+        mockMvc.perform(put("/api/v1/cases/100/third-party")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CaseThirdPartyUpsertRequest(null, "ABOGADO-REF", "PENDIENTE", false, "NO_APLICA", null, null, null, null, null, null))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.partsProvisionModeCode").value("NO_APLICA"));
+    }
+
+    @Test
     void shouldNormalizePartsFieldsWhenThirdPartyPartsAreNotProvidedByWorkshop() throws Exception {
         setCaseType("RECLAMO_TERCEROS");
         jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, cuit, requiere_fotos_reparado, dias_pago_esperados, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 2L, "00000000-0000-0000-0000-000000004002", "SANCOR", "Sancor", "30711222335", false, 20, true);
@@ -358,6 +442,11 @@ class InsuranceIntegrationTest {
         Long budgetItemId = jdbcTemplate.queryForObject("SELECT id FROM presupuesto_items WHERE presupuesto_id = (SELECT id FROM presupuestos WHERE caso_id = ?)", Long.class, 100L);
         jdbcTemplate.update("INSERT INTO repuestos_caso (id, caso_id, presupuesto_item_id, descripcion, autorizado_codigo, estado_codigo, precio_presupuestado, precio_final, usado, devuelto, source_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'BUDGET_ITEM')",
                 502L, 100L, budgetItemId, "Puerta", "AUTORIZADO", "PEDIDO", finalPartPrice, finalPartPrice, false, false);
+    }
+
+    private void insertThirdPartyWithStoredAmounts() {
+        jdbcTemplate.update("INSERT INTO caso_terceros (caso_id, referencia_reclamo, documentacion_estado_codigo, documentacion_aceptada, modo_provision_repuestos_codigo, monto_minimo_labor, monto_minimo_repuestos, subtotal_mejor_cotizacion, total_final_repuestos, monto_facturar_compania, monto_final_favor_taller) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                100L, "ORIGINAL", "PENDIENTE", false, "TALLER", new BigDecimal("111.00"), new BigDecimal("222.00"), new BigDecimal("333.00"), new BigDecimal("444.00"), new BigDecimal("555.00"), new BigDecimal("666.00"));
     }
 
     @Test
@@ -473,6 +562,23 @@ class InsuranceIntegrationTest {
 
         Integer auditCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'crear_legal_gasto'", Integer.class, 100L);
         assertThat(auditCount).isEqualTo(1);
+    }
+
+    @Test
+    void shouldExportOnlyLegalExpensesAsExcel() throws Exception {
+        setCaseType("RECLAMO_TERCEROS_ABOGADO");
+        mockMvc.perform(put("/api/v1/cases/100/legal").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CaseLegalUpsertRequest("CON_PODER", "DANIO_MATERIAL", "ADMINISTRATIVA", null, null, null, null, null, null, null, false, null, null, null, null, null))))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/cases/100/legal-expenses").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new LegalExpenseCreateRequest("Tasa judicial", new BigDecimal("123.45"), LocalDate.of(2026, 3, 1), "ABOGADO", null, false))))
+                .andExpect(status().isOk());
+
+        byte[] file = mockMvc.perform(get("/api/v1/cases/100/legal-expenses/export").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Content-Disposition", org.hamcrest.Matchers.containsString("erogaciones-legales-100.xlsx")))
+                .andReturn().getResponse().getContentAsByteArray();
+        assertThat(file).startsWith((byte) 'P', (byte) 'K');
     }
 
     @Test

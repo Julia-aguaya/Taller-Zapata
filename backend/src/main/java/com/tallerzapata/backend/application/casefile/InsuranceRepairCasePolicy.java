@@ -35,6 +35,11 @@ public final class InsuranceRepairCasePolicy {
         return "RECLAMO_TERCEROS_ABOGADO".equals(normalize(caseTypeCode));
     }
 
+    /** Reclamo de terceros gestionado operativamente por el taller, no por abogado. */
+    public boolean isThirdPartyWorkshopClaim(String caseTypeCode) {
+        return "RECLAMO_TERCEROS".equals(normalize(caseTypeCode));
+    }
+
     /**
      * Anios de prescripcion desde la fecha del siniestro.
      * Reclamo de terceros (taller o abogado) prescribe a los 3 anios; el resto de los

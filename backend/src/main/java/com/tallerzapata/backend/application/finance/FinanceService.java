@@ -590,11 +590,13 @@ public class FinanceService {
             throw new ConflictException("El pago de compania debe registrarse para la aseguradora");
         }
 
-        Long selectedCompanyId = caseInsuranceRepository.findByCaseId(caseEntity.getId())
-                .map(value -> value.getInsuranceCompanyId())
-                .orElseThrow(() -> new ConflictException("El caso no tiene compania aseguradora configurada"));
-        if (!selectedCompanyId.equals(request.counterpartyCompanyId())) {
-            throw new ConflictException("El pago debe registrarse para la compania aseguradora del caso");
+        if (!insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> type.getCode()).orElse(""))) {
+            Long selectedCompanyId = caseInsuranceRepository.findByCaseId(caseEntity.getId())
+                    .map(value -> value.getInsuranceCompanyId())
+                    .orElseThrow(() -> new ConflictException("El caso no tiene compania aseguradora configurada"));
+            if (!selectedCompanyId.equals(request.counterpartyCompanyId())) {
+                throw new ConflictException("El pago debe registrarse para la compania aseguradora del caso");
+            }
         }
 
         BigDecimal amount = money(request.grossAmount());

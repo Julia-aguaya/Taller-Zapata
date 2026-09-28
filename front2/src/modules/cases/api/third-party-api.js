@@ -10,7 +10,13 @@ export const getLegalNews = (caseId) => requestJson(`${casePath(caseId)}/legal-n
 export const createLegalNews = (caseId, payload) => requestJson(`${casePath(caseId)}/legal-news`, { method: 'POST', body: JSON.stringify(payload) });
 export const getLegalExpenses = (caseId) => requestJson(`${casePath(caseId)}/legal-expenses`);
 export const createLegalExpense = (caseId, payload) => requestJson(`${casePath(caseId)}/legal-expenses`, { method: 'POST', body: JSON.stringify(payload) });
+export const getLegalExpensesExportUrl = (caseId) => `/api/v1${casePath(caseId)}/legal-expenses/export`;
 export const getLegalInjuredParties = (caseId) => requestJson(`${casePath(caseId)}/legal/lesionados`);
 export const createLegalInjuredParty = (caseId, payload) => requestJson(`${casePath(caseId)}/legal/lesionados`, { method: 'POST', body: JSON.stringify(payload) });
+export const updateLegalInjuredParty = (caseId, injuredPartyId, payload) => requestJson(`${casePath(caseId)}/legal/lesionados/${injuredPartyId}`, { method: 'PUT', body: JSON.stringify(payload) });
+export const deleteLegalInjuredParty = (caseId, injuredPartyId) => requestJson(`${casePath(caseId)}/legal/lesionados/${injuredPartyId}`, { method: 'DELETE' });
+export const getLegalRecoverables = (caseId) => requestJson(`${casePath(caseId)}/legal-recoverables`);
+export const createLegalRecoverable = (caseId, payload) => requestJson(`${casePath(caseId)}/legal-recoverables`, { method: 'POST', body: JSON.stringify(payload) });
+export const collectLegalRecoverable = (caseId, itemId) => requestJson(`${casePath(caseId)}/legal-recoverables/${itemId}/collect`, { method: 'POST' });
 export const getCasePersons = (caseId) => requestJson(`${casePath(caseId)}/persons`);
 export const addCasePerson = (caseId, payload) => requestJson(`${casePath(caseId)}/persons`, { method: 'POST', body: JSON.stringify(payload) });

@@ -19,6 +19,10 @@ import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
+import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetEntity;
+import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetItemEntity;
+import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetItemRepository;
+import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseIncidentEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseIncidentRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CasePriorityRepository;
@@ -37,6 +41,8 @@ import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMove
 import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseLegalRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseInsuranceEntity;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseInsuranceRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseThirdPartyEntity;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseThirdPartyRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceCompanyContactEntity;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceCompanyContactRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceCompanyEntity;
@@ -119,6 +125,9 @@ public class CaseService {
     private final ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator;
     private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
     private final CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator;
+    private final BudgetRepository budgetRepository;
+    private final BudgetItemRepository budgetItemRepository;
+    private final CaseThirdPartyRepository caseThirdPartyRepository;
 
     public CaseService(
             CaseRepository caseRepository,
@@ -151,7 +160,8 @@ public class CaseService {
             CurrentUserService currentUserService,
             CaseAccessControlService caseAccessControlService,
             CaseVisibleStateResolver caseVisibleStateResolver, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator,
-            TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator
+            TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator,
+            BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CaseThirdPartyRepository caseThirdPartyRepository
     ) {
         this.caseRepository = caseRepository;
         this.caseTypeRepository = caseTypeRepository;
@@ -186,6 +196,9 @@ public class CaseService {
         this.particularEffectiveStateRecalculator = particularEffectiveStateRecalculator;
         this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
         this.cleasEffectiveStateRecalculator = cleasEffectiveStateRecalculator;
+        this.budgetRepository = budgetRepository;
+        this.budgetItemRepository = budgetItemRepository;
+        this.caseThirdPartyRepository = caseThirdPartyRepository;
     }
 
     @Transactional(readOnly = true)
@@ -598,6 +611,17 @@ public class CaseService {
             caseIncidentRepository.save(copy);
         });
 
+        // Datos de contraparte para los pagos Taller/Abogado. Son una fotografía del alta:
+        // el recupero no escribe nunca sobre la carpeta TODO_RIESGO de origen.
+        caseThirdPartyRepository.findByCaseId(baseCaseId).ifPresent(source -> {
+            CaseThirdPartyEntity copy = new CaseThirdPartyEntity();
+            copy.setCaseId(childId); copy.setThirdPartyCompanyId(source.getThirdPartyCompanyId()); copy.setClaimReference(source.getClaimReference());
+            copy.setDocumentationStatusCode(source.getDocumentationStatusCode()); copy.setDocumentationAccepted(source.getDocumentationAccepted()); copy.setPartsProvisionModeCode(source.getPartsProvisionModeCode());
+            copy.setMinimumLaborAmount(source.getMinimumLaborAmount()); copy.setMinimumPartsAmount(source.getMinimumPartsAmount()); copy.setBestQuotationSubtotal(source.getBestQuotationSubtotal());
+            copy.setFinalPartsTotal(source.getFinalPartsTotal()); copy.setAmountToBillCompany(source.getAmountToBillCompany()); copy.setFinalAmountForWorkshop(source.getFinalAmountForWorkshop());
+            caseThirdPartyRepository.save(copy);
+        });
+
         caseStateHistoryRepository.save(history(child.getId(), "tramite", initialCaseState.getId(), currentUser.id(), false, "Creacion de carpeta de recupero desde " + base.getFolderCode()));
         caseStateHistoryRepository.save(history(child.getId(), "reparacion", initialRepairState.getId(), currentUser.id(), true, "Estado inicial de reparacion"));
         caseStateHistoryRepository.save(history(child.getId(), "pago", initialPaymentState.getId(), currentUser.id(), true, "Estado inicial de pago"));
@@ -617,6 +641,34 @@ public class CaseService {
         );
 
         return child;
+    }
+
+    /**
+     * El presupuesto del recupero es una instantánea independiente: se copian valores e ítems,
+     * nunca IDs ni una referencia editable al presupuesto de Todo Riesgo.
+     */
+    @Transactional
+    public void copyRecoveryBudgetFromBase(Long baseCaseId, Long recoveryCaseId) {
+        if (budgetRepository.findByCaseId(recoveryCaseId).isPresent()) return;
+        BudgetEntity source = budgetRepository.findByCaseId(baseCaseId).orElse(null);
+        if (source == null) return;
+        CaseEntity targetCase = getCase(recoveryCaseId);
+        BudgetEntity target = new BudgetEntity();
+        target.setCaseId(recoveryCaseId); target.setOrganizationId(targetCase.getOrganizationId()); target.setBranchId(targetCase.getBranchId());
+        target.setBudgetDate(source.getBudgetDate()); target.setReportStatusCode("BORRADOR");
+        target.setLaborWithoutVat(source.getLaborWithoutVat()); target.setVatRate(source.getVatRate()); target.setLaborVat(source.getLaborVat()); target.setLaborWithVat(source.getLaborWithVat());
+        target.setPartsTotal(source.getPartsTotal()); target.setTotalQuoted(source.getTotalQuoted()); target.setEstimatedDays(source.getEstimatedDays()); target.setMinimumCloseAmount(source.getMinimumCloseAmount());
+        target.setObservations(source.getObservations()); target.setAuthorizedByName(source.getAuthorizedByName()); target.setInterestedName(source.getInterestedName());
+        target.setBenchStraighteningApplies(source.getBenchStraighteningApplies()); target.setBenchStraighteningDetail(source.getBenchStraighteningDetail()); target.setAlignmentApplies(source.getAlignmentApplies()); target.setAlignmentDetail(source.getAlignmentDetail());
+        target.setBalancingApplies(source.getBalancingApplies()); target.setBalancingDetail(source.getBalancingDetail()); target.setGlassReplacementApplies(source.getGlassReplacementApplies()); target.setGlassReplacementDetail(source.getGlassReplacementDetail());
+        target.setElectricalWorkApplies(source.getElectricalWorkApplies()); target.setElectricalDetail(source.getElectricalDetail()); target.setMechanicalWorkApplies(source.getMechanicalWorkApplies()); target.setMechanicalWorkCode(source.getMechanicalWorkCode());
+        target.setQuotedPartsDate(source.getQuotedPartsDate()); target.setQuotedPartsSupplier(source.getQuotedPartsSupplier()); target.setProviderId(source.getProviderId()); target.setCurrentVersion(0);
+        target = budgetRepository.save(target);
+        for (BudgetItemEntity item : budgetItemRepository.findByBudgetIdOrderByVisualOrderAsc(source.getId())) {
+            BudgetItemEntity copy = new BudgetItemEntity();
+            copy.setBudgetId(target.getId()); copy.setVisualOrder(item.getVisualOrder()); copy.setAffectedPiece(item.getAffectedPiece()); copy.setTaskCode(item.getTaskCode()); copy.setDamageLevelCode(item.getDamageLevelCode()); copy.setPartDecisionCode(item.getPartDecisionCode()); copy.setActionCode(item.getActionCode()); copy.setRequiresReplacement(item.getRequiresReplacement()); copy.setPartValue(item.getPartValue()); copy.setEstimatedHours(item.getEstimatedHours()); copy.setLaborAmount(item.getLaborAmount()); copy.setActive(item.getActive()); copy.setProviderId(item.getProviderId()); copy.setProviderSnapshot(item.getProviderSnapshot());
+            budgetItemRepository.save(copy);
+        }
     }
 
     @Transactional

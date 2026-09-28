@@ -17,6 +17,7 @@ import java.time.LocalDate;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -58,7 +59,7 @@ class FranchiseRecoveryIntegrationTest {
                 .andExpect(jsonPath("$.clientAmount").value(200.00))
                 .andExpect(jsonPath("$.clientPaymentStatusCode").value("PENDIENTE"))
                 .andExpect(jsonPath("$.approvedLowerAgreement").value(false))
-                .andExpect(jsonPath("$.reusesBaseData").value(false));
+                .andExpect(jsonPath("$.reusesBaseData").value(true));
 
         Integer auditCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'upsert_recupero_franquicia'",
@@ -99,6 +100,19 @@ class FranchiseRecoveryIntegrationTest {
     }
 
     @Test
+    void shouldRequireGlobalAdminForLowerAgreementApproval() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/franchise-recovery")
+                        .header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new FranchiseRecoveryUpsertRequest("TALLER", 101L, "0101TZ", "PROCEDE", new BigDecimal("100.00"), new BigDecimal("50.00"), false, false, null, null, null, true, "No autorizado", true))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.approvedLowerAgreement").value(false));
+
+        mockMvc.perform(post("/api/v1/cases/100/franchise-recovery/lower-agreement-approval")
+                        .header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Acuerdo documentado\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void shouldRejectInvalidBaseCaseId() throws Exception {
         mockMvc.perform(put("/api/v1/cases/100/franchise-recovery")
                         .header("X-User-Id", "3")
@@ -107,7 +121,7 @@ class FranchiseRecoveryIntegrationTest {
                                 "CLIENTE", 9999L, null, null,
                                 null, null, false, false, null,
                                 null, null, false, null, false))))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isConflict());
     }
 
     private void seedBaseData() {
@@ -115,7 +129,10 @@ class FranchiseRecoveryIntegrationTest {
         jdbcTemplate.update("INSERT INTO usuario_roles (id, usuario_id, rol_id, organizacion_id, sucursal_id, activo) VALUES (?, ?, ?, ?, ?, ?)", 3L, 3L, 2L, 1L, 1L, true);
         jdbcTemplate.update("INSERT INTO personas (id, public_id, tipo_persona, nombre, apellido, nombre_mostrar, tipo_documento_codigo, numero_documento, numero_documento_normalizado, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 10L, "00000000-0000-0000-0000-000000001010", "fisica", "Carlos", "Cliente", "Carlos Cliente", "DNI", "30111222", "30111222", true);
         jdbcTemplate.update("INSERT INTO vehiculos (id, public_id, dominio, dominio_normalizado, activo) VALUES (?, ?, ?, ?, ?)", 10L, "00000000-0000-0000-0000-000000002010", "AB123CD", "AB123CD", true);
-        jdbcTemplate.update("INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, estado_tramite_actual_id, estado_reparacion_actual_id, estado_pago_actual_id, estado_documentacion_actual_id, estado_legal_actual_id, prioridad_codigo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 100L, "00000000-0000-0000-0000-000000003100", "0100PZ", 100L, 1L, 1L, 1L, 10L, 10L, false, 1L, 1L, 4L, 7L, 9L, 11L, "MEDIA");
+        jdbcTemplate.update("INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, estado_tramite_actual_id, estado_reparacion_actual_id, estado_pago_actual_id, estado_documentacion_actual_id, estado_legal_actual_id, prioridad_codigo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 101L, "00000000-0000-0000-0000-000000003101", "0101TZ", 101L, 2L, 1L, 1L, 10L, 10L, false, 1L, 1L, 4L, 7L, 9L, 11L, "MEDIA");
+        jdbcTemplate.update("INSERT INTO casos (id, public_id, codigo_carpeta, numero_orden, tipo_tramite_id, organizacion_id, sucursal_id, vehiculo_principal_id, cliente_principal_persona_id, referenciado, usuario_creador_id, estado_tramite_actual_id, estado_reparacion_actual_id, estado_pago_actual_id, estado_documentacion_actual_id, estado_legal_actual_id, prioridad_codigo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 100L, "00000000-0000-0000-0000-000000003100", "0100RF", 100L, 7L, 1L, 1L, 10L, 10L, false, 1L, 1L, 4L, 7L, 9L, 11L, "MEDIA");
+        jdbcTemplate.update("INSERT INTO recuperos_franquicia (caso_id, caso_base_id, carpeta_base_codigo, habilita_reparacion, recupera_cliente, aprobado_menor_acuerdo, reutiliza_datos_base) VALUES (?, ?, ?, ?, ?, ?, ?)", 100L, 101L, "0101TZ", false, false, false, true);
+        jdbcTemplate.update("INSERT INTO caso_relaciones (caso_origen_id, caso_destino_id, tipo_relacion_codigo, descripcion) VALUES (?, ?, ?, ?)", 101L, 100L, "RECUPERO_DE", "Recupero de franquicia de la carpeta 0101TZ");
         jdbcTemplate.update("INSERT INTO caso_personas (id, caso_id, persona_id, rol_caso_codigo, vehiculo_id, es_principal, notas) VALUES (?, ?, ?, ?, ?, ?, ?)", 1L, 100L, 10L, "CLIENTE", null, true, null);
     }
 }

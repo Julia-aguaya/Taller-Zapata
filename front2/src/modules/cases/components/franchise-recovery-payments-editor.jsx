@@ -6,6 +6,8 @@ import { createFinancialMovement, listFinancialMovements } from '@/modules/cases
 import { requestJson } from '@/shared/api/http-client';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
+import { PaymentsEditorPanel } from '@/modules/cases/components/payments-editor-panel';
+import { ExtraBudgetPaymentsPanel } from '@/modules/cases/components/extra-budget-payments-panel';
 
 const toAmount = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 const formatCurrency = (a) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(a || 0);
@@ -19,7 +21,7 @@ const Field = ({ label, children }) => (
   </div>
 );
 
-export const FranchiseRecoveryPaymentsEditor = ({ caseId, caseDetail, onSaved }) => {
+export const FranchiseRecoveryPaymentsEditor = ({ caseId, caseDetail, budget, particularFinanceSummary, onSaved }) => {
   const queryClient = useQueryClient();
 
   const recoveryQuery = useQuery({ queryKey: ['cases', String(caseId), 'franchise-recovery'], queryFn: () => requestJson(`/cases/${caseId}/franchise-recovery`) });
@@ -31,7 +33,8 @@ export const FranchiseRecoveryPaymentsEditor = ({ caseId, caseDetail, onSaved })
   const [form, setForm] = useState({ amount: '', movementAt: new Date().toISOString().slice(0, 16), flowOriginCode: 'TERCERO' });
 
   const amountToRecover = toAmount(recovery?.recoveryAmount || 0);
-  const recovered = movements
+  const recoveryMovements = movements.filter((m) => ['Cobro de recupero de franquicia', 'Cobro cliente por culpa compartida'].includes(m.reason));
+  const recovered = recoveryMovements
     .filter((m) => m.movementTypeCode === 'INGRESO')
     .reduce((sum, m) => sum + toAmount(m.netAmount || 0), 0);
   const pending = Math.max(0, amountToRecover - recovered);
@@ -55,7 +58,7 @@ export const FranchiseRecoveryPaymentsEditor = ({ caseId, caseDetail, onSaved })
     mutation.mutate({
       movementTypeCode: 'INGRESO',
       flowOriginCode: form.flowOriginCode,
-      counterpartyTypeCode: fromThirdParty ? 'COMPANY' : 'PERSONA',
+      counterpartyTypeCode: fromThirdParty ? 'COMPANIA' : 'PERSONA',
       counterpartyPersonId: fromThirdParty ? null : caseDetail.principalCustomerPersonId,
       counterpartyCompanyId: null,
       movementAt: form.movementAt,
@@ -63,7 +66,7 @@ export const FranchiseRecoveryPaymentsEditor = ({ caseId, caseDetail, onSaved })
       netAmount: m,
       paymentMethodCode: 'TRANSFERENCIA',
       paymentMethodDetail: null,
-      cancellationTypeCode: 'PRESUPUESTO',
+      cancellationTypeCode: null,
       advancePayment: false,
       bonification: false,
       reason: 'Cobro de recupero de franquicia',
@@ -72,6 +75,14 @@ export const FranchiseRecoveryPaymentsEditor = ({ caseId, caseDetail, onSaved })
       applications: [],
     });
   };
+
+  // Reutilizamos las variantes canónicas: Taller conserva facturación de contraparte y extras;
+  // Abogado conserva CUIJ/siniestro, rubros y movimientos legales. No existe un flujo paralelo.
+  const managedType = recovery?.managerCode === 'ABOGADO' ? 'RECLAMO_TERCEROS_ABOGADO' : 'RECLAMO_TERCEROS';
+  return <div className="space-y-5" data-testid={`recovery-payments-${recovery?.managerCode ?? 'TALLER'}`}>
+    <PaymentsEditorPanel caseId={caseId} caseDetail={{ ...caseDetail, caseTypeCode: managedType }} budget={budget} particularFinanceSummary={particularFinanceSummary} onSaved={onSaved} />
+    <ExtraBudgetPaymentsPanel caseId={caseId} caseTypeCode={managedType} onSaved={onSaved} />
+  </div>;
 
   return (
     <div className="mt-5 space-y-5">
@@ -103,7 +114,7 @@ export const FranchiseRecoveryPaymentsEditor = ({ caseId, caseDetail, onSaved })
 
       <div className="rounded-3xl border border-border/70 bg-card p-5">
         <h5 className="mb-4 text-sm font-semibold uppercase tracking-[0.18em] text-muted-foreground">Historial de movimientos</h5>
-        {movements.length === 0 ? (
+          {recoveryMovements.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border/70 py-6 text-center text-sm text-muted-foreground">Sin movimientos registrados.</p>
         ) : (
           <div className="overflow-x-auto">
@@ -118,7 +129,7 @@ export const FranchiseRecoveryPaymentsEditor = ({ caseId, caseDetail, onSaved })
                 </tr>
               </thead>
               <tbody>
-                {movements.map((m) => (
+                {recoveryMovements.map((m) => (
                   <tr key={m.id} className="border-b border-border/40 hover:bg-muted/30 transition-colors">
                     <td className="px-3 py-3 font-medium">{m.movementAt?.slice(0, 16).replace('T', ' ')}</td>
                     <td className="px-3 py-3">

@@ -17,6 +17,7 @@ import { Textarea } from '@/shared/ui/textarea';
 import { Dialog } from '@/shared/ui/dialog';
 import { Card } from '@/shared/ui/card';
 import { deriveUnfavorableFranchiseSettlement } from '@/modules/cases/components/cleas/cleas-franchise-settlement';
+import { getLegalCase, getLegalRecoverables, getThirdParty } from '@/modules/cases/api/third-party-api';
 
 const toAmount = (value) => {
   const parsed = Number(value);
@@ -106,6 +107,9 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const receiptsQuery = useQuery({ queryKey: ['cases', String(caseId), 'receipts'], queryFn: () => listReceipts(caseId) });
   const insuranceProcessingQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance-processing'], queryFn: () => requestJson(`/cases/${caseId}/insurance-processing`), enabled: caseDetail?.caseTypeCode === 'TODO_RIESGO' || caseDetail?.caseTypeCode === 'GRANIZO' });
   const caseInsuranceQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance'], queryFn: () => requestJson(`/cases/${caseId}/insurance`), enabled: caseDetail?.caseTypeCode === 'TODO_RIESGO' || caseDetail?.caseTypeCode === 'GRANIZO' });
+  const thirdPartyQuery = useQuery({ queryKey: ['cases', String(caseId), 'third-party'], queryFn: () => getThirdParty(caseId), enabled: ['RECLAMO_TERCEROS', 'RECLAMO_TERCEROS_ABOGADO'].includes(caseDetail?.caseTypeCode) });
+  const legalCaseQuery = useQuery({ queryKey: ['cases', String(caseId), 'legal'], queryFn: () => getLegalCase(caseId), enabled: caseDetail?.caseTypeCode === 'RECLAMO_TERCEROS_ABOGADO' });
+  const legalRecoverablesQuery = useQuery({ queryKey: ['cases', String(caseId), 'legal-recoverables'], queryFn: () => getLegalRecoverables(caseId), enabled: caseDetail?.caseTypeCode === 'RECLAMO_TERCEROS_ABOGADO' });
   const franchiseQuery = useQuery({ queryKey: ['cases', String(caseId), 'franchise'], queryFn: () => requestJson(`/cases/${caseId}/franchise`), enabled: caseDetail?.caseTypeCode === 'TODO_RIESGO' });
   const paymentBreakdownQuery = useQuery({ queryKey: ['cases', String(caseId), 'finance', 'payment-breakdown'], queryFn: () => requestJson(`/cases/${caseId}/finance/payment-breakdown`), enabled: caseDetail?.caseTypeCode !== 'GRANIZO' });
   const cleasDefinitionQuery = useQuery({ queryKey: ['cases', String(caseId), 'cleas', 'definition'], queryFn: () => requestJson(`/cases/${caseId}/cleas/definition`), enabled: caseDetail?.caseTypeCode === 'CLEAS' });
@@ -116,6 +120,9 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const isTodoRiesgo = caseDetail?.caseTypeCode === 'TODO_RIESGO';
   const isGranizo = caseDetail?.caseTypeCode === 'GRANIZO';
   const isCleas = caseDetail?.caseTypeCode === 'CLEAS';
+  const isThirdPartyWorkshop = caseDetail?.caseTypeCode === 'RECLAMO_TERCEROS';
+  const isThirdPartyLawyer = caseDetail?.caseTypeCode === 'RECLAMO_TERCEROS_ABOGADO';
+  const isCompanyManaged = isInsurance || isThirdPartyWorkshop;
   const cleasScope = cleasDefinitionQuery.data?.scopeCode === 'FRANQUICIA' ? 'franchise' : cleasDefinitionQuery.data?.scopeCode === 'DANIO_TOTAL' ? 'damage' : cleasOver;
   const cleasDirection = cleasDefinitionQuery.data?.opinionCode === 'EN_CONTRA' ? 'unfavorable' : cleasDefinitionQuery.data?.opinionCode === 'A_FAVOR' ? 'favorable' : cleasOpinion;
   const isCleasAdverseTotal = isCleas && cleasScope === 'damage' && cleasDirection === 'unfavorable';
@@ -280,7 +287,9 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
   const ciaMovements = (movementsQuery.data ?? []).filter(m => m.movementTypeCode === 'INGRESO' && m.flowOriginCode === 'ASEGURADORA' && m.counterpartyTypeCode === 'COMPANIA' && m.cancellationTypeCode === 'COMPANIA');
   const ciaNetDeposited = (movementsQuery.data ?? []).filter(m => m.flowOriginCode === 'ASEGURADORA' && m.counterpartyTypeCode === 'COMPANIA' && m.cancellationTypeCode === 'COMPANIA').reduce((total, movement) => total + (['INGRESO', 'AJUSTE'].includes(movement.movementTypeCode) ? toAmount(movement.netAmount) : -toAmount(movement.netAmount)), 0);
   const fallbackCiaPaid = ciaMovements.reduce((sum, m) => sum + toAmount(m.netAmount || 0), 0);
-  const fallbackAmountToPay = toAmount(isGranizo ? processing?.agreedAmount : processing?.amountToBillCompany || processing?.agreedAmount || 0);
+  const fallbackAmountToPay = toAmount(isThirdPartyWorkshop
+    ? thirdPartyQuery.data?.amountToBillCompany
+    : isGranizo ? processing?.agreedAmount : processing?.amountToBillCompany || processing?.agreedAmount || 0);
   const insurerBreakdown = paymentBreakdownQuery.data?.insurer;
   const amountToPay = toAmount(insurerBreakdown?.total ?? fallbackAmountToPay);
   const ciaTotalPaid = toAmount(insurerBreakdown?.paid ?? fallbackCiaPaid);
@@ -308,6 +317,17 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
     ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400'
     : 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400';
 
+  if (isThirdPartyLawyer) {
+    const legal = legalCaseQuery.data;
+    const legalMovements = (movementsQuery.data ?? []).filter((movement) => movement.flowOriginCode === 'LEGAL');
+    const workshopRecoverables = (legalRecoverablesQuery.data ?? []).filter((item) => item.sumsToWorkshop);
+    const collected = workshopRecoverables.filter((item) => item.collectionStatusCode === 'COBRADO');
+    return <section className="mt-5 space-y-5" aria-label="Pagos del abogado">
+      <div className="rounded-3xl border border-border/70 bg-card p-5"><div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Receipt className="h-5 w-5" /></div><h4 className="text-lg font-semibold">Pagos del expediente legal</h4><div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4"><MiniCard label="Firma de convenio por abogado" value="Documentación legal" /><MiniCard label={legal?.instanceCode === 'JUDICIAL' ? 'N.º CUIJ' : 'N.º de siniestro'} value={legal?.instanceCode === 'JUDICIAL' ? legal?.cuij || 'Pendiente' : thirdPartyQuery.data?.claimReference || 'Pendiente'} /><MiniCard label="Importe total manual" value={formatCurrency(legal?.totalProceedsAmount)} highlight /><MiniCard label="Rubros cobrados para Taller" value={`${collected.length} de ${workshopRecoverables.length}`} /></div><p className="mt-4 text-sm text-muted-foreground">Los cobros de rubros se registran desde Detalle de rubros. Cada rubro genera un único movimiento LEGAL auditable; no se muestra firma de conforme del cliente.</p></div>
+      <div className="rounded-3xl border border-border/70 bg-card p-5"><h4 className="text-lg font-semibold">Pagos asociados</h4>{legalMovements.length ? <div className="mt-4 space-y-2">{legalMovements.map((movement) => <div key={movement.id} className="flex justify-between rounded-xl border border-border/60 px-3 py-2 text-sm"><span>{movement.reason || 'Cobro legal'}</span><span>{formatCurrency(movement.netAmount)}</span></div>)}</div> : <p className="mt-3 text-sm text-muted-foreground">Todavía no hay pagos legales asociados.</p>}</div>
+    </section>;
+  }
+
   return (
     <>
     <div className="mt-5 space-y-5">
@@ -330,14 +350,14 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
       </div>
 
        {/* ── Facturación y pago de la Compañía ── */}
-        {isInsurance ? (
+        {isCompanyManaged ? (
          <>
          <div className="rounded-3xl border border-border/70 bg-card p-5">
            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Building2 className="h-5 w-5" /></div>
            <h4 className="text-lg font-semibold">Facturación</h4>
            <div className="mt-4 grid gap-3 md:grid-cols-2">
              <MiniCard label="A facturar Cía." value={formatCurrency(amountToPay)} highlight />
-             <MiniCard label="Estado de franquicia" value={franchiseQuery.data?.franchiseStatusCode?.replaceAll('_', ' ') || 'Sin definir'} />
+              <MiniCard label={isThirdPartyWorkshop ? 'Provisión de repuestos' : 'Estado de franquicia'} value={isThirdPartyWorkshop ? thirdPartyQuery.data?.partsProvisionModeCode?.replaceAll('_', ' ') || 'Sin definir' : franchiseQuery.data?.franchiseStatusCode?.replaceAll('_', ' ') || 'Sin definir'} />
            </div>
          </div>
          <div className="rounded-3xl border border-border/70 bg-card p-5">
@@ -349,13 +369,13 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
              <div className="space-y-1"><span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Estado</span><span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${paymentStatusColor}`}>{paymentStatus}</span></div>
            </div>
            <div className="mt-4 grid gap-3 md:grid-cols-3">
-             <Field label="Fecha estimada de pago">
-               <Input type="date" value={processing?.estimatedPaymentDate ?? ''}
+              {!isThirdPartyWorkshop ? <Field label="Fecha estimada de pago">
+                <Input type="date" value={processing?.estimatedPaymentDate ?? ''}
                 onChange={async (e) => {
                   await requestJson(`/cases/${caseId}/insurance-processing`, { method: 'PATCH', body: JSON.stringify({ expectedVersion: processing?.version ?? 0, estimatedPaymentDate: e.target.value || null }) });
                   queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] });
                  }} />
-             </Field>
+              </Field> : null}
              <Field label="Fecha real de pago"><Input type="date" value={ciaMovements.reduce((latest, movement) => movement.movementAt && movement.movementAt > latest ? movement.movementAt : latest, '').slice(0, 10)} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
            </div>
           <div className="mt-4 rounded-2xl border border-border/60 bg-background/70 p-4">
@@ -374,7 +394,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
                </div>)}
               {companyRetentionsAmount > toAmount(ciaPayment.amount) ? <p role="alert" className="mt-3 text-xs text-destructive">Las retenciones no pueden superar el bruto que cancela.</p> : null}
             </div>
-            <div className="mt-4 flex justify-end"><Button onClick={() => { if (ciaPaymentMutation.isPending || companyPaymentSubmittingRef.current) return; const m = toAmount(ciaPayment.amount); const companyId = insurerBreakdown?.companyId ?? caseInsuranceQuery.data?.insuranceCompanyId; if (m <= 0) { toast.error('Ingresá un monto.'); return; } if (m > ciaPending) { toast.error('El pago no puede superar el saldo pendiente de la compañía.'); return; } if (companyRetentionsAmount > m) { toast.error('Las retenciones no pueden superar el bruto que cancela.'); return; } if (!companyId) { toast.error('El caso no tiene compañía aseguradora configurada.'); return; } companyPaymentSubmittingRef.current = true; ciaPaymentMutation.mutate({ movementTypeCode: 'INGRESO', flowOriginCode: 'ASEGURADORA', counterpartyTypeCode: 'COMPANIA', counterpartyPersonId: null, counterpartyCompanyId: companyId, movementAt: ciaPayment.movementAt, grossAmount: m, netAmount: companyNetAmount, paymentMethodCode: ciaPayment.paymentMethodCode, paymentMethodDetail: null, cancellationTypeCode: 'COMPANIA', advancePayment: false, bonification: false, reason: 'Pago de compañía', externalReference: null, retentions: ciaPayment.retentions.filter((retention) => retention.retentionTypeCode && toAmount(retention.amount) > 0).map((retention) => ({ retentionTypeCode: retention.retentionTypeCode, amount: toAmount(retention.amount), detail: retention.detail.trim() || null })), applications: [] }); }} disabled={ciaPaymentMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar pago de la compañía</Button></div>
+            <div className="mt-4 flex justify-end"><Button onClick={() => { if (ciaPaymentMutation.isPending || companyPaymentSubmittingRef.current) return; const m = toAmount(ciaPayment.amount); const companyId = isThirdPartyWorkshop ? thirdPartyQuery.data?.thirdPartyCompanyId : insurerBreakdown?.companyId ?? caseInsuranceQuery.data?.insuranceCompanyId; if (m <= 0) { toast.error('Ingresá un monto.'); return; } if (m > ciaPending) { toast.error('El pago no puede superar el saldo pendiente de la compañía.'); return; } if (companyRetentionsAmount > m) { toast.error('Las retenciones no pueden superar el bruto que cancela.'); return; } if (!companyId) { toast.error(isThirdPartyWorkshop ? 'El caso no tiene compañía contraparte configurada.' : 'El caso no tiene compañía aseguradora configurada.'); return; } companyPaymentSubmittingRef.current = true; ciaPaymentMutation.mutate({ movementTypeCode: 'INGRESO', flowOriginCode: 'ASEGURADORA', counterpartyTypeCode: 'COMPANIA', counterpartyPersonId: null, counterpartyCompanyId: companyId, movementAt: ciaPayment.movementAt, grossAmount: m, netAmount: companyNetAmount, paymentMethodCode: ciaPayment.paymentMethodCode, paymentMethodDetail: null, cancellationTypeCode: 'COMPANIA', advancePayment: false, bonification: false, reason: isThirdPartyWorkshop ? 'Pago de compañía contraparte' : 'Pago de compañía', externalReference: null, retentions: ciaPayment.retentions.filter((retention) => retention.retentionTypeCode && toAmount(retention.amount) > 0).map((retention) => ({ retentionTypeCode: retention.retentionTypeCode, amount: toAmount(retention.amount), detail: retention.detail.trim() || null })), applications: [] }); }} disabled={ciaPaymentMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar pago de la compañía</Button></div>
           </div>
            {ciaMovements.length > 0 ? <div className="mt-3"><p className="text-xs text-muted-foreground">{ciaMovements.length} pago(s) de la Cía.</p></div> : null}
          </div>

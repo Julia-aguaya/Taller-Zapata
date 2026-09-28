@@ -55,6 +55,8 @@ public class TestDatabaseCleaner {
             "tareas",
 
             // Legal / Seguros / Recuperos
+            "legal_rubros_recuperables",
+            "caso_legal_lesionados",
             "legal_gastos",
             "legal_novedades",
             "caso_legal",

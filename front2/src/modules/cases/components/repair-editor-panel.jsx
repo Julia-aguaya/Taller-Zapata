@@ -247,7 +247,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     [partsCatalogsQuery.data?.authorizationCodes],
   );
   const isInsuranceRepair = ['TODO_RIESGO', 'GRANIZO', 'CLEAS'].includes(caseDetail?.caseTypeCode);
-  const syncsCanonicalParts = ['PARTICULAR', 'TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
+  const syncsCanonicalParts = ['PARTICULAR', 'TODO_RIESGO', 'GRANIZO', 'RECLAMO_TERCEROS'].includes(caseDetail?.caseTypeCode);
   const supportsNoRepair = ['TODO_RIESGO', 'GRANIZO', 'CLEAS'].includes(caseDetail?.caseTypeCode);
   const canManageExceptionalRepair = hasGlobalAdminScope(session);
   const supportsUrgentRepair = ['TODO_RIESGO', 'CLEAS'].includes(caseDetail?.caseTypeCode) && caseDetail?.visibleTramiteState?.code === 'SIN_PRESENTAR';

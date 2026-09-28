@@ -13,13 +13,10 @@ import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Input } from '@/shared/ui/input';
 
-const numberOrNull = (value) => value === '' ? null : Number(value);
 const formFrom = (data) => ({
   thirdPartyCompanyId: data?.thirdPartyCompanyId ? String(data.thirdPartyCompanyId) : '', claimReference: data?.claimReference ?? '',
   documentationStatusCode: data?.documentationStatusCode ?? 'PENDIENTE', documentationAccepted: Boolean(data?.documentationAccepted),
-  partsProvisionModeCode: data?.partsProvisionModeCode ?? '', minimumLaborAmount: data?.minimumLaborAmount ?? '',
-  minimumPartsAmount: data?.minimumPartsAmount ?? '', bestQuotationSubtotal: data?.bestQuotationSubtotal ?? '',
-  finalPartsTotal: data?.finalPartsTotal ?? '', amountToBillCompany: data?.amountToBillCompany ?? '',
+  partsProvisionModeCode: data?.partsProvisionModeCode ?? '',
 });
 
 const Field = ({ label, children }) => <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"><span className="mb-1 block">{label}</span>{children}</label>;
@@ -36,17 +33,16 @@ export const ThirdPartyWorkshopEditor = ({ caseId, caseDetail, budget }) => {
   const saveMutation = useMutation({
     mutationFn: () => saveThirdParty(caseId, {
       ...form, thirdPartyCompanyId: form.thirdPartyCompanyId ? Number(form.thirdPartyCompanyId) : null,
-      documentationAccepted: form.documentationAccepted, minimumLaborAmount: numberOrNull(form.minimumLaborAmount),
-      minimumPartsAmount: numberOrNull(form.minimumPartsAmount), bestQuotationSubtotal: numberOrNull(form.bestQuotationSubtotal),
-      finalPartsTotal: form.partsProvisionModeCode === 'TALLER' ? numberOrNull(form.finalPartsTotal) : null,
-      amountToBillCompany: numberOrNull(form.amountToBillCompany), finalAmountForWorkshop: null,
+      documentationAccepted: form.documentationAccepted,
     }),
     onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'third-party'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); toast.success('Datos del reclamo guardados.'); },
     onError: (error) => toast.error(error.message || 'No se pudo guardar el reclamo.'),
   });
   const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
   const documentationStatuses = catalogsQuery.data?.thirdPartyDocumentationStatusCodes ?? [];
-  const provisionModes = catalogsQuery.data?.partsProvisionModeCodes ?? [];
+  const provisionModes = caseDetail?.caseTypeCode === 'RECLAMO_TERCEROS'
+    ? (catalogsQuery.data?.partsProvisionModeCodes ?? []).filter((item) => ['COMPANIA', 'TALLER', 'CLIENTE'].includes(item.code))
+    : (catalogsQuery.data?.partsProvisionModeCodes ?? []);
   const finalWorkshopAmount = thirdPartyQuery.data?.finalAmountForWorkshop;
 
   return <div className="mt-5 space-y-5 pb-20">
@@ -60,11 +56,11 @@ export const ThirdPartyWorkshopEditor = ({ caseId, caseDetail, budget }) => {
         <Field label="Documentación"><select value={form.documentationStatusCode} onChange={(e) => set('documentationStatusCode', e.target.value)} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm">{documentationStatuses.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}</select></Field>
         <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={form.documentationAccepted} onChange={(event) => set('documentationAccepted', event.target.checked)} />Documentación completa</label>
         <Field label="Provee repuestos"><select value={form.partsProvisionModeCode} onChange={(e) => set('partsProvisionModeCode', e.target.value)} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"><option value="">Seleccionar…</option>{provisionModes.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}</select></Field>
-        <Field label="Mínimo mano de obra"><Input type="number" min="0" value={form.minimumLaborAmount} onChange={(e) => set('minimumLaborAmount', e.target.value)} /></Field>
-        <Field label="Mínimo repuestos"><Input type="number" min="0" value={form.minimumPartsAmount} onChange={(e) => set('minimumPartsAmount', e.target.value)} /></Field>
-        <Field label="Subtotal mejor cotización"><Input type="number" min="0" value={form.bestQuotationSubtotal} onChange={(e) => set('bestQuotationSubtotal', e.target.value)} /></Field>
-        {form.partsProvisionModeCode === 'TALLER' ? <Field label="Total final repuestos"><Input type="number" min="0" value={form.finalPartsTotal} onChange={(e) => set('finalPartsTotal', e.target.value)} /></Field> : null}
-        <Field label="A facturar compañía"><Input type="number" min="0" value={form.amountToBillCompany} onChange={(e) => set('amountToBillCompany', e.target.value)} /></Field>
+        <Field label="Mínimo mano de obra"><Input readOnly value={thirdPartyQuery.data?.minimumLaborAmount ?? 'Se calcula desde Presupuesto'} className="cursor-not-allowed bg-muted/50" /></Field>
+        <Field label="Mínimo repuestos"><Input readOnly value={thirdPartyQuery.data?.minimumPartsAmount ?? 'Se calcula desde cotizaciones'} className="cursor-not-allowed bg-muted/50" /></Field>
+        <Field label="Subtotal mejor cotización"><Input readOnly value={thirdPartyQuery.data?.bestQuotationSubtotal ?? 'Se calcula desde cotizaciones'} className="cursor-not-allowed bg-muted/50" /></Field>
+        {form.partsProvisionModeCode === 'TALLER' ? <Field label="Total final repuestos"><Input readOnly value={thirdPartyQuery.data?.finalPartsTotal ?? 'Se calcula desde pedidos'} className="cursor-not-allowed bg-muted/50" /></Field> : null}
+        <Field label="A facturar compañía"><Input readOnly value={thirdPartyQuery.data?.amountToBillCompany ?? 'Se calcula desde el acuerdo'} className="cursor-not-allowed bg-muted/50" /></Field>
         <Field label="Final a favor taller"><Input readOnly value={finalWorkshopAmount ?? 'Se calcula al guardar'} className="cursor-not-allowed bg-muted/50" /></Field>
       </div>
       {budget ? <p className="mt-3 text-xs text-muted-foreground">El presupuesto cerrado y la gestión de pedidos determinan los mínimos y los repuestos definitivos.</p> : null}
@@ -72,7 +68,7 @@ export const ThirdPartyWorkshopEditor = ({ caseId, caseDetail, budget }) => {
     <DocumentsSection caseId={caseId} />
     <ProcedureSection caseId={caseId} budget={budget} />
     <TaskAgenda caseId={caseId} organizationId={caseDetail?.organizationId} branchId={caseDetail?.branchId} />
-    <Dialog open={!acknowledged && Boolean(thirdPartyQuery.data) && !thirdPartyQuery.data?.documentationAccepted} onClose={() => setAcknowledged(true)} title="Carpeta con documentación pendiente" description="La documentación del reclamo todavía no fue marcada como completa. Revisala antes de continuar."><Button className="w-full" onClick={() => setAcknowledged(true)}><AlertTriangle className="mr-2 h-4 w-4" />Aceptar</Button></Dialog>
+    <Dialog open={!acknowledged && !thirdPartyQuery.isLoading && !thirdPartyQuery.data?.documentationAccepted} onClose={() => setAcknowledged(true)} title="Carpeta con documentación pendiente" description="La documentación del reclamo todavía no fue marcada como completa. Revisala antes de continuar."><Button className="w-full" onClick={() => setAcknowledged(true)}><AlertTriangle className="mr-2 h-4 w-4" />Aceptar</Button></Dialog>
   </div>;
 };
 

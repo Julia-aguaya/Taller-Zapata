@@ -21,6 +21,9 @@ import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeEnti
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementEntity;
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementRepository;
+import com.tallerzapata.backend.infrastructure.persistence.extrabudget.ExtraBudgetEntity;
+import com.tallerzapata.backend.infrastructure.persistence.extrabudget.ExtraBudgetPaymentApplicationRepository;
+import com.tallerzapata.backend.infrastructure.persistence.extrabudget.ExtraBudgetRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseFranchiseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseFranchiseRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseInsuranceEntity;
@@ -73,6 +76,8 @@ public class CaseReadinessService {
     private final BudgetItemRepository budgetItemRepository;
     private final CasePartRepository casePartRepository;
     private final FinancialMovementRepository financialMovementRepository;
+    private final ExtraBudgetRepository extraBudgetRepository;
+    private final ExtraBudgetPaymentApplicationRepository extraBudgetPaymentApplicationRepository;
     private final RepairAppointmentRepository repairAppointmentRepository;
     private final VehicleIntakeRepository vehicleIntakeRepository;
     private final VehicleOutcomeRepository vehicleOutcomeRepository;
@@ -101,6 +106,8 @@ public class CaseReadinessService {
             BudgetItemRepository budgetItemRepository,
             CasePartRepository casePartRepository,
             FinancialMovementRepository financialMovementRepository,
+            ExtraBudgetRepository extraBudgetRepository,
+            ExtraBudgetPaymentApplicationRepository extraBudgetPaymentApplicationRepository,
             RepairAppointmentRepository repairAppointmentRepository,
             VehicleIntakeRepository vehicleIntakeRepository,
             VehicleOutcomeRepository vehicleOutcomeRepository,
@@ -127,6 +134,8 @@ public class CaseReadinessService {
         this.budgetItemRepository = budgetItemRepository;
         this.casePartRepository = casePartRepository;
         this.financialMovementRepository = financialMovementRepository;
+        this.extraBudgetRepository = extraBudgetRepository;
+        this.extraBudgetPaymentApplicationRepository = extraBudgetPaymentApplicationRepository;
         this.repairAppointmentRepository = repairAppointmentRepository;
         this.vehicleIntakeRepository = vehicleIntakeRepository;
         this.vehicleOutcomeRepository = vehicleOutcomeRepository;
@@ -204,15 +213,20 @@ public class CaseReadinessService {
             FranchiseRecoveryEntity recovery = franchiseRecoveryRepository.findByCaseId(caseId).orElse(null);
             CaseReadinessTabResponse tramiteTab = buildFranchiseRecoveryGestionTramiteReadiness(recovery);
             tabs.add(tramiteTab);
+            if (recovery != null && "ABOGADO".equals(normalizeCode(recovery.getManagerCode()))) {
+                CaseLegalEntity legal = caseLegalRepository.findByCaseId(caseId).orElse(null);
+                List<LegalLesionadoEntity> lesionados = legal == null ? List.of() : legalLesionadoRepository.findByCaseLegalIdOrderByIdAsc(legal.getId());
+                tabs.add(buildAbogadoReadiness(legal, lesionados));
+            }
             boolean enablesRepair = recovery != null && Boolean.TRUE.equals(recovery.getEnablesRepair());
             if (enablesRepair) {
                 CaseReadinessTabResponse budgetTab = buildTramiteGatedPresupuestoReadiness(caseId, principalVehicle, tramiteTab.completed());
                 tabs.add(budgetTab);
                 tabs.add(buildTodoRiesgoReparacionReadiness(caseEntity, hasGeneratedBudget(caseId)));
             }
-            tabs.add(buildFranchiseRecoveryPagosReadiness(tramiteTab.completed()));
+            tabs.add(buildFranchiseRecoveryPagosReadiness(caseId, recovery, tramiteTab.completed()));
         } else if (insuranceRepairCasePolicy.isThirdPartyClaim(caseType.getCode())) {
-            boolean lawyerManaged = "RECLAMO_TERCEROS_ABOGADO".equals(caseType.getCode());
+            boolean lawyerManaged = insuranceRepairCasePolicy.isThirdPartyLawyerClaim(caseType.getCode());
             CaseLegalEntity legal = caseLegalRepository.findByCaseId(caseId).orElse(null);
             tabs.add(buildTercerosGestionTramiteReadiness(caseId, !lawyerManaged));
             if (lawyerManaged) {
@@ -227,13 +241,15 @@ public class CaseReadinessService {
             if (lawyerManaged) {
                 tabs.add(buildLegalPagosReadiness(legal));
             } else {
-                tabs.add(buildInsuranceRepairPagosReadiness(caseId, false));
+                tabs.add(buildThirdPartyWorkshopPaymentsReadiness(caseId));
             }
             // Ficha tecnica de terceros: la titularidad registral del vehiculo es obligatoria
             mergeThirdPartyRegistryOwnershipReasons(tabs, caseId, caseEntity);
         }
 
-        ensureBudgetIsAvailableFromCreation(tabs, caseId, principalVehicle);
+        if (!"RECUPERO_FRANQUICIA".equals(caseType.getCode()) || (franchiseRecoveryRepository.findByCaseId(caseId).map(FranchiseRecoveryEntity::getEnablesRepair).orElse(false))) {
+            ensureBudgetIsAvailableFromCreation(tabs, caseId, principalVehicle);
+        }
         ensurePaymentsAreAvailable(tabs);
         return new CaseReadinessResponse(caseId, caseType.getCode(), tabs);
     }
@@ -571,13 +587,13 @@ public class CaseReadinessService {
                 && !Boolean.TRUE.equals(recovery.getApprovedLowerAgreement())) {
             blocking.add("El monto a recuperar es inferior al acordado y falta autorizacion del administrador");
         }
-        if (culpaCompartida && !Boolean.TRUE.equals(recovery.getRecoversClient())) {
-            blocking.add("Con dictamen de culpa compartida debe indicarse la recuperacion a favor del cliente");
+        if (culpaCompartida && (!Boolean.TRUE.equals(recovery.getRecoversClient()) || recovery.getClientAmount() == null || recovery.getClientPaymentStatusCode() == null || recovery.getClientPaymentDate() == null)) {
+            blocking.add("Con dictamen de culpa compartida debe registrarse el cobro del 50% al cliente");
         }
         return toTab("GESTION_TRAMITE", true, blocking, List.of());
     }
 
-    private CaseReadinessTabResponse buildFranchiseRecoveryPagosReadiness(boolean tramiteCompleted) {
+    private CaseReadinessTabResponse buildFranchiseRecoveryPagosReadiness(Long caseId, FranchiseRecoveryEntity recovery, boolean tramiteCompleted) {
         List<String> blocking = new ArrayList<>();
         if (!tramiteCompleted) {
             blocking.add("Debe completar Gestion del Tramite antes de registrar pagos");
@@ -620,10 +636,81 @@ public class CaseReadinessService {
     }
 
     private CaseReadinessTabResponse buildTercerosReparacionReadiness(CaseEntity caseEntity) {
+        if (insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeCode(caseEntity))) {
+            CaseThirdPartyEntity thirdParty = caseThirdPartyRepository.findByCaseId(caseEntity.getId()).orElse(null);
+            if (thirdParty != null && thirdParty.getPartsProvisionModeCode() != null
+                    && !"TALLER".equals(normalizeCode(thirdParty.getPartsProvisionModeCode()))) {
+                // Si la compañía o el cliente proveen, cotizaciones y pedidos del taller no
+                // son un requisito operativo de este trámite.
+                return new CaseReadinessTabResponse("GESTION_REPARACION", true, true, "BLUE", List.of(), List.of());
+            }
+        }
         if (isRepairSuppressed(caseEntity)) {
             return new CaseReadinessTabResponse("GESTION_REPARACION", true, true, "BLUE", List.of(), List.of());
         }
         return buildTodoRiesgoReparacionReadiness(caseEntity, hasGeneratedBudget(caseEntity.getId()));
+    }
+
+    /** El cierre Taller exige cobrar la contraparte y, si existen, los extras del cliente. */
+    private CaseReadinessTabResponse buildThirdPartyWorkshopPaymentsReadiness(Long caseId) {
+        List<String> blocking = new ArrayList<>();
+        FranchiseRecoveryEntity recovery = franchiseRecoveryRepository.findByCaseId(caseId).orElse(null);
+        InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
+        if (!isQuotationAgreed(processing)) {
+            blocking.add("Falta acordar cotizacion con la Cia. antes de registrar pagos");
+        } else {
+            BigDecimal agreed = processing.getAgreedAmount();
+            CaseThirdPartyEntity thirdParty = caseThirdPartyRepository.findByCaseId(caseId).orElse(null);
+            if (thirdParty == null || thirdParty.getThirdPartyCompanyId() == null) {
+                blocking.add("Falta seleccionar la compañía contraparte para validar el pago");
+            } else {
+                BigDecimal companyPaid = validThirdPartyCompanyPayment(caseId, thirdParty.getThirdPartyCompanyId());
+                if (companyPaid.compareTo(agreed) < 0) blocking.add("La compañía contraparte aún no completó el pago");
+            }
+        }
+        ExtraBudgetEntity extras = extraBudgetRepository.findByCaseId(caseId).orElse(null);
+        if (extras != null && Boolean.TRUE.equals(extras.getActive()) && extras.getAcceptedDebtAmount() != null
+                && extras.getAcceptedDebtAmount().signum() > 0) {
+            BigDecimal paidExtras = extraBudgetPaymentApplicationRepository.sumAppliedAmountByExtraBudgetId(extras.getId());
+            if (paidExtras == null || paidExtras.compareTo(extras.getAcceptedDebtAmount()) < 0) {
+                blocking.add("Queda saldo pendiente del cliente por trabajos extras");
+            }
+        }
+        if (recovery != null && "CULPA_COMPARTIDA".equals(normalizeCode(recovery.getOpinionCode()))) {
+            boolean customerCollectionExists = financialMovementRepository.findByCaseId(caseId, Sort.unsorted()).stream()
+                    .anyMatch(movement -> "Cobro cliente por culpa compartida".equals(movement.getReason()));
+            if (!customerCollectionExists) blocking.add("Falta el movimiento financiero del cobro por culpa compartida");
+        }
+        return toTab("PAGOS", true, blocking, List.of());
+    }
+
+    /**
+     * Sólo cancela el reclamo el pago identificado como COMPANIA de la contraparte cargada.
+     * Los egresos/anulaciones reducen el neto en vez de mantener como válido el ingreso original.
+     */
+    private BigDecimal validThirdPartyCompanyPayment(Long caseId, Long thirdPartyCompanyId) {
+        return financialMovementRepository.findByCaseId(caseId, Sort.by(Sort.Direction.DESC, "id")).stream()
+                .filter(movement -> "ASEGURADORA".equals(normalizeCode(movement.getFlowOriginCode())))
+                .filter(movement -> "COMPANIA".equals(normalizeCode(movement.getCounterpartyTypeCode())))
+                .filter(movement -> thirdPartyCompanyId.equals(movement.getCounterpartyCompanyId()))
+                .filter(movement -> "COMPANIA".equals(normalizeCode(movement.getCancellationTypeCode())))
+                .map(this::signedNetAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private BigDecimal signedNetAmount(FinancialMovementEntity movement) {
+        BigDecimal netAmount = movement.getNetAmount() == null ? BigDecimal.ZERO : movement.getNetAmount();
+        String movementType = normalizeCode(movement.getMovementTypeCode());
+        if ("INGRESO".equals(movementType) || ("AJUSTE".equals(movementType) && netAmount.signum() >= 0)) {
+            return netAmount;
+        }
+        return netAmount.abs().negate();
+    }
+
+    private String caseTypeCode(CaseEntity caseEntity) {
+        return caseTypeRepository.findById(caseEntity.getCaseTypeId())
+                .map(CaseTypeEntity::getCode)
+                .orElse("");
     }
 
     private boolean isRepairSuppressed(CaseEntity caseEntity) {

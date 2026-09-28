@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, Eye, FileSearch, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, Eye, FileSearch, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useState } from 'react';
 import { requestJson } from '@/shared/api/http-client';
@@ -22,7 +22,7 @@ const currentLocalDate = () => {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 };
 
-export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode = null, includeHistorical = false, showCompleteAction = true, title = 'Documentación' }) => {
+export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode = null, includeHistorical = false, showCompleteAction = true, title = 'Documentación', categoryCodes = VISIBLE_DOCUMENT_CATEGORY_CODES, collapsible = false }) => {
   const queryClient = useQueryClient();
   const { session } = useSession();
   const canUploadDocuments = session?.authorities?.includes('documento.subir') ?? false;
@@ -36,6 +36,7 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
   const [uploadObservations, setUploadObservations] = useState('');
   const [documentToDelete, setDocumentToDelete] = useState(null);
   const [showCompleteDocumentation, setShowCompleteDocumentation] = useState(false);
+  const [expanded, setExpanded] = useState(!collapsible);
   const invalidateCaseViews = () => Promise.all([
     queryClient.invalidateQueries({ queryKey: ['cases'] }),
     queryClient.invalidateQueries({ queryKey: ['cases', String(caseId)] }),
@@ -59,7 +60,7 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
     return document.moduleCode === moduleCode || (includeHistorical && document.moduleCode === 'OPERACION');
   });
   const categories = categoriesQuery.data?.categories ?? [];
-  const visibleCategories = categories.filter((category) => VISIBLE_DOCUMENT_CATEGORY_CODES.has(category.code));
+  const visibleCategories = categories.filter((category) => categoryCodes.has(category.code));
   const selectedCategory = categories.find((category) => String(category.id) === uploadCategory);
   const requiresDate = Boolean(selectedCategory?.requiresDate);
 
@@ -151,14 +152,16 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
           <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
             <FileSearch className="h-5 w-5" />
           </div>
-          <h4 className="text-sm font-semibold">{title}</h4>
+          {collapsible ? <Button variant="ghost" size="sm" className="h-auto px-0 text-sm font-semibold" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}>{expanded ? <ChevronDown className="mr-1.5 h-4 w-4" /> : <ChevronRight className="mr-1.5 h-4 w-4" />}{title}</Button> : <h4 className="text-sm font-semibold">{title}</h4>}
         </div>
-        <div className="flex gap-2">
+        {expanded ? <div className="flex gap-2">
           {canUploadDocuments ? <Button size="sm" variant="outline" onClick={() => setShowUpload(true)}><Plus className="mr-1.5 h-3.5 w-3.5" />Agregar items</Button> : null}
           {showCompleteAction ? <Button size="sm" variant="outline" onClick={() => setShowCompleteDocumentation(true)}>Marcar completa</Button> : null}
           {documents.length > 0 ? <Button size="sm" variant="outline" onClick={downloadAll}><Download className="mr-1.5 h-3.5 w-3.5" />Descargar todo</Button> : null}
-        </div>
+        </div> : null}
       </div>
+
+      {expanded ? <>
 
       {/* Upload dialog */}
       {showUpload ? (
@@ -255,6 +258,7 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
           {allComplete ? 'Completa' : 'Incompleta'}
         </span>
       </div>
+      </> : null}
     </div>
   );
 };

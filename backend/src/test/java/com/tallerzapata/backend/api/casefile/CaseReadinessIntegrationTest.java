@@ -914,13 +914,9 @@ class CaseReadinessIntegrationTest {
                 .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))
                 .andExpect(jsonPath("$.tabs[4].allowed").value(true))
                 .andExpect(jsonPath("$.tabs[4].completed").value(false))
-                .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("La Cia. aun no completo el pago"));
+                .andExpect(jsonPath("$.tabs[4].blockingReasons[0]").value("La compañía contraparte aún no completó el pago"));
 
-        mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId)
-                        .header("X-User-Id", "1")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"ASEGURADORA\",\"counterpartyTypeCode\":\"PERSONA\",\"counterpartyPersonId\":10,\"movementAt\":\"2026-02-01T12:00:00\",\"grossAmount\":100000,\"netAmount\":100000,\"paymentMethodCode\":\"EFECTIVO\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[],\"applications\":[]}"))
-                .andExpect(status().isOk());
+        registerThirdPartyCompanyPayment(caseId, 1L, new BigDecimal("100000"));
 
         mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
                         .header("X-User-Id", "1"))
@@ -928,6 +924,34 @@ class CaseReadinessIntegrationTest {
                 .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))
                 .andExpect(jsonPath("$.tabs[4].completed").value(true))
                 .andExpect(jsonPath("$.tabs[4].colorHint").value("BLUE"));
+    }
+
+    @Test
+    void shouldKeepThirdPartyPaymentsPendingWhenAnotherCompanyPays() throws Exception {
+        Long caseId = prepareThirdPartyPaymentsCase();
+        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, activo) VALUES (?,?,?,?,?)",
+                2L, "00000000-0000-0000-0000-000000000102", "OTRA", "Otra Compañía", true);
+        registerThirdPartyCompanyPayment(caseId, 2L, new BigDecimal("100000"));
+
+        assertThirdPartyPaymentsPending(caseId, "La compañía contraparte aún no completó el pago");
+    }
+
+    @Test
+    void shouldKeepThirdPartyPaymentsPendingWhenThirdPartyCompanyPaysPartially() throws Exception {
+        Long caseId = prepareThirdPartyPaymentsCase();
+        registerThirdPartyCompanyPayment(caseId, 1L, new BigDecimal("50000"));
+
+        assertThirdPartyPaymentsPending(caseId, "La compañía contraparte aún no completó el pago");
+    }
+
+    @Test
+    void shouldKeepThirdPartyPaymentsPendingWhenAcceptedExtrasAreUnpaid() throws Exception {
+        Long caseId = prepareThirdPartyPaymentsCase();
+        registerThirdPartyCompanyPayment(caseId, 1L, new BigDecimal("100000"));
+        jdbcTemplate.update("INSERT INTO presupuestos_extra (id, caso_id, organizacion_id, sucursal_id, version_actual, monto_deuda_aceptada, estado_actual, activo, version_lock) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                800L, caseId, 1L, 1L, 1, new BigDecimal("25000"), "ACEPTADO", true, 0L);
+
+        assertThirdPartyPaymentsPending(caseId, "Queda saldo pendiente del cliente por trabajos extras");
     }
 
     @Test
@@ -1153,6 +1177,36 @@ class CaseReadinessIntegrationTest {
 
     private void seedThirdPartyPresentacion(Long caseId) {
         jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_presentacion) VALUES (?, ?)", caseId, LocalDate.of(2026, 1, 2));
+    }
+
+    private Long prepareThirdPartyPaymentsCase() {
+        try {
+            Long caseId = createThirdPartyWorkshopCase();
+            seedThirdPartyClaim(caseId, "ACEPTADA");
+            jdbcTemplate.update("INSERT INTO caso_tramitacion_seguro (caso_id, fecha_presentacion, cotizacion_estado_codigo, fecha_cotizacion, monto_acordado) VALUES (?,?,?,?,?)",
+                    caseId, LocalDate.of(2026, 1, 2), "ACEPTADA", LocalDate.of(2026, 1, 3), new BigDecimal("100000"));
+            return caseId;
+        } catch (Exception exception) {
+            throw new IllegalStateException("No se pudo preparar el caso de pagos de terceros", exception);
+        }
+    }
+
+    private void registerThirdPartyCompanyPayment(Long caseId, Long companyId, BigDecimal amount) throws Exception {
+        mockMvc.perform(post("/api/v1/cases/{caseId}/financial-movements", caseId)
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"movementTypeCode\":\"INGRESO\",\"flowOriginCode\":\"ASEGURADORA\",\"counterpartyTypeCode\":\"COMPANIA\",\"counterpartyCompanyId\":" + companyId + ",\"movementAt\":\"2026-02-01T12:00:00\",\"grossAmount\":" + amount + ",\"netAmount\":" + amount + ",\"paymentMethodCode\":\"EFECTIVO\",\"cancellationTypeCode\":\"COMPANIA\",\"advancePayment\":false,\"bonification\":false,\"retentions\":[],\"applications\":[]}"))
+                .andExpect(status().isOk());
+    }
+
+    private void assertThirdPartyPaymentsPending(Long caseId, String reason) throws Exception {
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[4].tabCode").value("PAGOS"))
+                .andExpect(jsonPath("$.tabs[4].completed").value(false))
+                .andExpect(jsonPath("$.tabs[4].colorHint").value("RED"))
+                .andExpect(jsonPath("$.tabs[4].blockingReasons").value(org.hamcrest.Matchers.hasItem(reason)));
     }
 
     private void seedInsuranceData(Long caseId) {

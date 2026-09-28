@@ -21,6 +21,8 @@ import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetItemRepo
 import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetRepository;
 import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartEntity;
 import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartRepository;
+import com.tallerzapata.backend.infrastructure.persistence.budget.PartSupplierQuoteEntity;
+import com.tallerzapata.backend.infrastructure.persistence.budget.PartSupplierQuoteRepository;
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementEntity;
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.*;
@@ -34,12 +36,16 @@ import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
 import com.tallerzapata.backend.infrastructure.security.CurrentUserService;
 import jakarta.servlet.http.HttpServletRequest;
 import com.fasterxml.jackson.databind.JsonNode;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.io.ByteArrayOutputStream;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -91,6 +97,7 @@ public class InsuranceService {
     private final BudgetRepository budgetRepository;
     private final BudgetItemRepository budgetItemRepository;
     private final CasePartRepository casePartRepository;
+    private final PartSupplierQuoteRepository partSupplierQuoteRepository;
     private final FinancialMovementRepository financialMovementRepository;
     private final FranchiseRecoveryService franchiseRecoveryService;
     private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
@@ -101,7 +108,7 @@ public class InsuranceService {
 
     private static final String ADMIN_ROLE_CODE = "ROLE_ADMIN";
 
-    public InsuranceService(InsuranceCompanyRepository companyRepository, InsuranceCompanyContactRepository companyContactRepository, InsuranceRoleContactRepository roleContactRepository, PersonRepository personRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CasePersonRepository casePersonRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, BelowMinimumAgreementApprovalRepository belowMinimumAgreementApprovalRepository, CaseFranchiseRepository caseFranchiseRepository, InsuranceModalityRepository modalityRepository, InsuranceOpinionRepository opinionRepository, InsuranceQuotationStatusRepository quotationStatusRepository, InsurancePartsAuthorizationRepository partsAuthorizationRepository, FranchiseStatusRepository franchiseStatusRepository, FranchiseRecoveryTypeRepository franchiseRecoveryTypeRepository, FranchiseOpinionRepository franchiseOpinionRepository, CaseCleasRepository caseCleasRepository, CaseThirdPartyRepository caseThirdPartyRepository, CleasScopeRepository cleasScopeRepository, CleasOpinionRepository cleasOpinionRepository, PaymentStatusRepository paymentStatusRepository, ThirdPartyDocumentationStatusRepository thirdPartyDocumentationStatusRepository, PartsProvisionModeRepository partsProvisionModeRepository, CaseLegalRepository caseLegalRepository, LegalNewsRepository legalNewsRepository, LegalExpenseRepository legalExpenseRepository, LegalProcessorRepository legalProcessorRepository, LegalClaimantRepository legalClaimantRepository, LegalInstanceRepository legalInstanceRepository, LegalClosureReasonRepository legalClosureReasonRepository, LegalExpensePayerRepository legalExpensePayerRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, TodoRiesgoStateFactsRepository todoRiesgoStateFactsRepository, ProviderRepository providerRepository, BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CasePartRepository casePartRepository, FinancialMovementRepository financialMovementRepository, FranchiseRecoveryService franchiseRecoveryService, UserRoleRepository userRoleRepository, NotificationRepository notificationRepository, LegalLesionadoRepository legalLesionadoRepository, LesionadoEsTypeRepository lesionadoEsTypeRepository) {
+    public InsuranceService(InsuranceCompanyRepository companyRepository, InsuranceCompanyContactRepository companyContactRepository, InsuranceRoleContactRepository roleContactRepository, PersonRepository personRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CasePersonRepository casePersonRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, BelowMinimumAgreementApprovalRepository belowMinimumAgreementApprovalRepository, CaseFranchiseRepository caseFranchiseRepository, InsuranceModalityRepository modalityRepository, InsuranceOpinionRepository opinionRepository, InsuranceQuotationStatusRepository quotationStatusRepository, InsurancePartsAuthorizationRepository partsAuthorizationRepository, FranchiseStatusRepository franchiseStatusRepository, FranchiseRecoveryTypeRepository franchiseRecoveryTypeRepository, FranchiseOpinionRepository franchiseOpinionRepository, CaseCleasRepository caseCleasRepository, CaseThirdPartyRepository caseThirdPartyRepository, CleasScopeRepository cleasScopeRepository, CleasOpinionRepository cleasOpinionRepository, PaymentStatusRepository paymentStatusRepository, ThirdPartyDocumentationStatusRepository thirdPartyDocumentationStatusRepository, PartsProvisionModeRepository partsProvisionModeRepository, CaseLegalRepository caseLegalRepository, LegalNewsRepository legalNewsRepository, LegalExpenseRepository legalExpenseRepository, LegalProcessorRepository legalProcessorRepository, LegalClaimantRepository legalClaimantRepository, LegalInstanceRepository legalInstanceRepository, LegalClosureReasonRepository legalClosureReasonRepository, LegalExpensePayerRepository legalExpensePayerRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, TodoRiesgoStateFactsRepository todoRiesgoStateFactsRepository, ProviderRepository providerRepository, BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CasePartRepository casePartRepository, PartSupplierQuoteRepository partSupplierQuoteRepository, FinancialMovementRepository financialMovementRepository, FranchiseRecoveryService franchiseRecoveryService, UserRoleRepository userRoleRepository, NotificationRepository notificationRepository, LegalLesionadoRepository legalLesionadoRepository, LesionadoEsTypeRepository lesionadoEsTypeRepository) {
         this.companyRepository = companyRepository;
         this.companyContactRepository = companyContactRepository;
         this.roleContactRepository = roleContactRepository;
@@ -143,6 +150,7 @@ public class InsuranceService {
         this.budgetRepository = budgetRepository;
         this.budgetItemRepository = budgetItemRepository;
         this.casePartRepository = casePartRepository;
+        this.partSupplierQuoteRepository = partSupplierQuoteRepository;
         this.financialMovementRepository = financialMovementRepository;
         this.franchiseRecoveryService = franchiseRecoveryService;
         this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
@@ -472,7 +480,12 @@ public class InsuranceService {
         CaseEntity caseEntity = requireCase(caseId);
         requireThirdPartyAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.ver");
-        return allowsCleasThirdParty(caseEntity) ? caseThirdPartyRepository.findByCaseId(caseId).map(this::toCaseThirdPartyResponse).orElse(null) : null;
+        return allowsCleasThirdParty(caseEntity) ? caseThirdPartyRepository.findByCaseId(caseId).map(entity -> {
+            if (insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeCode(caseEntity))) {
+                synchronizeThirdPartyAmounts(entity, caseId);
+            }
+            return toCaseThirdPartyResponse(entity);
+        }).orElse(null) : null;
     }
 
     @Transactional
@@ -482,7 +495,7 @@ public class InsuranceService {
         requireThirdPartyAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
         requireCleasThirdPartyAllowed(caseEntity);
-        validateThirdPartyRequest(request);
+        validateThirdPartyRequest(caseEntity, request);
         CaseThirdPartyEntity entity = caseThirdPartyRepository.findByCaseId(caseId).orElseGet(CaseThirdPartyEntity::new);
         entity.setCaseId(caseId);
         entity.setThirdPartyCompanyId(request.thirdPartyCompanyId());
@@ -490,7 +503,9 @@ public class InsuranceService {
         entity.setDocumentationStatusCode(normalizedOptionalCode(request.documentationStatusCode()));
         entity.setDocumentationAccepted(Boolean.TRUE.equals(request.documentationAccepted()));
         entity.setPartsProvisionModeCode(normalizedOptionalCode(request.partsProvisionModeCode()));
-        synchronizeThirdPartyAmounts(entity, caseId);
+        if (insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeCode(caseEntity))) {
+            synchronizeThirdPartyAmounts(entity, caseId);
+        }
         entity = caseThirdPartyRepository.save(entity);
         caseAuditService.register(currentUser.id(), caseId, "caso_terceros", entity.getId(), "upsert_caso_terceros", null,
                 caseAuditService.toJson(CaseAuditService.auditMap(
@@ -527,13 +542,20 @@ public class InsuranceService {
         BigDecimal minimumLabor = items.stream().filter(item -> Boolean.TRUE.equals(item.getActive()))
                 .map(item -> scale(item.getLaborAmount()) == null ? BigDecimal.ZERO : scale(item.getLaborAmount()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal minimumParts = items.stream().filter(this::isReplacementBudgetItem)
-                .map(item -> scale(item.getPartValue()) == null ? BigDecimal.ZERO : scale(item.getPartValue()))
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        Map<Long, List<PartSupplierQuoteEntity>> quotesByPart = partSupplierQuoteRepository.findByPartIdIn(canonicalParts.stream().map(CasePartEntity::getId).toList()).stream()
+                .collect(Collectors.groupingBy(PartSupplierQuoteEntity::getPartId));
         BigDecimal bestQuotation = canonicalParts.stream()
-                .map(part -> scale(part.getBudgetedPrice()) == null ? BigDecimal.ZERO : scale(part.getBudgetedPrice()))
+                .map(part -> quotesByPart.getOrDefault(part.getId(), List.of()).stream()
+                        .map(PartSupplierQuoteEntity::getAmount)
+                        .filter(amount -> amount != null && amount.signum() >= 0)
+                        .min(BigDecimal::compareTo)
+                        .orElse(BigDecimal.ZERO))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal finalParts = canonicalParts.stream()
+        // El mínimo de repuestos es exactamente el subtotal de las mejores cotizaciones,
+        // nunca el importe editable de una línea de presupuesto.
+        BigDecimal minimumParts = bestQuotation;
+        BigDecimal finalParts = casePartRepository.findByCaseIdOrderByIdAsc(caseId).stream()
+                .filter(part -> !"DEVOLVER".equals(normalizeCode(part.getStatusCode())))
                 .map(part -> scale(part.getFinalPrice()) == null ? BigDecimal.ZERO : scale(part.getFinalPrice()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal agreed = insuranceProcessingRepository.findByCaseId(caseId).map(InsuranceProcessingEntity::getAgreedAmount).map(this::scale).orElse(null);
@@ -771,6 +793,47 @@ public class InsuranceService {
         return toLegalExpenseResponse(entity);
     }
 
+    /** Exportación exclusiva del expediente legal; no mezcla documentación ni finanzas operativas. */
+    @Transactional(readOnly = true)
+    public byte[] exportCaseLegalExpenses(Long caseId) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        requireLegalAllowed(caseEntity);
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.ver");
+        CaseLegalEntity legal = caseLegalRepository.findByCaseId(caseId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
+        List<LegalExpenseEntity> expenses = legalExpenseRepository.findByCaseLegalIdOrderByExpenseDateDesc(legal.getId());
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            var sheet = workbook.createSheet("Erogaciones legales");
+            String[] headers = {"Concepto", "Monto", "Fecha", "Pagado por", "Suma Taller"};
+            Row header = sheet.createRow(0);
+            for (int column = 0; column < headers.length; column++) header.createCell(column).setCellValue(headers[column]);
+            CellStyle amountStyle = workbook.createCellStyle();
+            amountStyle.setDataFormat(workbook.createDataFormat().getFormat("#,##0.00"));
+            BigDecimal total = BigDecimal.ZERO;
+            for (int index = 0; index < expenses.size(); index++) {
+                LegalExpenseEntity expense = expenses.get(index);
+                Row row = sheet.createRow(index + 1);
+                row.createCell(0).setCellValue(expense.getConcept());
+                row.createCell(1).setCellValue(expense.getAmount().doubleValue());
+                row.getCell(1).setCellStyle(amountStyle);
+                row.createCell(2).setCellValue(expense.getExpenseDate().toString());
+                row.createCell(3).setCellValue(expense.getPaidByCode() == null ? "" : expense.getPaidByCode());
+                row.createCell(4).setCellValue(Boolean.TRUE.equals(expense.getSumsToWorkshop()) ? "Sí" : "No");
+                total = total.add(expense.getAmount());
+            }
+            Row totalRow = sheet.createRow(expenses.size() + 2);
+            totalRow.createCell(0).setCellValue("Total de erogaciones");
+            totalRow.createCell(1).setCellValue(total.doubleValue());
+            totalRow.getCell(1).setCellStyle(amountStyle);
+            for (int column = 0; column < headers.length; column++) sheet.autoSizeColumn(column);
+            workbook.write(output);
+            return output.toByteArray();
+        } catch (java.io.IOException error) {
+            throw new IllegalStateException("No se pudo generar la planilla de erogaciones", error);
+        }
+    }
+
     private void validateCleasRequest(CaseCleasUpsertRequest request, String finalScopeCode) {
         if (request.scopeCode() != null && !cleasScopeRepository.existsByCodeAndActiveTrue(normalizeCode(request.scopeCode()))) throw new ConflictException("scopeCode no permitido: " + request.scopeCode());
         if (request.opinionCode() != null && !cleasOpinionRepository.existsByCodeAndActiveTrue(normalizeCode(request.opinionCode()))) throw new ConflictException("opinionCode no permitido: " + request.opinionCode());
@@ -779,10 +842,15 @@ public class InsuranceService {
         if (request.companyFranchisePaymentStatusCode() != null && !paymentStatusRepository.existsByCodeAndActiveTrue(normalizeCode(request.companyFranchisePaymentStatusCode()))) throw new ConflictException("companyFranchisePaymentStatusCode no permitido: " + request.companyFranchisePaymentStatusCode());
     }
 
-    private void validateThirdPartyRequest(CaseThirdPartyUpsertRequest request) {
+    private void validateThirdPartyRequest(CaseEntity caseEntity, CaseThirdPartyUpsertRequest request) {
         if (request.thirdPartyCompanyId() != null && !companyRepository.existsById(request.thirdPartyCompanyId())) throw new ResourceNotFoundException("No existe la compania tercero " + request.thirdPartyCompanyId());
         if (request.documentationStatusCode() != null && !thirdPartyDocumentationStatusRepository.existsByCodeAndActiveTrue(normalizeCode(request.documentationStatusCode()))) throw new ConflictException("documentationStatusCode no permitido: " + request.documentationStatusCode());
         if (request.partsProvisionModeCode() != null && !partsProvisionModeRepository.existsByCodeAndActiveTrue(normalizeCode(request.partsProvisionModeCode()))) throw new ConflictException("partsProvisionModeCode no permitido: " + request.partsProvisionModeCode());
+        if (insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeCode(caseEntity))
+                && request.partsProvisionModeCode() != null
+                && !Set.of("COMPANIA", "TALLER", "CLIENTE").contains(normalizeCode(request.partsProvisionModeCode()))) {
+            throw new ConflictException("partsProvisionModeCode no permitido para RECLAMO_TERCEROS: " + request.partsProvisionModeCode());
+        }
     }
 
     /**
@@ -875,8 +943,8 @@ public class InsuranceService {
     private void requireCleasThirdPartyAllowed(CaseEntity caseEntity) { if (!allowsCleasThirdParty(caseEntity)) throw new ConflictException("CLEAS y terceros no aplican a casos GRANIZO"); }
     private void requireInsuranceAllowed(CaseEntity caseEntity) { if (!insuranceRepairCasePolicy.isInsuranceCase(caseTypeCode(caseEntity))) throw new ConflictException("Seguro no aplica a este tipo de tramite"); }
     private void requireCleasAllowed(CaseEntity caseEntity) { if (!insuranceRepairCasePolicy.isCleasCase(caseTypeCode(caseEntity))) throw new ConflictException("CLEAS solo aplica a casos CLEAS"); }
-    private void requireThirdPartyAllowed(CaseEntity caseEntity) { if (!insuranceRepairCasePolicy.isThirdPartyClaim(caseTypeCode(caseEntity))) throw new ConflictException("Datos de terceros solo aplican a reclamos de terceros"); }
-    private void requireLegalAllowed(CaseEntity caseEntity) { if (!insuranceRepairCasePolicy.isThirdPartyLawyerClaim(caseTypeCode(caseEntity))) throw new ConflictException("Gestion legal solo aplica a reclamos de terceros por abogado"); }
+    private void requireThirdPartyAllowed(CaseEntity caseEntity) { if (!insuranceRepairCasePolicy.allowsCleasThirdParty(caseTypeCode(caseEntity))) throw new ConflictException("Datos de terceros no aplican a este tipo de tramite"); }
+    private void requireLegalAllowed(CaseEntity caseEntity) { if (!insuranceRepairCasePolicy.isThirdPartyLawyerClaim(caseTypeCode(caseEntity)) && !("RECUPERO_FRANQUICIA".equals(caseTypeCode(caseEntity)) && franchiseRecoveryService.isManagedByLawyer(caseEntity.getId()))) throw new ConflictException("Gestion legal solo aplica a reclamos de terceros por abogado o recuperos gestionados por abogado"); }
     private String caseTypeCode(CaseEntity caseEntity) { return caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(CaseTypeEntity::getCode).orElse(""); }
     private InsuranceCompanyResponse toCompanyResponse(InsuranceCompanyEntity e) { return new InsuranceCompanyResponse(e.getId(), e.getPublicId(), e.getCode(), e.getName(), e.getTaxId(), e.getRequiresRepairPhotos(), e.getExpectedPaymentDays(), e.getActive()); }
     private InsuranceCompanyContactResponse toCompanyContactResponse(InsuranceCompanyContactEntity e) {
@@ -984,7 +1052,31 @@ public class InsuranceService {
                     ? agreedAmount
                     : agreedAmount.subtract(franchise == null || franchise.getFranchiseAmount() == null ? BigDecimal.ZERO : scale(franchise.getFranchiseAmount())).max(BigDecimal.ZERO);
         }
+        CaseEntity caseEntity = requireCase(caseId);
+        CaseThirdPartyEntity thirdParty = caseThirdPartyRepository.findByCaseId(caseId).orElse(null);
+        if (insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeCode(caseEntity)) && thirdParty != null) {
+            BigDecimal laborMinimum = items.stream().filter(item -> Boolean.TRUE.equals(item.getActive()))
+                    .map(item -> scale(item.getLaborAmount()) == null ? BigDecimal.ZERO : scale(item.getLaborAmount()))
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal partsMinimum = thirdParty != null && "TALLER".equals(normalizeCode(thirdParty.getPartsProvisionModeCode()))
+                    ? bestQuotedReplacementParts(caseId, replacementItemIds)
+                    : BigDecimal.ZERO;
+            return new ProcessingDerivatives(scale(laborMinimum.add(partsMinimum)), includesParts, agreedAmount);
+        }
         return new ProcessingDerivatives(budget == null ? null : scale(budget.getMinimumCloseAmount()), includesParts, amountToBill);
+    }
+
+    private BigDecimal bestQuotedReplacementParts(Long caseId, Set<Long> replacementItemIds) {
+        List<CasePartEntity> parts = casePartRepository.findByCaseIdOrderByIdAsc(caseId).stream()
+                .filter(part -> replacementItemIds.contains(part.getBudgetItemId()))
+                .filter(part -> !Boolean.TRUE.equals(part.getNonCanonical()) && !Boolean.TRUE.equals(part.getAccessory()))
+                .toList();
+        Map<Long, List<PartSupplierQuoteEntity>> quotesByPart = partSupplierQuoteRepository.findByPartIdIn(parts.stream().map(CasePartEntity::getId).toList()).stream()
+                .collect(Collectors.groupingBy(PartSupplierQuoteEntity::getPartId));
+        return parts.stream().map(part -> quotesByPart.getOrDefault(part.getId(), List.of()).stream()
+                        .map(PartSupplierQuoteEntity::getAmount).filter(amount -> amount != null && amount.signum() >= 0)
+                        .min(BigDecimal::compareTo).orElse(BigDecimal.ZERO))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 
     private ProcessingDerivatives cleasProcessingDerivatives(InsuranceProcessingEntity entity) {

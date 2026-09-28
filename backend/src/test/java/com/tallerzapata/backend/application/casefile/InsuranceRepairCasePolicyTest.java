@@ -40,6 +40,8 @@ class InsuranceRepairCasePolicyTest {
         assertFalse(policy.isThirdPartyClaim("RECUPERO_FRANQUICIA"));
         assertFalse(policy.isThirdPartyClaim(null));
         assertFalse(policy.isThirdPartyClaim(""));
+        assertTrue(policy.isThirdPartyWorkshopClaim(" reclamo_terceros "));
+        assertFalse(policy.isThirdPartyWorkshopClaim("RECLAMO_TERCEROS_ABOGADO"));
     }
 
     @Test
