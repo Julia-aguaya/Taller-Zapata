@@ -739,7 +739,7 @@ public class CaseReadinessService {
             return new CaseReadinessTabResponse("ABOGADO", true, false, "RED", List.of("Falta cargar la gestion del abogado"), List.of());
         }
         List<String> blocking = new ArrayList<>();
-        if (legal.getEntryDate() == null) {
+        if ("JUDICIAL".equals(normalizeCode(legal.getInstanceCode())) && legal.getEntryDate() == null) {
             blocking.add("Falta registrar la fecha de ingreso del expediente");
         }
         if (legal.getProcessorCode() == null) {

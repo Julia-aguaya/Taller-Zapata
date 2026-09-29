@@ -535,6 +535,10 @@ class InsuranceIntegrationTest {
                 .andExpect(jsonPath("$.processorCode").value("CON_PODER"))
                 .andExpect(jsonPath("$.claimantCode").value("DANIO_MATERIAL"))
                 .andExpect(jsonPath("$.instanceCode").value("JUDICIAL"))
+                .andExpect(jsonPath("$.entryDate").value("2026-01-15"))
+                .andExpect(jsonPath("$.cuij").value("CIUJ-12345"))
+                .andExpect(jsonPath("$.court").value("Juzgado Civil 42"))
+                .andExpect(jsonPath("$.caseNumber").value("Autos 1234/2026"))
                 .andExpect(jsonPath("$.repairsVehicle").value(true))
                 .andExpect(jsonPath("$.closedByCode").value("CONCILIACION"))
                 .andExpect(jsonPath("$.totalProceedsAmount").value(150000.00));
@@ -542,7 +546,10 @@ class InsuranceIntegrationTest {
         mockMvc.perform(get("/api/v1/cases/100/legal")
                         .header("X-User-Id", "3"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.court").value("Juzgado Civil 42"));
+                .andExpect(jsonPath("$.entryDate").value("2026-01-15"))
+                .andExpect(jsonPath("$.cuij").value("CIUJ-12345"))
+                .andExpect(jsonPath("$.court").value("Juzgado Civil 42"))
+                .andExpect(jsonPath("$.caseNumber").value("Autos 1234/2026"));
 
         Integer auditCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'upsert_caso_legal'", Integer.class, 100L);
         assertThat(auditCount).isEqualTo(1);
@@ -899,7 +906,7 @@ class InsuranceIntegrationTest {
         mockMvc.perform(put("/api/v1/cases/100/legal")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL_LESIONES\",\"instanceCode\":\"JUDICIAL\",\"entryDate\":\"2026-01-15\",\"repairsVehicle\":true}"))
+                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL_LESIONES\",\"instanceCode\":\"ADMINISTRATIVA\",\"repairsVehicle\":true}"))
                 .andExpect(status().isOk());
 
         // Lesionado = el cliente: se vincula por persona
@@ -947,7 +954,7 @@ class InsuranceIntegrationTest {
         mockMvc.perform(put("/api/v1/cases/100/legal")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL_LESIONES\",\"instanceCode\":\"JUDICIAL\",\"entryDate\":\"2026-01-15\",\"repairsVehicle\":true}"))
+                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL_LESIONES\",\"instanceCode\":\"ADMINISTRATIVA\",\"repairsVehicle\":true}"))
                 .andExpect(status().isOk());
 
         String createResponse = mockMvc.perform(post("/api/v1/cases/100/legal/lesionados")

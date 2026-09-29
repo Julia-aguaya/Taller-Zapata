@@ -1025,16 +1025,7 @@ class CaseReadinessIntegrationTest {
                         .header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL\",\"instanceCode\":\"JUDICIAL\",\"entryDate\":\"2026-01-15\",\"repairsVehicle\":true}"))
-                .andExpect(status().isOk());
-
-        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
-                        .header("X-User-Id", "1"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.tabs[2].tabCode").value("ABOGADO"))
-                .andExpect(jsonPath("$.tabs[2].completed").value(false))
-                .andExpect(jsonPath("$.tabs[2].blockingReasons").value(org.hamcrest.Matchers.hasItem("Falta el CUIJ")))
-                .andExpect(jsonPath("$.tabs[2].blockingReasons").value(org.hamcrest.Matchers.hasItem("Falta el juzgado")))
-                .andExpect(jsonPath("$.tabs[2].blockingReasons").value(org.hamcrest.Matchers.hasItem("Falta la caratula (autos)")));
+                .andExpect(status().isConflict());
 
         mockMvc.perform(put("/api/v1/cases/{caseId}/legal", caseId)
                         .header("X-User-Id", "1")

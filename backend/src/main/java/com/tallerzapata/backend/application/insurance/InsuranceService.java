@@ -615,16 +615,18 @@ public class InsuranceService {
         CaseEntity caseEntity = requireCase(caseId);
         requireLegalAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
-        validateCaseLegalRequest(request);
         CaseLegalEntity entity = caseLegalRepository.findByCaseId(caseId).orElseGet(CaseLegalEntity::new);
+        validateCaseLegalRequest(request);
         entity.setCaseId(caseId);
         entity.setProcessorCode(normalizedOptionalCode(request.processorCode()));
         entity.setClaimantCode(normalizedOptionalCode(request.claimantCode()));
         entity.setInstanceCode(normalizedOptionalCode(request.instanceCode()));
-        entity.setEntryDate(request.entryDate());
-        entity.setCuij(blankToNull(request.cuij()));
-        entity.setCourt(blankToNull(request.court()));
-        entity.setCaseNumber(blankToNull(request.caseNumber()));
+        if ("JUDICIAL".equals(normalizeCode(request.instanceCode()))) {
+            entity.setEntryDate(request.entryDate());
+            entity.setCuij(blankToNull(request.cuij()));
+            entity.setCourt(blankToNull(request.court()));
+            entity.setCaseNumber(blankToNull(request.caseNumber()));
+        }
         entity.setCounterpartLawyer(blankToNull(request.counterpartLawyer()));
         entity.setCounterpartPhone(blankToNull(request.counterpartPhone()));
         entity.setCounterpartEmail(blankToNull(request.counterpartEmail()));
@@ -1016,6 +1018,12 @@ public class InsuranceService {
         if (request.claimantCode() != null && !legalClaimantRepository.existsByCodeAndActiveTrue(normalizeCode(request.claimantCode()))) throw new ConflictException("claimantCode no permitido: " + request.claimantCode());
         if (request.instanceCode() != null && !legalInstanceRepository.existsByCodeAndActiveTrue(normalizeCode(request.instanceCode()))) throw new ConflictException("instanceCode no permitido: " + request.instanceCode());
         if (request.closedByCode() != null && !legalClosureReasonRepository.existsByCodeAndActiveTrue(normalizeCode(request.closedByCode()))) throw new ConflictException("closedByCode no permitido: " + request.closedByCode());
+        if ("JUDICIAL".equals(normalizeCode(request.instanceCode()))) {
+            if (request.entryDate() == null) throw new ConflictException("entryDate es obligatorio para la instancia JUDICIAL");
+            if (blankToNull(request.cuij()) == null) throw new ConflictException("cuij es obligatorio para la instancia JUDICIAL");
+            if (blankToNull(request.court()) == null) throw new ConflictException("court es obligatorio para la instancia JUDICIAL");
+            if (blankToNull(request.caseNumber()) == null) throw new ConflictException("caseNumber es obligatorio para la instancia JUDICIAL");
+        }
     }
     private String normalizeCode(String value) { return value == null || value.isBlank() ? null : value.trim().toUpperCase(); }
     private boolean isBlank(String value) { return value == null || value.isBlank(); }
