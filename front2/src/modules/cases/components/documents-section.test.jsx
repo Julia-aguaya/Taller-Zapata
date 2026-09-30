@@ -318,4 +318,45 @@ describe('DocumentsSection', () => {
 
     expect(await screen.findByRole('button', { name: /^eliminar$/i })).toBeInTheDocument();
   });
+
+  it('shows pending documentation from workflow even when no files are uploaded', async () => {
+    const fetchMock = vi.fn((url) => {
+      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [] }));
+      if (url === '/api/v1/cases/42/documents') return Promise.resolve(jsonResponse([]));
+      if (url === '/api/v1/cases/42') return Promise.resolve(jsonResponse({ currentDocumentationStateCode: 'PENDIENTE_DOCS' }));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderSection();
+
+    expect(await screen.findByLabelText('Estado de documentación')).toHaveValue('PENDIENTE');
+    expect(screen.getByLabelText('Estado de documentación')).toBeDisabled();
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['Pendiente', 'Completa']);
+  });
+
+  it('allows an authorized user to complete documentation from the accessible select independent of files', async () => {
+    session = { authorities: ['workflow.documentacion.completar'], scopes: [{ organizationId: null, branchId: null }] };
+    let resolveTransition;
+    const fetchMock = vi.fn((url, options = {}) => {
+      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [] }));
+      if (url === '/api/v1/cases/42/documents') return Promise.resolve(jsonResponse([]));
+      if (url === '/api/v1/cases/42') return Promise.resolve(jsonResponse({ currentDocumentationStateCode: 'PENDIENTE_DOCS' }));
+      if (url === '/api/v1/cases/42/workflow/transitions' && options.method === 'POST') return new Promise((resolve) => { resolveTransition = () => resolve(jsonResponse({})); });
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderSection();
+
+    const select = await screen.findByLabelText('Estado de documentación');
+    fireEvent.change(select, { target: { value: 'COMPLETA' } });
+    expect(select).toBeDisabled();
+    expect(screen.getByText('Actualizando estado de documentación...')).toBeInTheDocument();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/cases/42/workflow/transitions', expect.objectContaining({ method: 'POST' })));
+    const [, options] = fetchMock.mock.calls.find(([url]) => url === '/api/v1/cases/42/workflow/transitions');
+    expect(JSON.parse(options.body)).toMatchObject({ domain: 'documentacion', actionCode: 'documentacion.completar', automatic: false });
+    resolveTransition();
+    expect(await screen.findByText('Estado de documentación actualizado a Completa.')).toBeInTheDocument();
+  });
 });

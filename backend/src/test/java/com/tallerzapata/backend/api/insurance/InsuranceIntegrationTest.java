@@ -613,20 +613,20 @@ class InsuranceIntegrationTest {
     }
 
     @Test
-    void shouldPersistWorkshopDocumentationIdempotentlyAndRestoreItsPendingState() throws Exception {
+    void shouldIgnoreLegacyWorkshopDocumentationValuesAndReportTheWorkflowState() throws Exception {
         setCaseType("RECLAMO_TERCEROS");
         // El front puede representar “sin proveedor” como cadena vacía: debe normalizarse,
         // no fallar la validación de catálogo con 409.
         CaseThirdPartyUpsertRequest complete = new CaseThirdPartyUpsertRequest(null, null, "ACEPTADA", true, "", null, null, null, null, null, null);
 
         mockMvc.perform(put("/api/v1/cases/100/third-party").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(complete)))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.documentationStatusCode").value("ACEPTADA")).andExpect(jsonPath("$.documentationAccepted").value(true));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.documentationStatusCode").value("PENDIENTE")).andExpect(jsonPath("$.documentationAccepted").value(false));
         mockMvc.perform(put("/api/v1/cases/100/third-party").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(complete)))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.documentationAccepted").value(true));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.documentationAccepted").value(false));
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM caso_terceros WHERE caso_id = 100", Integer.class)).isEqualTo(1);
 
         mockMvc.perform(get("/api/v1/cases/100/third-party").header("X-User-Id", "3"))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.documentationStatusCode").value("ACEPTADA")).andExpect(jsonPath("$.documentationAccepted").value(true));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.documentationStatusCode").value("PENDIENTE")).andExpect(jsonPath("$.documentationAccepted").value(false));
 
         CaseThirdPartyUpsertRequest incomplete = new CaseThirdPartyUpsertRequest(null, null, "PENDIENTE", false, null, null, null, null, null, null, null);
         mockMvc.perform(put("/api/v1/cases/100/third-party").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(incomplete)))

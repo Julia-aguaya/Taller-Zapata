@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Building2, Save } from 'lucide-react';
+import { Building2, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { ClaimDataSection } from '@/modules/cases/components/claim-data-section';
 import { DocumentsSection } from '@/modules/cases/components/documents-section';
@@ -15,7 +15,6 @@ import { Input } from '@/shared/ui/input';
 
 const formFrom = (data) => ({
   thirdPartyCompanyId: data?.thirdPartyCompanyId ? String(data.thirdPartyCompanyId) : '', claimReference: data?.claimReference ?? '',
-  documentationStatusCode: data?.documentationStatusCode ?? 'PENDIENTE', documentationAccepted: data?.documentationStatusCode === 'ACEPTADA' || Boolean(data?.documentationAccepted),
   partsProvisionModeCode: data?.partsProvisionModeCode ?? '',
 });
 
@@ -24,39 +23,33 @@ const Field = ({ label, children }) => <label className="block text-[11px] font-
 export const ThirdPartyWorkshopEditor = ({ caseId, caseDetail, budget }) => {
   const queryClient = useQueryClient();
   const [form, setForm] = useState(() => formFrom(null));
-  const [acknowledged, setAcknowledged] = useState(false);
   const thirdPartyQuery = useQuery({ queryKey: ['cases', String(caseId), 'third-party'], queryFn: () => getThirdParty(caseId) });
   const catalogsQuery = useQuery({ queryKey: ['insurance', 'catalogs'], queryFn: () => requestJson('/insurance/catalogs') });
   const companiesQuery = useQuery({ queryKey: ['insurance', 'companies'], queryFn: listInsuranceCompanies });
-  useEffect(() => { setForm(formFrom(thirdPartyQuery.data)); setAcknowledged(Boolean(thirdPartyQuery.data?.documentationAccepted)); }, [thirdPartyQuery.data]);
+  useEffect(() => { setForm(formFrom(thirdPartyQuery.data)); }, [thirdPartyQuery.data]);
 
   const saveMutation = useMutation({
     mutationFn: () => saveThirdParty(caseId, {
       ...form, thirdPartyCompanyId: form.thirdPartyCompanyId ? Number(form.thirdPartyCompanyId) : null,
       partsProvisionModeCode: form.partsProvisionModeCode || null,
-      documentationAccepted: form.documentationAccepted,
     }),
-    onSuccess: async () => { setAcknowledged(Boolean(form.documentationAccepted)); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'third-party'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); toast.success('Datos del reclamo guardados.'); },
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'third-party'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); toast.success('Datos del reclamo guardados.'); },
     onError: (error) => toast.error(error.message || 'No se pudo guardar el reclamo.'),
   });
   const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
-  const documentationStatuses = catalogsQuery.data?.thirdPartyDocumentationStatusCodes ?? [];
   const provisionModes = caseDetail?.caseTypeCode === 'RECLAMO_TERCEROS'
     ? (catalogsQuery.data?.partsProvisionModeCodes ?? []).filter((item) => ['COMPANIA', 'TALLER', 'CLIENTE'].includes(item.code))
     : (catalogsQuery.data?.partsProvisionModeCodes ?? []);
   const finalWorkshopAmount = thirdPartyQuery.data?.finalAmountForWorkshop;
-  const documentationComplete = form.documentationStatusCode === 'ACEPTADA' || Boolean(thirdPartyQuery.data?.documentationAccepted);
 
   return <div className="mt-5 space-y-5 pb-20">
     <ClaimDataSection caseId={caseId} />
     <InvolvedThirdPartiesSection caseId={caseId} />
     <section className="rounded-3xl border border-border/70 bg-card p-5">
-      <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Building2 className="h-5 w-5" /></div><div><h4 className="text-sm font-semibold">Datos de cobertura y acuerdo</h4><p className="text-xs text-muted-foreground">Compañía, referencia, documentación y valores del acuerdo.</p></div></div><Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}><Save className="mr-1.5 h-3.5 w-3.5" />Guardar</Button></div>
+      <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Building2 className="h-5 w-5" /></div><div><h4 className="text-sm font-semibold">Datos de cobertura y acuerdo</h4><p className="text-xs text-muted-foreground">Compañía, referencia y valores del acuerdo.</p></div></div><Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}><Save className="mr-1.5 h-3.5 w-3.5" />Guardar</Button></div>
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         <Field label="Compañía del tercero"><select value={form.thirdPartyCompanyId} onChange={(e) => set('thirdPartyCompanyId', e.target.value)} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"><option value="">Seleccionar…</option>{(companiesQuery.data ?? []).map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select></Field>
         <Field label="Referencia de reclamo"><Input value={form.claimReference} onChange={(e) => set('claimReference', e.target.value)} /></Field>
-        <Field label="Documentación"><select value={form.documentationStatusCode} onChange={(e) => { const documentationStatusCode = e.target.value; setForm((current) => ({ ...current, documentationStatusCode, documentationAccepted: documentationStatusCode === 'ACEPTADA' })); }} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm">{documentationStatuses.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}</select></Field>
-        <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={form.documentationAccepted} onChange={(event) => setForm((current) => ({ ...current, documentationAccepted: event.target.checked, documentationStatusCode: event.target.checked ? 'ACEPTADA' : 'PENDIENTE' }))} />Documentación completa</label>
         <Field label="Provee repuestos"><select value={form.partsProvisionModeCode} onChange={(e) => set('partsProvisionModeCode', e.target.value)} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"><option value="">Seleccionar…</option>{provisionModes.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}</select></Field>
         <Field label="Mínimo mano de obra"><Input readOnly value={thirdPartyQuery.data?.minimumLaborAmount ?? 'Se calcula desde Presupuesto'} className="cursor-not-allowed bg-muted/50" /></Field>
         <Field label="Mínimo repuestos"><Input readOnly value={thirdPartyQuery.data?.minimumPartsAmount ?? 'Se calcula desde cotizaciones'} className="cursor-not-allowed bg-muted/50" /></Field>
@@ -70,7 +63,6 @@ export const ThirdPartyWorkshopEditor = ({ caseId, caseDetail, budget }) => {
     <DocumentsSection caseId={caseId} moduleCode="GESTION_TRAMITE" includeHistorical title="Documentación del trámite" />
     <ProcedureSection caseId={caseId} budget={budget} thirdPartyWorkshop />
     <TaskAgenda caseId={caseId} organizationId={caseDetail?.organizationId} branchId={caseDetail?.branchId} />
-    <Dialog open={!acknowledged && !thirdPartyQuery.isLoading && !documentationComplete} onClose={() => setAcknowledged(true)} title="Carpeta con documentación pendiente" description="La documentación del reclamo todavía no fue marcada como completa. Revisala antes de continuar."><Button className="w-full" onClick={() => setAcknowledged(true)}><AlertTriangle className="mr-2 h-4 w-4" />Aceptar</Button></Dialog>
   </div>;
 };
 

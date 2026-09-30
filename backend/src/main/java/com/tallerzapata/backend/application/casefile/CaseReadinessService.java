@@ -94,6 +94,7 @@ public class CaseReadinessService {
     private final CurrentUserService currentUserService;
     private final CaseAccessControlService caseAccessControlService;
     private final ThirdPartyWorkshopCompanyPaymentProjection thirdPartyWorkshopCompanyPaymentProjection;
+    private final DocumentationWorkflowStateService documentationWorkflowStateService;
     private final InsuranceRepairCasePolicy insuranceRepairCasePolicy = new InsuranceRepairCasePolicy();
 
     public CaseReadinessService(
@@ -124,7 +125,8 @@ public class CaseReadinessService {
             CaseVisibleStateResolver caseVisibleStateResolver,
             CurrentUserService currentUserService,
             CaseAccessControlService caseAccessControlService,
-            ThirdPartyWorkshopCompanyPaymentProjection thirdPartyWorkshopCompanyPaymentProjection
+            ThirdPartyWorkshopCompanyPaymentProjection thirdPartyWorkshopCompanyPaymentProjection,
+            DocumentationWorkflowStateService documentationWorkflowStateService
     ) {
         this.caseRepository = caseRepository;
         this.caseTypeRepository = caseTypeRepository;
@@ -154,6 +156,7 @@ public class CaseReadinessService {
         this.currentUserService = currentUserService;
         this.caseAccessControlService = caseAccessControlService;
         this.thirdPartyWorkshopCompanyPaymentProjection = thirdPartyWorkshopCompanyPaymentProjection;
+        this.documentationWorkflowStateService = documentationWorkflowStateService;
     }
 
     @Transactional(readOnly = true)
@@ -231,7 +234,7 @@ public class CaseReadinessService {
         } else if (insuranceRepairCasePolicy.isThirdPartyClaim(caseType.getCode())) {
             boolean lawyerManaged = insuranceRepairCasePolicy.isThirdPartyLawyerClaim(caseType.getCode());
             CaseLegalEntity legal = caseLegalRepository.findByCaseId(caseId).orElse(null);
-            tabs.add(buildTercerosGestionTramiteReadiness(caseId, !lawyerManaged));
+            tabs.add(buildTercerosGestionTramiteReadiness(caseEntity, !lawyerManaged));
             if (lawyerManaged) {
                 List<LegalLesionadoEntity> lesionados = legal == null ? List.of() : legalLesionadoRepository.findByCaseLegalIdOrderByIdAsc(legal.getId());
                 tabs.add(buildAbogadoReadiness(legal, lesionados));
@@ -607,7 +610,8 @@ public class CaseReadinessService {
 
     // ── RECLAMO_TERCEROS (taller y abogado) ──────────────────────
 
-    private CaseReadinessTabResponse buildTercerosGestionTramiteReadiness(Long caseId, boolean requiresPresentacion) {
+    private CaseReadinessTabResponse buildTercerosGestionTramiteReadiness(CaseEntity caseEntity, boolean requiresPresentacion) {
+        Long caseId = caseEntity.getId();
         List<String> blocking = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         CaseIncidentEntity incident = caseIncidentRepository.findByCaseId(caseId).orElse(null);
@@ -625,7 +629,7 @@ public class CaseReadinessService {
                 blocking.add("Falta registrar fecha de presentacion del tramite");
             }
         }
-        if (thirdParty == null || (!"ACEPTADA".equals(normalizeCode(thirdParty.getDocumentationStatusCode())) && !Boolean.TRUE.equals(thirdParty.getDocumentationAccepted()))) {
+        if (!documentationWorkflowStateService.isComplete(caseEntity)) {
             warnings.add("Carpeta con documentacion pendiente");
         }
         return new CaseReadinessTabResponse(

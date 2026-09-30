@@ -884,7 +884,7 @@ class CaseReadinessIntegrationTest {
     @Test
     void shouldCompleteThirdPartyGestionTramiteWithCompanyAndPresentation() throws Exception {
         Long caseId = createThirdPartyWorkshopCase();
-        seedThirdPartyClaim(caseId, "ACEPTADA");
+        seedThirdPartyClaim(caseId, "ACEPTADA"); // Legacy fields must not clear the workflow warning.
         seedThirdPartyPresentacion(caseId);
 
         mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
@@ -893,7 +893,7 @@ class CaseReadinessIntegrationTest {
                 .andExpect(jsonPath("$.tabs[1].tabCode").value("GESTION_TRAMITE"))
                 .andExpect(jsonPath("$.tabs[1].completed").value(true))
                 .andExpect(jsonPath("$.tabs[1].colorHint").value("BLUE"))
-                .andExpect(jsonPath("$.tabs[1].warningReasons[0]").doesNotExist())
+                .andExpect(jsonPath("$.tabs[1].warningReasons[0]").value("Carpeta con documentacion pendiente"))
                 // El presupuesto NO queda gateado por la gestion del tramite en terceros
                 .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
                 .andExpect(jsonPath("$.tabs[2].allowed").value(true))
@@ -901,7 +901,7 @@ class CaseReadinessIntegrationTest {
     }
 
     @Test
-    void shouldWarnButNotBlockWhenThirdPartyDocumentationIsPending() throws Exception {
+    void shouldUseGlobalDocumentationWorkflowInsteadOfThirdPartyLegacyFields() throws Exception {
         Long caseId = createThirdPartyWorkshopCase();
         seedThirdPartyClaim(caseId, "PENDIENTE");
         seedThirdPartyPresentacion(caseId);
@@ -912,6 +912,28 @@ class CaseReadinessIntegrationTest {
                 .andExpect(jsonPath("$.tabs[1].tabCode").value("GESTION_TRAMITE"))
                 .andExpect(jsonPath("$.tabs[1].completed").value(true))
                 .andExpect(jsonPath("$.tabs[1].warningReasons[0]").value("Carpeta con documentacion pendiente"));
+
+        mockMvc.perform(post("/api/v1/cases/{caseId}/workflow/transitions", caseId)
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"domain\":\"documentacion\",\"actionCode\":\"documentacion.completar\",\"automatic\":false}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[1].warningReasons[0]").doesNotExist());
+    }
+
+    @Test
+    void shouldNotLetLegacyThirdPartyDocumentationStatusChangeTheVisibleWorkflowState() throws Exception {
+        Long caseId = createThirdPartyWorkshopCase();
+        seedThirdPartyClaim(caseId, "RECHAZADA");
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.visibleTramiteState.code").value(org.hamcrest.Matchers.not("RECHAZADO")));
     }
 
     @Test

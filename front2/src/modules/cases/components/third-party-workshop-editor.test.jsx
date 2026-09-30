@@ -43,7 +43,7 @@ describe('ThirdPartyWorkshopEditor', () => {
     expect(screen.getByLabelText('Final a favor taller')).toHaveValue('2200');
   });
 
-  it('does not show the removed third-party-claim block and keeps coverage data available', async () => {
+  it('does not show the removed third-party-claim or legacy documentation controls', async () => {
     thirdParty = { ...thirdParty, thirdPartyCompanyId: 9, claimReference: 'REC-42', documentationStatusCode: 'ACEPTADA' };
     renderEditor();
 
@@ -51,7 +51,8 @@ describe('ThirdPartyWorkshopEditor', () => {
     expect(screen.getByRole('heading', { name: 'Datos de cobertura y acuerdo' })).toBeInTheDocument();
     expect(screen.getByLabelText('Compañía del tercero')).toBeInTheDocument();
     expect(screen.getByLabelText('Referencia de reclamo')).toHaveValue('REC-42');
-    expect(screen.getByLabelText('Documentación')).toHaveValue('ACEPTADA');
+    expect(screen.queryByLabelText('Documentación')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Documentación completa')).not.toBeInTheDocument();
     expect(screen.getByLabelText('A facturar compañía')).toHaveValue('3000');
   });
 
@@ -69,24 +70,12 @@ describe('ThirdPartyWorkshopEditor', () => {
     expect(screen.getByLabelText('Final a favor taller')).toHaveValue('3000');
   });
 
-  it('synchronizes complete documentation, dismisses its warning, and restores it when incomplete', async () => {
-    thirdParty = { ...thirdParty, documentationStatusCode: 'PENDIENTE', documentationAccepted: false };
-    renderEditor();
-
-    expect(await screen.findByRole('dialog', { name: 'Carpeta con documentación pendiente' })).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText('Documentación completa'));
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Carpeta con documentación pendiente' })).not.toBeInTheDocument());
-
-    fireEvent.click(screen.getByLabelText('Documentación completa'));
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
-    expect(await screen.findByRole('dialog', { name: 'Carpeta con documentación pendiente' })).toBeInTheDocument();
-  });
-
-  it('does not reopen the pending-documentation dialog for persisted complete documentation', async () => {
+  it('does not let a legacy documentation value affect the coverage save request', async () => {
     thirdParty = { ...thirdParty, documentationStatusCode: 'ACEPTADA', documentationAccepted: true };
     renderEditor();
 
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Carpeta con documentación pendiente' })).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    const { saveThirdParty } = await import('@/modules/cases/api/third-party-api');
+    await waitFor(() => expect(saveThirdParty).toHaveBeenCalledWith('42', expect.not.objectContaining({ documentationAccepted: expect.anything(), documentationStatusCode: expect.anything() })));
   });
 });

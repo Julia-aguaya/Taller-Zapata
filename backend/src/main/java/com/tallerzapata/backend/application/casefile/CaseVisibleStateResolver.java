@@ -111,6 +111,7 @@ public class CaseVisibleStateResolver {
     private final ParticularEffectiveStateRepository particularEffectiveStateRepository;
     private final TodoRiesgoEffectiveStateRepository todoRiesgoEffectiveStateRepository;
     private final CleasEffectiveStateRepository cleasEffectiveStateRepository;
+    private final DocumentationWorkflowStateService documentationWorkflowStateService;
 
     public CaseVisibleStateResolver(
             CaseTypeRepository caseTypeRepository,
@@ -127,7 +128,8 @@ public class CaseVisibleStateResolver {
             IssuedReceiptRepository issuedReceiptRepository,
             ParticularEffectiveStateRepository particularEffectiveStateRepository,
             TodoRiesgoEffectiveStateRepository todoRiesgoEffectiveStateRepository,
-            CleasEffectiveStateRepository cleasEffectiveStateRepository
+            CleasEffectiveStateRepository cleasEffectiveStateRepository,
+            DocumentationWorkflowStateService documentationWorkflowStateService
     ) {
         this.caseTypeRepository = caseTypeRepository;
         this.insuranceProcessingRepository = insuranceProcessingRepository;
@@ -144,6 +146,7 @@ public class CaseVisibleStateResolver {
         this.particularEffectiveStateRepository = particularEffectiveStateRepository;
         this.todoRiesgoEffectiveStateRepository = todoRiesgoEffectiveStateRepository;
         this.cleasEffectiveStateRepository = cleasEffectiveStateRepository;
+        this.documentationWorkflowStateService = documentationWorkflowStateService;
     }
 
     public Map<String, CaseVisibleStateResponse> resolveForCase(CaseEntity caseEntity) {
@@ -193,7 +196,7 @@ public class CaseVisibleStateResolver {
         boolean hasReceipts = !issuedReceiptRepository.findByCaseId(caseEntity.getId(), FINANCE_SORT).isEmpty();
 
         String automaticRepairCode = resolveAutomaticRepairCode(caseType, insuranceProcessing.orElse(null), budget, outcomes, intakes, appointments, parts);
-        String automaticTramiteCode = resolveAutomaticTramiteCode(caseType, insuranceProcessing.orElse(null), thirdParty.orElse(null), legal.orElse(null), budget, automaticRepairCode, hasFinancialMovements, hasReceipts, caseEntity.getId());
+        String automaticTramiteCode = resolveAutomaticTramiteCode(caseType, insuranceProcessing.orElse(null), thirdParty.orElse(null), legal.orElse(null), budget, automaticRepairCode, hasFinancialMovements, hasReceipts, caseEntity.getId(), documentationWorkflowStateService.isComplete(caseEntity));
 
         Map<String, CaseVisibleStateResponse> result = new LinkedHashMap<>();
         result.put(DOMAIN_TRAMITE, buildVisibleState(DOMAIN_TRAMITE, automaticTramiteCode, normalizeCode(caseEntity.getVisibleCaseStateOverrideCode())));
@@ -258,7 +261,8 @@ public class CaseVisibleStateResolver {
             String repairVisibleCode,
             boolean hasFinancialMovements,
             boolean hasReceipts,
-            Long caseId
+            Long caseId,
+            boolean documentationComplete
     ) {
         if ("PARTICULAR".equals(normalizeCode(caseType.getCode()))) {
             return resolveParticularTramiteCode(repairVisibleCode, budget, caseId);
@@ -274,10 +278,6 @@ public class CaseVisibleStateResolver {
             if ("RECHAZADO".equals(opinionCode) || "RECHAZADA".equals(quotationStatusCode)) {
                 return "RECHAZADO";
             }
-        }
-
-        if (thirdParty != null && "RECHAZADA".equals(normalizeCode(thirdParty.getDocumentationStatusCode()))) {
-            return "RECHAZADO";
         }
 
         if (hasReceipts) {
@@ -304,8 +304,7 @@ public class CaseVisibleStateResolver {
         }
 
         if (thirdParty != null) {
-            String documentationStatusCode = normalizeCode(thirdParty.getDocumentationStatusCode());
-            if (thirdParty.getDocumentationAccepted() == Boolean.TRUE || "ACEPTADA".equals(documentationStatusCode) || "EN_REVISION".equals(documentationStatusCode)) {
+            if (documentationComplete) {
                 return "EN_TRAMITE";
             }
             if (thirdParty.getClaimReference() != null && !thirdParty.getClaimReference().isBlank()) {

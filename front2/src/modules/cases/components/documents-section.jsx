@@ -29,13 +29,14 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
   const hasDeletePermission = session?.authorities?.includes('documento.eliminar') ?? false;
   const canDeleteDocuments = hasDeletePermission && hasGlobalAdminScope(session);
   const lacksGlobalDeleteScope = hasDeletePermission && !hasGlobalAdminScope(session);
+  const canCompleteDocumentation = session?.authorities?.includes('workflow.documentacion.completar') ?? false;
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFiles, setUploadFiles] = useState([]);
   const [uploadCategory, setUploadCategory] = useState('');
   const [uploadDate, setUploadDate] = useState('');
   const [uploadObservations, setUploadObservations] = useState('');
   const [documentToDelete, setDocumentToDelete] = useState(null);
-  const [showCompleteDocumentation, setShowCompleteDocumentation] = useState(false);
+  const [documentationFeedback, setDocumentationFeedback] = useState('');
   const [expanded, setExpanded] = useState(!collapsible);
   const invalidateCaseViews = () => Promise.all([
     queryClient.invalidateQueries({ queryKey: ['cases'] }),
@@ -55,6 +56,11 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
     queryFn: () => requestJson('/documents/catalogs'),
   });
 
+  const caseQuery = useQuery({
+    queryKey: ['cases', String(caseId)],
+    queryFn: () => requestJson(`/cases/${caseId}`),
+  });
+
   const documents = (docsQuery.data ?? []).filter((document) => {
     if (!moduleCode) return true;
     return document.moduleCode === moduleCode || (includeHistorical && document.moduleCode === 'OPERACION');
@@ -72,8 +78,8 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
 
   const completeDocumentationMutation = useMutation({
     mutationFn: () => requestJson(`/cases/${caseId}/workflow/transitions`, { method: 'POST', body: JSON.stringify({ domain: 'documentacion', actionCode: 'documentacion.completar', reason: 'Documentación revisada y completa', automatic: false }) }),
-    onSuccess: async () => { await invalidateCaseViews(); setShowCompleteDocumentation(false); toast.success('Documentación marcada como completa.'); },
-    onError: (error) => toast.error(error.message || 'No se pudo actualizar la documentación.'),
+    onSuccess: async () => { await invalidateCaseViews(); setDocumentationFeedback('Estado de documentación actualizado a Completa.'); },
+    onError: (error) => setDocumentationFeedback(error.message || 'No se pudo actualizar la documentación.'),
   });
 
   const linkCleasOrderMutation = useMutation({
@@ -142,8 +148,15 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
     toast.success('Descargando comprimido...');
   };
 
-  const allComplete = documents.length > 0 && documents.every(d => d.active !== false);
+  const documentationComplete = caseQuery.data?.currentDocumentationStateCode === 'COMPLETA';
   const canUpload = Boolean(uploadFiles.length > 0 && uploadCategory && (!requiresDate || uploadDate));
+  const documentationSelectDisabled = !canCompleteDocumentation || documentationComplete || caseQuery.isLoading || completeDocumentationMutation.isPending;
+
+  const updateDocumentationStatus = (event) => {
+    if (event.target.value !== 'COMPLETA' || documentationComplete) return;
+    setDocumentationFeedback('Actualizando estado de documentación...');
+    completeDocumentationMutation.mutate();
+  };
 
   return (
     <div className="rounded-3xl border border-border/70 bg-card p-5">
@@ -156,7 +169,6 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
         </div>
         {expanded ? <div className="flex gap-2">
           {canUploadDocuments ? <Button size="sm" variant="outline" onClick={() => setShowUpload(true)}><Plus className="mr-1.5 h-3.5 w-3.5" />Agregar items</Button> : null}
-          {showCompleteAction ? <Button size="sm" variant="outline" onClick={() => setShowCompleteDocumentation(true)}>Marcar completa</Button> : null}
           {documents.length > 0 ? <Button size="sm" variant="outline" onClick={downloadAll}><Download className="mr-1.5 h-3.5 w-3.5" />Descargar todo</Button> : null}
         </div> : null}
       </div>
@@ -248,16 +260,26 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
           </Button>
         </div>
       </Dialog>
-      {showCompleteAction ? <Dialog open={showCompleteDocumentation} onClose={() => setShowCompleteDocumentation(false)} title="¿Documentación completa?" description="Confirmá que la carpeta cuenta con toda la documentación necesaria. Esta acción actualiza el estado de la carpeta.">
-        <div className="flex gap-3"><Button variant="outline" className="flex-1" onClick={() => setShowCompleteDocumentation(false)} disabled={completeDocumentationMutation.isPending}>Cancelar</Button><Button className="flex-1" onClick={() => completeDocumentationMutation.mutate()} disabled={completeDocumentationMutation.isPending}>Confirmar</Button></div>
-      </Dialog> : null}
-
-      {/* Status */}
-      <div className="mt-4 flex items-center gap-3">
-        <span className={`inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-medium ${allComplete ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-400' : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400'}`}>
-          {allComplete ? 'Completa' : 'Incompleta'}
-        </span>
-      </div>
+      {showCompleteAction ? <div className="mt-4 max-w-sm">
+        <label htmlFor={`documentation-status-${caseId}`} className="mb-1 block text-sm font-medium">Estado de documentación</label>
+        <select
+          id={`documentation-status-${caseId}`}
+          value={documentationComplete ? 'COMPLETA' : 'PENDIENTE'}
+          onChange={updateDocumentationStatus}
+          disabled={documentationSelectDisabled}
+          aria-describedby={`documentation-status-help-${caseId} documentation-status-feedback-${caseId}`}
+          className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <option value="PENDIENTE">Pendiente</option>
+          <option value="COMPLETA">Completa</option>
+        </select>
+        <p id={`documentation-status-help-${caseId}`} className="mt-1 text-xs text-muted-foreground">
+          {documentationComplete ? 'La documentación ya fue marcada como completa.' : canCompleteDocumentation ? 'Al seleccionar Completa se registra la revisión manual de la carpeta.' : 'No tenés permiso para actualizar este estado.'}
+        </p>
+        <p id={`documentation-status-feedback-${caseId}`} className="mt-1 text-xs text-muted-foreground" aria-live="polite">
+          {documentationFeedback}
+        </p>
+      </div> : null}
       </> : null}
     </div>
   );

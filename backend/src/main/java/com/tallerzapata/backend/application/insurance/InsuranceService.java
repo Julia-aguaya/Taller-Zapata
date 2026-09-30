@@ -2,6 +2,7 @@ package com.tallerzapata.backend.application.insurance;
 
 import com.tallerzapata.backend.api.insurance.*;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
+import com.tallerzapata.backend.application.casefile.DocumentationWorkflowStateService;
 import com.tallerzapata.backend.application.casefile.InsuranceRepairCasePolicy;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.common.ConflictException;
@@ -105,10 +106,11 @@ public class InsuranceService {
     private final NotificationRepository notificationRepository;
     private final LegalLesionadoRepository legalLesionadoRepository;
     private final LesionadoEsTypeRepository lesionadoEsTypeRepository;
+    private final DocumentationWorkflowStateService documentationWorkflowStateService;
 
     private static final String ADMIN_ROLE_CODE = "ROLE_ADMIN";
 
-    public InsuranceService(InsuranceCompanyRepository companyRepository, InsuranceCompanyContactRepository companyContactRepository, InsuranceRoleContactRepository roleContactRepository, PersonRepository personRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CasePersonRepository casePersonRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, BelowMinimumAgreementApprovalRepository belowMinimumAgreementApprovalRepository, CaseFranchiseRepository caseFranchiseRepository, InsuranceModalityRepository modalityRepository, InsuranceOpinionRepository opinionRepository, InsuranceQuotationStatusRepository quotationStatusRepository, InsurancePartsAuthorizationRepository partsAuthorizationRepository, FranchiseStatusRepository franchiseStatusRepository, FranchiseRecoveryTypeRepository franchiseRecoveryTypeRepository, FranchiseOpinionRepository franchiseOpinionRepository, CaseCleasRepository caseCleasRepository, CaseThirdPartyRepository caseThirdPartyRepository, CleasScopeRepository cleasScopeRepository, CleasOpinionRepository cleasOpinionRepository, PaymentStatusRepository paymentStatusRepository, ThirdPartyDocumentationStatusRepository thirdPartyDocumentationStatusRepository, PartsProvisionModeRepository partsProvisionModeRepository, CaseLegalRepository caseLegalRepository, LegalNewsRepository legalNewsRepository, LegalExpenseRepository legalExpenseRepository, LegalProcessorRepository legalProcessorRepository, LegalClaimantRepository legalClaimantRepository, LegalInstanceRepository legalInstanceRepository, LegalClosureReasonRepository legalClosureReasonRepository, LegalExpensePayerRepository legalExpensePayerRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, TodoRiesgoStateFactsRepository todoRiesgoStateFactsRepository, ProviderRepository providerRepository, BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CasePartRepository casePartRepository, PartSupplierQuoteRepository partSupplierQuoteRepository, FinancialMovementRepository financialMovementRepository, FranchiseRecoveryService franchiseRecoveryService, UserRoleRepository userRoleRepository, NotificationRepository notificationRepository, LegalLesionadoRepository legalLesionadoRepository, LesionadoEsTypeRepository lesionadoEsTypeRepository) {
+    public InsuranceService(InsuranceCompanyRepository companyRepository, InsuranceCompanyContactRepository companyContactRepository, InsuranceRoleContactRepository roleContactRepository, PersonRepository personRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CasePersonRepository casePersonRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, BelowMinimumAgreementApprovalRepository belowMinimumAgreementApprovalRepository, CaseFranchiseRepository caseFranchiseRepository, InsuranceModalityRepository modalityRepository, InsuranceOpinionRepository opinionRepository, InsuranceQuotationStatusRepository quotationStatusRepository, InsurancePartsAuthorizationRepository partsAuthorizationRepository, FranchiseStatusRepository franchiseStatusRepository, FranchiseRecoveryTypeRepository franchiseRecoveryTypeRepository, FranchiseOpinionRepository franchiseOpinionRepository, CaseCleasRepository caseCleasRepository, CaseThirdPartyRepository caseThirdPartyRepository, CleasScopeRepository cleasScopeRepository, CleasOpinionRepository cleasOpinionRepository, PaymentStatusRepository paymentStatusRepository, ThirdPartyDocumentationStatusRepository thirdPartyDocumentationStatusRepository, PartsProvisionModeRepository partsProvisionModeRepository, CaseLegalRepository caseLegalRepository, LegalNewsRepository legalNewsRepository, LegalExpenseRepository legalExpenseRepository, LegalProcessorRepository legalProcessorRepository, LegalClaimantRepository legalClaimantRepository, LegalInstanceRepository legalInstanceRepository, LegalClosureReasonRepository legalClosureReasonRepository, LegalExpensePayerRepository legalExpensePayerRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, TodoRiesgoStateFactsRepository todoRiesgoStateFactsRepository, ProviderRepository providerRepository, BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CasePartRepository casePartRepository, PartSupplierQuoteRepository partSupplierQuoteRepository, FinancialMovementRepository financialMovementRepository, FranchiseRecoveryService franchiseRecoveryService, UserRoleRepository userRoleRepository, NotificationRepository notificationRepository, LegalLesionadoRepository legalLesionadoRepository, LesionadoEsTypeRepository lesionadoEsTypeRepository, DocumentationWorkflowStateService documentationWorkflowStateService) {
         this.companyRepository = companyRepository;
         this.companyContactRepository = companyContactRepository;
         this.roleContactRepository = roleContactRepository;
@@ -158,6 +160,7 @@ public class InsuranceService {
         this.notificationRepository = notificationRepository;
         this.legalLesionadoRepository = legalLesionadoRepository;
         this.lesionadoEsTypeRepository = lesionadoEsTypeRepository;
+        this.documentationWorkflowStateService = documentationWorkflowStateService;
     }
 
     @Transactional(readOnly = true)
@@ -484,7 +487,7 @@ public class InsuranceService {
             if (insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeCode(caseEntity))) {
                 synchronizeThirdPartyAmounts(entity, caseId);
             }
-            return toCaseThirdPartyResponse(entity);
+            return toCaseThirdPartyResponse(entity, caseEntity);
         }).orElse(null) : null;
     }
 
@@ -500,13 +503,15 @@ public class InsuranceService {
         entity.setCaseId(caseId);
         entity.setThirdPartyCompanyId(request.thirdPartyCompanyId());
         entity.setClaimReference(blankToNull(request.claimReference()));
-        String documentationStatusCode = normalizedOptionalCode(request.documentationStatusCode());
         if (insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeCode(caseEntity))) {
-            // El código es la fuente de verdad. El booleano conserva compatibilidad al leer
-            // registros históricos, pero se normaliza en cada escritura de Taller.
-            entity.setDocumentationStatusCode(documentationStatusCode);
-            entity.setDocumentationAccepted("ACEPTADA".equals(documentationStatusCode));
+            // Los campos legados se conservan por compatibilidad de persistencia, pero la
+            // documentación de Taller sólo se gobierna desde el workflow del caso.
+            if (entity.getId() == null) {
+                entity.setDocumentationStatusCode(null);
+                entity.setDocumentationAccepted(false);
+            }
         } else {
+            String documentationStatusCode = normalizedOptionalCode(request.documentationStatusCode());
             entity.setDocumentationStatusCode(documentationStatusCode);
             entity.setDocumentationAccepted(Boolean.TRUE.equals(request.documentationAccepted()));
         }
@@ -523,7 +528,7 @@ public class InsuranceService {
                         "finalPartsTotal", entity.getFinalPartsTotal(),
                         "finalAmountForWorkshop", entity.getFinalAmountForWorkshop())),
                 caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
-        return toCaseThirdPartyResponse(entity);
+        return toCaseThirdPartyResponse(entity, caseEntity);
     }
 
     /**
@@ -861,7 +866,11 @@ public class InsuranceService {
 
     private void validateThirdPartyRequest(CaseEntity caseEntity, CaseThirdPartyUpsertRequest request) {
         if (request.thirdPartyCompanyId() != null && !companyRepository.existsById(request.thirdPartyCompanyId())) throw new ResourceNotFoundException("No existe la compania tercero " + request.thirdPartyCompanyId());
-        if (normalizedOptionalCode(request.documentationStatusCode()) != null && !thirdPartyDocumentationStatusRepository.existsByCodeAndActiveTrue(normalizeCode(request.documentationStatusCode()))) throw new ConflictException("documentationStatusCode no permitido: " + request.documentationStatusCode());
+        if (!insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeCode(caseEntity))
+                && normalizedOptionalCode(request.documentationStatusCode()) != null
+                && !thirdPartyDocumentationStatusRepository.existsByCodeAndActiveTrue(normalizeCode(request.documentationStatusCode()))) {
+            throw new ConflictException("documentationStatusCode no permitido: " + request.documentationStatusCode());
+        }
         if (normalizedOptionalCode(request.partsProvisionModeCode()) != null && !partsProvisionModeRepository.existsByCodeAndActiveTrue(normalizeCode(request.partsProvisionModeCode()))) throw new ConflictException("partsProvisionModeCode no permitido: " + request.partsProvisionModeCode());
         if (insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeCode(caseEntity))
                 && normalizedOptionalCode(request.partsProvisionModeCode()) != null
@@ -1009,7 +1018,16 @@ public class InsuranceService {
     private boolean sameAmount(BigDecimal left, BigDecimal right) { return left != null && right != null && left.compareTo(right) == 0; }
     private CaseFranchiseResponse toCaseFranchiseResponse(CaseFranchiseEntity e) { return new CaseFranchiseResponse(e.getId(), e.getCaseId(), e.getFranchiseStatusCode(), e.getFranchiseAmount(), e.getRecoveryTypeCode(), e.getRelatedCaseId(), e.getFranchiseOpinionCode(), e.getExceedsFranchise(), e.getRecoveryAmount(), e.getNotes()); }
     private CaseCleasResponse toCaseCleasResponse(CaseCleasEntity e) { return new CaseCleasResponse(e.getId(), e.getCaseId(), e.getScopeCode(), e.getOpinionCode(), e.getFranchiseAmount(), e.getCustomerChargeAmount(), e.getCustomerPaymentStatusCode(), e.getCustomerPaymentDate(), e.getCompanyFranchisePaymentAmount(), e.getCompanyFranchisePaymentStatusCode(), e.getCompanyFranchisePaymentDate()); }
-    private CaseThirdPartyResponse toCaseThirdPartyResponse(CaseThirdPartyEntity e) { boolean documentationAccepted = "ACEPTADA".equals(normalizeCode(e.getDocumentationStatusCode())) || Boolean.TRUE.equals(e.getDocumentationAccepted()); return new CaseThirdPartyResponse(e.getId(), e.getCaseId(), e.getThirdPartyCompanyId(), e.getClaimReference(), e.getDocumentationStatusCode(), documentationAccepted, e.getPartsProvisionModeCode(), e.getMinimumLaborAmount(), e.getMinimumPartsAmount(), e.getBestQuotationSubtotal(), e.getFinalPartsTotal(), e.getAmountToBillCompany(), e.getFinalAmountForWorkshop()); }
+    private CaseThirdPartyResponse toCaseThirdPartyResponse(CaseThirdPartyEntity e, CaseEntity caseEntity) {
+        boolean workshopClaim = insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeCode(caseEntity));
+        boolean documentationAccepted = workshopClaim
+                ? documentationWorkflowStateService.isComplete(caseEntity)
+                : "ACEPTADA".equals(normalizeCode(e.getDocumentationStatusCode())) || Boolean.TRUE.equals(e.getDocumentationAccepted());
+        String documentationStatusCode = workshopClaim
+                ? (documentationAccepted ? "ACEPTADA" : "PENDIENTE")
+                : e.getDocumentationStatusCode();
+        return new CaseThirdPartyResponse(e.getId(), e.getCaseId(), e.getThirdPartyCompanyId(), e.getClaimReference(), documentationStatusCode, documentationAccepted, e.getPartsProvisionModeCode(), e.getMinimumLaborAmount(), e.getMinimumPartsAmount(), e.getBestQuotationSubtotal(), e.getFinalPartsTotal(), e.getAmountToBillCompany(), e.getFinalAmountForWorkshop());
+    }
     private CaseLegalResponse toCaseLegalResponse(CaseLegalEntity e) { return new CaseLegalResponse(e.getId(), e.getCaseId(), e.getProcessorCode(), e.getClaimantCode(), e.getInstanceCode(), e.getEntryDate(), e.getCuij(), e.getCourt(), e.getCaseNumber(), e.getCounterpartLawyer(), e.getCounterpartPhone(), e.getCounterpartEmail(), e.getRepairsVehicle(), e.getClosedByCode(), e.getLegalCloseDate(), e.getTotalProceedsAmount(), e.getObservations(), e.getClosingNotes()); }
     private LegalNewsResponse toLegalNewsResponse(LegalNewsEntity e) { return new LegalNewsResponse(e.getId(), e.getCaseLegalId(), e.getNewsDate(), e.getDetail(), e.getNotifyCustomer(), e.getNotifiedAt()); }
     private LegalExpenseResponse toLegalExpenseResponse(LegalExpenseEntity e) { return new LegalExpenseResponse(e.getId(), e.getCaseLegalId(), e.getConcept(), e.getAmount(), e.getExpenseDate(), e.getPaidByCode(), e.getFinancialMovementId(), e.getSumsToWorkshop()); }
