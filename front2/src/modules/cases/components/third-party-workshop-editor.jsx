@@ -33,7 +33,7 @@ export const ThirdPartyWorkshopEditor = ({ caseId, caseDetail, budget }) => {
       ...form, thirdPartyCompanyId: form.thirdPartyCompanyId ? Number(form.thirdPartyCompanyId) : null,
       partsProvisionModeCode: form.partsProvisionModeCode || null,
     }),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'third-party'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); toast.success('Datos del reclamo guardados.'); },
+    onSuccess: async (saved) => { queryClient.setQueryData(['cases', String(caseId), 'third-party'], saved); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); toast.success('Datos del reclamo guardados.'); },
     onError: (error) => toast.error(error.message || 'No se pudo guardar el reclamo.'),
   });
   const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));

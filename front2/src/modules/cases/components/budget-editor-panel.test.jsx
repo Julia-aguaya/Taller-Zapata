@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BudgetEditorPanel } from './budget-editor-panel';
@@ -9,6 +10,7 @@ const mockSyncPartsFromBudget = vi.fn().mockResolvedValue([]);
 const mockSyncWorkshopReplacementParts = vi.fn().mockResolvedValue({ incorporated: 1, updated: 0, alreadyExisted: 0, unchanged: 0 });
 const mockInvalidateQueries = vi.fn().mockResolvedValue({});
 const requestJson = vi.fn().mockResolvedValue([]);
+const { toast } = vi.hoisted(() => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 const session = { user: { displayName: 'Taller' }, authorities: ['presupuesto.ver', 'proveedor.ver', 'documento.subir', 'documento.relacionar'] };
 const budgetCatalogs = {
   taskCodes: [{ code: 'CHAPA', name: 'Chapa' }],
@@ -20,7 +22,24 @@ let catalogsReady = true;
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: ({ queryKey }) => ({ data: queryKey[0] === 'budget' && catalogsReady ? budgetCatalogs : [], isLoading: false }),
-  useMutation: ({ mutationFn, onSuccess }) => ({ isPending: false, mutate: async (variables) => { const response = await mutationFn(variables); await onSuccess?.(response, variables); } }),
+  useMutation: ({ mutationFn, onSuccess, onError, onSettled }) => {
+    const [isPending, setIsPending] = useState(false);
+    return {
+      isPending,
+      mutate: async (variables) => {
+        setIsPending(true);
+        try {
+          const response = await mutationFn(variables);
+          await onSuccess?.(response, variables);
+        } catch (error) {
+          await onError?.(error, variables);
+        } finally {
+          await onSettled?.();
+          setIsPending(false);
+        }
+      },
+    };
+  },
   useQueryClient: () => ({ invalidateQueries: mockInvalidateQueries }),
 }));
 
@@ -36,7 +55,7 @@ vi.mock('@/modules/cases/api/parts-api', () => ({ syncPartsFromBudget: (...args)
 vi.mock('@/modules/cases/components/provider-selector', () => ({ ProviderSelector: () => <input />, providerPayload: vi.fn() }));
 vi.mock('@/modules/auth/providers/session-provider', () => ({ useSession: () => ({ session }) }));
 vi.mock('@/shared/api/http-client', () => ({ requestJson: (...args) => requestJson(...args) }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast }));
 
 const validBudget = { items: [{ id: 1, visualOrder: 1, affectedPiece: 'Puerta', taskCode: 'CHAPA', damageLevelCode: 'LEVE', partDecisionCode: 'REPARAR', actionCode: 'REPARAR', partValue: 0, laborAmount: 0, estimatedHours: 0, active: true }] };
 const threeItemBudget = { items: ['Puerta', 'Capot', 'Guardabarros'].map((affectedPiece, index) => ({ ...validBudget.items[0], id: index + 1, visualOrder: index + 1, affectedPiece })) };
@@ -49,6 +68,10 @@ const workshopCaseDetail = { caseTypeCode: 'RECLAMO_TERCEROS', principalCustomer
 afterEach(() => {
   catalogsReady = true;
   mockInvalidateQueries.mockClear();
+  mockGenerateCaseBudget.mockReset();
+  mockGenerateCaseBudget.mockResolvedValue({ comparisonSnapshot: { importedPieceCount: 1 } });
+  toast.success.mockClear();
+  toast.error.mockClear();
   requestJson.mockReset();
   requestJson.mockResolvedValue([]);
 });
@@ -82,6 +105,31 @@ describe('BudgetEditorPanel comparison tabs', () => {
     // Regresión: la Idempotency-Key debe ser un UUID v4 válido incluso en
     // contextos inseguros (HTTP), donde crypto.randomUUID no existe.
     expect(mockGenerateCaseBudget).toHaveBeenCalledWith('42', expect.anything(), expect.stringMatching(UUID_V4));
+  });
+
+  it('generates once when clicked rapidly and releases the action after success', async () => {
+    let resolveGeneration;
+    mockGenerateCaseBudget.mockImplementation(() => new Promise((resolve) => { resolveGeneration = resolve; }));
+    render(<BudgetEditorPanel caseId="42" budget={validBudget} caseDetail={particularCaseDetail} workshopInfo={{}} />);
+
+    const button = screen.getByRole('button', { name: 'Generar presupuesto' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(mockGenerateCaseBudget).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Generando presupuesto...' })).toBeDisabled());
+    resolveGeneration({ comparisonSnapshot: { importedPieceCount: 1 } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Generar presupuesto' })).toBeEnabled());
+  });
+
+  it('releases generation and reports an actionable API error', async () => {
+    mockGenerateCaseBudget.mockRejectedValueOnce(new Error('La patente es obligatoria para generar el presupuesto.'));
+    render(<BudgetEditorPanel caseId="42" budget={validBudget} caseDetail={particularCaseDetail} workshopInfo={{}} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generar presupuesto' }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('La patente es obligatoria para generar el presupuesto.'));
+    expect(screen.getByRole('button', { name: 'Generar presupuesto' })).toBeEnabled();
   });
 
   it('does not expose comparison data or actions without presupuesto.ver', () => {

@@ -85,6 +85,8 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
   const [activeTab, setActiveTab] = useState('content');
   const [comparisonAnnouncement, setComparisonAnnouncement] = useState('');
   const comparisonHeadingRef = useRef(null);
+  const saveSubmittingRef = useRef(false);
+  const workshopPartsSubmittingRef = useRef(false);
   const canViewComparison = session?.authorities?.includes('presupuesto.ver') ?? false;
   const canViewProviders = session?.authorities?.includes('proveedor.ver') ?? false;
   const canUploadBudgetDocuments = (session?.authorities?.includes('documento.subir') ?? false) && (session?.authorities?.includes('documento.relacionar') ?? false);
@@ -112,6 +114,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
       queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }),
       queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'parts'] }),
       queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'insurance-processing'] }),
+      queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'third-party'] }),
       queryClient.invalidateQueries({ queryKey: ['panel'] }),
     ]);
     await onSaved?.();
@@ -144,15 +147,24 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
     onSuccess: async (response, variables) => { await invalidateWorkspace(); if (variables.closeAfterSave) { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'budget-comparisons'] }); if (canViewComparison) { setActiveTab('comparison'); setComparisonAnnouncement(`Presupuesto generado. Se importaron ${response?.comparisonSnapshot?.importedPieceCount ?? 0} piezas para comparar.`); window.setTimeout(() => comparisonHeadingRef.current?.focus(), 0); } toast.success('Presupuesto generado y comparación creada.'); } else toast.success('Presupuesto guardado.'); },
     onError: (error, variables) => {
       if (variables.itemsBeforeDelete) setItems(variables.itemsBeforeDelete);
-      toast.error(error.message || 'No pude guardar.');
+      toast.error(error?.name === 'AbortError' ? 'La acción fue cancelada. Podés intentarlo nuevamente.' : error.message || 'No pude guardar.');
     },
+    onSettled: () => { saveSubmittingRef.current = false; },
   });
-  const workshopPartsMutation = useMutation({ mutationFn: () => syncWorkshopReplacementParts(caseId), onSuccess: async (result) => { await invalidateWorkspace(); toast.success(`Repuestos: ${result.incorporated} incorporados, ${result.updated} actualizados, ${result.alreadyExisted} ya existentes, ${result.unchanged} sin cambios.`); }, onError: (error) => toast.error(error.message || 'No pude actualizar los repuestos.') });
+  const workshopPartsMutation = useMutation({ mutationFn: () => syncWorkshopReplacementParts(caseId), onSuccess: async (result) => { await invalidateWorkspace(); toast.success(`Repuestos: ${result.incorporated} incorporados, ${result.updated} actualizados, ${result.alreadyExisted} ya existentes, ${result.unchanged} sin cambios.`); }, onError: (error) => toast.error(error?.name === 'AbortError' ? 'La actualización fue cancelada. Podés intentarlo nuevamente.' : error.message || 'No pude actualizar los repuestos.'), onSettled: () => { workshopPartsSubmittingRef.current = false; } });
 
   const guardedSave = (closeAfterSave) => {
+    if (saveMutation.isPending || saveSubmittingRef.current) return;
     if (hasIncompleteLines) { toast.error(`${incompleteLines.length} línea(s) incompleta(s).`); return; }
     if (closeAfterSave && caseDetail && !caseDetail.principalVehiclePlate?.trim()) { toast.error('Completá la patente en Ficha Técnica.'); return; }
+    saveSubmittingRef.current = true;
     saveMutation.mutate({ closeAfterSave });
+  };
+
+  const guardedWorkshopPartsSync = () => {
+    if (workshopPartsMutation.isPending || workshopPartsSubmittingRef.current) return;
+    workshopPartsSubmittingRef.current = true;
+    workshopPartsMutation.mutate();
   };
 
   const removeItem = (visualOrder) => {
@@ -213,9 +225,9 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
             <Button className="bg-emerald-600 hover:bg-emerald-700" size="sm" onClick={async () => { const stored = JSON.parse(window.localStorage.getItem('front2.session.v1') || '{}'); const r = await fetch(`/api/v1/cases/${caseId}/budget/pdf`, { headers: { Authorization: `Bearer ${stored.accessToken}` } }); if (!r.ok) return toast.error('No se pudo descargar.'); const b = await r.blob(); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = `presupuesto-${caseId}.pdf`; a.click(); URL.revokeObjectURL(u); }}><FileDown className="mr-1.5 h-4 w-4" />Descargar PDF</Button>
         ) : null}
         <div className="ml-auto flex gap-2">
-          {caseDetail?.caseTypeCode === 'RECLAMO_TERCEROS' ? <Button variant="outline" onClick={() => workshopPartsMutation.mutate()} disabled={workshopPartsMutation.isPending}>Forzar actualización de repuestos</Button> : null}
-          <Button variant="outline" onClick={() => guardedSave(false)} disabled={saveMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar cambios</Button>
-          <Button onClick={() => guardedSave(true)} disabled={saveMutation.isPending}><ShieldCheck className="mr-1.5 h-4 w-4" />Generar presupuesto</Button>
+          {caseDetail?.caseTypeCode === 'RECLAMO_TERCEROS' ? <Button variant="outline" onClick={guardedWorkshopPartsSync} disabled={workshopPartsMutation.isPending}>{workshopPartsMutation.isPending ? 'Actualizando repuestos...' : 'Forzar actualización de repuestos'}</Button> : null}
+          <Button variant="outline" onClick={() => guardedSave(false)} disabled={saveMutation.isPending}><Save className="mr-1.5 h-4 w-4" />{saveMutation.isPending ? 'Guardando...' : 'Guardar cambios'}</Button>
+          <Button onClick={() => guardedSave(true)} disabled={saveMutation.isPending}><ShieldCheck className="mr-1.5 h-4 w-4" />{saveMutation.isPending ? 'Generando presupuesto...' : 'Generar presupuesto'}</Button>
         </div>
       </div>
 

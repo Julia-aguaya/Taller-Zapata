@@ -229,6 +229,8 @@ public class BudgetService {
         if (request.items() != null || request.accessoryWorks() != null) {
             canonicalPartReconciliationService.reconcile(caseId, currentUser, httpRequest);
         }
+        // Keep the persisted third-party agreement projection aligned with this budget save.
+        insuranceService.refreshThirdPartyWorkshopAmounts(caseId);
         caseAuditService.register(currentUser.id(), caseId, "presupuestos", entity.getId(), "upsert_presupuesto", null, caseAuditService.toJson(Map.of("reportStatusCode", entity.getReportStatusCode(), "totalQuoted", entity.getTotalQuoted())), caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
         particularCaseClosureService.syncClosure(caseId);
         particularEffectiveStateRecalculator.recalculate(caseId);

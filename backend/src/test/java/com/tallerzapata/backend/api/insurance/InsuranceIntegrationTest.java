@@ -350,6 +350,36 @@ class InsuranceIntegrationTest {
     }
 
     @Test
+    void shouldPersistAndReloadUpdatedThirdPartyMinimumsAfterBudgetChanges() throws Exception {
+        setCaseType("RECLAMO_TERCEROS");
+        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, cuit, requiere_fotos_reparado, dias_pago_esperados, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 2L, "00000000-0000-0000-0000-000000004002", "SANCOR", "Sancor", "30711222335", false, 20, true);
+        createBudgetWithReplacementPart(100L);
+
+        mockMvc.perform(put("/api/v1/cases/100/third-party")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CaseThirdPartyUpsertRequest(2L, "REC-MINIMOS", null, false, "TALLER", null, null, null, null, null, null))))
+                .andExpect(status().isOk());
+
+        Long partId = jdbcTemplate.queryForObject("SELECT id FROM repuestos_caso WHERE caso_id = 100", Long.class);
+        jdbcTemplate.update("INSERT INTO cotizaciones_repuesto (repuesto_id, proveedor, importe, facturacion_codigo, medio_pago_codigo) VALUES (?, ?, ?, ?, ?)", partId, "Proveedor mínimo", new BigDecimal("1234.56"), "A", "CONTADO");
+
+        mockMvc.perform(put("/api/v1/cases/100/budget")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"budgetDate\":\"2026-01-02\",\"reportStatusCode\":\"BORRADOR\",\"laborWithoutVat\":71234.56,\"vatRate\":21,\"partsTotal\":1234.56,\"estimatedDays\":2,\"items\":[{\"visualOrder\":1,\"affectedPiece\":\"Puerta\",\"taskCode\":\"CHAPA\",\"damageLevelCode\":\"LEVE\",\"partDecisionCode\":\"REEMPLAZAR\",\"actionCode\":\"REEMPLAZAR\",\"requiresReplacement\":true,\"partValue\":1234.56,\"estimatedHours\":2,\"laborAmount\":71234.56,\"active\":true}]}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100/third-party").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.minimumLaborAmount").value(71234.56))
+                .andExpect(jsonPath("$.minimumPartsAmount").value(1234.56));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT monto_minimo_labor FROM caso_terceros WHERE caso_id = 100", BigDecimal.class)).isEqualByComparingTo("71234.56");
+        assertThat(jdbcTemplate.queryForObject("SELECT monto_minimo_repuestos FROM caso_terceros WHERE caso_id = 100", BigDecimal.class)).isEqualByComparingTo("1234.56");
+    }
+
+    @Test
     void shouldNotSynchronizeThirdPartyAmountsForCleas() throws Exception {
         setCaseType("CLEAS");
         insertThirdPartyWithStoredAmounts();

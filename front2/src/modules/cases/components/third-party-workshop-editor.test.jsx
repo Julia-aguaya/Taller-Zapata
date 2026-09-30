@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThirdPartyWorkshopEditor } from './third-party-workshop-editor';
 
 let thirdParty;
+const queryClient = { invalidateQueries: vi.fn(), setQueryData: vi.fn() };
+const saveThirdParty = vi.fn();
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: ({ queryKey }) => ({
@@ -12,9 +14,9 @@ vi.mock('@tanstack/react-query', () => ({
     isLoading: false,
   }),
   useMutation: (config) => ({ isPending: false, mutate: async (payload) => { try { const result = await config.mutationFn(payload); await config.onSuccess?.(result); } catch (error) { await config.onError?.(error); } } }),
-  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+  useQueryClient: () => queryClient,
 }));
-vi.mock('@/modules/cases/api/third-party-api', () => ({ getThirdParty: vi.fn(), saveThirdParty: vi.fn(), getCasePersons: vi.fn(), addCasePerson: vi.fn(), deleteCasePerson: vi.fn(), updateCasePerson: vi.fn() }));
+vi.mock('@/modules/cases/api/third-party-api', () => ({ getThirdParty: vi.fn(), saveThirdParty: (...args) => saveThirdParty(...args), getCasePersons: vi.fn(), addCasePerson: vi.fn(), deleteCasePerson: vi.fn(), updateCasePerson: vi.fn() }));
 vi.mock('@/modules/cases/api/new-case-api', () => ({ createPerson: vi.fn(), listInsuranceCompanies: vi.fn(), searchPersons: vi.fn() }));
 vi.mock('@/shared/api/http-client', () => ({ requestJson: vi.fn() }));
 vi.mock('@/modules/cases/components/claim-data-section', () => ({ ClaimDataSection: () => null }));
@@ -28,6 +30,10 @@ const renderEditor = () => render(<ThirdPartyWorkshopEditor caseId="42" caseDeta
 describe('ThirdPartyWorkshopEditor', () => {
   beforeEach(() => {
     thirdParty = { partsProvisionModeCode: 'TALLER', minimumPartsAmount: 1200, bestQuotationSubtotal: 1200, finalPartsTotal: 800, amountToBillCompany: 3000, finalAmountForWorkshop: 2200 };
+    queryClient.invalidateQueries.mockClear();
+    queryClient.setQueryData.mockClear();
+    saveThirdParty.mockReset();
+    saveThirdParty.mockResolvedValue(thirdParty);
   });
 
   it('limits providers to Compañía, Taller and Cliente and shows calculated workshop totals', async () => {
@@ -75,7 +81,17 @@ describe('ThirdPartyWorkshopEditor', () => {
     renderEditor();
 
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
-    const { saveThirdParty } = await import('@/modules/cases/api/third-party-api');
     await waitFor(() => expect(saveThirdParty).toHaveBeenCalledWith('42', expect.not.objectContaining({ documentationAccepted: expect.anything(), documentationStatusCode: expect.anything() })));
+  });
+
+  it('replaces cached agreement minimums with the persisted response after saving', async () => {
+    const persisted = { ...thirdParty, minimumLaborAmount: 71234.56, minimumPartsAmount: 34567.89 };
+    saveThirdParty.mockResolvedValueOnce(persisted);
+    renderEditor();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    await waitFor(() => expect(saveThirdParty).toHaveBeenCalledWith('42', expect.objectContaining({ partsProvisionModeCode: 'TALLER' })));
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(['cases', '42', 'third-party'], persisted);
   });
 });
