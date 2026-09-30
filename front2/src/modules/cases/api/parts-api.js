@@ -2,6 +2,13 @@ import { requestJson } from '@/shared/api/http-client';
 
 export const listCaseParts = (caseId) => requestJson(`/cases/${caseId}/parts`);
 
+export const listRepairParts = (caseId) => requestJson(`/cases/${caseId}/repair-parts`);
+
+export const updateRepairPart = (caseId, partId, payload) => requestJson(`/cases/${caseId}/repair-parts/${partId}`, {
+  method: 'PUT',
+  body: JSON.stringify(payload),
+});
+
 export const createCasePart = (caseId, payload) => requestJson(`/cases/${caseId}/parts`, {
   method: 'POST',
   body: JSON.stringify(payload),

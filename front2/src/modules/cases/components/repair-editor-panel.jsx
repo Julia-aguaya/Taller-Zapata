@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarPlus2, CarFront, Clock, Flag, ImagePlus, Lock, PackagePlus, Plus, Save, Trash2 } from 'lucide-react';
+import { CalendarPlus2, CarFront, Clock, Flag, ImagePlus, Lock, PackagePlus, Save, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createRepairAppointment, createVehicleIntake, createVehicleOutcome, deleteRepairAppointment, getOperationCatalogs, listRepairAppointments, listVehicleIntakes, listVehicleOutcomes, updateRepairAppointment, updateVehicleIntake } from '@/modules/cases/api/operations-api';
-import { createCasePart, deleteCasePart, getPartsCatalogs, listCaseParts, resolvePartReconciliationWarning, syncPartsFromBudget, updateCasePart } from '@/modules/cases/api/parts-api';
+import { getPartsCatalogs, listRepairParts, resolvePartReconciliationWarning, updateRepairPart } from '@/modules/cases/api/parts-api';
 import { requestJson } from '@/shared/api/http-client';
 import { useSession } from '@/modules/auth/providers/session-provider';
 import { hasGlobalAdminScope } from '@/modules/auth/lib/global-admin-scope';
@@ -212,7 +212,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   });
 
   // Parts
-  const partsQuery = useQuery({ queryKey: ['cases', String(caseId), 'parts'], queryFn: () => listCaseParts(caseId) });
+  const partsQuery = useQuery({ queryKey: ['cases', String(caseId), 'parts'], queryFn: () => listRepairParts(caseId) });
   const thirdPartyQuery = useQuery({ queryKey: ['cases', String(caseId), 'third-party'], queryFn: () => getThirdParty(caseId), enabled: caseDetail?.caseTypeCode === 'RECLAMO_TERCEROS' });
   const partsCatalogsQuery = useQuery({ queryKey: ['parts', 'catalogs'], queryFn: getPartsCatalogs });
 
@@ -251,7 +251,6 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const isInsuranceRepair = ['TODO_RIESGO', 'GRANIZO', 'CLEAS'].includes(caseDetail?.caseTypeCode);
   const isThirdPartyWorkshop = caseDetail?.caseTypeCode === 'RECLAMO_TERCEROS';
   const partsProvidedByWorkshop = !isThirdPartyWorkshop || thirdPartyQuery.data?.partsProvisionModeCode === 'TALLER';
-  const syncsCanonicalParts = ['PARTICULAR', 'TODO_RIESGO', 'GRANIZO', 'RECLAMO_TERCEROS'].includes(caseDetail?.caseTypeCode);
   const supportsNoRepair = ['TODO_RIESGO', 'GRANIZO', 'CLEAS'].includes(caseDetail?.caseTypeCode);
   const canManageExceptionalRepair = hasGlobalAdminScope(session);
   const supportsUrgentRepair = ['TODO_RIESGO', 'CLEAS'].includes(caseDetail?.caseTypeCode) && caseDetail?.visibleTramiteState?.code === 'SIN_PRESENTAR';
@@ -282,29 +281,12 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
 
   const [editMode, setEditMode] = useState(false);
   const [draftParts, setDraftParts] = useState([]);
-  const [newPartForm, setNewPartForm] = useState({ description: '', finalSupplier: '', providerId: null, finalPrice: '0', budgetedPrice: '0', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' });
-  const [newPartDialogOpen, setNewPartDialogOpen] = useState(false);
   const [providerAssignment, setProviderAssignment] = useState(null);
   const [providerCreateOpen, setProviderCreateOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [subTab, setSubTab] = useState('repuestos');
-  const syncStartedForCase = useRef(null);
   const [warningToResolve, setWarningToResolve] = useState(null);
   const [warningResolution, setWarningResolution] = useState('');
-
-  const entrySyncMutation = useMutation({
-    mutationFn: () => syncPartsFromBudget(caseId),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'parts'] });
-    },
-    onError: (error) => toast.error(error.message || 'No pude sincronizar los repuestos desde el presupuesto.'),
-  });
-
-  useEffect(() => {
-    if (!syncsCanonicalParts || syncStartedForCase.current === String(caseId)) return;
-    syncStartedForCase.current = String(caseId);
-    entrySyncMutation.mutate();
-  }, [caseId, syncsCanonicalParts]);
 
   const resolveWarningMutation = useMutation({
     mutationFn: ({ partId, warningId, resolution }) => resolvePartReconciliationWarning(caseId, partId, warningId, resolution),
@@ -317,12 +299,6 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     onError: (error) => toast.error(error.message || 'No pude resolver la advertencia.'),
   });
 
-  const [deletePartConfirm, setDeletePartConfirm] = useState(null);
-  const deletePartMutation = useMutation({
-    mutationFn: (partId) => deleteCasePart(caseId, partId),
-    onSuccess: async () => { await refreshWorkspace('Repuesto eliminado.'); setDeletePartConfirm(null); },
-    onError: (error) => toast.error(error.message || 'No pude eliminar el repuesto.'),
-  });
 
   const parts = partsQuery.data ?? [];
   const appointments = appointmentsQuery.data ?? [];
@@ -344,8 +320,6 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
 
   const cancelEdit = () => {
     setDraftParts([]);
-    setNewPartForm({ description: '', finalSupplier: '', providerId: null, finalPrice: '0', budgetedPrice: '0', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' });
-    setNewPartDialogOpen(false);
     setProviderAssignment(null);
     setEditMode(false);
   };
@@ -354,76 +328,32 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     setDraftParts(prev => prev.map(p => (p._tempId || p.id) === tempId ? { ...p, [field]: value } : p));
   };
 
-  const addNewPartToDraft = () => {
-    if (!newPartForm.description.trim()) { toast.error('Falta la descripción.'); return; }
-    const tempId = -Date.now();
-    setDraftParts(prev => [...prev, { ...newPartForm, _tempId: tempId, id: tempId, budgetedPrice: Number(newPartForm.budgetedPrice) || 0, finalPrice: Number(newPartForm.finalPrice) || 0 }]);
-    setNewPartForm({ description: '', finalSupplier: '', providerId: null, finalPrice: '0', budgetedPrice: '0', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' });
-    setNewPartDialogOpen(false);
-  };
-
-  const removeFromDraft = (tempId) => {
-    setDraftParts(prev => prev.filter(p => (p._tempId || p.id) !== tempId));
-  };
-
   const saveAllChanges = async () => {
     setSaving(true);
     try {
       const promises = [];
       for (const draft of draftParts) {
-        if (draft._tempId && draft._tempId < 0) continue;
         const original = parts.find(p => p.id === draft.id);
         if (!original) continue;
         const changes = {};
         if ((draft.finalSupplier || '') !== (original.finalSupplier || '')) changes.finalSupplier = draft.finalSupplier || null;
         if ((draft.providerId || null) !== (original.providerId || null)) changes.providerId = draft.providerId || null;
-        if (Number(draft.finalPrice || 0) !== Number(original.finalPrice || 0)) changes.finalPrice = Number(draft.finalPrice) || 0;
         if (draft.statusCode !== original.statusCode) changes.statusCode = draft.statusCode;
         if (draft.purchasedByCode !== original.purchasedByCode) changes.purchasedByCode = draft.purchasedByCode;
         if (draft.paymentStatusCode !== original.paymentStatusCode) changes.paymentStatusCode = draft.paymentStatusCode || null;
         if ((draft.authorizationCode || null) !== (original.authorizationCode || null)) changes.authorizationCode = draft.authorizationCode || null;
         if (Object.keys(changes).length > 0) {
-          promises.push(updateCasePart(caseId, draft.id, {
-            budgetItemId: original.budgetItemId || null,
-            description: draft.description,
-            partCode: original.partCode || null,
+          promises.push(updateRepairPart(caseId, draft.id, {
             finalSupplier: draft.finalSupplier || null,
             providerId: draft.providerId || null,
             authorizationCode: draft.authorizationCode || null,
             statusCode: draft.statusCode || original.statusCode,
             purchasedByCode: draft.purchasedByCode || original.purchasedByCode,
             paymentStatusCode: draft.paymentStatusCode || original.paymentStatusCode || null,
-            budgetedPrice: Number(draft.budgetedPrice || original.budgetedPrice) || 0,
-            finalPrice: Number(draft.finalPrice || original.finalPrice) || 0,
             receivedDate: original.receivedDate || null,
             used: Boolean(original.used),
             returned: Boolean(original.returned),
           }));
-        }
-      }
-      for (const draft of draftParts) {
-        if (draft._tempId && draft._tempId < 0) {
-          promises.push(createCasePart(caseId, {
-            budgetItemId: null,
-            description: draft.description,
-            partCode: null,
-            finalSupplier: draft.finalSupplier || null,
-            providerId: draft.providerId || null,
-            authorizationCode: draft.authorizationCode || null,
-            statusCode: draft.statusCode,
-            purchasedByCode: draft.purchasedByCode,
-            paymentStatusCode: draft.paymentStatusCode || null,
-            budgetedPrice: Number(draft.budgetedPrice) || 0,
-            finalPrice: Number(draft.finalPrice) || 0,
-            receivedDate: null,
-            used: false,
-            returned: false,
-          }));
-        }
-      }
-      for (const original of parts) {
-        if (!draftParts.some((draft) => draft.id === original.id)) {
-          promises.push(deleteCasePart(caseId, original.id));
         }
       }
       await Promise.all(promises);
@@ -438,7 +368,6 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   };
 
   const displayParts = editMode ? draftParts : parts;
-  const partsTotal = displayParts.filter((part) => !part.accessory).reduce((sum, part) => sum + (Number(part.finalPrice) || Number(part.budgetedPrice) || 0), 0);
   const openWarnings = parts.flatMap((part) => (part.reconciliationWarnings || []).map((warning) => ({ ...warning, part })));
 
   const subTabAvailability = useMemo(() => ({
@@ -526,7 +455,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
           <div>
             <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><PackagePlus className="h-5 w-5" /></div>
             <h4 className="text-lg font-semibold">{isThirdPartyWorkshop ? 'Gestión de pedidos' : 'Repuestos'}</h4>
-            <p className="mt-1 text-sm text-muted-foreground">Total de repuestos: {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(partsTotal)}. Los trabajos extra no se incluyen.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Gestioná el pedido, proveedor, disponibilidad, recepción y uso de los repuestos. Los importes y condiciones comerciales se administran en Presupuesto.</p>
             {isThirdPartyWorkshop && !partsProvidedByWorkshop ? <p className="mt-2 text-sm text-muted-foreground">No se requiere gestionar pedidos: los repuestos los provee {thirdPartyQuery.data?.partsProvisionModeCode === 'COMPANIA' ? 'la compañía' : 'el cliente'}.</p> : null}
           </div>
           {supportsNoRepair && canManageExceptionalRepair ? (
@@ -537,7 +466,6 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
           {supportsUrgentRepair && canManageExceptionalRepair ? <Button variant="outline" size="sm" onClick={() => setUrgentRepairDialog(true)}>Reparado urgente</Button> : null}
           {editMode && partsProvidedByWorkshop ? (
             <div className="ml-auto flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setNewPartDialogOpen(true)}>Agregar repuesto extra</Button>
               <Button variant="outline" size="sm" onClick={cancelEdit}>Cancelar</Button>
               <Button size="sm" onClick={saveAllChanges} disabled={saving}>{saving ? 'Guardando...' : 'Guardar cambios'}</Button>
             </div>
@@ -550,7 +478,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
         {openWarnings.length > 0 ? <section className="mb-4 rounded-2xl border border-amber-400 bg-amber-50 p-4 text-amber-950 dark:bg-amber-950 dark:text-amber-50" aria-labelledby="reconciliation-warnings-heading" role="alert"><h5 id="reconciliation-warnings-heading" className="font-semibold">Requiere resolución manual</h5><p className="mt-1 text-sm">La fuente canónica dejó de ser REEMPLAZAR o fue removida. Estos repuestos tienen actividad y no se modificaron ni eliminaron.</p><div className="mt-3 space-y-2">{openWarnings.map((warning) => <div key={warning.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-background/60 p-3 text-sm"><span><strong>{warning.part.description}</strong>: {warning.reason}</span><Button size="sm" variant="outline" onClick={() => setWarningToResolve(warning)}>Resolver manualmente</Button></div>)}</div></section> : null}
         {displayParts.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border/70 py-6 text-center text-sm text-muted-foreground">
-            Sin repuestos. Los repuestos canónicos se originan en las líneas REEMPLAZAR y trabajos extra REEMPLAZAR del presupuesto.
+            Sin repuestos operativos para gestionar.
           </p>
         ) : (
           <div className="overflow-x-auto">
@@ -559,7 +487,6 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                 <tr className="border-b border-border/60 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   <th className="px-3 py-3 text-left">Repuesto</th>
                   <th className="px-3 py-3 text-left">Proveedor</th>
-                  <th className="px-3 py-3 text-right">Importe</th>
                   <th className="px-3 py-3 text-left">Estado</th>
                   <th className="px-3 py-3 text-left">Compra</th>
                   <th className="px-3 py-3 text-left">Pago</th>
@@ -578,13 +505,6 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                         </Button>
                       ) : (
                         <span className="text-sm">{part.finalSupplier || '—'}</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-3">
-                      {editMode ? (
-                        <Input type="number" min="0" step="0.01" className="h-9 rounded-xl text-sm text-right" value={part.finalPrice || part.budgetedPrice || 0} onChange={(e) => updateDraftField(part._tempId || part.id, 'finalPrice', e.target.value)} />
-                      ) : (
-                        <span className="text-sm">{new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(part.finalPrice || part.budgetedPrice || 0)}</span>
                       )}
                     </td>
                     <td className="px-3 py-3">
@@ -634,30 +554,12 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                         )}
                       </td>
                     ) : null}
-                    <td className="px-3 py-3">
-                       {part.sourceType === 'MANUAL' || editMode ? (
-                         <button type="button" className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950"
-                           onClick={() => editMode ? removeFromDraft(part._tempId || part.id) : setDeletePartConfirm(part)}
-                           title={editMode ? 'Quitar de la lista' : 'Eliminar repuesto'}>
-                           <Trash2 className="h-4 w-4" />
-                         </button>
-                       ) : <span className="text-xs text-muted-foreground">Gestionar en presupuesto</span>}
-                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
-        {deletePartConfirm ? (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setDeletePartConfirm(null)}>
-            <div className="w-full max-w-sm rounded-3xl border border-border bg-card p-6 shadow-haze" onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-lg font-semibold">¿Eliminar repuesto?</h3>
-              <p className="mt-2 text-sm text-muted-foreground">Se va a borrar <strong>{deletePartConfirm.description}</strong>. Esta acción no modifica el presupuesto.</p>
-              <div className="mt-5 flex gap-3"><Button variant="outline" className="flex-1" onClick={() => setDeletePartConfirm(null)}>Cancelar</Button><Button variant="destructive" className="flex-1" onClick={() => deletePartMutation.mutate(deletePartConfirm.id)} disabled={deletePartMutation.isPending}><Trash2 className="mr-1.5 h-4 w-4" />Eliminar</Button></div>
-            </div>
-          </div>
-        ) : null}
         {noRepairDialog ? (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setNoRepairDialog(null)}>
             <div className="w-full max-w-sm rounded-3xl border border-border bg-card p-6 shadow-haze" onClick={(event) => event.stopPropagation()}>
@@ -681,24 +583,13 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
             <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setWarningToResolve(null)}>Cancelar</Button><Button type="submit" disabled={resolveWarningMutation.isPending}>{resolveWarningMutation.isPending ? 'Registrando...' : 'Registrar resolución'}</Button></div>
           </form>
         </Dialog>
-        <Dialog open={newPartDialogOpen} onClose={() => setNewPartDialogOpen(false)} title="Agregar repuesto extra" description="Sumá un repuesto manual a esta edición. Se guardará al confirmar los cambios.">
-          <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); addNewPartToDraft(); }}>
-            <div className="space-y-1"><Label htmlFor="extra-part-description">Descripción</Label><Input id="extra-part-description" data-dialog-initial-focus value={newPartForm.description} onChange={(event) => setNewPartForm((form) => ({ ...form, description: event.target.value }))} required /></div>
-            <div className="space-y-1"><Label>Proveedor</Label><Button type="button" variant="outline" className="w-full justify-start" onClick={() => setProviderAssignment({ partId: null, providerId: newPartForm.providerId, finalSupplier: newPartForm.finalSupplier })}>{newPartForm.finalSupplier || 'Asignar proveedor'}</Button></div>
-            <div className="space-y-1"><Label htmlFor="extra-part-price">Importe</Label><Input id="extra-part-price" type="number" min="0" step="0.01" value={newPartForm.finalPrice} onChange={(event) => setNewPartForm((form) => ({ ...form, finalPrice: event.target.value }))} /></div>
-            <div className="space-y-1"><Label htmlFor="extra-part-status">Estado</Label><select id="extra-part-status" className="h-11 w-full rounded-2xl border border-input bg-background px-4 text-sm" value={newPartForm.statusCode} onChange={(event) => setNewPartForm((form) => ({ ...form, statusCode: event.target.value }))}>{statusCodeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
-            <div className="space-y-1"><Label htmlFor="extra-part-purchaser">Compra</Label><select id="extra-part-purchaser" className="h-11 w-full rounded-2xl border border-input bg-background px-4 text-sm" value={newPartForm.purchasedByCode} onChange={(event) => setNewPartForm((form) => ({ ...form, purchasedByCode: event.target.value }))}>{purchasedByCodeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
-            <div className="space-y-1"><Label htmlFor="extra-part-payment">Pago</Label><select id="extra-part-payment" className="h-11 w-full rounded-2xl border border-input bg-background px-4 text-sm" value={newPartForm.paymentStatusCode} onChange={(event) => setNewPartForm((form) => ({ ...form, paymentStatusCode: event.target.value }))}>{paymentStatusCodeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
-            <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setNewPartDialogOpen(false)}>Cancelar</Button><Button type="submit"><Plus className="mr-1.5 h-4 w-4" />Agregar</Button></div>
-          </form>
-        </Dialog>
         <Dialog open={Boolean(providerAssignment)} onClose={() => setProviderAssignment(null)} title="Asignar proveedor" description="Buscá un proveedor existente o ingresá un nombre manual para este repuesto.">
           <div className="space-y-4">
             <ProviderSelector value={providerAssignment?.finalSupplier || ''} providerId={providerAssignment?.providerId || null} onChange={({ providerId, snapshot }) => setProviderAssignment((current) => ({ ...current, providerId, finalSupplier: snapshot || '' }))} />
             <div className="flex justify-end gap-2">
               {session?.authorities?.includes('proveedor.gestionar') ? <Button type="button" variant="outline" onClick={() => setProviderCreateOpen(true)}>Crear global</Button> : null}
               <Button type="button" variant="outline" onClick={() => setProviderAssignment(null)}>Cancelar</Button>
-              <Button type="button" onClick={() => { if (providerAssignment.partId == null) setNewPartForm((form) => ({ ...form, providerId: providerAssignment.providerId, finalSupplier: providerAssignment.finalSupplier })); else { updateDraftField(providerAssignment.partId, 'providerId', providerAssignment.providerId); updateDraftField(providerAssignment.partId, 'finalSupplier', providerAssignment.finalSupplier); } setProviderAssignment(null); }}>Asignar</Button>
+              <Button type="button" onClick={() => { updateDraftField(providerAssignment.partId, 'providerId', providerAssignment.providerId); updateDraftField(providerAssignment.partId, 'finalSupplier', providerAssignment.finalSupplier); setProviderAssignment(null); }}>Asignar</Button>
             </div>
           </div>
         </Dialog>

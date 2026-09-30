@@ -11,6 +11,7 @@ vi.mock('@/modules/cases/api/third-party-api', () => ({ getThirdParty: (...args)
 vi.mock('@/modules/cases/api/parts-api', () => ({
   createCasePart: vi.fn(), deleteCasePart: vi.fn(), updateCasePart: (...args) => partsApi.update(...args),
   listCaseParts: (...args) => partsApi.list(...args), syncPartsFromBudget: (...args) => partsApi.sync(...args), resolvePartReconciliationWarning: (...args) => partsApi.resolveWarning(...args), getPartsCatalogs: (...args) => partsApi.catalogs(...args),
+  listRepairParts: (...args) => partsApi.list(...args), updateRepairPart: (...args) => partsApi.update(...args),
 }));
 const operationsApi = { create: vi.fn(), remove: vi.fn(), list: vi.fn().mockResolvedValue([]), intakes: vi.fn().mockResolvedValue([]), updateIntake: vi.fn() };
 vi.mock('@/modules/cases/api/operations-api', () => ({ createRepairAppointment: (...args) => operationsApi.create(...args), deleteRepairAppointment: (...args) => operationsApi.remove(...args), createVehicleIntake: vi.fn(), createVehicleOutcome: vi.fn(), getOperationCatalogs: vi.fn().mockResolvedValue({}), listRepairAppointments: (...args) => operationsApi.list(...args), listVehicleIntakes: (...args) => operationsApi.intakes(...args), listVehicleOutcomes: vi.fn().mockResolvedValue([]), updateRepairAppointment: vi.fn(), updateVehicleIntake: (...args) => operationsApi.updateIntake(...args) }));
@@ -44,7 +45,7 @@ describe('invalidateCaseProjection', () => {
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['panel'] });
   });
 
-  it('keeps PARTICULAR repair actions without comparison import and synchronizes canonical parts', async () => {
+  it('keeps PARTICULAR repair actions separate from commercial budget synchronization', async () => {
     partsApi.list.mockResolvedValue([{ id: 7, description: 'Paragolpes', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' }]);
     partsApi.catalogs.mockResolvedValue({});
     partsApi.sync.mockResolvedValue([]);
@@ -58,10 +59,10 @@ describe('invalidateCaseProjection', () => {
     expect(screen.queryByRole('columnheader', { name: 'Inventario' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Autorizado' })).toBeNull();
     expect(screen.queryByLabelText('Autorización Paragolpes')).toBeNull();
-    await waitFor(() => expect(partsApi.sync).toHaveBeenCalledWith('42'));
+    expect(partsApi.sync).not.toHaveBeenCalled();
   });
 
-  it('synchronizes PARTICULAR canonical parts without exposing comparison import or a draft sync command', async () => {
+  it('does not invoke commercial synchronization from PARTICULAR repair management', async () => {
     partsApi.list.mockResolvedValue([]);
     partsApi.catalogs.mockResolvedValue({});
     const { RepairEditorPanel } = await import('./repair-editor-panel');
@@ -70,10 +71,10 @@ describe('invalidateCaseProjection', () => {
 
     expect(screen.queryByRole('button', { name: 'Sincronizar repuestos' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Traer repuestos desde comparación' })).toBeNull();
-    await waitFor(() => expect(partsApi.sync).toHaveBeenCalledWith('42'));
+    expect(partsApi.sync).not.toHaveBeenCalled();
   });
 
-  it('synchronizes canonical parts for Taller third-party claims only', async () => {
+  it('does not invoke commercial synchronization for Taller third-party claims', async () => {
     partsApi.sync.mockClear();
     partsApi.list.mockResolvedValue([]);
     partsApi.catalogs.mockResolvedValue({});
@@ -81,31 +82,16 @@ describe('invalidateCaseProjection', () => {
 
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'RECLAMO_TERCEROS', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
 
-    await waitFor(() => expect(partsApi.sync).toHaveBeenCalledWith('42'));
+    expect(partsApi.sync).not.toHaveBeenCalled();
   });
 
-  it('adds manual parts through an accessible modal instead of an inline form', async () => {
-    const user = userEvent.setup();
+  it('does not offer commercial part creation from repair management', async () => {
     partsApi.list.mockResolvedValue([]);
     partsApi.catalogs.mockResolvedValue({});
     const { RepairEditorPanel } = await import('./repair-editor-panel');
-
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'PARTICULAR', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
-
-    await user.click(await screen.findByRole('button', { name: 'Editar' }));
-    expect(screen.queryByPlaceholderText('Repuesto a agregar')).toBeNull();
-    const trigger = screen.getByRole('button', { name: 'Agregar repuesto extra' });
-    await user.click(trigger);
-    expect(screen.getByRole('dialog', { name: 'Agregar repuesto extra' })).toBeInTheDocument();
-    await user.type(screen.getByLabelText('Descripción'), 'Espejo extra');
-    await user.click(screen.getByRole('button', { name: 'Agregar' }));
-    expect(screen.getByText('Espejo extra')).toBeInTheDocument();
-    expect(screen.queryByRole('dialog', { name: 'Agregar repuesto extra' })).toBeNull();
-
-    await user.click(trigger);
-    fireEvent.keyDown(window, { key: 'Escape' });
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Agregar repuesto extra' })).toBeNull());
-    expect(trigger).toHaveFocus();
+    await screen.findByRole('button', { name: 'Editar' });
+    expect(screen.queryByRole('button', { name: 'Agregar repuesto extra' })).toBeNull();
   });
 
   it('opens supplier search in a separate modal while editing a part', async () => {
@@ -180,7 +166,7 @@ describe('invalidateCaseProjection', () => {
     expect(partsApi.update).not.toHaveBeenCalled();
   });
 
-  it.each(['PARTICULAR', 'TODO_RIESGO', 'GRANIZO'])('runs the canonical entry sync for supported repair cases: %s', async (caseTypeCode) => {
+  it.each(['PARTICULAR', 'TODO_RIESGO', 'GRANIZO'])('does not run a commercial sync for repair cases: %s', async (caseTypeCode) => {
     partsApi.list.mockResolvedValue([]);
     partsApi.catalogs.mockResolvedValue({});
     partsApi.sync.mockResolvedValue([]);
@@ -188,7 +174,8 @@ describe('invalidateCaseProjection', () => {
 
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode, visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
 
-    await waitFor(() => expect(partsApi.sync).toHaveBeenCalledWith('42'));
+    await screen.findByText(/Sin repuestos operativos para gestionar/i);
+    expect(partsApi.sync).not.toHaveBeenCalled();
   });
 
   it.each(['TODO_RIESGO', 'GRANIZO'])('offers no-repair and revert actions for insured repair cases: %s', async (caseTypeCode) => {
@@ -261,7 +248,7 @@ describe('invalidateCaseProjection', () => {
     expect(screen.queryByRole('button', { name: 'Eliminar turno' })).toBeNull();
   });
 
-  it('keeps canonical parts in the budget while allowing manual parts to be deleted', async () => {
+  it('keeps all part lifecycle changes in repair and does not offer deletion', async () => {
     partsApi.list.mockResolvedValue([
       { id: 7, description: 'Óptica presupuestada', sourceType: 'BUDGET_ITEM', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' },
       { id: 8, description: 'Tornillo extra', sourceType: 'MANUAL', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' },
@@ -270,8 +257,8 @@ describe('invalidateCaseProjection', () => {
 
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'PARTICULAR', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
 
-    expect(await screen.findByText('Gestionar en presupuesto')).toBeInTheDocument();
-    expect(screen.getAllByTitle('Eliminar repuesto')).toHaveLength(1);
+    await screen.findByText('Óptica presupuestada');
+    expect(screen.queryByTitle('Eliminar repuesto')).toBeNull();
   });
 
   it('shows deleted appointments from the audit trail in repair history', async () => {
