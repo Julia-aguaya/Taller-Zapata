@@ -209,6 +209,29 @@ describe('DocumentsSection', () => {
     expect(await screen.findByText('Archivo revisado')).toBeInTheDocument();
   });
 
+  it('opts into all categories and preserves required metadata when editing a document', async () => {
+    session = { authorities: ['documento.editar'], scopes: [{ organizationId: null, branchId: null }] };
+    const fetchMock = vi.fn((url, options = {}) => {
+      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [{ id: 8, code: 'OTRO', name: 'Otro', requiresDate: false }, { id: 30, code: 'PRESUPUESTO', name: 'Presupuesto', requiresDate: true }] }));
+      if (url === '/api/v1/cases/42/documents?moduleCode=GESTION_TRAMITE') return Promise.resolve(jsonResponse([{ relationId: 1, documentId: 12, moduleCode: 'GESTION_TRAMITE', categoryId: 8, documentDate: '2026-05-10', originCode: 'TALLER', active: true, observations: 'Original', fileName: 'foto.pdf' }]));
+      if (url === '/api/v1/documents/12' && options.method === 'PUT') return Promise.resolve(jsonResponse({}));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderSection({ moduleCode: 'GESTION_TRAMITE', includeHistorical: false, showAllCategories: true, editableMetadata: true, showCompleteAction: false });
+
+    fireEvent.click(await screen.findByRole('button', { name: /^editar$/i }));
+    expect(screen.getByRole('option', { name: 'Presupuesto' })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Categoría del documento'), { target: { value: '30' } });
+    fireEvent.change(screen.getByLabelText('Observaciones del documento'), { target: { value: 'Actualizado' } });
+    fireEvent.click(screen.getByRole('button', { name: /^guardar$/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/documents/12', expect.objectContaining({ method: 'PUT' })));
+    const [, options] = fetchMock.mock.calls.find(([url]) => url === '/api/v1/documents/12');
+    expect(JSON.parse(options.body)).toMatchObject({ categoryId: 30, documentDate: '2026-05-10', originCode: 'TALLER', active: true, observations: 'Actualizado' });
+  });
+
   it('shows and downloads only documents from the current module', async () => {
     saveStoredAuth({ accessToken: 'access-token', refreshToken: 'refresh-token' });
     const fetchMock = vi.fn((url) => {

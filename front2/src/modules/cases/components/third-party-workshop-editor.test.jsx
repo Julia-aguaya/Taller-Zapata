@@ -2,102 +2,20 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ThirdPartyWorkshopEditor } from './third-party-workshop-editor';
 
-let thirdParty;
+let workshop; let thirdParty; let insurance; let incident; let people; let casePersons; let contacts; let personDetail; let documentsProps;
+const requestJson = vi.fn(); const saveWorkshop = vi.fn(); const addCasePerson = vi.fn(); const deleteCasePerson = vi.fn(); const createVehicle = vi.fn();
 const queryClient = { invalidateQueries: vi.fn(), setQueryData: vi.fn() };
-const saveThirdParty = vi.fn();
-
-vi.mock('@tanstack/react-query', () => ({
-  useQuery: ({ queryKey }) => ({
-    data: queryKey[2] === 'third-party' ? thirdParty
-      : queryKey[0] === 'insurance' && queryKey[1] === 'catalogs' ? { partsProvisionModeCodes: [{ code: 'COMPANIA', name: 'Compañía' }, { code: 'TALLER', name: 'Taller' }, { code: 'CLIENTE', name: 'Cliente' }], thirdPartyDocumentationStatusCodes: [{ code: 'PENDIENTE', name: 'Pendiente' }, { code: 'ACEPTADA', name: 'Aceptada' }] }
-        : [],
-    isLoading: false,
-  }),
-  useMutation: (config) => ({ isPending: false, mutate: async (payload) => { try { const result = await config.mutationFn(payload); await config.onSuccess?.(result); } catch (error) { await config.onError?.(error); } } }),
-  useQueryClient: () => queryClient,
-}));
-vi.mock('@/modules/cases/api/third-party-api', () => ({ getThirdParty: vi.fn(), saveThirdParty: (...args) => saveThirdParty(...args), getCasePersons: vi.fn(), addCasePerson: vi.fn(), deleteCasePerson: vi.fn(), updateCasePerson: vi.fn() }));
-vi.mock('@/modules/cases/api/new-case-api', () => ({ createPerson: vi.fn(), listInsuranceCompanies: vi.fn(), searchPersons: vi.fn() }));
-vi.mock('@/shared/api/http-client', () => ({ requestJson: vi.fn() }));
-vi.mock('@/modules/cases/components/claim-data-section', () => ({ ClaimDataSection: () => null }));
-vi.mock('@/modules/cases/components/lawyer-third-party-incident-section', () => ({ LawyerThirdPartyIncidentSection: () => <output data-testid="lawyer-incident">Siniestro abogado</output> }));
-vi.mock('@/modules/cases/components/documents-section', () => ({ DocumentsSection: ({ moduleCode, includeHistorical, title }) => <output data-testid="tramite-documents">{`${moduleCode}:${includeHistorical}:${title}`}</output> }));
-vi.mock('@/modules/cases/components/procedure-section', () => ({ ProcedureSection: () => null }));
-vi.mock('@/modules/cases/components/task-agenda', () => ({ TaskAgenda: () => null }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-
+vi.mock('@tanstack/react-query', () => ({ useQuery: ({ queryKey }) => ({ data: queryKey[2] === 'third-party-workshop' ? workshop : queryKey[2] === 'third-party' ? thirdParty : queryKey[2] === 'insurance' ? insurance : queryKey[2] === 'incident' ? incident : queryKey[2] === 'persons' ? casePersons : queryKey[0] === 'insurance' && queryKey[3] === 'contacts' ? contacts : queryKey[0] === 'persons' && queryKey.length === 2 ? personDetail : queryKey[0] === 'persons' ? people : queryKey[0] === 'insurance' ? [{ id: 2, name: 'Aseguradora Sur' }] : [] }), useMutation: (config) => ({ isPending: false, mutate: async (payload) => { try { const result = await config.mutationFn(payload); await config.onSuccess?.(result); } catch (error) { await config.onError?.(error); } } }), useQueryClient: () => queryClient }));
+vi.mock('@/shared/api/http-client', () => ({ requestJson: (...args) => requestJson(...args) }));
+vi.mock('@/modules/cases/api/new-case-api', () => ({ listInsuranceCompanies: vi.fn(), listInsuranceCompanyContacts: vi.fn(), searchPersons: vi.fn(), searchVehicles: vi.fn(), createPerson: vi.fn(), createVehicle: (...args) => createVehicle(...args) }));
+vi.mock('@/modules/cases/api/third-party-api', () => ({ getThirdParty: vi.fn(), saveThirdParty: vi.fn(), getThirdPartyWorkshop: vi.fn(), saveThirdPartyWorkshop: (...args) => saveWorkshop(...args), getCasePersons: vi.fn(), addCasePerson: (...args) => addCasePerson(...args), deleteCasePerson: (...args) => deleteCasePerson(...args), updateCasePerson: vi.fn() }));
+vi.mock('@/modules/cases/components/documents-section', () => ({ DocumentsSection: (props) => { documentsProps = props; return <div>Documentación del trámite</div>; } })); vi.mock('@/modules/cases/components/procedure-section', () => ({ ProcedureSection: () => <div>Procedimiento</div> })); vi.mock('@/modules/cases/components/task-agenda', () => ({ TaskAgenda: () => <div>Tareas</div> })); vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 const renderEditor = () => render(<ThirdPartyWorkshopEditor caseId="42" caseDetail={{ caseTypeCode: 'RECLAMO_TERCEROS' }} budget={null} />);
-
-describe('ThirdPartyWorkshopEditor', () => {
-  beforeEach(() => {
-    thirdParty = { partsProvisionModeCode: 'TALLER', minimumPartsAmount: 1200, bestQuotationSubtotal: 1200, finalPartsTotal: 800, amountToBillCompany: 3000, finalAmountForWorkshop: 2200 };
-    queryClient.invalidateQueries.mockClear();
-    queryClient.setQueryData.mockClear();
-    saveThirdParty.mockReset();
-    saveThirdParty.mockResolvedValue(thirdParty);
-  });
-
-  it('limits providers to Compañía, Taller and Cliente and shows calculated workshop totals', async () => {
-    renderEditor();
-
-    await waitFor(() => expect(screen.getByLabelText('Provee repuestos')).toHaveValue('TALLER'));
-    expect(Array.from(screen.getByLabelText('Provee repuestos').options).map((option) => option.textContent)).toEqual(['Seleccionar…', 'Compañía', 'Taller', 'Cliente']);
-    expect(screen.getByLabelText('Mínimo repuestos')).toHaveAttribute('readonly');
-    expect(screen.getByLabelText('Mínimo repuestos')).toHaveValue('1200');
-    expect(screen.getByLabelText('Total final repuestos')).toHaveAttribute('readonly');
-    expect(screen.getByLabelText('Total final repuestos')).toHaveValue('800');
-    expect(screen.getByLabelText('Final a favor taller')).toHaveAttribute('readonly');
-    expect(screen.getByLabelText('Final a favor taller')).toHaveValue('2200');
-  });
-
-  it('does not show the removed third-party-claim or legacy documentation controls', async () => {
-    thirdParty = { ...thirdParty, thirdPartyCompanyId: 9, claimReference: 'REC-42', documentationStatusCode: 'ACEPTADA' };
-    renderEditor();
-
-    expect(screen.queryByRole('heading', { name: /reclamo ante (el )?3ero|reclamo ante tercero/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Datos de cobertura y acuerdo' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Compañía del tercero')).toBeInTheDocument();
-    expect(screen.getByLabelText('Referencia de reclamo')).toHaveValue('REC-42');
-    expect(screen.queryByLabelText('Documentación')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Documentación completa')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('A facturar compañía')).toHaveValue('3000');
-  });
-
-  it('keeps only trámite documents in this context and delegates budget/egress files to their own modules', () => {
-    renderEditor();
-    expect(screen.getByTestId('tramite-documents')).toHaveTextContent('GESTION_TRAMITE:true:Documentación del trámite');
-  });
-
-  it.each(['COMPANIA', 'CLIENTE'])('does not show orders total when %s provides parts', async (partsProvisionModeCode) => {
-    thirdParty = { ...thirdParty, partsProvisionModeCode, finalPartsTotal: null, finalAmountForWorkshop: 3000 };
-    renderEditor();
-
-    await waitFor(() => expect(screen.getByLabelText('Provee repuestos')).toHaveValue(partsProvisionModeCode));
-    expect(screen.queryByLabelText('Total final repuestos')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Final a favor taller')).toHaveValue('3000');
-  });
-
-  it('does not let a legacy documentation value affect the coverage save request', async () => {
-    thirdParty = { ...thirdParty, documentationStatusCode: 'ACEPTADA', documentationAccepted: true };
-    renderEditor();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
-    await waitFor(() => expect(saveThirdParty).toHaveBeenCalledWith('42', expect.not.objectContaining({ documentationAccepted: expect.anything(), documentationStatusCode: expect.anything() })));
-  });
-
-  it('replaces cached agreement minimums with the persisted response after saving', async () => {
-    const persisted = { ...thirdParty, minimumLaborAmount: 71234.56, minimumPartsAmount: 34567.89 };
-    saveThirdParty.mockResolvedValueOnce(persisted);
-    renderEditor();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
-
-    await waitFor(() => expect(saveThirdParty).toHaveBeenCalledWith('42', expect.objectContaining({ partsProvisionModeCode: 'TALLER' })));
-    expect(queryClient.setQueryData).toHaveBeenCalledWith(['cases', '42', 'third-party'], persisted);
-  });
-
-  it('uses the dedicated incident form only for lawyer-managed third-party claims', () => {
-    render(<ThirdPartyWorkshopEditor caseId="42" caseDetail={{ caseTypeCode: 'RECLAMO_TERCEROS_ABOGADO' }} budget={null} lawyerManaged />);
-    expect(screen.getByTestId('lawyer-incident')).toBeInTheDocument();
-  });
+describe('ThirdPartyWorkshopEditor', () => { beforeEach(() => { workshop = { thirdPartyCompanyId: 2, claimReference: 'TER-1', thirdPartyVehicleId: 9, driverPersonId: 4, processor: { personId: 7, name: 'Luz Tramita', email: 'luz@sur.test', phone: '341-111' } }; thirdParty = { partsProvisionModeCode: 'TALLER', minimumPartsAmount: 100, finalPartsTotal: 80, amountToBillCompany: 500, finalAmountForWorkshop: 420 }; insurance = { insuranceCompanyId: 2, claimNumber: 'SIN-1' }; incident = { incidentTime: '10:30', location: 'Rosario', dynamics: 'Impacto lateral', observations: 'Con tercero' }; people = [{ id: 4, nombreMostrar: 'Mauro Conductor' }, { id: 8, nombreMostrar: 'Ana Titular' }]; contacts = [{ id: 5, personId: 8, contactRoleCode: 'TRAMITADOR', personName: 'Ana Gestora' }]; personDetail = { nombreMostrar: 'Ana Gestora', emailPrincipal: 'ana@sur.test', telefonoPrincipal: '341-222' }; casePersons = []; saveWorkshop.mockReset(); saveWorkshop.mockResolvedValue(workshop); addCasePerson.mockReset(); deleteCasePerson.mockReset(); createVehicle.mockReset(); documentsProps = null; });
+  it('configures isolated, fully categorized editable documentation immediately after third parties', () => { renderEditor(); const text = document.body.textContent; expect(text.indexOf('Terceros involucrados')).toBeLessThan(text.indexOf('Documentación del trámite')); expect(text.indexOf('Documentación del trámite')).toBeLessThan(text.indexOf('Procedimiento')); expect(documentsProps).toMatchObject({ caseId: '42', moduleCode: 'GESTION_TRAMITE', includeHistorical: false, showAllCategories: true, editableMetadata: true }); });
+  it('orders top-level sections and exposes incident fields before coverage', () => { renderEditor(); const text = document.body.textContent; expect(text.indexOf('Datos del siniestro')).toBeLessThan(text.indexOf('Datos de cobertura y acuerdo')); expect(text.indexOf('Datos de cobertura y acuerdo')).toBeLessThan(text.indexOf('Terceros involucrados')); expect(screen.getByLabelText('Hora')).toHaveValue('10:30'); expect(screen.getByLabelText('Lugar de ocurrencia')).toHaveValue('Rosario'); expect(screen.getByLabelText('Dinámica del siniestro')).toHaveValue('Impacto lateral'); expect(screen.getByLabelText('Observaciones')).toHaveValue('Con tercero'); });
+  it('displays third-party contacts without technical IDs and persists selected contacts through workshop endpoint', async () => { renderEditor(); expect(screen.getByText('Luz Tramita · luz@sur.test · 341-111')).toBeInTheDocument(); expect(screen.queryByText(/Persona #|ID de persona|#7/)).not.toBeInTheDocument(); fireEvent.click(screen.getAllByRole('button', { name: 'Guardar' }).at(-1)); await waitFor(() => expect(saveWorkshop).toHaveBeenCalledWith('42', expect.objectContaining({ thirdPartyCompanyId: 2, processorPersonId: 7 }))); });
+  it('selects a company-scoped contact with its details and sends a newly created contact to the workshop endpoint', async () => { renderEditor(); fireEvent.change(screen.getByLabelText('Tramitador/a'), { target: { value: '8' } }); expect(screen.getAllByText('Ana Gestora · ana@sur.test · 341-222').length).toBeGreaterThan(0); fireEvent.change(screen.getByLabelText('Inspector/a'), { target: { value: '__new' } }); fireEvent.change(screen.getByLabelText('Nombre Inspector/a'), { target: { value: 'Iris Inspectora' } }); fireEvent.change(screen.getByLabelText('Correo Inspector/a'), { target: { value: 'iris@sur.test' } }); fireEvent.change(screen.getByLabelText('Teléfono Inspector/a'), { target: { value: '341-333' } }); fireEvent.click(screen.getAllByRole('button', { name: 'Guardar' }).at(-1)); await waitFor(() => expect(saveWorkshop).toHaveBeenCalledWith('42', expect.objectContaining({ processorPersonId: 8, newInspector: { name: 'Iris Inspectora', email: 'iris@sur.test', phone: '341-333' } }))); });
+  it('adds the selected driver as an owner once and enforces the remaining ownership', async () => { casePersons = [{ id: 1, personId: 8, displayName: 'Ana Titular', caseRoleCode: 'TITULAR', vehicleId: 9, registryOwnershipPercentage: 60 }]; addCasePerson.mockResolvedValue({}); renderEditor(); fireEvent.click(screen.getByRole('button', { name: 'Usar conductor como titular' })); fireEvent.change(screen.getByLabelText('Porcentaje titular tercero'), { target: { value: '40' } }); fireEvent.click(screen.getByRole('button', { name: 'Agregar titular' })); await waitFor(() => expect(addCasePerson).toHaveBeenCalledWith('42', expect.objectContaining({ personId: 4, vehicleId: 9, porcentajeTitularidad: 40 }))); });
+  it('keeps permitted owner-link deletion without exposing technical IDs', async () => { casePersons = [{ id: 1, personId: 8, displayName: 'Ana Titular', caseRoleCode: 'TITULAR', vehicleId: 9, registryOwnershipPercentage: 100 }]; deleteCasePerson.mockResolvedValue({}); renderEditor(); fireEvent.click(screen.getByRole('button', { name: 'Quitar Ana Titular' })); await waitFor(() => expect(deleteCasePerson).toHaveBeenCalledWith('42', 1)); expect(screen.queryByText(/Persona #|ID de persona|#1/)).not.toBeInTheDocument(); });
 });

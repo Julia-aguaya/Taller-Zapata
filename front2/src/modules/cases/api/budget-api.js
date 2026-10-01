@@ -20,8 +20,9 @@ export const closeCaseBudget = (caseId, payload) => requestJson(`/cases/${caseId
   body: JSON.stringify(payload),
 });
 
-export const generateCaseBudget = (caseId, payload, idempotencyKey) => requestJson(`/cases/${caseId}/budget/generate`, {
+export const generateCaseBudget = (caseId, payload, idempotencyKey, { signal } = {}) => requestJson(`/cases/${caseId}/budget/generate`, {
   method: 'POST',
   headers: { 'Idempotency-Key': idempotencyKey },
   body: JSON.stringify(payload),
+  signal,
 });

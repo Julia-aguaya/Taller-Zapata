@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BudgetEditorPanel } from './budget-editor-panel';
+import { BUDGET_GENERATION_TIMEOUT_MS, BudgetEditorPanel } from './budget-editor-panel';
 
 const mockUpsertCaseBudget = vi.fn().mockResolvedValue({});
 const mockCreateCaseBudgetItem = vi.fn().mockResolvedValue({});
@@ -66,6 +66,8 @@ const insuranceCaseDetail = { caseTypeCode: 'TODO_RIESGO', principalCustomerName
 const workshopCaseDetail = { caseTypeCode: 'RECLAMO_TERCEROS', principalCustomerName: 'Juan', principalVehiclePlate: 'ABC123' };
 
 afterEach(() => {
+  vi.useRealTimers();
+  window.sessionStorage.clear();
   catalogsReady = true;
   mockInvalidateQueries.mockClear();
   mockGenerateCaseBudget.mockReset();
@@ -110,7 +112,7 @@ describe('BudgetEditorPanel comparison tabs', () => {
   it('generates once when clicked rapidly and releases the action after success', async () => {
     let resolveGeneration;
     mockGenerateCaseBudget.mockImplementation(() => new Promise((resolve) => { resolveGeneration = resolve; }));
-    render(<BudgetEditorPanel caseId="42" budget={validBudget} caseDetail={particularCaseDetail} workshopInfo={{}} />);
+    render(<BudgetEditorPanel caseId="42" budget={validBudget} caseDetail={workshopCaseDetail} workshopInfo={{}} />);
 
     const button = screen.getByRole('button', { name: 'Generar presupuesto' });
     fireEvent.click(button);
@@ -124,12 +126,35 @@ describe('BudgetEditorPanel comparison tabs', () => {
 
   it('releases generation and reports an actionable API error', async () => {
     mockGenerateCaseBudget.mockRejectedValueOnce(new Error('La patente es obligatoria para generar el presupuesto.'));
-    render(<BudgetEditorPanel caseId="42" budget={validBudget} caseDetail={particularCaseDetail} workshopInfo={{}} />);
+    render(<BudgetEditorPanel caseId="42" budget={validBudget} caseDetail={workshopCaseDetail} workshopInfo={{}} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Generar presupuesto' }));
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('La patente es obligatoria para generar el presupuesto.'));
     expect(screen.getByRole('button', { name: 'Generar presupuesto' })).toBeEnabled();
+  });
+
+  it('cancels an abnormal wait and retries with the same idempotency key', async () => {
+    vi.useFakeTimers();
+    mockGenerateCaseBudget.mockImplementationOnce((_, __, ___, { signal }) => new Promise((_, reject) => {
+      signal.addEventListener('abort', () => reject(Object.assign(new Error('cancelled'), { name: 'AbortError' })));
+    })).mockResolvedValueOnce({ comparisonSnapshot: { importedPieceCount: 1 } });
+    try {
+      render(<BudgetEditorPanel caseId="42" budget={validBudget} caseDetail={workshopCaseDetail} workshopInfo={{}} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Generar presupuesto' }));
+      await vi.advanceTimersByTimeAsync(BUDGET_GENERATION_TIMEOUT_MS);
+
+      expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/tardó demasiado/i));
+      expect(screen.getByRole('button', { name: 'Generar presupuesto' })).toBeEnabled();
+      fireEvent.click(screen.getByRole('button', { name: 'Generar presupuesto' }));
+      expect(mockGenerateCaseBudget).toHaveBeenCalledTimes(2);
+      expect(mockGenerateCaseBudget.mock.calls[1][2]).toBe(mockGenerateCaseBudget.mock.calls[0][2]);
+      await vi.runAllTimersAsync();
+      expect(screen.getByRole('button', { name: 'Generar presupuesto' })).toBeEnabled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('does not expose comparison data or actions without presupuesto.ver', () => {

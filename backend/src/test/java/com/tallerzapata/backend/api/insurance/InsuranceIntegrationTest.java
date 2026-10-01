@@ -278,6 +278,61 @@ class InsuranceIntegrationTest {
     }
 
     @Test
+    void shouldPersistAndReloadThirdPartyWorkshopContactsVehicleAndDriver() throws Exception {
+        setCaseType("RECLAMO_TERCEROS");
+        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, activo) VALUES (?, ?, ?, ?, ?)", 2L, "00000000-0000-0000-0000-000000004002", "SANCOR", "Sancor", true);
+        jdbcTemplate.update("INSERT INTO personas (id, public_id, tipo_persona, nombre, apellido, nombre_mostrar, email_principal, telefono_principal, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", 11L, "00000000-0000-0000-0000-000000001011", "fisica", "Ana", "Tramitadora", "Ana Tramitadora", "ana@sancor.test", "111", true);
+        jdbcTemplate.update("INSERT INTO personas (id, public_id, tipo_persona, nombre, apellido, nombre_mostrar, email_principal, telefono_principal, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", 12L, "00000000-0000-0000-0000-000000001012", "fisica", "Ines", "Inspectora", "Ines Inspectora", "ines@sancor.test", "222", true);
+        jdbcTemplate.update("INSERT INTO personas (id, public_id, tipo_persona, nombre, apellido, nombre_mostrar, activo) VALUES (?, ?, ?, ?, ?, ?, ?)", 13L, "00000000-0000-0000-0000-000000001013", "fisica", "Dario", "Conductor", "Dario Conductor", true);
+        jdbcTemplate.update("INSERT INTO companias_contactos (compania_id, persona_id, rol_contacto_codigo) VALUES (?, ?, ?)", 2L, 11L, "TRAMITADOR");
+        jdbcTemplate.update("INSERT INTO companias_contactos (compania_id, persona_id, rol_contacto_codigo) VALUES (?, ?, ?)", 2L, 12L, "INSPECTOR");
+
+        String payload = "{\"thirdPartyCompanyId\":2,\"claimReference\":\"REC-456\",\"thirdPartyVehicleId\":10,\"driverPersonId\":13,\"processorPersonId\":11,\"inspectorPersonId\":12}";
+        mockMvc.perform(put("/api/v1/cases/100/third-party-workshop").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.processor.personId").value(11))
+                .andExpect(jsonPath("$.processor.name").value("Ana Tramitadora"))
+                .andExpect(jsonPath("$.inspector.personId").value(12))
+                .andExpect(jsonPath("$.thirdPartyVehicleId").value(10))
+                .andExpect(jsonPath("$.driverPersonId").value(13));
+
+        jdbcTemplate.update("UPDATE personas SET nombre_mostrar = ?, email_principal = ? WHERE id = ?", "Ana Editada", "editada@sancor.test", 11L);
+        mockMvc.perform(get("/api/v1/cases/100/third-party-workshop").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.claimReference").value("REC-456"))
+                .andExpect(jsonPath("$.processor.name").value("Ana Tramitadora"))
+                .andExpect(jsonPath("$.processor.email").value("ana@sancor.test"));
+    }
+
+    @Test
+    void shouldCreateWorkshopContactAndRejectInvalidExistingContactRole() throws Exception {
+        setCaseType("RECLAMO_TERCEROS");
+        jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, activo) VALUES (?, ?, ?, ?, ?)", 2L, "00000000-0000-0000-0000-000000004002", "SANCOR", "Sancor", true);
+        jdbcTemplate.update("INSERT INTO personas (id, public_id, tipo_persona, nombre, apellido, nombre_mostrar, activo) VALUES (?, ?, ?, ?, ?, ?, ?)", 11L, "00000000-0000-0000-0000-000000001011", "fisica", "Ana", "SoloInspectora", "Ana SoloInspectora", true);
+        jdbcTemplate.update("INSERT INTO companias_contactos (compania_id, persona_id, rol_contacto_codigo) VALUES (?, ?, ?)", 2L, 11L, "INSPECTOR");
+
+        mockMvc.perform(put("/api/v1/cases/100/third-party-workshop").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"thirdPartyCompanyId\":2,\"processorPersonId\":11}"))
+                .andExpect(status().isConflict());
+
+        mockMvc.perform(put("/api/v1/cases/100/third-party-workshop").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"thirdPartyCompanyId\":2,\"newProcessor\":{\"name\":\"Nora Nueva\",\"email\":\"nora@sancor.test\",\"phone\":\"333\"}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.processor.name").value("Nora Nueva"));
+        Integer contactCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM companias_contactos WHERE compania_id = ? AND rol_contacto_codigo = ?", Integer.class, 2L, "TRAMITADOR");
+        assertThat(contactCount).isEqualTo(1);
+    }
+
+    @Test
+    void shouldRejectThirdPartyWorkshopDataForNonWorkshopCase() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/third-party-workshop").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"claimReference\":\"REC-456\"}"))
+                .andExpect(status().isConflict());
+        mockMvc.perform(get("/api/v1/cases/100/third-party-workshop").header("X-User-Id", "3"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
     void shouldDeriveFinalAmountForWorkshopWhenThirdPartyPartsProvidedByWorkshop() throws Exception {
         setCaseType("RECLAMO_TERCEROS");
         jdbcTemplate.update("INSERT INTO companias_seguro (id, public_id, codigo, nombre, cuit, requiere_fotos_reparado, dias_pago_esperados, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 2L, "00000000-0000-0000-0000-000000004002", "SANCOR", "Sancor", "30711222335", false, 20, true);

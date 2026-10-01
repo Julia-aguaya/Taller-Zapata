@@ -1020,7 +1020,7 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
             )}
           </div>
         </div>
-        {['RECLAMO_TERCEROS', 'RECLAMO_TERCEROS_ABOGADO'].includes(caseDetail.caseTypeCode) ? <RegistryOwnershipSection caseId={caseId} caseDetail={caseDetail} editable={['RECLAMO_TERCEROS', 'RECLAMO_TERCEROS_ABOGADO'].includes(caseDetail.caseTypeCode)} /> : null}
+        {caseDetail.caseTypeCode === 'RECLAMO_TERCEROS_ABOGADO' ? <RegistryOwnershipSection caseId={caseId} caseDetail={caseDetail} /> : null}
       </div>
       ) : null}
     </Card>
@@ -1061,7 +1061,7 @@ export const RegistryOwnershipSection = ({ caseId, caseDetail, editable = false 
 const RegistryPersonPicker = ({ label, personId, onPersonIdChange, suggestedPersonId, suggestedName }) => {
   const [search, setSearch] = useState('');
   const peopleQuery = useQuery({ queryKey: ['persons', 'registry-owner-search', search], queryFn: () => searchPersons({ q: search }), enabled: search.trim().length >= 2 });
-  return <div className="relative"><Label>{label}</Label>{personId ? <div className="mt-1 flex items-center gap-2 rounded-xl border border-border bg-muted/30 px-3 py-2 text-sm"><span className="min-w-0 flex-1 truncate">Persona #{personId} seleccionada</span><Button type="button" size="sm" variant="ghost" aria-label={`Quitar selección de ${label}`} onClick={() => { onPersonIdChange(''); setSearch(''); }}>Quitar selección</Button></div> : suggestedPersonId ? <Button className="mt-1 w-full justify-start" variant="outline" type="button" onClick={() => onPersonIdChange(String(suggestedPersonId))}>Usar cliente: {suggestedName}</Button> : null}<Input className="mt-1" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar titular por nombre o documento" />{(peopleQuery.data ?? []).length ? <div className="absolute z-10 mt-1 w-full rounded-xl border border-border bg-card p-1 shadow-lg">{peopleQuery.data.map((person) => <button key={person.id} type="button" className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-muted" onClick={() => { onPersonIdChange(String(person.id)); setSearch(''); }}>{person.nombreMostrar}</button>)}</div> : null}</div>;
+  return <div className="relative"><Label>{label}</Label>{suggestedPersonId && !personId ? <Button className="mt-1 w-full justify-start" variant="outline" type="button" onClick={() => onPersonIdChange(String(suggestedPersonId))}>Usar cliente: {suggestedName}</Button> : null}<Input className="mt-1" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={personId ? 'Titular seleccionado' : 'Buscar titular por nombre o documento'} />{(peopleQuery.data ?? []).length ? <div className="absolute z-10 mt-1 w-full rounded-xl border border-border bg-card p-1 shadow-lg">{peopleQuery.data.map((person) => <button key={person.id} type="button" className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-muted" onClick={() => { onPersonIdChange(String(person.id)); setSearch(''); }}>{person.nombreMostrar}</button>)}</div> : null}</div>;
 };
 
 // ── Ficha Técnica: Sub-tab Reparación ──

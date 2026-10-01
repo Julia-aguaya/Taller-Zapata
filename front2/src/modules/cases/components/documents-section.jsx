@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight, Download, Eye, FileSearch, Plus, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, Eye, FileSearch, Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useState } from 'react';
 import { requestJson } from '@/shared/api/http-client';
@@ -22,13 +22,14 @@ const currentLocalDate = () => {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 };
 
-export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode = null, includeHistorical = false, showCompleteAction = true, title = 'Documentación', categoryCodes = VISIBLE_DOCUMENT_CATEGORY_CODES, collapsible = false }) => {
+export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode = null, includeHistorical = false, showCompleteAction = true, title = 'Documentación', categoryCodes = VISIBLE_DOCUMENT_CATEGORY_CODES, collapsible = false, showAllCategories = false, editableMetadata = false }) => {
   const queryClient = useQueryClient();
   const { session } = useSession();
   const canUploadDocuments = session?.authorities?.includes('documento.subir') ?? false;
   const hasDeletePermission = session?.authorities?.includes('documento.eliminar') ?? false;
   const canDeleteDocuments = hasDeletePermission && hasGlobalAdminScope(session);
   const lacksGlobalDeleteScope = hasDeletePermission && !hasGlobalAdminScope(session);
+  const canEditDocumentMetadata = editableMetadata && (session?.authorities?.includes('documento.editar') ?? false);
   const canCompleteDocumentation = session?.authorities?.includes('workflow.documentacion.completar') ?? false;
   const [showUpload, setShowUpload] = useState(false);
   const [uploadFiles, setUploadFiles] = useState([]);
@@ -36,6 +37,10 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
   const [uploadDate, setUploadDate] = useState('');
   const [uploadObservations, setUploadObservations] = useState('');
   const [documentToDelete, setDocumentToDelete] = useState(null);
+  const [documentToEdit, setDocumentToEdit] = useState(null);
+  const [editCategory, setEditCategory] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editObservations, setEditObservations] = useState('');
   const [documentationFeedback, setDocumentationFeedback] = useState('');
   const [expanded, setExpanded] = useState(!collapsible);
   const invalidateCaseViews = () => Promise.all([
@@ -66,14 +71,32 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
     return document.moduleCode === moduleCode || (includeHistorical && document.moduleCode === 'OPERACION');
   });
   const categories = categoriesQuery.data?.categories ?? [];
-  const visibleCategories = categories.filter((category) => categoryCodes.has(category.code));
+  const visibleCategories = showAllCategories ? categories : categories.filter((category) => categoryCodes.has(category.code));
   const selectedCategory = categories.find((category) => String(category.id) === uploadCategory);
   const requiresDate = Boolean(selectedCategory?.requiresDate);
+  const selectedEditCategory = categories.find((category) => String(category.id) === editCategory);
+  const editRequiresDate = Boolean(selectedEditCategory?.requiresDate);
 
   const deleteMutation = useMutation({
     mutationFn: (docId) => requestJson(`/documents/${docId}`, { method: 'DELETE' }),
     onSuccess: async () => { await invalidateCaseViews(); setDocumentToDelete(null); toast.success('Documento eliminado.'); },
     onError: (e) => toast.error(e.message),
+  });
+
+  const updateDocumentMutation = useMutation({
+    mutationFn: () => requestJson(`/documents/${documentToEdit.documentId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        categoryId: Number(editCategory),
+        subcategoryCode: documentToEdit.subcategoryCode ?? null,
+        documentDate: editDate || null,
+        originCode: documentToEdit.originCode ?? null,
+        observations: editObservations.trim() || null,
+        active: documentToEdit.active ?? true,
+      }),
+    }),
+    onSuccess: async () => { await invalidateCaseViews(); setDocumentToEdit(null); toast.success('Documento actualizado.'); },
+    onError: (error) => toast.error(error.message),
   });
 
   const completeDocumentationMutation = useMutation({
@@ -158,6 +181,13 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
     completeDocumentationMutation.mutate();
   };
 
+  const openMetadataEditor = (doc) => {
+    setDocumentToEdit(doc);
+    setEditCategory(String(doc.categoryId));
+    setEditDate(doc.documentDate?.slice(0, 10) ?? '');
+    setEditObservations(doc.observations ?? '');
+  };
+
   return (
     <div className="rounded-3xl border border-border/70 bg-card p-5">
       <div className="flex items-center justify-between">
@@ -231,8 +261,9 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
                   <td className="px-2 py-2.5 text-muted-foreground max-w-[200px] truncate">{doc.observations ?? '—'}</td>
                    <td className="px-2 py-2.5">
                      <div className="flex gap-1">
-                       {cleasOrderPicker && categories.find((category) => category.id === doc.categoryId)?.code === 'ORDEN_CLEAS' ? <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => linkCleasOrderMutation.mutate(doc.documentId)} disabled={linkCleasOrderMutation.isPending}><Plus className="mr-1.5 h-3.5 w-3.5" />Vincular orden</Button> : null}
-                       <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => handleView(doc)}><Eye className="mr-1.5 h-3.5 w-3.5" />Visualizar</Button>
+                        {cleasOrderPicker && categories.find((category) => category.id === doc.categoryId)?.code === 'ORDEN_CLEAS' ? <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => linkCleasOrderMutation.mutate(doc.documentId)} disabled={linkCleasOrderMutation.isPending}><Plus className="mr-1.5 h-3.5 w-3.5" />Vincular orden</Button> : null}
+                        {canEditDocumentMetadata ? <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => openMetadataEditor(doc)}><Pencil className="mr-1.5 h-3.5 w-3.5" />Editar</Button> : null}
+                        <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => handleView(doc)}><Eye className="mr-1.5 h-3.5 w-3.5" />Visualizar</Button>
                       <Button variant="ghost" size="sm" className="h-8 px-2" onClick={() => handleDownload(doc)}><Download className="mr-1.5 h-3.5 w-3.5" />Descargar</Button>
                         {canDeleteDocuments ? <Button variant="ghost" size="sm" className="h-8 px-2 text-destructive" onClick={() => setDocumentToDelete(doc)} disabled={deleteMutation.isPending}><Trash2 className="mr-1.5 h-3.5 w-3.5" />Eliminar</Button> : null}
                     </div>
@@ -258,6 +289,28 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
           <Button type="button" variant="destructive" className="flex-1" onClick={() => documentToDelete && deleteMutation.mutate(documentToDelete.documentId)} disabled={deleteMutation.isPending}>
             {deleteMutation.isPending ? 'Eliminando...' : 'Eliminar'}
           </Button>
+        </div>
+      </Dialog>
+      <Dialog open={Boolean(documentToEdit)} onClose={() => { if (!updateDocumentMutation.isPending) setDocumentToEdit(null); }} title="Editar documento">
+        <div className="space-y-3">
+          <div>
+            <label htmlFor="edit-document-category" className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Categoría del documento</label>
+            <select id="edit-document-category" value={editCategory} onChange={(event) => setEditCategory(event.target.value)} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">
+              {visibleCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select>
+          </div>
+          {editRequiresDate ? <div>
+            <label htmlFor="edit-document-date" className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Fecha del documento *</label>
+            <Input id="edit-document-date" type="date" value={editDate} required onChange={(event) => setEditDate(event.target.value)} />
+          </div> : null}
+          <div>
+            <label htmlFor="edit-document-observations" className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Observaciones del documento</label>
+            <Textarea id="edit-document-observations" value={editObservations} onChange={(event) => setEditObservations(event.target.value)} className="min-h-[80px] resize-y" />
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => updateDocumentMutation.mutate()} disabled={!editCategory || (editRequiresDate && !editDate) || updateDocumentMutation.isPending}>Guardar</Button>
+            <Button size="sm" variant="ghost" onClick={() => setDocumentToEdit(null)} disabled={updateDocumentMutation.isPending}>Cancelar</Button>
+          </div>
         </div>
       </Dialog>
       {showCompleteAction ? <div className="mt-4 max-w-sm">

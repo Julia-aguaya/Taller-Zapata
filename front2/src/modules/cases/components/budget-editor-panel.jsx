@@ -21,6 +21,8 @@ const currency = new Intl.NumberFormat('es-AR', { style: 'currency', currency: '
 const fmt = (v) => (v == null ? '-' : currency.format(v));
 const yesNoAV = ['NO', 'SI', 'A/V'];
 const emptyOptions = [];
+export const BUDGET_GENERATION_TIMEOUT_MS = 30_000;
+const budgetGenerationStorageKey = (caseId) => `front2.budget-generation.v1.${caseId}`;
 
 const createEmptyItem = (visualOrder = 1, defaults = {}) => ({
   id: null, visualOrder, affectedPiece: '', taskCode: 'CHAPA',
@@ -87,9 +89,12 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
   const comparisonHeadingRef = useRef(null);
   const saveSubmittingRef = useRef(false);
   const workshopPartsSubmittingRef = useRef(false);
+  const generationAttemptRef = useRef(null);
+  const generationTimeoutRef = useRef(null);
   const canViewComparison = session?.authorities?.includes('presupuesto.ver') ?? false;
   const canViewProviders = session?.authorities?.includes('proveedor.ver') ?? false;
   const canUploadBudgetDocuments = (session?.authorities?.includes('documento.subir') ?? false) && (session?.authorities?.includes('documento.relacionar') ?? false);
+  const isThirdPartyWorkshop = caseDetail?.caseTypeCode === 'RECLAMO_TERCEROS';
   const tabIds = canViewComparison ? ['content', 'comparison'] : ['content'];
   const moveTab = (nextTab) => {
     setActiveTab(nextTab);
@@ -120,8 +125,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
     await onSaved?.();
   };
 
-  const saveMutation = useMutation({
-    mutationFn: async ({ closeAfterSave = false, itemsToSave = normalizedItems }) => {
+  const buildBudgetPayload = (itemsToSave, closeAfterSave) => {
       const payload = {
         budgetDate: header.budgetDate, reportStatusCode: closeAfterSave ? 'CERRADO' : 'BORRADOR',
         laborWithoutVat, vatRate: null, partsTotal: itemsToSave.reduce((sum, item) => sum + toDecimal(item.partValue), 0),
@@ -136,20 +140,56 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
         mechanicalWorkApplies: header.mechanicalWorkApplies === 'SI', mechanicalWorkCode: header.mechanicalWorkCode || null,
         quotedPartsDate: header.quotedPartsDate || null, quotedPartsSupplier: header.quotedPartsSupplier || null, providerId: header.providerId,
       };
+      return { ...payload, items: itemsToSave.map((item) => ({ visualOrder: item.visualOrder, affectedPiece: item.affectedPiece, taskCode: item.taskCode, damageLevelCode: item.damageLevelCode, partDecisionCode: item.partDecisionCode, actionCode: item.actionCode, requiresReplacement: item.requiresReplacement, partValue: toDecimal(item.partValue), estimatedHours: toDecimal(item.estimatedHours), laborAmount: toDecimal(item.laborAmount), active: item.active, providerId: item.providerId })) };
+  };
+
+  const releaseGenerationAttempt = () => {
+    if (generationTimeoutRef.current) window.clearTimeout(generationTimeoutRef.current);
+    generationTimeoutRef.current = null;
+    generationAttemptRef.current = null;
+  };
+
+  const createGenerationAttempt = (payload) => {
+    const fingerprint = JSON.stringify(payload);
+    const storageKey = budgetGenerationStorageKey(caseId);
+    let idempotencyKey = null;
+    try {
+      const stored = JSON.parse(window.sessionStorage.getItem(storageKey) || 'null');
+      if (stored?.fingerprint === fingerprint && typeof stored.idempotencyKey === 'string' && stored.idempotencyKey) idempotencyKey = stored.idempotencyKey;
+    } catch {
+      // Un storage corrupto no debe impedir que se pueda generar el presupuesto.
+    }
+    idempotencyKey ||= randomUuid();
+    try { window.sessionStorage.setItem(storageKey, JSON.stringify({ fingerprint, idempotencyKey })); } catch { /* El backend mantiene la idempotencia durante esta pantalla. */ }
+    return { idempotencyKey, controller: new AbortController(), storageKey, abortMessage: null };
+  };
+
+  const cancelGeneration = (message) => {
+    const attempt = generationAttemptRef.current;
+    if (!attempt || attempt.controller.signal.aborted) return;
+    attempt.abortMessage = message;
+    attempt.controller.abort();
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: async ({ closeAfterSave = false, itemsToSave = normalizedItems, payload, generationAttempt }) => {
+      const budgetPayload = payload || buildBudgetPayload(itemsToSave, closeAfterSave);
       if (closeAfterSave) {
-        const response = await generateCaseBudget(caseId, { ...payload, items: itemsToSave.map((item) => ({ visualOrder: item.visualOrder, affectedPiece: item.affectedPiece, taskCode: item.taskCode, damageLevelCode: item.damageLevelCode, partDecisionCode: item.partDecisionCode, actionCode: item.actionCode, requiresReplacement: item.requiresReplacement, partValue: toDecimal(item.partValue), estimatedHours: toDecimal(item.estimatedHours), laborAmount: toDecimal(item.laborAmount), active: item.active, providerId: item.providerId })) }, randomUuid());
+        const response = generationAttempt
+          ? await generateCaseBudget(caseId, budgetPayload, generationAttempt.idempotencyKey, { signal: generationAttempt.controller.signal })
+          : await generateCaseBudget(caseId, budgetPayload, randomUuid());
         return response;
       }
-      await upsertCaseBudget(caseId, { ...payload, items: itemsToSave.map((item) => ({ visualOrder: item.visualOrder, affectedPiece: item.affectedPiece, taskCode: item.taskCode, damageLevelCode: item.damageLevelCode, partDecisionCode: item.partDecisionCode, actionCode: item.actionCode, requiresReplacement: item.requiresReplacement, partValue: toDecimal(item.partValue), estimatedHours: toDecimal(item.estimatedHours), laborAmount: toDecimal(item.laborAmount), active: item.active, providerId: item.providerId })) });
+      await upsertCaseBudget(caseId, budgetPayload);
         if (['PARTICULAR', 'TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode)) await syncPartsFromBudget(caseId);
        if (closeAfterSave) await closeCaseBudget(caseId, { reportStatusCode: 'CERRADO', observations: header.observations || null });
     },
-    onSuccess: async (response, variables) => { await invalidateWorkspace(); if (variables.closeAfterSave) { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'budget-comparisons'] }); if (canViewComparison) { setActiveTab('comparison'); setComparisonAnnouncement(`Presupuesto generado. Se importaron ${response?.comparisonSnapshot?.importedPieceCount ?? 0} piezas para comparar.`); window.setTimeout(() => comparisonHeadingRef.current?.focus(), 0); } toast.success('Presupuesto generado y comparación creada.'); } else toast.success('Presupuesto guardado.'); },
+    onSuccess: async (response, variables) => { if (variables.generationAttempt) { try { window.sessionStorage.removeItem(variables.generationAttempt.storageKey); } catch { /* No afecta un presupuesto ya generado. */ } } await invalidateWorkspace(); if (variables.closeAfterSave) { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'budget-comparisons'] }); if (canViewComparison) { setActiveTab('comparison'); setComparisonAnnouncement(`Presupuesto generado. Se importaron ${response?.comparisonSnapshot?.importedPieceCount ?? 0} piezas para comparar.`); window.setTimeout(() => comparisonHeadingRef.current?.focus(), 0); } toast.success('Presupuesto generado y comparación creada.'); } else toast.success('Presupuesto guardado.'); },
     onError: (error, variables) => {
       if (variables.itemsBeforeDelete) setItems(variables.itemsBeforeDelete);
-      toast.error(error?.name === 'AbortError' ? 'La acción fue cancelada. Podés intentarlo nuevamente.' : error.message || 'No pude guardar.');
+      toast.error(variables.generationAttempt?.abortMessage || (error?.name === 'AbortError' ? 'La acción fue cancelada. Podés intentarlo nuevamente.' : error.message || 'No pude guardar.'));
     },
-    onSettled: () => { saveSubmittingRef.current = false; },
+    onSettled: () => { saveSubmittingRef.current = false; releaseGenerationAttempt(); },
   });
   const workshopPartsMutation = useMutation({ mutationFn: () => syncWorkshopReplacementParts(caseId), onSuccess: async (result) => { await invalidateWorkspace(); toast.success(`Repuestos: ${result.incorporated} incorporados, ${result.updated} actualizados, ${result.alreadyExisted} ya existentes, ${result.unchanged} sin cambios.`); }, onError: (error) => toast.error(error?.name === 'AbortError' ? 'La actualización fue cancelada. Podés intentarlo nuevamente.' : error.message || 'No pude actualizar los repuestos.'), onSettled: () => { workshopPartsSubmittingRef.current = false; } });
 
@@ -158,6 +198,14 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
     if (hasIncompleteLines) { toast.error(`${incompleteLines.length} línea(s) incompleta(s).`); return; }
     if (closeAfterSave && caseDetail && !caseDetail.principalVehiclePlate?.trim()) { toast.error('Completá la patente en Ficha Técnica.'); return; }
     saveSubmittingRef.current = true;
+    if (closeAfterSave && isThirdPartyWorkshop) {
+      const payload = buildBudgetPayload(normalizedItems, true);
+      const generationAttempt = createGenerationAttempt(payload);
+      generationAttemptRef.current = generationAttempt;
+      generationTimeoutRef.current = window.setTimeout(() => cancelGeneration('La generación tardó demasiado y se canceló la espera. Podés reintentar: se recuperará sin duplicar el presupuesto.'), BUDGET_GENERATION_TIMEOUT_MS);
+      saveMutation.mutate({ closeAfterSave, payload, generationAttempt });
+      return;
+    }
     saveMutation.mutate({ closeAfterSave });
   };
 
@@ -225,9 +273,10 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
             <Button className="bg-emerald-600 hover:bg-emerald-700" size="sm" onClick={async () => { const stored = JSON.parse(window.localStorage.getItem('front2.session.v1') || '{}'); const r = await fetch(`/api/v1/cases/${caseId}/budget/pdf`, { headers: { Authorization: `Bearer ${stored.accessToken}` } }); if (!r.ok) return toast.error('No se pudo descargar.'); const b = await r.blob(); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = `presupuesto-${caseId}.pdf`; a.click(); URL.revokeObjectURL(u); }}><FileDown className="mr-1.5 h-4 w-4" />Descargar PDF</Button>
         ) : null}
         <div className="ml-auto flex gap-2">
-          {caseDetail?.caseTypeCode === 'RECLAMO_TERCEROS' ? <Button variant="outline" onClick={guardedWorkshopPartsSync} disabled={workshopPartsMutation.isPending}>{workshopPartsMutation.isPending ? 'Actualizando repuestos...' : 'Forzar actualización de repuestos'}</Button> : null}
+          {isThirdPartyWorkshop ? <Button variant="outline" onClick={guardedWorkshopPartsSync} disabled={workshopPartsMutation.isPending}>{workshopPartsMutation.isPending ? 'Actualizando repuestos...' : 'Forzar actualización de repuestos'}</Button> : null}
           <Button variant="outline" onClick={() => guardedSave(false)} disabled={saveMutation.isPending}><Save className="mr-1.5 h-4 w-4" />{saveMutation.isPending ? 'Guardando...' : 'Guardar cambios'}</Button>
           <Button onClick={() => guardedSave(true)} disabled={saveMutation.isPending}><ShieldCheck className="mr-1.5 h-4 w-4" />{saveMutation.isPending ? 'Generando presupuesto...' : 'Generar presupuesto'}</Button>
+          {saveMutation.isPending && generationAttemptRef.current ? <Button variant="outline" onClick={() => cancelGeneration('Se canceló la espera. Podés reintentar: se recuperará sin duplicar el presupuesto.')}>Cancelar espera</Button> : null}
         </div>
       </div>
 

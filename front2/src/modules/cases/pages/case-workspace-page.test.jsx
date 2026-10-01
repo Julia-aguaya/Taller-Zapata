@@ -631,6 +631,22 @@ describe('CaseWorkspacePage UI', () => {
     expect(screen.getAllByText('Si').length).toBeGreaterThan(0);
   });
 
+  it('no muestra la tarjeta de titularidad en Ficha técnica de Reclamo de terceros Taller', async () => {
+    await renderPage({
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'RECLAMO_TERCEROS' },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'RECLAMO_TERCEROS' },
+    });
+
+    await userEvent.click(screen.getByRole('tab', { name: /ficha t[eé]cnica/i }));
+
+    expect(screen.queryByRole('heading', { name: 'Titularidad registral' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Primer titular')).not.toBeInTheDocument();
+    expect(screen.queryByText('Porcentaje de titularidad')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Guardar titularidad' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Persona #\d+ seleccionada/)).not.toBeInTheDocument();
+  });
+
   it('conserva los campos de edicion existentes', async () => {
     await renderPage();
 

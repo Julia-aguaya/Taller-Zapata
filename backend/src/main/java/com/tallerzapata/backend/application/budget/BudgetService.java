@@ -275,7 +275,14 @@ public class BudgetService {
         BudgetUpsertRequest closedRequest = new BudgetUpsertRequest(request.budgetDate(), "CERRADO", request.laborWithoutVat(), request.vatRate(), request.partsTotal(), request.estimatedDays(), request.minimumCloseAmount(), request.observations(), request.authorizedByName(), request.interestedName(), request.benchStraighteningApplies(), request.benchStraighteningDetail(), request.alignmentApplies(), request.alignmentDetail(), request.balancingApplies(), request.balancingDetail(), request.glassReplacementApplies(), request.glassReplacementDetail(), request.electricalWorkApplies(), request.electricalDetail(), request.mechanicalWorkApplies(), request.mechanicalWorkCode(), request.quotedPartsDate(), request.quotedPartsSupplier(), request.providerId(), request.items(), request.accessoryWorks());
         BudgetResponse budget = upsertBudget(caseId, closedRequest, httpRequest);
         BudgetEntity entity = budgetRepository.findByCaseId(caseId).orElseThrow();
-        canonicalPartReconciliationService.reconcile(caseId, currentUser, httpRequest);
+        boolean thirdPartyWorkshop = caseTypeRepository.findById(caseEntity.getCaseTypeId())
+                .map(type -> insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(type.getCode()))
+                .orElse(false);
+        // Taller generation already reconciles the submitted items in upsertBudget.
+        // Preserve the second reconciliation for other workflows and legacy requests with no changes.
+        if (!thirdPartyWorkshop || (request.items() == null && request.accessoryWorks() == null)) {
+            canonicalPartReconciliationService.reconcile(caseId, currentUser, httpRequest);
+        }
         var snapshot = budgetComparisonService.createSnapshot(caseId, entity, budgetItemRepository.findByBudgetIdOrderByVisualOrderAsc(entity.getId()), key);
         return new BudgetGenerateResponse(budget, snapshot);
     }
