@@ -29,6 +29,7 @@ const mockGetCleasFranchisePaymentSummary = vi.fn();
 const mockRegisterCleasCustomerFranchisePayment = vi.fn();
 const mockRegisterCleasCompanyFranchisePayment = vi.fn();
 let useQueryData = {};
+let queryOptions = [];
 let session = {
   user: { id: 1 },
   authorities: ['finanza.pago.crear', 'finanza.recibo.crear', 'finanza.excepcional.modificar'],
@@ -61,7 +62,7 @@ vi.mock('@/modules/cases/api/cleas-api', () => ({
 }));
 
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: ({ queryKey }) => useQueryData[JSON.stringify(queryKey)]?.__queryResult ?? ({ data: useQueryData[JSON.stringify(queryKey)], isLoading: false, isError: false }),
+  useQuery: (options) => { queryOptions.push(options); const { queryKey } = options; return useQueryData[JSON.stringify(queryKey)]?.__queryResult ?? ({ data: useQueryData[JSON.stringify(queryKey)], isLoading: false, isError: false }); },
   useMutation: ({ mutationFn, onSuccess, onError }) => {
     const fn = vi.fn();
     fn.isPending = false;
@@ -131,6 +132,7 @@ describe('PaymentsEditorPanel', () => {
   // "+ Registrar pago", impidiendo que el modal genérico se abra.
   beforeEach(() => {
     useQueryData = {};
+    queryOptions = [];
     session = {
       user: { id: 1 },
       authorities: ['finanza.pago.crear', 'finanza.recibo.crear', 'finanza.excepcional.modificar'],
@@ -142,6 +144,12 @@ describe('PaymentsEditorPanel', () => {
     mount();
     expect(screen.getByText('Juan')).toBeTruthy();
     expect(screen.getByText('ABC123')).toBeTruthy();
+  });
+
+  it('does not enable legal recoverables until the legal case exists', () => {
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'RECLAMO_TERCEROS_ABOGADO' } });
+
+    expect(queryOptions.find((query) => query.queryKey.at(-1) === 'legal-recoverables')?.enabled).toBe(false);
   });
 
   it('shows the CLEAS number in the summary and payment modal', () => {

@@ -41,6 +41,7 @@ import org.apache.poi.ss.usermodel.CellStyle;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.data.domain.Sort;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -106,11 +107,13 @@ public class InsuranceService {
     private final NotificationRepository notificationRepository;
     private final LegalLesionadoRepository legalLesionadoRepository;
     private final LesionadoEsTypeRepository lesionadoEsTypeRepository;
-    private final DocumentationWorkflowStateService documentationWorkflowStateService;
+    private final LawyerThirdPartyIncidentRepository lawyerThirdPartyIncidentRepository;
+    @Autowired
+    private DocumentationWorkflowStateService documentationWorkflowStateService;
 
     private static final String ADMIN_ROLE_CODE = "ROLE_ADMIN";
 
-    public InsuranceService(InsuranceCompanyRepository companyRepository, InsuranceCompanyContactRepository companyContactRepository, InsuranceRoleContactRepository roleContactRepository, PersonRepository personRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CasePersonRepository casePersonRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, BelowMinimumAgreementApprovalRepository belowMinimumAgreementApprovalRepository, CaseFranchiseRepository caseFranchiseRepository, InsuranceModalityRepository modalityRepository, InsuranceOpinionRepository opinionRepository, InsuranceQuotationStatusRepository quotationStatusRepository, InsurancePartsAuthorizationRepository partsAuthorizationRepository, FranchiseStatusRepository franchiseStatusRepository, FranchiseRecoveryTypeRepository franchiseRecoveryTypeRepository, FranchiseOpinionRepository franchiseOpinionRepository, CaseCleasRepository caseCleasRepository, CaseThirdPartyRepository caseThirdPartyRepository, CleasScopeRepository cleasScopeRepository, CleasOpinionRepository cleasOpinionRepository, PaymentStatusRepository paymentStatusRepository, ThirdPartyDocumentationStatusRepository thirdPartyDocumentationStatusRepository, PartsProvisionModeRepository partsProvisionModeRepository, CaseLegalRepository caseLegalRepository, LegalNewsRepository legalNewsRepository, LegalExpenseRepository legalExpenseRepository, LegalProcessorRepository legalProcessorRepository, LegalClaimantRepository legalClaimantRepository, LegalInstanceRepository legalInstanceRepository, LegalClosureReasonRepository legalClosureReasonRepository, LegalExpensePayerRepository legalExpensePayerRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, TodoRiesgoStateFactsRepository todoRiesgoStateFactsRepository, ProviderRepository providerRepository, BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CasePartRepository casePartRepository, PartSupplierQuoteRepository partSupplierQuoteRepository, FinancialMovementRepository financialMovementRepository, FranchiseRecoveryService franchiseRecoveryService, UserRoleRepository userRoleRepository, NotificationRepository notificationRepository, LegalLesionadoRepository legalLesionadoRepository, LesionadoEsTypeRepository lesionadoEsTypeRepository, DocumentationWorkflowStateService documentationWorkflowStateService) {
+    public InsuranceService(InsuranceCompanyRepository companyRepository, InsuranceCompanyContactRepository companyContactRepository, InsuranceRoleContactRepository roleContactRepository, PersonRepository personRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CasePersonRepository casePersonRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, BelowMinimumAgreementApprovalRepository belowMinimumAgreementApprovalRepository, CaseFranchiseRepository caseFranchiseRepository, InsuranceModalityRepository modalityRepository, InsuranceOpinionRepository opinionRepository, InsuranceQuotationStatusRepository quotationStatusRepository, InsurancePartsAuthorizationRepository partsAuthorizationRepository, FranchiseStatusRepository franchiseStatusRepository, FranchiseRecoveryTypeRepository franchiseRecoveryTypeRepository, FranchiseOpinionRepository franchiseOpinionRepository, CaseCleasRepository caseCleasRepository, CaseThirdPartyRepository caseThirdPartyRepository, CleasScopeRepository cleasScopeRepository, CleasOpinionRepository cleasOpinionRepository, PaymentStatusRepository paymentStatusRepository, ThirdPartyDocumentationStatusRepository thirdPartyDocumentationStatusRepository, PartsProvisionModeRepository partsProvisionModeRepository, CaseLegalRepository caseLegalRepository, LegalNewsRepository legalNewsRepository, LegalExpenseRepository legalExpenseRepository, LegalProcessorRepository legalProcessorRepository, LegalClaimantRepository legalClaimantRepository, LegalInstanceRepository legalInstanceRepository, LegalClosureReasonRepository legalClosureReasonRepository, LegalExpensePayerRepository legalExpensePayerRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, TodoRiesgoStateFactsRepository todoRiesgoStateFactsRepository, ProviderRepository providerRepository, BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CasePartRepository casePartRepository, PartSupplierQuoteRepository partSupplierQuoteRepository, FinancialMovementRepository financialMovementRepository, FranchiseRecoveryService franchiseRecoveryService, UserRoleRepository userRoleRepository, NotificationRepository notificationRepository, LegalLesionadoRepository legalLesionadoRepository, LesionadoEsTypeRepository lesionadoEsTypeRepository, LawyerThirdPartyIncidentRepository lawyerThirdPartyIncidentRepository) {
         this.companyRepository = companyRepository;
         this.companyContactRepository = companyContactRepository;
         this.roleContactRepository = roleContactRepository;
@@ -160,7 +163,7 @@ public class InsuranceService {
         this.notificationRepository = notificationRepository;
         this.legalLesionadoRepository = legalLesionadoRepository;
         this.lesionadoEsTypeRepository = lesionadoEsTypeRepository;
-        this.documentationWorkflowStateService = documentationWorkflowStateService;
+        this.lawyerThirdPartyIncidentRepository = lawyerThirdPartyIncidentRepository;
     }
 
     @Transactional(readOnly = true)
@@ -503,15 +506,13 @@ public class InsuranceService {
         entity.setCaseId(caseId);
         entity.setThirdPartyCompanyId(request.thirdPartyCompanyId());
         entity.setClaimReference(blankToNull(request.claimReference()));
+        String documentationStatusCode = normalizedOptionalCode(request.documentationStatusCode());
         if (insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeCode(caseEntity))) {
-            // Los campos legados se conservan por compatibilidad de persistencia, pero la
-            // documentación de Taller sólo se gobierna desde el workflow del caso.
-            if (entity.getId() == null) {
-                entity.setDocumentationStatusCode(null);
-                entity.setDocumentationAccepted(false);
-            }
+            // El código es la fuente de verdad. El booleano conserva compatibilidad al leer
+            // registros históricos, pero se normaliza en cada escritura de Taller.
+            entity.setDocumentationStatusCode(documentationStatusCode);
+            entity.setDocumentationAccepted("ACEPTADA".equals(documentationStatusCode));
         } else {
-            String documentationStatusCode = normalizedOptionalCode(request.documentationStatusCode());
             entity.setDocumentationStatusCode(documentationStatusCode);
             entity.setDocumentationAccepted(Boolean.TRUE.equals(request.documentationAccepted()));
         }
@@ -529,6 +530,42 @@ public class InsuranceService {
                         "finalAmountForWorkshop", entity.getFinalAmountForWorkshop())),
                 caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
         return toCaseThirdPartyResponse(entity, caseEntity);
+    }
+
+    @Transactional(readOnly = true)
+    public LawyerThirdPartyIncidentResponse getLawyerThirdPartyIncident(Long caseId) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        requireLawyerThirdPartyClaim(caseEntity);
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.ver");
+        return lawyerThirdPartyIncidentRepository.findByCaseId(caseId).map(this::toLawyerThirdPartyIncidentResponse).orElse(null);
+    }
+
+    @Transactional
+    public LawyerThirdPartyIncidentResponse upsertLawyerThirdPartyIncident(Long caseId, LawyerThirdPartyIncidentUpsertRequest request, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        requireLawyerThirdPartyClaim(caseEntity);
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
+        if (request.ownershipPercentage() != null && (request.ownershipPercentage() < 0 || request.ownershipPercentage() > 100)) {
+            throw new ConflictException("El porcentaje de titularidad debe estar entre 0 y 100");
+        }
+        LawyerThirdPartyIncidentEntity entity = lawyerThirdPartyIncidentRepository.findByCaseId(caseId).orElseGet(LawyerThirdPartyIncidentEntity::new);
+        entity.setCaseId(caseId);
+        entity.setThirdPartyPlate(blankToNull(request.thirdPartyPlate()));
+        entity.setThirdPartyMake(blankToNull(request.thirdPartyMake()));
+        entity.setThirdPartyModel(blankToNull(request.thirdPartyModel()));
+        entity.setDriverName(blankToNull(request.driverName()));
+        entity.setDriverDni(blankToNull(request.driverDni()));
+        entity.setDriverAddress(blankToNull(request.driverAddress()));
+        entity.setDriverIsOwner(request.driverIsOwner());
+        entity.setOwnerName(blankToNull(request.ownerName()));
+        entity.setOwnerDni(blankToNull(request.ownerDni()));
+        entity.setOwnerAddress(blankToNull(request.ownerAddress()));
+        entity.setOwnershipPercentage(request.ownershipPercentage());
+        entity = lawyerThirdPartyIncidentRepository.save(entity);
+        caseAuditService.register(currentUser.id(), caseId, "caso_terceros_abogado_siniestro", entity.getId(), "upsert_siniestro_tercero_abogado", null, caseAuditService.toJson(CaseAuditService.auditMap("thirdPartyPlate", entity.getThirdPartyPlate(), "driverIsOwner", entity.getDriverIsOwner())), caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
+        return toLawyerThirdPartyIncidentResponse(entity);
     }
 
     /**
@@ -667,7 +704,7 @@ public class InsuranceService {
         CaseEntity caseEntity = requireCase(caseId);
         requireLegalAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
-        CaseLegalEntity caseLegal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
+        CaseLegalEntity caseLegal = requireLegalForMutation(caseEntity);
         LegalNewsEntity entity = new LegalNewsEntity();
         entity.setCaseLegalId(caseLegal.getId());
         entity.setNewsDate(request.newsDate());
@@ -694,7 +731,7 @@ public class InsuranceService {
         CaseEntity caseEntity = requireCase(caseId);
         requireLegalAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
-        CaseLegalEntity caseLegal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
+        CaseLegalEntity caseLegal = requireLegalForMutation(caseEntity);
         LegalLesionadoEntity entity = new LegalLesionadoEntity();
         entity.setCaseLegalId(caseLegal.getId());
         applyLesionadoRequest(entity, request);
@@ -755,6 +792,24 @@ public class InsuranceService {
         entity.setProvesIncome(request.provesIncome());
     }
 
+    /**
+     * Los subformularios de la solapa Abogado pueden ser el primer dato cargado en una
+     * carpeta nueva. Para RECLAMO_TERCEROS_ABOGADO se crea su agregado legal vacío de
+     * manera idempotente, sin copiar este comportamiento a otros circuitos legales.
+     */
+    private CaseLegalEntity requireLegalForMutation(CaseEntity caseEntity) {
+        return caseLegalRepository.findByCaseId(caseEntity.getId()).orElseGet(() -> {
+            if (!insuranceRepairCasePolicy.isThirdPartyLawyerClaim(caseTypeCode(caseEntity))) {
+                throw new ResourceNotFoundException("No existe caso_legal para el caso " + caseEntity.getId());
+            }
+            CaseLegalEntity legal = new CaseLegalEntity();
+            legal.setCaseId(caseEntity.getId());
+            // La ausencia de decisión no debe suprimir una reparación.
+            legal.setRepairsVehicle(true);
+            return caseLegalRepository.save(legal);
+        });
+    }
+
     private LegalLesionadoEntity requireLesionado(Long caseLegalId, Long lesionadoId) {
         LegalLesionadoEntity entity = legalLesionadoRepository.findById(lesionadoId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el lesionado " + lesionadoId));
@@ -793,7 +848,7 @@ public class InsuranceService {
         CaseEntity caseEntity = requireCase(caseId);
         requireLegalAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
-        CaseLegalEntity caseLegal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
+        CaseLegalEntity caseLegal = requireLegalForMutation(caseEntity);
         if (request.paidByCode() != null && !legalExpensePayerRepository.existsByCodeAndActiveTrue(normalizeCode(request.paidByCode()))) throw new ConflictException("paidByCode no permitido: " + request.paidByCode());
         LegalExpenseEntity entity = new LegalExpenseEntity();
         entity.setCaseLegalId(caseLegal.getId());
@@ -866,11 +921,7 @@ public class InsuranceService {
 
     private void validateThirdPartyRequest(CaseEntity caseEntity, CaseThirdPartyUpsertRequest request) {
         if (request.thirdPartyCompanyId() != null && !companyRepository.existsById(request.thirdPartyCompanyId())) throw new ResourceNotFoundException("No existe la compania tercero " + request.thirdPartyCompanyId());
-        if (!insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeCode(caseEntity))
-                && normalizedOptionalCode(request.documentationStatusCode()) != null
-                && !thirdPartyDocumentationStatusRepository.existsByCodeAndActiveTrue(normalizeCode(request.documentationStatusCode()))) {
-            throw new ConflictException("documentationStatusCode no permitido: " + request.documentationStatusCode());
-        }
+        if (normalizedOptionalCode(request.documentationStatusCode()) != null && !thirdPartyDocumentationStatusRepository.existsByCodeAndActiveTrue(normalizeCode(request.documentationStatusCode()))) throw new ConflictException("documentationStatusCode no permitido: " + request.documentationStatusCode());
         if (normalizedOptionalCode(request.partsProvisionModeCode()) != null && !partsProvisionModeRepository.existsByCodeAndActiveTrue(normalizeCode(request.partsProvisionModeCode()))) throw new ConflictException("partsProvisionModeCode no permitido: " + request.partsProvisionModeCode());
         if (insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeCode(caseEntity))
                 && normalizedOptionalCode(request.partsProvisionModeCode()) != null
@@ -970,6 +1021,7 @@ public class InsuranceService {
     private void requireInsuranceAllowed(CaseEntity caseEntity) { if (!insuranceRepairCasePolicy.isInsuranceCase(caseTypeCode(caseEntity))) throw new ConflictException("Seguro no aplica a este tipo de tramite"); }
     private void requireCleasAllowed(CaseEntity caseEntity) { if (!insuranceRepairCasePolicy.isCleasCase(caseTypeCode(caseEntity))) throw new ConflictException("CLEAS solo aplica a casos CLEAS"); }
     private void requireThirdPartyAllowed(CaseEntity caseEntity) { if (!insuranceRepairCasePolicy.allowsCleasThirdParty(caseTypeCode(caseEntity))) throw new ConflictException("Datos de terceros no aplican a este tipo de tramite"); }
+    private void requireLawyerThirdPartyClaim(CaseEntity caseEntity) { if (!insuranceRepairCasePolicy.isThirdPartyLawyerClaim(caseTypeCode(caseEntity))) throw new ConflictException("Los datos del siniestro del tercero solo aplican a reclamos de terceros por abogado"); }
     private void requireLegalAllowed(CaseEntity caseEntity) { if (!insuranceRepairCasePolicy.isThirdPartyLawyerClaim(caseTypeCode(caseEntity)) && !("RECUPERO_FRANQUICIA".equals(caseTypeCode(caseEntity)) && franchiseRecoveryService.isManagedByLawyer(caseEntity.getId()))) throw new ConflictException("Gestion legal solo aplica a reclamos de terceros por abogado o recuperos gestionados por abogado"); }
     private String caseTypeCode(CaseEntity caseEntity) { return caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(CaseTypeEntity::getCode).orElse(""); }
     private InsuranceCompanyResponse toCompanyResponse(InsuranceCompanyEntity e) { return new InsuranceCompanyResponse(e.getId(), e.getPublicId(), e.getCode(), e.getName(), e.getTaxId(), e.getRequiresRepairPhotos(), e.getExpectedPaymentDays(), e.getActive()); }
@@ -1028,6 +1080,7 @@ public class InsuranceService {
                 : e.getDocumentationStatusCode();
         return new CaseThirdPartyResponse(e.getId(), e.getCaseId(), e.getThirdPartyCompanyId(), e.getClaimReference(), documentationStatusCode, documentationAccepted, e.getPartsProvisionModeCode(), e.getMinimumLaborAmount(), e.getMinimumPartsAmount(), e.getBestQuotationSubtotal(), e.getFinalPartsTotal(), e.getAmountToBillCompany(), e.getFinalAmountForWorkshop());
     }
+    private LawyerThirdPartyIncidentResponse toLawyerThirdPartyIncidentResponse(LawyerThirdPartyIncidentEntity e) { return new LawyerThirdPartyIncidentResponse(e.getThirdPartyPlate(), e.getThirdPartyMake(), e.getThirdPartyModel(), e.getDriverName(), e.getDriverDni(), e.getDriverAddress(), e.getDriverIsOwner(), e.getOwnerName(), e.getOwnerDni(), e.getOwnerAddress(), e.getOwnershipPercentage()); }
     private CaseLegalResponse toCaseLegalResponse(CaseLegalEntity e) { return new CaseLegalResponse(e.getId(), e.getCaseId(), e.getProcessorCode(), e.getClaimantCode(), e.getInstanceCode(), e.getEntryDate(), e.getCuij(), e.getCourt(), e.getCaseNumber(), e.getCounterpartLawyer(), e.getCounterpartPhone(), e.getCounterpartEmail(), e.getRepairsVehicle(), e.getClosedByCode(), e.getLegalCloseDate(), e.getTotalProceedsAmount(), e.getObservations(), e.getClosingNotes()); }
     private LegalNewsResponse toLegalNewsResponse(LegalNewsEntity e) { return new LegalNewsResponse(e.getId(), e.getCaseLegalId(), e.getNewsDate(), e.getDetail(), e.getNotifyCustomer(), e.getNotifiedAt()); }
     private LegalExpenseResponse toLegalExpenseResponse(LegalExpenseEntity e) { return new LegalExpenseResponse(e.getId(), e.getCaseLegalId(), e.getConcept(), e.getAmount(), e.getExpenseDate(), e.getPaidByCode(), e.getFinancialMovementId(), e.getSumsToWorkshop()); }

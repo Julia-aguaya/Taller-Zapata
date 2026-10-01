@@ -19,8 +19,8 @@ export const GestionTramiteEditor = ({ caseId, caseDetail, budget, nroCleas, set
     return <CleasGestionTramiteEditor caseId={caseId} caseDetail={caseDetail} nroCleas={nroCleas} setNroCleas={setNroCleas} insurance={cleasInsurance} onInsuranceChange={onCleasInsuranceChange} cleasAgreedAmount={cleasAgreedAmount} setCleasAgreedAmount={setCleasAgreedAmount} cleasFranchiseDistribution={cleasFranchiseDistribution} onCleasFranchiseDistributionChange={onCleasFranchiseDistributionChange} cleasOver={cleasOver} opinion={cleasOpinion} onCleasOverChange={onCleasOverChange} onOpinionChange={onCleasOpinionChange} cleasClosedAt={cleasClosedAt} onRequestClosure={onRequestCleasClosure} />;
   }
 
-  if (caseTypeCode === 'RECLAMO_TERCEROS') {
-    return <ThirdPartyWorkshopEditor caseId={caseId} caseDetail={caseDetail} budget={budget} />;
+  if (['RECLAMO_TERCEROS', 'RECLAMO_TERCEROS_ABOGADO'].includes(caseTypeCode)) {
+    return <ThirdPartyWorkshopEditor caseId={caseId} caseDetail={caseDetail} budget={budget} lawyerManaged={caseTypeCode === 'RECLAMO_TERCEROS_ABOGADO'} />;
   }
 
   const generatePdf = async () => {

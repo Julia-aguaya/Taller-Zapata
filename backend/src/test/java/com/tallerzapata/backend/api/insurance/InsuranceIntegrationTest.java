@@ -614,6 +614,22 @@ class InsuranceIntegrationTest {
     }
 
     @Test
+    void shouldInitializeLegalCaseWhenFirstLawyerChildRecordIsCreated() throws Exception {
+        setCaseType("RECLAMO_TERCEROS_ABOGADO");
+
+        mockMvc.perform(post("/api/v1/cases/100/legal-news")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new LegalNewsCreateRequest(LocalDate.of(2026, 3, 10), "Primer avance", false))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.detail").value("Primer avance"));
+
+        mockMvc.perform(get("/api/v1/cases/100/legal").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.repairsVehicle").value(true));
+    }
+
+    @Test
     void shouldCreateAndListLegalExpenses() throws Exception {
         setCaseType("RECLAMO_TERCEROS_ABOGADO");
 
@@ -1131,6 +1147,45 @@ class InsuranceIntegrationTest {
                 .andExpect(jsonPath("$.visibleRepairState.code").value("SIN_TURNO"));
 
         assertThat(jdbcTemplate.queryForObject("SELECT no_repara FROM caso_tramitacion_seguro WHERE caso_id = 100", Boolean.class)).isFalse();
+    }
+
+    @Test
+    void shouldPersistLawyerThirdPartyIncidentSeparatelyFromGenericIncident() throws Exception {
+        setCaseType("RECLAMO_TERCEROS_ABOGADO");
+
+        mockMvc.perform(put("/api/v1/cases/100/incident")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"location\":\"Mitre 400\",\"incidentTime\":\"09:30\",\"dynamics\":\"Alcance\",\"observations\":\"Sin heridos\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/cases/100/lawyer-third-party-incident")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"thirdPartyPlate\":\"AB123CD\",\"thirdPartyMake\":\"Ford\",\"thirdPartyModel\":\"Focus\",\"driverName\":\"Ana Conductora\",\"driverDni\":\"30111222\",\"driverAddress\":\"Calle 1\",\"driverIsOwner\":false,\"ownerName\":\"Beto Titular\",\"ownerDni\":\"32111222\",\"ownerAddress\":\"Calle 2\",\"ownershipPercentage\":50}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.thirdPartyPlate").value("AB123CD"))
+                .andExpect(jsonPath("$.driverIsOwner").value(false));
+
+        mockMvc.perform(get("/api/v1/cases/100/lawyer-third-party-incident").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ownerName").value("Beto Titular"))
+                .andExpect(jsonPath("$.ownershipPercentage").value(50));
+        mockMvc.perform(get("/api/v1/cases/100/incident").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.location").value("Mitre 400"))
+                .andExpect(jsonPath("$.incidentTime").value("09:30"))
+                .andExpect(jsonPath("$.dynamics").value("Alcance"))
+                .andExpect(jsonPath("$.observations").value("Sin heridos"));
+    }
+
+    @Test
+    void shouldRejectLawyerThirdPartyIncidentForWorkshopClaim() throws Exception {
+        setCaseType("RECLAMO_TERCEROS");
+        mockMvc.perform(put("/api/v1/cases/100/lawyer-third-party-incident")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"thirdPartyPlate\":\"AB123CD\"}"))
+                .andExpect(status().isConflict());
     }
 
     @Test

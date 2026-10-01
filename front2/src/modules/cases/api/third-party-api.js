@@ -4,6 +4,8 @@ const casePath = (caseId) => `/cases/${caseId}`;
 
 export const getThirdParty = (caseId) => requestJson(`${casePath(caseId)}/third-party`);
 export const saveThirdParty = (caseId, payload) => requestJson(`${casePath(caseId)}/third-party`, { method: 'PUT', body: JSON.stringify(payload) });
+export const getLawyerThirdPartyIncident = (caseId) => requestJson(`${casePath(caseId)}/lawyer-third-party-incident`);
+export const saveLawyerThirdPartyIncident = (caseId, payload) => requestJson(`${casePath(caseId)}/lawyer-third-party-incident`, { method: 'PUT', body: JSON.stringify(payload) });
 export const getLegalCase = (caseId) => requestJson(`${casePath(caseId)}/legal`);
 export const saveLegalCase = (caseId, payload) => requestJson(`${casePath(caseId)}/legal`, { method: 'PUT', body: JSON.stringify(payload) });
 export const getLegalNews = (caseId) => requestJson(`${casePath(caseId)}/legal-news`);

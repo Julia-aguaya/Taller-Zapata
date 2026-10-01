@@ -20,6 +20,7 @@ vi.mock('@/modules/cases/api/third-party-api', () => ({ getThirdParty: vi.fn(), 
 vi.mock('@/modules/cases/api/new-case-api', () => ({ createPerson: vi.fn(), listInsuranceCompanies: vi.fn(), searchPersons: vi.fn() }));
 vi.mock('@/shared/api/http-client', () => ({ requestJson: vi.fn() }));
 vi.mock('@/modules/cases/components/claim-data-section', () => ({ ClaimDataSection: () => null }));
+vi.mock('@/modules/cases/components/lawyer-third-party-incident-section', () => ({ LawyerThirdPartyIncidentSection: () => <output data-testid="lawyer-incident">Siniestro abogado</output> }));
 vi.mock('@/modules/cases/components/documents-section', () => ({ DocumentsSection: ({ moduleCode, includeHistorical, title }) => <output data-testid="tramite-documents">{`${moduleCode}:${includeHistorical}:${title}`}</output> }));
 vi.mock('@/modules/cases/components/procedure-section', () => ({ ProcedureSection: () => null }));
 vi.mock('@/modules/cases/components/task-agenda', () => ({ TaskAgenda: () => null }));
@@ -93,5 +94,10 @@ describe('ThirdPartyWorkshopEditor', () => {
 
     await waitFor(() => expect(saveThirdParty).toHaveBeenCalledWith('42', expect.objectContaining({ partsProvisionModeCode: 'TALLER' })));
     expect(queryClient.setQueryData).toHaveBeenCalledWith(['cases', '42', 'third-party'], persisted);
+  });
+
+  it('uses the dedicated incident form only for lawyer-managed third-party claims', () => {
+    render(<ThirdPartyWorkshopEditor caseId="42" caseDetail={{ caseTypeCode: 'RECLAMO_TERCEROS_ABOGADO' }} budget={null} lawyerManaged />);
+    expect(screen.getByTestId('lawyer-incident')).toBeInTheDocument();
   });
 });

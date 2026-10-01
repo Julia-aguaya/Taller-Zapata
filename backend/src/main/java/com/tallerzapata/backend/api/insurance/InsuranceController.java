@@ -143,6 +143,14 @@ public class InsuranceController {
     @PutMapping("/cases/{caseId}/third-party")
     public CaseThirdPartyResponse upsertCaseThirdParty(@PathVariable Long caseId, @RequestBody CaseThirdPartyUpsertRequest request, HttpServletRequest httpRequest) { return insuranceService.upsertCaseThirdParty(caseId, request, httpRequest); }
 
+    @PreAuthorize("hasAuthority('seguro.ver')")
+    @GetMapping("/cases/{caseId}/lawyer-third-party-incident")
+    public LawyerThirdPartyIncidentResponse getLawyerThirdPartyIncident(@PathVariable Long caseId) { return insuranceService.getLawyerThirdPartyIncident(caseId); }
+
+    @PreAuthorize("hasAuthority('seguro.crear')")
+    @PutMapping("/cases/{caseId}/lawyer-third-party-incident")
+    public LawyerThirdPartyIncidentResponse upsertLawyerThirdPartyIncident(@PathVariable Long caseId, @RequestBody LawyerThirdPartyIncidentUpsertRequest request, HttpServletRequest httpRequest) { return insuranceService.upsertLawyerThirdPartyIncident(caseId, request, httpRequest); }
+
     @Operation(summary = "Obtener legal de caso", description = "Devuelve la informacion legal de un caso")
     @ApiResponse(responseCode = "200", description = "OK")
     @PreAuthorize("hasAuthority('seguro.ver')")

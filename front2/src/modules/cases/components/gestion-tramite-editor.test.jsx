@@ -22,6 +22,9 @@ vi.mock('@/modules/cases/components/documents-section', () => ({
 vi.mock('@/modules/cases/components/task-agenda', () => ({
   TaskAgenda: ({ caseId, organizationId, branchId }) => <div data-testid="task-agenda" data-case-id={caseId} data-organization-id={organizationId} data-branch-id={branchId}><h4>Agenda de tareas</h4><button type="button">Agregar item</button></div>,
 }));
+vi.mock('@/modules/cases/components/third-party-workshop-editor', () => ({
+  ThirdPartyWorkshopEditor: ({ caseDetail }) => <div data-testid="third-party-flow" data-case-type={caseDetail.caseTypeCode}>Flujo específico de terceros</div>,
+}));
 
 global.fetch = vi.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob()) });
 
@@ -81,6 +84,13 @@ describe('GestionTramiteEditor', () => {
     expect(screen.getByText('Definición del CLEAS')).toBeTruthy();
     expect(screen.getByText('CLEAS sobre: Daño total')).toBeTruthy();
     expect(screen.getByText('Dictamen: A favor')).toBeTruthy();
+  });
+
+  it('dispatches lawyer third-party cases to the third-party flow without the generic franchise section', () => {
+    mount({ caseTypeCode: 'RECLAMO_TERCEROS_ABOGADO' });
+
+    expect(screen.getByTestId('third-party-flow')).toHaveAttribute('data-case-type', 'RECLAMO_TERCEROS_ABOGADO');
+    expect(screen.queryByText('Franquicia')).toBeNull();
   });
 
   it('renders CLEAS sections in the required order and passes document and agenda context', () => {

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Save } from 'lucide-react';
 import { toast } from 'sonner';
 import { ClaimDataSection } from '@/modules/cases/components/claim-data-section';
+import { LawyerThirdPartyIncidentSection } from '@/modules/cases/components/lawyer-third-party-incident-section';
 import { DocumentsSection } from '@/modules/cases/components/documents-section';
 import { ProcedureSection } from '@/modules/cases/components/procedure-section';
 import { TaskAgenda } from '@/modules/cases/components/task-agenda';
@@ -10,17 +11,17 @@ import { addCasePerson, deleteCasePerson, getCasePersons, getThirdParty, saveThi
 import { createPerson, listInsuranceCompanies, searchPersons } from '@/modules/cases/api/new-case-api';
 import { requestJson } from '@/shared/api/http-client';
 import { Button } from '@/shared/ui/button';
-import { Dialog } from '@/shared/ui/dialog';
 import { Input } from '@/shared/ui/input';
 
 const formFrom = (data) => ({
   thirdPartyCompanyId: data?.thirdPartyCompanyId ? String(data.thirdPartyCompanyId) : '', claimReference: data?.claimReference ?? '',
+  documentationStatusCode: data?.documentationStatusCode ?? 'PENDIENTE', documentationAccepted: data?.documentationStatusCode === 'ACEPTADA' || Boolean(data?.documentationAccepted),
   partsProvisionModeCode: data?.partsProvisionModeCode ?? '',
 });
 
 const Field = ({ label, children }) => <label className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground"><span className="mb-1 block">{label}</span>{children}</label>;
 
-export const ThirdPartyWorkshopEditor = ({ caseId, caseDetail, budget }) => {
+export const ThirdPartyWorkshopEditor = ({ caseId, caseDetail, budget, lawyerManaged = false }) => {
   const queryClient = useQueryClient();
   const [form, setForm] = useState(() => formFrom(null));
   const thirdPartyQuery = useQuery({ queryKey: ['cases', String(caseId), 'third-party'], queryFn: () => getThirdParty(caseId) });
@@ -32,18 +33,19 @@ export const ThirdPartyWorkshopEditor = ({ caseId, caseDetail, budget }) => {
     mutationFn: () => saveThirdParty(caseId, {
       ...form, thirdPartyCompanyId: form.thirdPartyCompanyId ? Number(form.thirdPartyCompanyId) : null,
       partsProvisionModeCode: form.partsProvisionModeCode || null,
+      documentationAccepted: form.documentationAccepted,
     }),
-    onSuccess: async (saved) => { queryClient.setQueryData(['cases', String(caseId), 'third-party'], saved); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); toast.success('Datos del reclamo guardados.'); },
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'third-party'] }); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }); toast.success('Datos del reclamo guardados.'); },
     onError: (error) => toast.error(error.message || 'No se pudo guardar el reclamo.'),
   });
   const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
-  const provisionModes = caseDetail?.caseTypeCode === 'RECLAMO_TERCEROS'
+  const provisionModes = ['RECLAMO_TERCEROS', 'RECLAMO_TERCEROS_ABOGADO'].includes(caseDetail?.caseTypeCode)
     ? (catalogsQuery.data?.partsProvisionModeCodes ?? []).filter((item) => ['COMPANIA', 'TALLER', 'CLIENTE'].includes(item.code))
     : (catalogsQuery.data?.partsProvisionModeCodes ?? []);
   const finalWorkshopAmount = thirdPartyQuery.data?.finalAmountForWorkshop;
 
   return <div className="mt-5 space-y-5 pb-20">
-    <ClaimDataSection caseId={caseId} />
+    {lawyerManaged ? <LawyerThirdPartyIncidentSection caseId={caseId} /> : <ClaimDataSection caseId={caseId} />}
     <InvolvedThirdPartiesSection caseId={caseId} />
     <section className="rounded-3xl border border-border/70 bg-card p-5">
       <div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Building2 className="h-5 w-5" /></div><div><h4 className="text-sm font-semibold">Datos de cobertura y acuerdo</h4><p className="text-xs text-muted-foreground">Compañía, referencia y valores del acuerdo.</p></div></div><Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}><Save className="mr-1.5 h-3.5 w-3.5" />Guardar</Button></div>
@@ -60,7 +62,7 @@ export const ThirdPartyWorkshopEditor = ({ caseId, caseDetail, budget }) => {
       </div>
       {budget ? <p className="mt-3 text-xs text-muted-foreground">El presupuesto cerrado y la gestión de pedidos determinan los mínimos y los repuestos definitivos.</p> : null}
     </section>
-    <DocumentsSection caseId={caseId} moduleCode="GESTION_TRAMITE" includeHistorical title="Documentación del trámite" />
+    <DocumentsSection caseId={caseId} moduleCode="GESTION_TRAMITE" includeHistorical title="Documentación del trámite" showCompleteAction={!lawyerManaged} />
     <ProcedureSection caseId={caseId} budget={budget} thirdPartyWorkshop />
     <TaskAgenda caseId={caseId} organizationId={caseDetail?.organizationId} branchId={caseDetail?.branchId} />
   </div>;
