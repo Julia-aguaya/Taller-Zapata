@@ -11,6 +11,7 @@ import { addCasePerson, deleteCasePerson, getCasePersons, getThirdParty, getThir
 import { createPerson, createVehicle, listInsuranceCompanies, listInsuranceCompanyContacts, searchPersons, searchVehicles } from '@/modules/cases/api/new-case-api';
 import { requestJson } from '@/shared/api/http-client';
 import { Button } from '@/shared/ui/button';
+import { Dialog } from '@/shared/ui/dialog';
 import { Input } from '@/shared/ui/input';
 import { Textarea } from '@/shared/ui/textarea';
 
