@@ -1034,19 +1034,24 @@ public class InsuranceService {
         if (personId == null && newContact == null) return null;
         PersonEntity person;
         if (newContact != null) {
-            person = new PersonEntity();
-            person.setTipoPersona("fisica");
-            person.setNombre(newContact.name().trim());
-            person.setNombreMostrar(newContact.name().trim());
-            person.setEmailPrincipal(blankToNull(newContact.email()));
-            person.setTelefonoPrincipal(blankToNull(newContact.phone()));
-            person.setActivo(true);
-            person = personRepository.save(person);
-            InsuranceCompanyContactEntity companyContact = new InsuranceCompanyContactEntity();
-            companyContact.setCompanyId(companyId);
-            companyContact.setPersonId(person.getId());
-            companyContact.setContactRoleCode(roleCode);
-            companyContactRepository.save(companyContact);
+            person = findMatchingWorkshopContact(companyId, roleCode, newContact).orElseGet(() -> {
+                PersonEntity created = new PersonEntity();
+                String lastName = blankToNull(newContact.lastName());
+                created.setTipoPersona("fisica");
+                created.setNombre(newContact.name().trim());
+                created.setApellido(lastName);
+                created.setNombreMostrar(String.join(" ", created.getNombre(), lastName == null ? "" : lastName).trim());
+                created.setEmailPrincipal(blankToNull(newContact.email()));
+                created.setTelefonoPrincipal(blankToNull(newContact.phone()));
+                created.setActivo(true);
+                PersonEntity saved = personRepository.save(created);
+                InsuranceCompanyContactEntity companyContact = new InsuranceCompanyContactEntity();
+                companyContact.setCompanyId(companyId);
+                companyContact.setPersonId(saved.getId());
+                companyContact.setContactRoleCode(roleCode);
+                companyContactRepository.save(companyContact);
+                return saved;
+            });
         } else {
             person = personRepository.findById(personId).orElseThrow(() -> new ResourceNotFoundException("No existe la persona " + personId));
             if (!Boolean.TRUE.equals(person.getActivo()) || !companyContactRepository.existsByCompanyIdAndPersonIdAndContactRoleCode(companyId, personId, roleCode)) throw new ConflictException("La persona seleccionada no es un contacto activo " + roleCode + " de la compania indicada");
@@ -1062,6 +1067,24 @@ public class InsuranceService {
         });
         return new WorkshopContact(link.getId(), person.getId(), person.getNombreMostrar(), person.getEmailPrincipal(), person.getTelefonoPrincipal());
     }
+
+    private java.util.Optional<PersonEntity> findMatchingWorkshopContact(Long companyId, String roleCode, ThirdPartyWorkshopContactRequest contact) {
+        String name = contact.name().trim();
+        String lastName = blankToNull(contact.lastName());
+        String email = blankToNull(contact.email());
+        String phone = blankToNull(contact.phone());
+        return companyContactRepository.findByCompanyIdOrderByIdAsc(companyId).stream()
+                .filter(existing -> roleCode.equals(existing.getContactRoleCode()))
+                .map(existing -> personRepository.findById(existing.getPersonId()).orElse(null))
+                .filter(java.util.Objects::nonNull)
+                .filter(existing -> name.equalsIgnoreCase(existing.getNombre())
+                        && java.util.Objects.equals(normalizeNullable(lastName), normalizeNullable(existing.getApellido()))
+                        && java.util.Objects.equals(normalizeNullable(email), normalizeNullable(existing.getEmailPrincipal()))
+                        && java.util.Objects.equals(normalizeNullable(phone), normalizeNullable(existing.getTelefonoPrincipal())))
+                .findFirst();
+    }
+
+    private String normalizeNullable(String value) { return value == null ? null : value.trim().toLowerCase(); }
 
     private Long resolveWorkshopDriver(Long caseId, Long driverPersonId, Long vehicleId) {
         if (driverPersonId == null) return null;

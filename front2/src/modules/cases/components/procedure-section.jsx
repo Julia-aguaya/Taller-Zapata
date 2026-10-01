@@ -40,7 +40,7 @@ export const buildProcessingPatch = (form, processing) => {
   return patch;
 };
 
-export const ProcedureSection = ({ caseId, thirdPartyWorkshop = false }) => {
+export const ProcedureSection = ({ caseId, thirdPartyWorkshop = false, hideGeneralData = false }) => {
   const queryClient = useQueryClient();
   const [form, setForm] = useState(() => processingForm(null));
   const [belowMinimum, setBelowMinimum] = useState(null);
@@ -112,8 +112,8 @@ export const ProcedureSection = ({ caseId, thirdPartyWorkshop = false }) => {
        {!hasPresentedAt ? <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700"><AlertTriangle className="h-3.5 w-3.5 shrink-0" />Registra la fecha de presentacion ante la compania para habilitar el resto de la tramitacion.</div> : null}
       {approval ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"><span>Acuerdo bajo minimo: {approval.status === 'PENDIENTE' ? 'pendiente de aprobacion de un administrador global.' : 'aprobado por un administrador global.'}</span>{approval.status === 'PENDIENTE' && approval.canApprove ? <Button type="button" size="sm" onClick={() => approveMutation.mutate()} disabled={approveMutation.isPending}>Aprobar acuerdo</Button> : null}</div> : null}
       <div className="mt-4 grid gap-x-6 gap-y-3 md:grid-cols-4">
-        <Field label="Fecha de presentación"><Input aria-label="Fecha presentado" type="date" value={form.presentedAt} onChange={(event) => setField('presentedAt', event.target.value)} /></Field>
-        {thirdPartyWorkshop ? <Field label="Dictamen"><select aria-label="Dictamen" value={form.opinionCode || 'APROBADO'} onChange={(event) => setField('opinionCode', event.target.value)} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"><option value="APROBADO">A favor</option><option value="RECHAZADO">En contra</option></select></Field> : null}
+        {!hideGeneralData ? <Field label="Fecha de presentación"><Input aria-label="Fecha presentado" type="date" value={form.presentedAt} onChange={(event) => setField('presentedAt', event.target.value)} /></Field> : null}
+        {thirdPartyWorkshop && !hideGeneralData ? <Field label="Dictamen"><select aria-label="Dictamen" value={form.opinionCode || 'APROBADO'} onChange={(event) => setField('opinionCode', event.target.value)} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"><option value="APROBADO">A favor</option><option value="RECHAZADO">En contra</option></select></Field> : null}
         <Field label="Derivado a inspeccion"><Input aria-label="Derivado a inspeccion" type="date" value={form.inspectionForwardedAt} disabled={!hasPresentedAt} onChange={(event) => setField('inspectionForwardedAt', event.target.value)} /></Field>
         <Field label="Fecha inspeccion"><Input aria-label="Fecha inspeccion" type="date" value={form.inspectionDate} disabled={!hasInspectionForwarded} onChange={(event) => setField('inspectionDate', event.target.value)} /></Field>
         <Field label="Modalidad"><select aria-label="Modalidad" value={form.modalityCode} disabled={!hasInspectionForwarded} onChange={(event) => setField('modalityCode', event.target.value)} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm disabled:opacity-50"><option value="">-</option>{modalityCodes.map((item) => <option key={item.code} value={item.code}>{item.name || item.code}</option>)}</select></Field>

@@ -17,6 +17,7 @@ import java.time.LocalDate;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -280,33 +281,41 @@ class CaseManagementIntegrationTest {
     }
 
     @Test
-    void shouldComputeThirdPartyPrescriptionAsThreeYearsFromIncident() throws Exception {
+    void shouldComputeThirdPartyWorkshopPrescriptionFromPresentationAndRejectClientOverride() throws Exception {
         jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = ? WHERE id = ?", 5L, 100L);
 
-        // Sin fecha de siniestro no hay prescripcion calculable: el valor del cliente se descarta.
         mockMvc.perform(put("/api/v1/cases/100/incident")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"prescriptionDate\":\"2027-04-20\"}"))
-                .andExpect(status().isOk());
+                .andExpect(status().isConflict());
 
-        mockMvc.perform(get("/api/v1/cases/100/incident")
-                        .header("X-User-Id", "3"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.prescriptionDate").doesNotExist());
-
-        // Con siniestro: 3 anios automaticos; el valor enviado por el cliente se recalcula.
-        mockMvc.perform(put("/api/v1/cases/100/incident")
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"incidentDate\":\"2026-04-20\",\"prescriptionDate\":\"2027-04-20\"}"))
+                        .content("{\"presentedAt\":\"2026-04-20\"}"))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/cases/100/incident")
                         .header("X-User-Id", "3"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.incidentDate").value("2026-04-20"))
                 .andExpect(jsonPath("$.prescriptionDate").value("2029-04-20"));
+
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"presentedAt\":\"2027-05-10\",\"opinionCode\":\"RECHAZADO\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100/incident")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.prescriptionDate").value("2030-05-10"));
+
+        mockMvc.perform(get("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.opinionCode").value("RECHAZADO"));
     }
 
     @Test

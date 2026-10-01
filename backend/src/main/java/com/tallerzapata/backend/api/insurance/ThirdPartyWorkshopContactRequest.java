@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotBlank;
 
 public record ThirdPartyWorkshopContactRequest(
         @NotBlank String name,
+        String lastName,
         String email,
         String phone
 ) {

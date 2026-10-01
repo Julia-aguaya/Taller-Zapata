@@ -287,6 +287,12 @@ class InsuranceIntegrationTest {
         jdbcTemplate.update("INSERT INTO companias_contactos (compania_id, persona_id, rol_contacto_codigo) VALUES (?, ?, ?)", 2L, 11L, "TRAMITADOR");
         jdbcTemplate.update("INSERT INTO companias_contactos (compania_id, persona_id, rol_contacto_codigo) VALUES (?, ?, ?)", 2L, 12L, "INSPECTOR");
 
+        mockMvc.perform(put("/api/v1/cases/100/insurance").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"insuranceCompanyId\":2,\"claimNumber\":\"SIN-456\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.insuranceCompanyId").value(2))
+                .andExpect(jsonPath("$.claimNumber").value("SIN-456"));
+
         String payload = "{\"thirdPartyCompanyId\":2,\"claimReference\":\"REC-456\",\"thirdPartyVehicleId\":10,\"driverPersonId\":13,\"processorPersonId\":11,\"inspectorPersonId\":12}";
         mockMvc.perform(put("/api/v1/cases/100/third-party-workshop").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content(payload))
                 .andExpect(status().isOk())
@@ -302,6 +308,11 @@ class InsuranceIntegrationTest {
                 .andExpect(jsonPath("$.claimReference").value("REC-456"))
                 .andExpect(jsonPath("$.processor.name").value("Ana Tramitadora"))
                 .andExpect(jsonPath("$.processor.email").value("ana@sancor.test"));
+
+        mockMvc.perform(get("/api/v1/cases/100/insurance").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.insuranceCompanyId").value(2))
+                .andExpect(jsonPath("$.claimNumber").value("SIN-456"));
     }
 
     @Test
@@ -316,7 +327,12 @@ class InsuranceIntegrationTest {
                 .andExpect(status().isConflict());
 
         mockMvc.perform(put("/api/v1/cases/100/third-party-workshop").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"thirdPartyCompanyId\":2,\"newProcessor\":{\"name\":\"Nora Nueva\",\"email\":\"nora@sancor.test\",\"phone\":\"333\"}}"))
+                .content("{\"thirdPartyCompanyId\":2,\"newProcessor\":{\"name\":\"Nora\",\"lastName\":\"Nueva\",\"email\":\"nora@sancor.test\",\"phone\":\"333\"}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.processor.name").value("Nora Nueva"));
+
+        mockMvc.perform(put("/api/v1/cases/100/third-party-workshop").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"thirdPartyCompanyId\":2,\"newProcessor\":{\"name\":\"Nora\",\"lastName\":\"Nueva\",\"email\":\"nora@sancor.test\",\"phone\":\"333\"}}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.processor.name").value("Nora Nueva"));
         Integer contactCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM companias_contactos WHERE compania_id = ? AND rol_contacto_codigo = ?", Integer.class, 2L, "TRAMITADOR");

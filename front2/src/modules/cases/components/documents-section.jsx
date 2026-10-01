@@ -22,7 +22,7 @@ const currentLocalDate = () => {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 };
 
-export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode = null, includeHistorical = false, showCompleteAction = true, title = 'Documentación', categoryCodes = VISIBLE_DOCUMENT_CATEGORY_CODES, collapsible = false, showAllCategories = false, editableMetadata = false }) => {
+export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode = null, originCode = 'SEED_LOCAL', includeHistorical = false, showCompleteAction = true, title = 'Documentación', categoryCodes = VISIBLE_DOCUMENT_CATEGORY_CODES, collapsible = false, showAllCategories = false, editableMetadata = false }) => {
   const queryClient = useQueryClient();
   const { session } = useSession();
   const canUploadDocuments = session?.authorities?.includes('documento.subir') ?? false;
@@ -120,7 +120,7 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
       for (const file of uploadFiles) {
         const document = await uploadFileResumably({
           file,
-          metadata: { caseId, categoryId: uploadCategory, documentDate: requiresDate ? uploadDate : null, observations: uploadObservations.trim() || null, originCode: 'SEED_LOCAL' },
+          metadata: { caseId, categoryId: uploadCategory, documentDate: requiresDate ? uploadDate : null, observations: uploadObservations.trim() || null, originCode },
           relation: { caseId: Number(caseId), entityType: 'CASO', entityId: Number(caseId), moduleCode: moduleCode || 'OPERACION', principal: false, visibleToCustomer: false, visualOrder: 0 },
         });
         uploaded.push(document);

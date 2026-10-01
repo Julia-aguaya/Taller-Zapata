@@ -259,8 +259,9 @@ public class CaseManagementService {
 
         CaseTypeEntity caseType = caseTypeRepository.findById(caseEntity.getCaseTypeId())
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el tipo de tramite " + caseEntity.getCaseTypeId()));
-        boolean backendOwnedPrescription = insuranceRepairCasePolicy.requiresGranizoBackendIncident(caseType.getCode());
-        if (backendOwnedPrescription && request.incidentDate() == null) {
+        boolean thirdPartyWorkshop = insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseType.getCode());
+        boolean backendOwnedPrescription = insuranceRepairCasePolicy.requiresGranizoBackendIncident(caseType.getCode()) || thirdPartyWorkshop;
+        if (insuranceRepairCasePolicy.requiresGranizoBackendIncident(caseType.getCode()) && request.incidentDate() == null) {
             throw new ConflictException("incidentDate es obligatoria para " + caseType.getCode());
         }
         if (backendOwnedPrescription && request.prescriptionDate() != null) {
@@ -278,8 +279,15 @@ public class CaseManagementService {
         entity.setObservaciones(blankToNull(request.observations()));
 
         LocalDate prescriptionDate = request.prescriptionDate();
-        if (backendOwnedPrescription) {
+        if (insuranceRepairCasePolicy.requiresGranizoBackendIncident(caseType.getCode())) {
             prescriptionDate = entity.getIncidentDate().plusYears(1);
+        } else if (thirdPartyWorkshop) {
+            LocalDate presentedAt = insuranceProcessingRepository.findByCaseId(caseId)
+                    .map(InsuranceProcessingEntity::getPresentedAt)
+                    .orElse(null);
+            prescriptionDate = presentedAt == null
+                    ? null
+                    : presentedAt.plusYears(insuranceRepairCasePolicy.prescriptionYears(caseType.getCode()));
         } else if (insuranceRepairCasePolicy.isThirdPartyClaim(caseType.getCode())) {
             // Reclamo de terceros: la prescripcion se calcula automaticamente a 3 anios desde el siniestro.
             // Sin fecha de siniestro no hay prescripcion calculable.
@@ -312,21 +320,25 @@ public class CaseManagementService {
         accessControlService.requireCaseAccess(currentUser, caseEntity, "caso.ver");
 
         CaseIncidentEntity entity = caseIncidentRepository.findByCaseId(caseId).orElse(null);
-        if (entity == null) {
-            return new CaseIncidentResponse(null, null, null, null, null, null, null);
-        }
+        CaseTypeEntity caseType = caseTypeRepository.findById(caseEntity.getCaseTypeId()).orElse(null);
+        boolean thirdPartyWorkshop = caseType != null && insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseType.getCode());
+        InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
 
         // Calcular dias tramitando: el reclamo de terceros por abogado corre desde el ingreso del
         // expediente (legal); el resto de los tramites con seguro, desde la fecha de presentacion.
-        Integer daysInProcess = entity.getDaysInProcess();
+        Integer daysInProcess = entity == null ? null : entity.getDaysInProcess();
+        LocalDate prescriptionDate = entity == null ? null : entity.getPrescriptionDate();
+        if (thirdPartyWorkshop) {
+            LocalDate presentedAt = processing == null ? null : processing.getPresentedAt();
+            prescriptionDate = presentedAt == null ? null : presentedAt.plusYears(insuranceRepairCasePolicy.prescriptionYears(caseType.getCode()));
+            daysInProcess = daysSincePresentation(caseEntity, presentedAt);
+        }
         if (requiresProcessing(caseEntity)) {
-            CaseTypeEntity caseType = caseTypeRepository.findById(caseEntity.getCaseTypeId()).orElse(null);
             CaseLegalEntity legal = caseLegalRepository.findByCaseId(caseId).orElse(null);
             if (caseType != null && insuranceRepairCasePolicy.isThirdPartyLawyerClaim(caseType.getCode())
                     && legal != null && legal.getEntryDate() != null) {
                 daysInProcess = (int) ChronoUnit.DAYS.between(legal.getEntryDate(), LocalDate.now());
-            } else {
-                InsuranceProcessingEntity processing = insuranceProcessingRepository.findByCaseId(caseId).orElse(null);
+            } else if (!thirdPartyWorkshop) {
                 if (processing != null && processing.getPresentedAt() != null) {
                     daysInProcess = (int) ChronoUnit.DAYS.between(processing.getPresentedAt(), LocalDate.now());
                 }
@@ -334,14 +346,20 @@ public class CaseManagementService {
         }
 
         return new CaseIncidentResponse(
-                entity.getIncidentDate(),
-                entity.getIncidentTime() == null ? null : entity.getIncidentTime().format(DateTimeFormatter.ofPattern("HH:mm")),
-                entity.getLugar(),
-                entity.getDinamica(),
-                entity.getObservaciones(),
-                entity.getPrescriptionDate(),
+                entity == null ? null : entity.getIncidentDate(),
+                entity == null || entity.getIncidentTime() == null ? null : entity.getIncidentTime().format(DateTimeFormatter.ofPattern("HH:mm")),
+                entity == null ? null : entity.getLugar(),
+                entity == null ? null : entity.getDinamica(),
+                entity == null ? null : entity.getObservaciones(),
+                prescriptionDate,
                 daysInProcess
         );
+    }
+
+    private Integer daysSincePresentation(CaseEntity caseEntity, LocalDate presentedAt) {
+        if (presentedAt == null) return null;
+        LocalDate endDate = caseEntity.getClosedAt() == null ? LocalDate.now() : caseEntity.getClosedAt().toLocalDate();
+        return (int) ChronoUnit.DAYS.between(presentedAt, endDate);
     }
 
     private CaseEntity requireCase(Long caseId) {
