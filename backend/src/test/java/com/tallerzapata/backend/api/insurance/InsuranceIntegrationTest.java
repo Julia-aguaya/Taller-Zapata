@@ -701,6 +701,64 @@ class InsuranceIntegrationTest {
     }
 
     @Test
+    void shouldInitializeLegalCaseWithRepairsAndForeignKeyForFirstInjuryOrExpense() throws Exception {
+        setCaseType("RECLAMO_TERCEROS_ABOGADO");
+
+        mockMvc.perform(post("/api/v1/cases/100/legal/lesionados")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"lesionadoEsCode\":\"OTRO\",\"fullName\":\"Primera lesionada\"}"))
+                .andExpect(status().isOk());
+        Long injuryLegalCaseId = jdbcTemplate.queryForObject("SELECT caso_legal_id FROM caso_legal_lesionados", Long.class);
+        assertThat(jdbcTemplate.queryForObject("SELECT repara_vehiculo FROM caso_legal WHERE id = ?", Boolean.class, injuryLegalCaseId)).isTrue();
+        assertThat(jdbcTemplate.queryForObject("SELECT caso_legal_id FROM caso_legal_lesionados", Long.class)).isEqualTo(injuryLegalCaseId);
+
+        jdbcTemplate.update("DELETE FROM caso_legal_lesionados");
+        jdbcTemplate.update("DELETE FROM caso_legal WHERE caso_id = ?", 100L);
+
+        mockMvc.perform(post("/api/v1/cases/100/legal-expenses")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"concept\":\"Primer gasto\",\"amount\":1000,\"expenseDate\":\"2026-03-10\",\"paidByCode\":\"CLIENTE\"}"))
+                .andExpect(status().isOk());
+        Long expenseLegalCaseId = jdbcTemplate.queryForObject("SELECT caso_legal_id FROM legal_gastos", Long.class);
+        assertThat(jdbcTemplate.queryForObject("SELECT repara_vehiculo FROM caso_legal WHERE id = ?", Boolean.class, expenseLegalCaseId)).isTrue();
+        assertThat(jdbcTemplate.queryForObject("SELECT caso_legal_id FROM legal_gastos", Long.class)).isEqualTo(expenseLegalCaseId);
+    }
+
+    @Test
+    void shouldAllowThirdPartyWorkshopOperationsForLawyerClaims() throws Exception {
+        setCaseType("RECLAMO_TERCEROS_ABOGADO");
+
+        mockMvc.perform(put("/api/v1/cases/100/third-party-workshop")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"claimReference\":\"ABOGADO-456\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.claimReference").value("ABOGADO-456"));
+        mockMvc.perform(get("/api/v1/cases/100/third-party-workshop").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.claimReference").value("ABOGADO-456"));
+    }
+
+    @Test
+    void shouldRejectLegalChildCreationOutsideLawyerScopeWithoutCreatingLegalCase() throws Exception {
+        setCaseType("RECLAMO_TERCEROS");
+
+        mockMvc.perform(post("/api/v1/cases/100/legal-news").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"newsDate\":\"2026-03-10\",\"detail\":\"No permitido\",\"notifyCustomer\":false}"))
+                .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/v1/cases/100/legal/lesionados").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"lesionadoEsCode\":\"OTRO\",\"fullName\":\"No permitido\"}"))
+                .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/v1/cases/100/legal-expenses").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"concept\":\"No permitido\",\"amount\":1000,\"expenseDate\":\"2026-03-10\",\"paidByCode\":\"CLIENTE\"}"))
+                .andExpect(status().isConflict());
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM caso_legal WHERE caso_id = ?", Integer.class, 100L)).isZero();
+    }
+
+    @Test
     void shouldCreateAndListLegalExpenses() throws Exception {
         setCaseType("RECLAMO_TERCEROS_ABOGADO");
 

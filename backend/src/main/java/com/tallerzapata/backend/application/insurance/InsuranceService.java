@@ -736,7 +736,7 @@ public class InsuranceService {
         CaseEntity caseEntity = requireCase(caseId);
         requireLegalAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
-        CaseLegalEntity caseLegal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
+        CaseLegalEntity caseLegal = ensureCaseLegal(caseId);
         LegalNewsEntity entity = new LegalNewsEntity();
         entity.setCaseLegalId(caseLegal.getId());
         entity.setNewsDate(request.newsDate());
@@ -763,7 +763,7 @@ public class InsuranceService {
         CaseEntity caseEntity = requireCase(caseId);
         requireLegalAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
-        CaseLegalEntity caseLegal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
+        CaseLegalEntity caseLegal = ensureCaseLegal(caseId);
         LegalLesionadoEntity entity = new LegalLesionadoEntity();
         entity.setCaseLegalId(caseLegal.getId());
         applyLesionadoRequest(entity, request);
@@ -833,6 +833,16 @@ public class InsuranceService {
         return entity;
     }
 
+    /** Child legal records can be the first persisted legal datum in a lawyer-managed case. */
+    private CaseLegalEntity ensureCaseLegal(Long caseId) {
+        return caseLegalRepository.findByCaseId(caseId).orElseGet(() -> {
+            CaseLegalEntity created = new CaseLegalEntity();
+            created.setCaseId(caseId);
+            created.setRepairsVehicle(true);
+            return caseLegalRepository.save(created);
+        });
+    }
+
     private Map<String, Object> lesionadoAuditSnapshot(LegalLesionadoEntity entity) {
         return CaseAuditService.auditMap(
                 "lesionadoEsCode", entity.getLesionadoEsCode(),
@@ -862,7 +872,7 @@ public class InsuranceService {
         CaseEntity caseEntity = requireCase(caseId);
         requireLegalAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
-        CaseLegalEntity caseLegal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
+        CaseLegalEntity caseLegal = ensureCaseLegal(caseId);
         if (request.paidByCode() != null && !legalExpensePayerRepository.existsByCodeAndActiveTrue(normalizeCode(request.paidByCode()))) throw new ConflictException("paidByCode no permitido: " + request.paidByCode());
         LegalExpenseEntity entity = new LegalExpenseEntity();
         entity.setCaseLegalId(caseLegal.getId());
@@ -1115,7 +1125,7 @@ public class InsuranceService {
     }
 
     private void requireThirdPartyWorkshop(CaseEntity caseEntity) {
-        if (!insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeCode(caseEntity))) throw new ConflictException("Estos datos solo aplican a Reclamo de terceros gestionado por Taller");
+        if (!insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeCode(caseEntity)) && !insuranceRepairCasePolicy.isThirdPartyLawyerClaim(caseTypeCode(caseEntity))) throw new ConflictException("Estos datos solo aplican a Reclamo de terceros gestionado por Taller o Abogado");
     }
     private void requireLawyerThirdPartyClaim(CaseEntity caseEntity) { if (!insuranceRepairCasePolicy.isThirdPartyLawyerClaim(caseTypeCode(caseEntity))) throw new ConflictException("Los datos del siniestro del tercero solo aplican a reclamos de terceros por abogado"); }
 

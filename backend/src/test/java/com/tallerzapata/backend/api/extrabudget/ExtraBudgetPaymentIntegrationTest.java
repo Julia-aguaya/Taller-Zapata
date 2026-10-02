@@ -111,6 +111,19 @@ class ExtraBudgetPaymentIntegrationTest {
     }
 
     @Test
+    void lawyerThirdPartyCanCreateAndPayAnExtraBudget() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = (SELECT id FROM tipos_tramite WHERE codigo = 'RECLAMO_TERCEROS_ABOGADO') WHERE id = ?", 100L);
+
+        JsonNode draft = putJson("/api/v1/cases/100/extra-budget/draft", "{\"items\":[{\"visualOrder\":1,\"description\":\"Extra abogado\",\"quantity\":1,\"partUnitAmount\":100,\"laborUnitAmount\":0,\"affectedPiece\":\"Extra\",\"actionCode\":\"REPARAR\",\"damageLevelCode\":\"LEVE\",\"partsAmount\":100}]}");
+        JsonNode presented = postJson("/api/v1/cases/100/extra-budget/present", "{\"expectedVersion\":" + draft.get("versionLock").asLong() + "}");
+        JsonNode accepted = postJson("/api/v1/cases/100/extra-budget/accept", "{\"expectedVersion\":" + presented.get("versionLock").asLong() + "}");
+        JsonNode paid = postJson("/api/v1/cases/100/extra-budget/payments", "{\"expectedVersion\":" + accepted.get("versionLock").asLong() + ",\"amount\":100,\"paymentMethodCode\":\"EFECTIVO\"}");
+
+        assertThat(paid.get("paidAmount").decimalValue()).isEqualByComparingTo("100.00");
+        assertThat(paid.get("balance").decimalValue()).isEqualByComparingTo("0.00");
+    }
+
+    @Test
     void activationCreatesOneEmptyCanonicalItemOnlyWhenTheSupportedCaseHasNoExtraData() throws Exception {
         JsonNode activation = postJson("/api/v1/cases/100/extra-budget/activation", "{\"active\":true}");
 

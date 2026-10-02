@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Plus, Save, User, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { requestJson } from '@/shared/api/http-client';
+import { getThirdParty, saveThirdParty } from '@/modules/cases/api/third-party-api';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Dialog } from '@/shared/ui/dialog';
@@ -130,11 +131,12 @@ const ContactSelector = ({ label, companyId, selectedPersonId, roleCode, onSelec
   );
 };
 
-export const InsuranceDataSection = ({ caseId, caseDetail }) => {
+export const InsuranceDataSection = ({ caseId, caseDetail, showThirdParty = false }) => {
   const queryClient = useQueryClient();
 
   const insuranceQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance'], queryFn: () => requestJson(`/cases/${caseId}/insurance`) });
   const companiesQuery = useQuery({ queryKey: ['insurance', 'companies'], queryFn: () => requestJson('/insurance/companies') });
+  const thirdPartyQuery = useQuery({ queryKey: ['cases', String(caseId), 'third-party'], queryFn: () => getThirdParty(caseId), enabled: showThirdParty });
 
   const insurance = insuranceQuery.data;
   const companies = companiesQuery.data ?? [];
@@ -143,6 +145,7 @@ export const InsuranceDataSection = ({ caseId, caseDetail }) => {
   const [tramitadorId, setTramitadorId] = useState(null);
   const [inspectorId, setInspectorId] = useState(null);
   const [draft, setDraft] = useState({ claimNumber: '', coverageDetail: '' });
+  const [thirdPartyDraft, setThirdPartyDraft] = useState({ thirdPartyCompanyId: '', claimReference: '' });
 
   useEffect(() => {
     if (insurance?.insuranceCompanyId) setCompanyId(insurance.insuranceCompanyId);
@@ -150,6 +153,9 @@ export const InsuranceDataSection = ({ caseId, caseDetail }) => {
     if (insurance?.inspectorPersonId) setInspectorId(insurance.inspectorPersonId);
     if (insurance) setDraft({ claimNumber: insurance.claimNumber ?? '', coverageDetail: insurance.coverageDetail ?? '' });
   }, [insurance?.insuranceCompanyId, insurance?.processorPersonId, insurance?.inspectorPersonId]);
+  useEffect(() => {
+    if (thirdPartyQuery.data) setThirdPartyDraft({ thirdPartyCompanyId: String(thirdPartyQuery.data.thirdPartyCompanyId ?? ''), claimReference: thirdPartyQuery.data.claimReference ?? '' });
+  }, [thirdPartyQuery.data]);
 
   const mutation = useMutation({
     mutationFn: (payload) => requestJson(`/cases/${caseId}/insurance`, { method: 'PUT', body: JSON.stringify(payload) }),
@@ -159,6 +165,21 @@ export const InsuranceDataSection = ({ caseId, caseDetail }) => {
       toast.success('Seguro guardado.');
     },
     onError: (e) => toast.error(e.message),
+  });
+  const thirdPartyMutation = useMutation({
+    mutationFn: () => saveThirdParty(caseId, {
+      thirdPartyCompanyId: thirdPartyDraft.thirdPartyCompanyId ? Number(thirdPartyDraft.thirdPartyCompanyId) : null,
+      claimReference: thirdPartyDraft.claimReference || null,
+      documentationStatusCode: thirdPartyQuery.data?.documentationStatusCode ?? null,
+      documentationAccepted: thirdPartyQuery.data?.documentationAccepted ?? false,
+      partsProvisionModeCode: thirdPartyQuery.data?.partsProvisionModeCode ?? null,
+    }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'third-party'] });
+      await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] });
+      toast.success('Datos del tercero guardados.');
+    },
+    onError: (error) => toast.error(error.message),
   });
 
   const handleSave = () => {
@@ -173,6 +194,8 @@ export const InsuranceDataSection = ({ caseId, caseDetail }) => {
       inspectorPersonId: inspectorId,
     });
   };
+
+  const handleThirdPartySave = () => thirdPartyMutation.mutate();
 
   return (
     <div className="rounded-3xl border border-border/70 bg-card p-5">
@@ -214,6 +237,13 @@ export const InsuranceDataSection = ({ caseId, caseDetail }) => {
         <Field label="Detalle de la cobertura">
           <Input name="coverageDetail" value={draft.coverageDetail} onChange={(event) => setDraft((current) => ({ ...current, coverageDetail: event.target.value }))} placeholder="Ej: Cobertura para luneta y equipo de GNC" />
         </Field>
+        {showThirdParty ? <div className="border-t border-border/60 pt-4">
+          <div className="mb-3 flex items-center justify-between gap-3"><h5 className="text-sm font-medium">Seguro del tercero</h5><Button type="button" size="sm" variant="outline" onClick={handleThirdPartySave} disabled={thirdPartyMutation.isPending}><Save className="mr-1.5 h-3.5 w-3.5" />Guardar tercero</Button></div>
+          <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
+            <Field label="Cía. del tercero"><select aria-label="Cía. del tercero" value={thirdPartyDraft.thirdPartyCompanyId} onChange={(event) => setThirdPartyDraft((current) => ({ ...current, thirdPartyCompanyId: event.target.value }))} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"><option value="">Seleccionar...</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</select></Field>
+            <Field label="Referencia de reclamo"><Input aria-label="Referencia de reclamo" value={thirdPartyDraft.claimReference} onChange={(event) => setThirdPartyDraft((current) => ({ ...current, claimReference: event.target.value }))} /></Field>
+          </div>
+        </div> : null}
       </div>
     </div>
   );

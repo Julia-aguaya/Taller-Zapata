@@ -14,6 +14,11 @@ const renderSection = () => render(
     <InsuranceDataSection caseId={42} />
   </QueryClientProvider>,
 );
+const renderLawyerSection = () => render(
+  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <InsuranceDataSection caseId={42} showThirdParty />
+  </QueryClientProvider>,
+);
 
 describe('InsuranceDataSection', () => {
   it('creates and selects a processor without submitting insurance data into the route', async () => {
@@ -74,5 +79,50 @@ describe('InsuranceDataSection', () => {
     await user.selectOptions(screen.getByRole('combobox'), '8');
     expect(screen.queryByText('Ana Gestora')).not.toBeInTheDocument();
     expect(screen.queryByText('Ines Inspectora')).not.toBeInTheDocument();
+  });
+
+  it('keeps client and third-party insurers plus claim reference in the lawyer-only insurance card', async () => {
+    requestJson.mockImplementation((path, options) => {
+      if (path === '/cases/42/insurance') return Promise.resolve({ insuranceCompanyId: 7 });
+      if (path === '/cases/42/third-party') return Promise.resolve({ thirdPartyCompanyId: 8, claimReference: 'TER-22', documentationAccepted: false });
+      if (path === '/insurance/companies') return Promise.resolve([{ id: 7, name: 'Cliente Seguros' }, { id: 8, name: 'Tercero Seguros' }]);
+      if (path === '/insurance/companies/7/contacts') return Promise.resolve([]);
+      if (path === '/cases/42/third-party' && options?.method === 'PUT') return Promise.resolve({});
+      return Promise.resolve({});
+    });
+    const user = userEvent.setup();
+    renderLawyerSection();
+    await waitFor(() => expect(screen.getByLabelText('Cía. del tercero')).toHaveValue('8'));
+    expect(screen.getByLabelText('Referencia de reclamo')).toHaveValue('TER-22');
+    await user.click(screen.getByRole('button', { name: 'Guardar tercero' }));
+    await waitFor(() => expect(requestJson).toHaveBeenCalledWith('/cases/42/third-party', expect.objectContaining({ method: 'PUT', body: expect.stringContaining('TER-22') })));
+  });
+
+  it('preserves unedited third-party workflow fields when saving insurer details', async () => {
+    requestJson.mockImplementation((path, options) => {
+      if (path === '/cases/42/insurance') return Promise.resolve({ insuranceCompanyId: 7 });
+      if (path === '/cases/42/third-party') {
+        if (options?.method === 'PUT') return Promise.resolve({});
+        return Promise.resolve({ thirdPartyCompanyId: 8, claimReference: 'TER-22', documentationStatusCode: 'ACEPTADA', documentationAccepted: true, partsProvisionModeCode: 'TERCERO' });
+      }
+      if (path === '/insurance/companies') return Promise.resolve([{ id: 7, name: 'Cliente Seguros' }, { id: 8, name: 'Tercero Seguros' }]);
+      if (path === '/insurance/companies/7/contacts') return Promise.resolve([]);
+      return Promise.resolve({});
+    });
+    const user = userEvent.setup();
+    renderLawyerSection();
+    await waitFor(() => expect(screen.getByLabelText('Cía. del tercero')).toHaveValue('8'));
+    await user.type(screen.getByLabelText('Referencia de reclamo'), '-EDITADA');
+    await user.click(screen.getByRole('button', { name: 'Guardar tercero' }));
+
+    await waitFor(() => expect(requestJson).toHaveBeenCalledWith('/cases/42/third-party', expect.objectContaining({ method: 'PUT' })));
+    const [, options] = requestJson.mock.calls.filter(([path, request]) => path === '/cases/42/third-party' && request?.method === 'PUT').at(-1);
+    expect(JSON.parse(options.body)).toEqual({
+      thirdPartyCompanyId: 8,
+      claimReference: 'TER-22-EDITADA',
+      documentationStatusCode: 'ACEPTADA',
+      documentationAccepted: true,
+      partsProvisionModeCode: 'TERCERO',
+    });
   });
 });

@@ -440,7 +440,7 @@ export const CaseWorkspacePage = () => {
           ) : currentTab?.tabCode === 'GESTION_REPARACION' ? (
             <RepairEditorPanel caseId={caseId} caseDetail={caseDetail} latestAppointment={latestAppointment} latestIntake={latestIntake} latestOutcome={latestOutcome} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
           ) : currentTab?.tabCode === 'ABOGADO' ? (
-            <ThirdPartyLawyerEditor caseId={caseId} />
+            <ThirdPartyLawyerEditor caseId={caseId} caseDetail={caseDetail} />
           ) : currentTab?.tabCode === 'PAGOS' ? (
             caseDetail.caseTypeCode === 'RECUPERO_FRANQUICIA'
               ? <FranchiseRecoveryPaymentsEditor caseId={caseId} caseDetail={caseDetail} budget={budget} particularFinanceSummary={particularFinanceSummary} onSaved={() => queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'workspace'] })} />
@@ -1020,7 +1020,7 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
             )}
           </div>
         </div>
-        {caseDetail.caseTypeCode === 'RECLAMO_TERCEROS_ABOGADO' ? <RegistryOwnershipSection caseId={caseId} caseDetail={caseDetail} /> : null}
+        {caseDetail.caseTypeCode === 'RECLAMO_TERCEROS' ? <RegistryOwnershipSection caseId={caseId} caseDetail={caseDetail} /> : null}
       </div>
       ) : null}
     </Card>

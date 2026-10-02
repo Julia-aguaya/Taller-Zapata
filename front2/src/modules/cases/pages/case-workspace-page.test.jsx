@@ -54,6 +54,10 @@ vi.mock('@/modules/cases/components/repair-editor-panel', () => ({
   RepairEditorPanel: () => <div>Repair panel</div>,
 }));
 
+vi.mock('@/modules/cases/components/third-party-lawyer-editor', () => ({
+  ThirdPartyLawyerEditor: ({ caseId, caseDetail }) => <output data-testid="lawyer-editor-context">{JSON.stringify({ caseId, caseDetail })}</output>,
+}));
+
 vi.mock('@/modules/cases/components/payments-editor-panel', () => ({
   PaymentsEditorPanel: ({ nroCleas, cleasAgreedAmount, cleasFranchiseDistribution }) => nroCleas !== undefined ? (
     <div>
@@ -631,7 +635,7 @@ describe('CaseWorkspacePage UI', () => {
     expect(screen.getAllByText('Si').length).toBeGreaterThan(0);
   });
 
-  it('no muestra la tarjeta de titularidad en Ficha técnica de Reclamo de terceros Taller', async () => {
+  it('mantiene la titularidad registral en Ficha técnica de Reclamo de terceros Taller', async () => {
     await renderPage({
       ...baseWorkspace,
       caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'RECLAMO_TERCEROS' },
@@ -640,11 +644,8 @@ describe('CaseWorkspacePage UI', () => {
 
     await userEvent.click(screen.getByRole('tab', { name: /ficha t[eé]cnica/i }));
 
-    expect(screen.queryByRole('heading', { name: 'Titularidad registral' })).not.toBeInTheDocument();
-    expect(screen.queryByText('Primer titular')).not.toBeInTheDocument();
-    expect(screen.queryByText('Porcentaje de titularidad')).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Guardar titularidad' })).not.toBeInTheDocument();
-    expect(screen.queryByText(/Persona #\d+ seleccionada/)).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Titularidad registral' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Guardar titularidad' })).toBeInTheDocument();
   });
 
   it('conserva los campos de edicion existentes', async () => {
@@ -773,6 +774,18 @@ describe('CaseWorkspacePage UI', () => {
 
     expect(screen.getByRole('button', { name: /trámite: acordado/i })).toBeDisabled();
     expect(screen.getByRole('button', { name: /reparación: faltan repuestos/i })).toBeDisabled();
+  });
+
+  it('passes the workspace case detail to the lawyer editor', async () => {
+    const user = userEvent.setup();
+    await renderPage({
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'RECLAMO_TERCEROS_ABOGADO', organizationId: 9, branchId: 3 },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'RECLAMO_TERCEROS_ABOGADO', tabs: [{ tabCode: 'ABOGADO', allowed: true, completed: false, blockingReasons: [], warningReasons: [] }] },
+    });
+
+    await user.click(screen.getByRole('tab', { name: /abogado/i }));
+    expect(JSON.parse(screen.getByTestId('lawyer-editor-context').textContent)).toMatchObject({ caseId: '1', caseDetail: { caseTypeCode: 'RECLAMO_TERCEROS_ABOGADO', organizationId: 9, branchId: 3 } });
   });
 
   it('muestra el proximo paso operativo en resumen', async () => {
