@@ -23,6 +23,7 @@ import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseLegalEn
 import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseLegalRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingEntity;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.LawyerThirdPartyIncidentRepository;
 import com.tallerzapata.backend.infrastructure.persistence.person.PersonRepository;
 import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleRepository;
 import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
@@ -56,6 +57,7 @@ public class CaseManagementService {
     private final CaseTypeRepository caseTypeRepository;
     private final InsuranceProcessingRepository insuranceProcessingRepository;
     private final CaseLegalRepository caseLegalRepository;
+    private final LawyerThirdPartyIncidentRepository lawyerThirdPartyIncidentRepository;
 
     public CaseManagementService(
             CaseRepository caseRepository,
@@ -69,7 +71,8 @@ public class CaseManagementService {
             CaseAuditService caseAuditService,
             CaseTypeRepository caseTypeRepository,
             InsuranceProcessingRepository insuranceProcessingRepository,
-            CaseLegalRepository caseLegalRepository
+            CaseLegalRepository caseLegalRepository,
+            LawyerThirdPartyIncidentRepository lawyerThirdPartyIncidentRepository
     ) {
         this.caseRepository = caseRepository;
         this.casePersonRepository = casePersonRepository;
@@ -83,6 +86,7 @@ public class CaseManagementService {
         this.caseTypeRepository = caseTypeRepository;
         this.insuranceProcessingRepository = insuranceProcessingRepository;
         this.caseLegalRepository = caseLegalRepository;
+        this.lawyerThirdPartyIncidentRepository = lawyerThirdPartyIncidentRepository;
     }
 
     @Transactional
@@ -129,32 +133,34 @@ public class CaseManagementService {
         );
     }
 
-    /**
-     * Reclamo de terceros: la titularidad registral se declara por vehiculo con porcentaje
-     * 100 o 50. Con 50 se habilita un segundo titular hasta cubrir el 100% del vehiculo.
-     */
     private Integer validateRegistryOwnershipPercentage(CaseEntity caseEntity, Long excludedRelationId, String caseRoleCode, Long vehicleId, Integer percentage) {
         Long caseId = caseEntity.getId();
         if (percentage == null) {
-            if (isThirdPartyWorkshop(caseEntity) && "TITULAR".equals(caseRoleCode) && vehicleId != null) throw new ConflictException("El porcentaje de titularidad es obligatorio para titulares registrales");
+            if (isThirdPartyOwnershipCase(caseEntity) && "TITULAR".equals(caseRoleCode) && vehicleId != null) throw new ConflictException("El porcentaje de titularidad es obligatorio para titulares registrales");
             return null;
         }
         if (!"TITULAR".equals(caseRoleCode)) {
             throw new ConflictException("El porcentaje de titularidad solo aplica a titulares registrales");
         }
-        if (isThirdPartyWorkshop(caseEntity)) {
-            if (percentage <= 0 || percentage > 100) throw new ConflictException("El porcentaje de titularidad debe estar entre 1 y 100");
-        } else if (percentage != 100 && percentage != 50) {
+        if (isThirdPartyOwnershipCase(caseEntity) && (percentage <= 0 || percentage > 100)) {
+            throw new ConflictException("El porcentaje de titularidad debe estar entre 1 y 100");
+        }
+        if (!isThirdPartyOwnershipCase(caseEntity) && percentage != 100 && percentage != 50) {
             throw new ConflictException("El porcentaje de titularidad solo puede ser 100 o 50");
         }
         List<CasePersonEntity> existingTitulares = casePersonRepository.findByCaseIdAndCaseRoleCodeOrderByIdAsc(caseId, caseRoleCode);
         int registered = existingTitulares.stream()
-                .filter(titular -> vehicleId == null ? titular.getVehicleId() == null : vehicleId.equals(titular.getVehicleId()))
+                .filter(titular -> isThirdPartyLawyer(caseEntity) || (vehicleId == null ? titular.getVehicleId() == null : vehicleId.equals(titular.getVehicleId())))
                 .filter(titular -> !titular.getId().equals(excludedRelationId))
                 .map(CasePersonEntity::getRegistryOwnershipPercentage)
                 .filter(existing -> existing != null)
                 .reduce(0, Integer::sum);
-        if (registered + percentage > 100) {
+        int primaryLawyerOwnerPercentage = isThirdPartyLawyer(caseEntity)
+                ? lawyerThirdPartyIncidentRepository.findByCaseId(caseId)
+                .map(incident -> incident.getOwnershipPercentage() == null ? 0 : incident.getOwnershipPercentage())
+                .orElse(0)
+                : 0;
+        if (primaryLawyerOwnerPercentage + registered + percentage > 100) {
             throw new ConflictException("La titularidad registrada del vehiculo supera el 100%");
         }
         return percentage;
@@ -165,7 +171,7 @@ public class CaseManagementService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "caso.crear");
-        requireThirdPartyWorkshop(caseEntity);
+        requireThirdPartyOwnershipCase(caseEntity);
         CasePersonEntity entity = casePersonRepository.findByIdAndCaseId(relationId, caseId).orElseThrow(() -> new ResourceNotFoundException("No existe la relación de persona en esta carpeta"));
         if (Boolean.TRUE.equals(entity.getPrincipal()) || "CLIENTE".equals(entity.getCaseRoleCode())) throw new ConflictException("No se puede modificar la relación protegida del cliente principal");
         String role = normalizeCode(request.caseRoleCode());
@@ -180,7 +186,7 @@ public class CaseManagementService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCase(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "caso.crear");
-        requireThirdPartyWorkshop(caseEntity);
+        requireThirdPartyOwnershipCase(caseEntity);
         CasePersonEntity entity = casePersonRepository.findByIdAndCaseId(relationId, caseId).orElseThrow(() -> new ResourceNotFoundException("No existe la relación de persona en esta carpeta"));
         if (Boolean.TRUE.equals(entity.getPrincipal()) || "CLIENTE".equals(entity.getCaseRoleCode())) throw new ConflictException("No se puede eliminar la relación protegida del cliente principal");
         casePersonRepository.delete(entity);
@@ -188,7 +194,9 @@ public class CaseManagementService {
     }
 
     private boolean isThirdPartyWorkshop(CaseEntity caseEntity) { return caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(type.getCode())).orElse(false); }
-    private void requireThirdPartyWorkshop(CaseEntity caseEntity) { if (!isThirdPartyWorkshop(caseEntity)) throw new ConflictException("Esta gestión de personas sólo aplica a Reclamo de terceros gestionado por Taller"); }
+    private boolean isThirdPartyLawyer(CaseEntity caseEntity) { return caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> insuranceRepairCasePolicy.isThirdPartyLawyerClaim(type.getCode())).orElse(false); }
+    private boolean isThirdPartyOwnershipCase(CaseEntity caseEntity) { return isThirdPartyWorkshop(caseEntity) || isThirdPartyLawyer(caseEntity); }
+    private void requireThirdPartyOwnershipCase(CaseEntity caseEntity) { if (!isThirdPartyOwnershipCase(caseEntity)) throw new ConflictException("Esta gestión de personas sólo aplica a Reclamos de terceros gestionados por Taller o Abogado"); }
 
     @Transactional(readOnly = true)
     public List<CasePersonResponse> listCasePersons(Long caseId) {

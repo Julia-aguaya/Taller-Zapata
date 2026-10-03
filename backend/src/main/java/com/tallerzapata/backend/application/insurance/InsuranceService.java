@@ -592,12 +592,26 @@ public class InsuranceService {
         CaseEntity caseEntity = requireCase(caseId);
         requireLawyerThirdPartyClaim(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
-        if (request.ownershipPercentage() != null && (request.ownershipPercentage() < 0 || request.ownershipPercentage() > 100)) throw new ConflictException("El porcentaje de titularidad debe estar entre 0 y 100");
+        validateLawyerThirdPartyOwnershipPercentage(caseId, request.ownershipPercentage());
         LawyerThirdPartyIncidentEntity entity = lawyerThirdPartyIncidentRepository.findByCaseId(caseId).orElseGet(LawyerThirdPartyIncidentEntity::new);
         entity.setCaseId(caseId); entity.setThirdPartyPlate(blankToNull(request.thirdPartyPlate())); entity.setThirdPartyMake(blankToNull(request.thirdPartyMake())); entity.setThirdPartyModel(blankToNull(request.thirdPartyModel())); entity.setDriverName(blankToNull(request.driverName())); entity.setDriverDni(blankToNull(request.driverDni())); entity.setDriverAddress(blankToNull(request.driverAddress())); entity.setDriverIsOwner(request.driverIsOwner()); entity.setOwnerName(blankToNull(request.ownerName())); entity.setOwnerDni(blankToNull(request.ownerDni())); entity.setOwnerAddress(blankToNull(request.ownerAddress())); entity.setOwnershipPercentage(request.ownershipPercentage());
         entity = lawyerThirdPartyIncidentRepository.save(entity);
         caseAuditService.register(currentUser.id(), caseId, "caso_terceros_abogado_siniestro", entity.getId(), "upsert_siniestro_tercero_abogado", null, caseAuditService.toJson(CaseAuditService.auditMap("thirdPartyPlate", entity.getThirdPartyPlate(), "driverIsOwner", entity.getDriverIsOwner())), caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
         return toLawyerThirdPartyIncidentResponse(entity);
+    }
+
+    private void validateLawyerThirdPartyOwnershipPercentage(Long caseId, Integer primaryOwnershipPercentage) {
+        if (primaryOwnershipPercentage != null && (primaryOwnershipPercentage < 0 || primaryOwnershipPercentage > 100)) {
+            throw new ConflictException("El porcentaje de titularidad debe estar entre 0 y 100");
+        }
+        int linkedOwnershipPercentage = casePersonRepository.findByCaseIdAndCaseRoleCodeOrderByIdAsc(caseId, "TITULAR").stream()
+                .map(CasePersonEntity::getRegistryOwnershipPercentage)
+                .filter(percentage -> percentage != null)
+                .reduce(0, Integer::sum);
+        int totalOwnershipPercentage = (primaryOwnershipPercentage == null ? 0 : primaryOwnershipPercentage) + linkedOwnershipPercentage;
+        if (totalOwnershipPercentage > 100) {
+            throw new ConflictException("La titularidad registrada del vehiculo supera el 100%");
+        }
     }
 
     /**

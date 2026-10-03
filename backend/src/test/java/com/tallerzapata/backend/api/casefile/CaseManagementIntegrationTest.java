@@ -152,6 +152,37 @@ class CaseManagementIntegrationTest {
     }
 
     @Test
+    void shouldManageLawyerOwnersAgainstPrimaryOwnershipPercentage() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = ? WHERE id = ?", 6L, 100L);
+        jdbcTemplate.update("INSERT INTO personas (id, public_id, tipo_persona, nombre, nombre_mostrar, activo) VALUES (?, ?, ?, ?, ?, ?)", 12L, "00000000-0000-0000-0000-000000001012", "fisica", "Beto", "Beto Test", true);
+        jdbcTemplate.update("INSERT INTO caso_terceros_abogado_siniestro (caso_id, porcentaje_titularidad) VALUES (?, ?)", 100L, 40);
+
+        mockMvc.perform(post("/api/v1/cases/100/persons").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CasePersonAddRequest(11L, "TITULAR", 10L, false, null, 30))))
+                .andExpect(status().isOk());
+        Long relationId = jdbcTemplate.queryForObject("SELECT id FROM caso_personas WHERE caso_id = ? AND persona_id = ?", Long.class, 100L, 11L);
+
+        mockMvc.perform(put("/api/v1/cases/100/persons/{relationId}", relationId).header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CasePersonUpdateRequest("TITULAR", 10L, null, 50))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/cases/100/persons").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CasePersonAddRequest(12L, "TITULAR", 10L, false, null, 20))))
+                .andExpect(status().isConflict());
+
+        mockMvc.perform(delete("/api/v1/cases/100/persons/{relationId}", relationId).header("X-User-Id", "3"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post("/api/v1/cases/100/persons").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CasePersonAddRequest(12L, "TITULAR", 10L, false, null, 60))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/v1/cases/100/lawyer-third-party-incident").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ownershipPercentage\":50}"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
     void shouldRejectDeletingPrincipalClientLink() throws Exception {
         jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = 5 WHERE id = 100");
         mockMvc.perform(delete("/api/v1/cases/100/persons/1").header("X-User-Id", "3")).andExpect(status().isConflict());
