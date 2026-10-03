@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Car, Save, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { ClaimDataSection } from '@/modules/cases/components/claim-data-section';
-import { InsuranceDataSection } from '@/modules/cases/components/insurance-data-section';
+import { InsuranceDataSection as CaseInsuranceDataSection } from '@/modules/cases/components/insurance-data-section';
 import { DocumentsSection } from '@/modules/cases/components/documents-section';
 import { LawyerThirdPartyIncidentSection } from '@/modules/cases/components/lawyer-third-party-incident-section';
 import { ProcedureSection } from '@/modules/cases/components/procedure-section';
@@ -24,7 +24,7 @@ const personName = (person) => person?.nombreMostrar || [person?.nombre, person?
 
 export const ThirdPartyWorkshopEditor = ({ caseId, caseDetail, budget, lawyerManaged = false }) => {
   if (lawyerManaged) return <div className="mt-5 space-y-5 pb-20">
-    <InsuranceDataSection caseId={caseId} caseDetail={caseDetail} />
+    <CaseInsuranceDataSection caseId={caseId} caseDetail={caseDetail} />
     <LawyerThirdPartyIncidentSection caseId={caseId} />
     <DocumentsSection caseId={caseId} moduleCode="GESTION_TRAMITE" includeHistorical title="Documentación del trámite" showCompleteAction={false} />
     <ProcedureSection caseId={caseId} budget={budget} thirdPartyWorkshop />
