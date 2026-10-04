@@ -1,0 +1,9 @@
+ALTER TABLE caso_legal_lesionados ADD COLUMN apellido VARCHAR(100) NULL;
+ALTER TABLE caso_legal_lesionados ADD COLUMN nombres VARCHAR(100) NULL;
+ALTER TABLE caso_legal_lesionados ADD COLUMN fecha_nacimiento DATE NULL;
+ALTER TABLE caso_legal_lesionados ADD COLUMN domicilio VARCHAR(255) NULL;
+ALTER TABLE caso_legal_lesionados ADD COLUMN estado_civil_codigo VARCHAR(40) NULL;
+ALTER TABLE caso_legal_lesionados ADD COLUMN telefono VARCHAR(80) NULL;
+ALTER TABLE caso_legal_lesionados ADD COLUMN correo VARCHAR(255) NULL;
+ALTER TABLE caso_legal_lesionados ADD COLUMN profesion VARCHAR(150) NULL;
+ALTER TABLE caso_legal_lesionados ADD COLUMN anotaciones TEXT NULL;

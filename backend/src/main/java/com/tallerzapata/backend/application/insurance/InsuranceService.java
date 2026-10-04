@@ -718,10 +718,18 @@ public class InsuranceService {
         entity.setCounterpartLawyer(blankToNull(request.counterpartLawyer()));
         entity.setCounterpartPhone(blankToNull(request.counterpartPhone()));
         entity.setCounterpartEmail(blankToNull(request.counterpartEmail()));
-        entity.setRepairsVehicle(Boolean.TRUE.equals(request.repairsVehicle()));
-        entity.setClosedByCode(normalizedOptionalCode(request.closedByCode()));
-        entity.setLegalCloseDate(request.legalCloseDate());
-        entity.setTotalProceedsAmount(scale(request.totalProceedsAmount()));
+        // A partial update without an explicit decision must preserve the legal and
+        // repair-workflow state already chosen by the user.
+        if (request.repairsVehicle() != null) {
+            entity.setRepairsVehicle(request.repairsVehicle());
+        }
+        String closureCode = normalizedOptionalCode(request.closedByCode());
+        entity.setClosedByCode(closureCode);
+        // PENDIENTE is a temporary state: it must not erase the last recorded settlement.
+        if (!"PENDIENTE".equals(closureCode)) {
+            entity.setLegalCloseDate(request.legalCloseDate());
+            entity.setTotalProceedsAmount(scale(request.totalProceedsAmount()));
+        }
         entity.setObservations(blankToNull(request.observations()));
         entity.setClosingNotes(blankToNull(request.closingNotes()));
         entity = caseLegalRepository.save(entity);
@@ -780,7 +788,7 @@ public class InsuranceService {
         CaseLegalEntity caseLegal = ensureCaseLegal(caseId);
         LegalLesionadoEntity entity = new LegalLesionadoEntity();
         entity.setCaseLegalId(caseLegal.getId());
-        applyLesionadoRequest(entity, request);
+        applyLesionadoRequest(entity, request, caseId);
         entity = legalLesionadoRepository.save(entity);
         caseAuditService.register(currentUser.id(), caseId, "caso_legal_lesionados", entity.getId(), "crear_legal_lesionado", null,
                 caseAuditService.toJson(lesionadoAuditSnapshot(entity)),
@@ -797,7 +805,7 @@ public class InsuranceService {
         CaseLegalEntity caseLegal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
         LegalLesionadoEntity entity = requireLesionado(caseLegal.getId(), lesionadoId);
         Map<String, Object> before = lesionadoAuditSnapshot(entity);
-        applyLesionadoRequest(entity, request);
+        applyLesionadoRequest(entity, request, caseId);
         entity = legalLesionadoRepository.save(entity);
         caseAuditService.register(currentUser.id(), caseId, "caso_legal_lesionados", entity.getId(), "actualizar_legal_lesionado",
                 caseAuditService.toJson(before), caseAuditService.toJson(lesionadoAuditSnapshot(entity)),
@@ -820,8 +828,8 @@ public class InsuranceService {
     }
 
     /** Validaciones y aplicacion compartidas entre alta y edicion de lesionados. */
-    private void applyLesionadoRequest(LegalLesionadoEntity entity, LegalLesionadoCreateRequest request) {
-        if (request.personId() == null && isBlank(request.fullName())) {
+    private void applyLesionadoRequest(LegalLesionadoEntity entity, LegalLesionadoCreateRequest request, Long caseId) {
+        if (request.personId() == null && isBlank(request.fullName()) && isBlank(request.firstName()) && isBlank(request.lastName())) {
             throw new ConflictException("Indique los datos del lesionado o seleccione cliente/titular registral");
         }
         String lesionadoEsCode = normalizedOptionalCode(request.lesionadoEsCode());
@@ -831,11 +839,30 @@ public class InsuranceService {
         if (request.personId() != null && !personRepository.existsById(request.personId())) {
             throw new ResourceNotFoundException("No existe la persona " + request.personId());
         }
+        if ("CLIENTE".equals(lesionadoEsCode) || "TITULAR_REGISTRAL".equals(lesionadoEsCode)) {
+            if (request.personId() == null) {
+                throw new ConflictException("Cliente y titular registral requieren una persona vinculada al caso");
+            }
+            String requiredRole = "CLIENTE".equals(lesionadoEsCode) ? "CLIENTE" : "TITULAR";
+            boolean linkedWithRequiredRole = casePersonRepository.existsByCaseIdAndPersonIdAndCaseRoleCode(caseId, request.personId(), requiredRole);
+            if (!linkedWithRequiredRole) {
+                throw new ConflictException("La persona seleccionada no tiene el rol " + requiredRole + " en el caso");
+            }
+        }
         entity.setLesionadoEsCode(lesionadoEsCode);
         entity.setPersonId(request.personId());
         entity.setFullName(blankToNull(request.fullName()));
         entity.setDocumentNumber(blankToNull(request.documentNumber()));
         entity.setProvesIncome(request.provesIncome());
+        entity.setLastName(blankToNull(request.lastName()));
+        entity.setFirstName(blankToNull(request.firstName()));
+        entity.setBirthDate(request.birthDate());
+        entity.setAddress(blankToNull(request.address()));
+        entity.setCivilStatusCode(blankToNull(request.civilStatusCode()));
+        entity.setPhone(blankToNull(request.phone()));
+        entity.setEmail(blankToNull(request.email()));
+        entity.setProfession(blankToNull(request.profession()));
+        entity.setNotes(blankToNull(request.notes()));
     }
 
     private LegalLesionadoEntity requireLesionado(Long caseLegalId, Long lesionadoId) {
@@ -863,11 +890,20 @@ public class InsuranceService {
                 "personId", entity.getPersonId(),
                 "fullName", entity.getFullName(),
                 "documentNumber", entity.getDocumentNumber(),
-                "provesIncome", entity.getProvesIncome());
+                "provesIncome", entity.getProvesIncome(),
+                "lastName", entity.getLastName(),
+                "firstName", entity.getFirstName(),
+                "birthDate", entity.getBirthDate(),
+                "address", entity.getAddress(),
+                "civilStatusCode", entity.getCivilStatusCode(),
+                "phone", entity.getPhone(),
+                "email", entity.getEmail(),
+                "profession", entity.getProfession(),
+                "notes", entity.getNotes());
     }
 
     private LegalLesionadoResponse toLegalLesionadoResponse(LegalLesionadoEntity e) {
-        return new LegalLesionadoResponse(e.getId(), e.getCaseLegalId(), e.getLesionadoEsCode(), e.getPersonId(), e.getFullName(), e.getDocumentNumber(), e.getProvesIncome());
+        return new LegalLesionadoResponse(e.getId(), e.getCaseLegalId(), e.getLesionadoEsCode(), e.getPersonId(), e.getFullName(), e.getDocumentNumber(), e.getProvesIncome(), e.getLastName(), e.getFirstName(), e.getBirthDate(), e.getAddress(), e.getCivilStatusCode(), e.getPhone(), e.getEmail(), e.getProfession(), e.getNotes());
     }
 
     @Transactional(readOnly = true)
@@ -877,7 +913,7 @@ public class InsuranceService {
         requireLegalAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.ver");
         CaseLegalEntity caseLegal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
-        return legalExpenseRepository.findByCaseLegalIdOrderByExpenseDateDesc(caseLegal.getId()).stream().map(this::toLegalExpenseResponse).toList();
+        return legalExpenseRepository.findByCaseLegalIdAndActiveTrueOrderByExpenseDateDesc(caseLegal.getId()).stream().map(this::toLegalExpenseResponse).toList();
     }
 
     @Transactional
@@ -887,18 +923,46 @@ public class InsuranceService {
         requireLegalAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
         CaseLegalEntity caseLegal = ensureCaseLegal(caseId);
-        if (request.paidByCode() != null && !legalExpensePayerRepository.existsByCodeAndActiveTrue(normalizeCode(request.paidByCode()))) throw new ConflictException("paidByCode no permitido: " + request.paidByCode());
+        validateLegalExpense(caseEntity, request.concept(), request.amount(), request.expenseDate(), request.paidByCode());
         LegalExpenseEntity entity = new LegalExpenseEntity();
         entity.setCaseLegalId(caseLegal.getId());
         entity.setConcept(request.concept().trim());
         entity.setAmount(scale(request.amount()));
         entity.setExpenseDate(request.expenseDate());
         entity.setPaidByCode(normalizedOptionalCode(request.paidByCode()));
-        entity.setFinancialMovementId(request.financialMovementId());
-        entity.setSumsToWorkshop(request.sumsToWorkshop());
+        entity.setFinancialMovementId(null);
+        entity.setSumsToWorkshop(false);
+        entity.setActive(true);
         entity = legalExpenseRepository.save(entity);
         caseAuditService.register(currentUser.id(), caseId, "legal_gastos", entity.getId(), "crear_legal_gasto", null, caseAuditService.toJson(CaseAuditService.auditMap("concept", entity.getConcept(), "amount", entity.getAmount(), "sumaTaller", entity.getSumsToWorkshop())), caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
         return toLegalExpenseResponse(entity);
+    }
+
+    @Transactional
+    public LegalExpenseResponse updateCaseLegalExpense(Long caseId, Long expenseId, LegalExpenseUpdateRequest request, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        requireLegalAllowed(caseEntity);
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
+        CaseLegalEntity legal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
+        LegalExpenseEntity entity = legalExpenseRepository.findById(expenseId).filter(expense -> expense.getCaseLegalId().equals(legal.getId()) && Boolean.TRUE.equals(expense.getActive())).orElseThrow(() -> new ResourceNotFoundException("No existe gasto legal para el caso"));
+        validateLegalExpense(caseEntity, request.concept(), request.amount(), request.expenseDate(), request.paidByCode());
+        entity.setConcept(request.concept().trim()); entity.setAmount(scale(request.amount())); entity.setExpenseDate(request.expenseDate()); entity.setPaidByCode(normalizedOptionalCode(request.paidByCode()));
+        entity = legalExpenseRepository.save(entity);
+        caseAuditService.register(currentUser.id(), caseId, "legal_gastos", entity.getId(), "actualizar_legal_gasto", null, caseAuditService.toJson(CaseAuditService.auditMap("concept", entity.getConcept(), "amount", entity.getAmount())), caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
+        return toLegalExpenseResponse(entity);
+    }
+
+    @Transactional
+    public void deleteCaseLegalExpense(Long caseId, Long expenseId, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        requireLegalAllowed(caseEntity);
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
+        CaseLegalEntity legal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
+        LegalExpenseEntity entity = legalExpenseRepository.findById(expenseId).filter(expense -> expense.getCaseLegalId().equals(legal.getId()) && Boolean.TRUE.equals(expense.getActive())).orElseThrow(() -> new ResourceNotFoundException("No existe gasto legal para el caso"));
+        entity.setActive(false); legalExpenseRepository.save(entity);
+        caseAuditService.register(currentUser.id(), caseId, "legal_gastos", entity.getId(), "eliminar_legal_gasto", null, null, caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
     }
 
     @Transactional
@@ -917,10 +981,10 @@ public class InsuranceService {
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.ver");
         CaseLegalEntity legal = caseLegalRepository.findByCaseId(caseId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
-        List<LegalExpenseEntity> expenses = legalExpenseRepository.findByCaseLegalIdOrderByExpenseDateDesc(legal.getId());
+        List<LegalExpenseEntity> expenses = legalExpenseRepository.findByCaseLegalIdAndActiveTrueOrderByExpenseDateDesc(legal.getId());
         try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             var sheet = workbook.createSheet("Erogaciones legales");
-            String[] headers = {"Concepto", "Monto", "Fecha", "Pagado por", "Suma Taller"};
+            String[] headers = {"Concepto", "Monto", "Fecha", "Abonó"};
             Row header = sheet.createRow(0);
             for (int column = 0; column < headers.length; column++) header.createCell(column).setCellValue(headers[column]);
             CellStyle amountStyle = workbook.createCellStyle();
@@ -934,7 +998,6 @@ public class InsuranceService {
                 row.getCell(1).setCellStyle(amountStyle);
                 row.createCell(2).setCellValue(expense.getExpenseDate().toString());
                 row.createCell(3).setCellValue(expense.getPaidByCode() == null ? "" : expense.getPaidByCode());
-                row.createCell(4).setCellValue(Boolean.TRUE.equals(expense.getSumsToWorkshop()) ? "Sí" : "No");
                 total = total.add(expense.getAmount());
             }
             Row totalRow = sheet.createRow(expenses.size() + 2);
@@ -1226,18 +1289,28 @@ public class InsuranceService {
     private LawyerThirdPartyIncidentResponse toLawyerThirdPartyIncidentResponse(LawyerThirdPartyIncidentEntity e) { return new LawyerThirdPartyIncidentResponse(e.getThirdPartyPlate(), e.getThirdPartyMake(), e.getThirdPartyModel(), e.getDriverName(), e.getDriverDni(), e.getDriverAddress(), e.getDriverIsOwner(), e.getOwnerName(), e.getOwnerDni(), e.getOwnerAddress(), e.getOwnershipPercentage()); }
     private CaseLegalResponse toCaseLegalResponse(CaseLegalEntity e) { return new CaseLegalResponse(e.getId(), e.getCaseId(), e.getProcessorCode(), e.getClaimantCode(), e.getInstanceCode(), e.getEntryDate(), e.getCuij(), e.getCourt(), e.getCaseNumber(), e.getCounterpartLawyer(), e.getCounterpartPhone(), e.getCounterpartEmail(), e.getRepairsVehicle(), e.getClosedByCode(), e.getLegalCloseDate(), e.getTotalProceedsAmount(), e.getObservations(), e.getClosingNotes()); }
     private LegalNewsResponse toLegalNewsResponse(LegalNewsEntity e) { return new LegalNewsResponse(e.getId(), e.getCaseLegalId(), e.getNewsDate(), e.getDetail(), e.getNotifyCustomer(), e.getNotifiedAt()); }
-    private LegalExpenseResponse toLegalExpenseResponse(LegalExpenseEntity e) { return new LegalExpenseResponse(e.getId(), e.getCaseLegalId(), e.getConcept(), e.getAmount(), e.getExpenseDate(), e.getPaidByCode(), e.getFinancialMovementId(), e.getSumsToWorkshop()); }
+    private LegalExpenseResponse toLegalExpenseResponse(LegalExpenseEntity e) { return new LegalExpenseResponse(e.getId(), e.getCaseLegalId(), e.getConcept(), e.getAmount(), e.getExpenseDate(), e.getPaidByCode(), e.getFinancialMovementId(), e.getSumsToWorkshop(), e.getActive()); }
     private void validateCaseLegalRequest(CaseLegalUpsertRequest request) {
         if (request.processorCode() != null && !legalProcessorRepository.existsByCodeAndActiveTrue(normalizeCode(request.processorCode()))) throw new ConflictException("processorCode no permitido: " + request.processorCode());
         if (request.claimantCode() != null && !legalClaimantRepository.existsByCodeAndActiveTrue(normalizeCode(request.claimantCode()))) throw new ConflictException("claimantCode no permitido: " + request.claimantCode());
         if (request.instanceCode() != null && !legalInstanceRepository.existsByCodeAndActiveTrue(normalizeCode(request.instanceCode()))) throw new ConflictException("instanceCode no permitido: " + request.instanceCode());
-        if (request.closedByCode() != null && !legalClosureReasonRepository.existsByCodeAndActiveTrue(normalizeCode(request.closedByCode()))) throw new ConflictException("closedByCode no permitido: " + request.closedByCode());
+        String closureCode = normalizedOptionalCode(request.closedByCode());
+        if (closureCode != null && !Set.of("PENDIENTE", "CONCILIACION", "SENTENCIA", "DESISTIMIENTO").contains(closureCode)) throw new ConflictException("closedByCode no permitido: " + request.closedByCode());
+        if (closureCode != null && !legalClosureReasonRepository.existsByCodeAndActiveTrue(closureCode)) throw new ConflictException("closedByCode no permitido: " + request.closedByCode());
+        if (closureCode != null && !"PENDIENTE".equals(closureCode) && (request.legalCloseDate() == null || request.totalProceedsAmount() == null)) throw new ConflictException("Fecha e importe total son obligatorios para un cierre definitivo");
+        if (request.totalProceedsAmount() != null && request.totalProceedsAmount().signum() < 0) throw new ConflictException("El importe total no puede ser negativo");
         if ("JUDICIAL".equals(normalizeCode(request.instanceCode()))) {
             if (request.entryDate() == null) throw new ConflictException("entryDate es obligatorio para la instancia JUDICIAL");
             if (blankToNull(request.cuij()) == null) throw new ConflictException("cuij es obligatorio para la instancia JUDICIAL");
             if (blankToNull(request.court()) == null) throw new ConflictException("court es obligatorio para la instancia JUDICIAL");
             if (blankToNull(request.caseNumber()) == null) throw new ConflictException("caseNumber es obligatorio para la instancia JUDICIAL");
         }
+    }
+    private void validateLegalExpense(CaseEntity caseEntity, String concept, BigDecimal amount, LocalDate expenseDate, String paidByCode) {
+        if (blankToNull(concept) == null || amount == null || amount.signum() <= 0 || expenseDate == null) throw new ConflictException("Concepto, monto mayor a cero y fecha válida son obligatorios");
+        String payer = normalizedOptionalCode(paidByCode);
+        if (insuranceRepairCasePolicy.isThirdPartyLawyerClaim(caseTypeCode(caseEntity)) && !Set.of("CLIENTE", "ABOGADO").contains(payer)) throw new ConflictException("paidByCode debe ser CLIENTE o ABOGADO");
+        if (!legalExpensePayerRepository.existsByCodeAndActiveTrue(payer)) throw new ConflictException("paidByCode no permitido: " + paidByCode);
     }
     private String normalizeCode(String value) { return value == null || value.isBlank() ? null : value.trim().toUpperCase(); }
     private boolean isBlank(String value) { return value == null || value.isBlank(); }

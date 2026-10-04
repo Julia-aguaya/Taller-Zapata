@@ -11,6 +11,7 @@ public record LegalExpenseResponse(
         LocalDate expenseDate,
         String paidByCode,
         Long financialMovementId,
-        Boolean sumsToWorkshop
+        Boolean sumsToWorkshop,
+        Boolean active
 ) {
 }

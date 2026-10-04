@@ -152,6 +152,32 @@ describe('PaymentsEditorPanel', () => {
     expect(queryOptions.find((query) => query.queryKey.at(-1) === 'legal-recoverables')?.enabled).toBe(false);
   });
 
+  it('shows the CUIJ for judicial legal payments', () => {
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'legal'])]: { instanceCode: 'JUDICIAL', cuij: '21-12345678-9' },
+      [JSON.stringify(['cases', '42', 'legal-recoverables'])]: [],
+    };
+
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'RECLAMO_TERCEROS_ABOGADO' } });
+
+    expect(screen.getByText('N.º CUIJ').parentElement).toHaveTextContent('21-12345678-9');
+    expect(screen.queryByText('N.º de siniestro')).toBeNull();
+  });
+
+  it('shows the insurance claim number, never the third-party reference, for administrative legal payments', () => {
+    useQueryData = {
+      [JSON.stringify(['cases', '42', 'legal'])]: { instanceCode: 'ADMINISTRATIVA' },
+      [JSON.stringify(['cases', '42', 'legal-recoverables'])]: [],
+      [JSON.stringify(['cases', '42', 'insurance'])]: { claimNumber: 'SIN-2026-42' },
+      [JSON.stringify(['cases', '42', 'third-party'])]: { claimReference: 'RECLAMO-INTERNO-42' },
+    };
+
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'RECLAMO_TERCEROS_ABOGADO' } });
+
+    expect(screen.getByText('N.º de siniestro').parentElement).toHaveTextContent('SIN-2026-42');
+    expect(screen.queryByText('RECLAMO-INTERNO-42')).toBeNull();
+  });
+
   it('shows the CLEAS number in the summary and payment modal', () => {
     mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' }, nroCleas: 'CLEAS-123' });
 

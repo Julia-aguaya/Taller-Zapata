@@ -4,4 +4,4 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 
-public interface LegalExpenseRepository extends JpaRepository<LegalExpenseEntity, Long> { List<LegalExpenseEntity> findByCaseLegalIdOrderByExpenseDateDesc(Long caseLegalId); }
+public interface LegalExpenseRepository extends JpaRepository<LegalExpenseEntity, Long> { List<LegalExpenseEntity> findByCaseLegalIdOrderByExpenseDateDesc(Long caseLegalId); List<LegalExpenseEntity> findByCaseLegalIdAndActiveTrueOrderByExpenseDateDesc(Long caseLegalId); }

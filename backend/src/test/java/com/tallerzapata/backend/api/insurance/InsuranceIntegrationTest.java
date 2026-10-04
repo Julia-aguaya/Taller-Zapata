@@ -1088,11 +1088,16 @@ class InsuranceIntegrationTest {
         mockMvc.perform(post("/api/v1/cases/100/legal/lesionados")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"lesionadoEsCode\":\"CLIENTE\",\"personId\":10,\"provesIncome\":true}"))
+                        .content("{\"lesionadoEsCode\":\"CLIENTE\",\"personId\":10,\"lastName\":\"Snapshot\",\"firstName\":\"Cliente\",\"documentNumber\":\"30111222\",\"birthDate\":\"1996-02-29\",\"address\":\"Calle 123\",\"civilStatusCode\":\"SOLTERO\",\"phone\":\"341-555\",\"email\":\"cliente@example.com\",\"profession\":\"Docente\",\"provesIncome\":true,\"notes\":\"Constancia adjunta\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.lesionadoEsCode").value("CLIENTE"))
                 .andExpect(jsonPath("$.personId").value(10))
+                .andExpect(jsonPath("$.lastName").value("Snapshot"))
+                .andExpect(jsonPath("$.birthDate").value("1996-02-29"))
                 .andExpect(jsonPath("$.provesIncome").value(true));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT apellido FROM caso_legal_lesionados WHERE persona_id = 10", String.class)).isEqualTo("Snapshot");
+        assertThat(jdbcTemplate.queryForObject("SELECT apellido FROM personas WHERE id = 10", String.class)).isNotEqualTo("Snapshot");
 
         // Lesionado "otro": datos manuales
         mockMvc.perform(post("/api/v1/cases/100/legal/lesionados")
@@ -1112,6 +1117,13 @@ class InsuranceIntegrationTest {
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"lesionadoEsCode\":\"OTRO\"}"))
+                .andExpect(status().isConflict());
+
+        // Una persona existente pero con un rol incoherente no puede ser titular lesionado.
+        mockMvc.perform(post("/api/v1/cases/100/legal/lesionados")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"lesionadoEsCode\":\"TITULAR_REGISTRAL\",\"personId\":10}"))
                 .andExpect(status().isConflict());
 
         // Código de catálogo inválido → conflicto
@@ -1174,7 +1186,7 @@ class InsuranceIntegrationTest {
     }
 
     @Test
-    void shouldPersistLegalExpenseWithSumaTaller() throws Exception {
+    void shouldIgnoreLegacySumaTallerForLegalExpenses() throws Exception {
         setCaseType("RECLAMO_TERCEROS_ABOGADO");
 
         mockMvc.perform(put("/api/v1/cases/100/legal")
@@ -1188,17 +1200,17 @@ class InsuranceIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"concept\":\"Honorarios\",\"amount\":50000,\"expenseDate\":\"2026-02-20\",\"paidByCode\":\"ABOGADO\",\"sumsToWorkshop\":true}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.sumsToWorkshop").value(true));
+                .andExpect(jsonPath("$.sumsToWorkshop").value(false));
 
         mockMvc.perform(post("/api/v1/cases/100/legal-expenses")
                         .header("X-User-Id", "3")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"concept\":\"Certificados\",\"amount\":8000,\"expenseDate\":\"2026-02-21\",\"paidByCode\":\"TALLER\",\"sumsToWorkshop\":false}"))
+                        .content("{\"concept\":\"Certificados\",\"amount\":8000,\"expenseDate\":\"2026-02-21\",\"paidByCode\":\"CLIENTE\",\"sumsToWorkshop\":false}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.sumsToWorkshop").value(false));
 
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM legal_gastos WHERE caso_legal_id = (SELECT id FROM caso_legal WHERE caso_id = 100) AND suma_taller = 1", Integer.class)).isEqualTo(1);
-        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM legal_gastos WHERE caso_legal_id = (SELECT id FROM caso_legal WHERE caso_id = 100) AND suma_taller = 0", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM legal_gastos WHERE caso_legal_id = (SELECT id FROM caso_legal WHERE caso_id = 100) AND suma_taller = 1", Integer.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM legal_gastos WHERE caso_legal_id = (SELECT id FROM caso_legal WHERE caso_id = 100) AND suma_taller = 0", Integer.class)).isEqualTo(2);
     }
 
     @Test
@@ -1261,6 +1273,17 @@ class InsuranceIntegrationTest {
         mockMvc.perform(get("/api/v1/cases/100").header("X-User-Id", "3"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.visibleRepairState.code").value("NO_DEBE_REPARARSE"));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT no_repara FROM caso_tramitacion_seguro WHERE caso_id = 100", Boolean.class)).isTrue();
+
+        // A partial save must preserve the explicit "No repara" decision rather
+        // than silently persisting false while leaving repair workflow unsynchronised.
+        mockMvc.perform(put("/api/v1/cases/100/legal")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL\",\"instanceCode\":\"ADMINISTRATIVA\",\"entryDate\":\"2026-01-15\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.repairsVehicle").value(false));
 
         assertThat(jdbcTemplate.queryForObject("SELECT no_repara FROM caso_tramitacion_seguro WHERE caso_id = 100", Boolean.class)).isTrue();
 
@@ -1328,6 +1351,39 @@ class InsuranceIntegrationTest {
 
         Integer processingRows = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM caso_tramitacion_seguro WHERE caso_id = 100", Integer.class);
         assertThat(processingRows).isEqualTo(0);
+    }
+
+    @Test
+    void shouldManageLawyerClosureExpensesAndRecoverablesWithoutDuplicatingFinance() throws Exception {
+        setCaseType("RECLAMO_TERCEROS_ABOGADO");
+        mockMvc.perform(put("/api/v1/cases/100/legal").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL\",\"instanceCode\":\"ADMINISTRATIVA\",\"repairsVehicle\":true,\"closedByCode\":\"PENDIENTE\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/cases/100/legal").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL\",\"instanceCode\":\"ADMINISTRATIVA\",\"repairsVehicle\":true,\"closedByCode\":\"CONCILIACION\"}"))
+                .andExpect(status().isConflict());
+        mockMvc.perform(post("/api/v1/cases/100/legal-expenses").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"concept\":\"Tasa\",\"amount\":100,\"expenseDate\":\"2026-02-20\",\"paidByCode\":\"CLIENTE\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.active").value(true));
+        Long expenseId = jdbcTemplate.queryForObject("SELECT id FROM legal_gastos WHERE concepto = 'Tasa'", Long.class);
+        mockMvc.perform(put("/api/v1/cases/100/legal-expenses/" + expenseId).header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"concept\":\"Tasa judicial\",\"amount\":200,\"expenseDate\":\"2026-02-21\",\"paidByCode\":\"ABOGADO\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.amount").value(200));
+        mockMvc.perform(delete("/api/v1/cases/100/legal-expenses/" + expenseId).header("X-User-Id", "3")).andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/cases/100/legal-expenses").header("X-User-Id", "3")).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+        mockMvc.perform(post("/api/v1/cases/100/legal-recoverables").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"concept\":\"Daño material\",\"amount\":500,\"expectedPaymentDate\":\"2026-03-01\",\"sumsToWorkshop\":true}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.collectionStatusCode").value("PENDIENTE"));
+        Long itemId = jdbcTemplate.queryForObject("SELECT id FROM legal_rubros_recuperables WHERE concepto = 'Daño material'", Long.class);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE origen_flujo_codigo = 'LEGAL'", Integer.class)).isEqualTo(1);
+        mockMvc.perform(put("/api/v1/cases/100/legal-recoverables/" + itemId).header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"concept\":\"Daño material actualizado\",\"amount\":600,\"expectedPaymentDate\":\"2026-03-02\",\"sumsToWorkshop\":true,\"effectivePaymentDate\":\"2026-03-03\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.collectionStatusCode").value("COBRADO"));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE origen_flujo_codigo = 'LEGAL'", Integer.class)).isEqualTo(1);
+        mockMvc.perform(put("/api/v1/cases/100/legal-recoverables/" + itemId).header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"concept\":\"Daño material actualizado\",\"amount\":600,\"sumsToWorkshop\":false}"))
+                .andExpect(status().isOk());
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE origen_flujo_codigo = 'LEGAL'", Integer.class)).isEqualTo(0);
     }
 
     private void seedBaseData() {

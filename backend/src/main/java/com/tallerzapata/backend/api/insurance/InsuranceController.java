@@ -197,6 +197,14 @@ public class InsuranceController {
     @PostMapping("/cases/{caseId}/legal-expenses")
     public LegalExpenseResponse createCaseLegalExpense(@PathVariable Long caseId, @RequestBody LegalExpenseCreateRequest request, HttpServletRequest httpRequest) { return insuranceService.createCaseLegalExpense(caseId, request, httpRequest); }
 
+    @PreAuthorize("hasAuthority('seguro.crear')")
+    @PutMapping("/cases/{caseId}/legal-expenses/{expenseId}")
+    public LegalExpenseResponse updateCaseLegalExpense(@PathVariable Long caseId, @PathVariable Long expenseId, @RequestBody LegalExpenseUpdateRequest request, HttpServletRequest httpRequest) { return insuranceService.updateCaseLegalExpense(caseId, expenseId, request, httpRequest); }
+
+    @PreAuthorize("hasAuthority('seguro.crear')")
+    @DeleteMapping("/cases/{caseId}/legal-expenses/{expenseId}")
+    public void deleteCaseLegalExpense(@PathVariable Long caseId, @PathVariable Long expenseId, HttpServletRequest httpRequest) { insuranceService.deleteCaseLegalExpense(caseId, expenseId, httpRequest); }
+
     @PreAuthorize("hasAuthority('seguro.ver')")
     @GetMapping("/cases/{caseId}/legal-expenses/export")
     public ResponseEntity<byte[]> exportCaseLegalExpenses(@PathVariable Long caseId) {
@@ -213,6 +221,14 @@ public class InsuranceController {
     @PreAuthorize("hasAuthority('seguro.crear')")
     @PostMapping("/cases/{caseId}/legal-recoverables")
     public LegalRecoverableItemResponse createLegalRecoverable(@PathVariable Long caseId, @RequestBody LegalRecoverableItemCreateRequest request, HttpServletRequest httpRequest) { return legalRecoverableItemService.create(caseId, request, httpRequest); }
+
+    @PreAuthorize("hasAuthority('seguro.crear')")
+    @PutMapping("/cases/{caseId}/legal-recoverables/{itemId}")
+    public LegalRecoverableItemResponse updateLegalRecoverable(@PathVariable Long caseId, @PathVariable Long itemId, @RequestBody LegalRecoverableItemUpdateRequest request, HttpServletRequest httpRequest) { return legalRecoverableItemService.update(caseId, itemId, request, httpRequest); }
+
+    @PreAuthorize("hasAuthority('seguro.crear')")
+    @DeleteMapping("/cases/{caseId}/legal-recoverables/{itemId}")
+    public void deleteLegalRecoverable(@PathVariable Long caseId, @PathVariable Long itemId, HttpServletRequest httpRequest) { legalRecoverableItemService.delete(caseId, itemId, httpRequest); }
 
     @PreAuthorize("hasAuthority('seguro.crear')")
     @PostMapping("/cases/{caseId}/legal-recoverables/{itemId}/collect")

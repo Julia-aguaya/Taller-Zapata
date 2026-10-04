@@ -36,6 +36,7 @@ public class FinancialMovementEntity {
     @Column(name = "es_bonificacion", nullable = false) private Boolean bonification;
     @Column(name = "motivo") private String reason;
     @Column(name = "referencia_externa") private String externalReference;
+    @Column(name = "estado_cobro_codigo") private String collectionStatusCode;
     @Column(name = "registrado_por", nullable = false) private Long registeredBy;
     @Column(name = "created_at", insertable = false, updatable = false) private LocalDateTime createdAt;
     @Column(name = "updated_at", insertable = false, updatable = false) private LocalDateTime updatedAt;
@@ -77,6 +78,8 @@ public class FinancialMovementEntity {
     public void setReason(String reason) { this.reason = reason; }
     public String getExternalReference() { return externalReference; }
     public void setExternalReference(String externalReference) { this.externalReference = externalReference; }
+    public String getCollectionStatusCode() { return collectionStatusCode; }
+    public void setCollectionStatusCode(String collectionStatusCode) { this.collectionStatusCode = collectionStatusCode; }
     public Long getRegisteredBy() { return registeredBy; }
     public void setRegisteredBy(Long registeredBy) { this.registeredBy = registeredBy; }
     public LocalDateTime getCreatedAt() { return createdAt; }

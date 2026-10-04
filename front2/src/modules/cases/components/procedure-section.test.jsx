@@ -5,12 +5,18 @@ import { ProcedureSection, buildProcessingPatch, isBelowMinimumConfirmationRequi
 let mutationConfig;
 const invalidateQueries = vi.fn().mockResolvedValue(undefined);
 const requestJson = vi.fn();
+const getLegalCase = vi.fn();
+const saveLegalCase = vi.fn();
+const getThirdParty = vi.fn();
+const saveThirdParty = vi.fn();
+let legalCase = null;
+let thirdParty = null;
 const processing = { id: 1, version: 4, presentedAt: '2026-08-01', agreedAmount: 100, minimumCloseAmount: 120, includesParts: false };
-const catalogs = { modalityCodes: [{ code: 'PRESENCIAL', name: 'Presencial' }, { code: 'POR_FOTOS', name: 'Por fotos' }], quotationStatusCodes: [], opinionCodes: [] };
+const catalogs = { modalityCodes: [{ code: 'PRESENCIAL', name: 'Presencial' }, { code: 'POR_FOTOS', name: 'Por fotos' }], quotationStatusCodes: [], opinionCodes: [], partsProvisionModeCodes: [{ code: 'COMPANIA', name: 'Compañía' }, { code: 'TALLER', name: 'Taller' }, { code: 'CLIENTE', name: 'Cliente' }, { code: 'OTRO', name: 'Otro' }] };
 
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: ({ queryKey }) => ({ data: queryKey[2] === 'insurance-processing' ? processing : catalogs }),
-  useQueryClient: () => ({ invalidateQueries }),
+  useQuery: ({ queryKey }) => ({ data: queryKey[2] === 'insurance-processing' ? processing : queryKey[2] === 'legal' ? legalCase : queryKey[2] === 'third-party' ? thirdParty : catalogs }),
+  useQueryClient: () => ({ invalidateQueries, setQueryData: vi.fn() }),
   useMutation: (config) => {
     mutationConfig = config;
     return { isPending: false, mutate: async (payload) => {
@@ -20,6 +26,7 @@ vi.mock('@tanstack/react-query', () => ({
   },
 }));
 vi.mock('@/shared/api/http-client', () => ({ requestJson: (...args) => requestJson(...args) }));
+vi.mock('@/modules/cases/api/third-party-api', () => ({ getLegalCase: (...args) => getLegalCase(...args), saveLegalCase: (...args) => saveLegalCase(...args), getThirdParty: (...args) => getThirdParty(...args), saveThirdParty: (...args) => saveThirdParty(...args) }));
 vi.mock('@/modules/cases/components/provider-selector', () => ({
   ProviderSelector: ({ value, onChange }) => <><input aria-label="Proveedor manual" value={value || ''} onChange={(event) => onChange({ providerId: null, snapshot: event.target.value })} /><button type="button" onClick={() => onChange({ providerId: 702, snapshot: 'Proveedor Seguro' })}>Seleccionar proveedor</button></>,
 }));
@@ -28,6 +35,12 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 describe('ProcedureSection processing contract', () => {
   beforeEach(() => {
     requestJson.mockReset();
+    getLegalCase.mockReset();
+    saveLegalCase.mockReset();
+    getThirdParty.mockReset();
+    saveThirdParty.mockReset();
+    legalCase = null;
+    thirdParty = null;
     invalidateQueries.mockClear();
     Object.assign(processing, { id: 1, version: 4, presentedAt: '2026-08-01', inspectionForwardedAt: null, inspectionDate: null, agreedAmount: 100, minimumCloseAmount: 120, includesParts: false, partsAuthorizationCode: null, partsSupplierText: null, providerId: null });
   });
@@ -63,6 +76,34 @@ describe('ProcedureSection processing contract', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
 
     await waitFor(() => expect(requestJson).toHaveBeenCalledWith('/cases/42/insurance-processing', expect.objectContaining({ method: 'PATCH', body: expect.stringContaining('"opinionCode":"RECHAZADO"') })));
+  });
+
+  it('renders the lawyer controls with the canonical parts provision options and no secondary save button', () => {
+    legalCase = { repairsVehicle: true };
+    thirdParty = { partsProvisionModeCode: 'TALLER' };
+    render(<ProcedureSection caseId="42" lawyerManaged />);
+
+    expect(Array.from(screen.getByLabelText('Provee repuestos').options).map((option) => option.textContent)).toEqual(['Seleccionar...', 'Compañía', 'Taller', 'Cliente']);
+    expect(screen.getByLabelText('Repara vehículo')).toHaveValue('SI');
+    expect(screen.queryByRole('button', { name: /Guardar reparación/i })).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Guardar' })).toHaveLength(1);
+  });
+
+  it('saves lawyer repair and parts provision through the primary Tramitacion action', async () => {
+    legalCase = { processorCode: 'ABOGADO', claimantCode: 'DANIO_MATERIAL', observations: 'Conservar', repairsVehicle: true };
+    thirdParty = { thirdPartyCompanyId: 8, claimReference: 'TER-42', partsProvisionModeCode: 'COMPANIA' };
+    requestJson.mockResolvedValue({});
+    saveLegalCase.mockResolvedValue({ ...legalCase, repairsVehicle: false });
+    saveThirdParty.mockResolvedValue({ ...thirdParty, partsProvisionModeCode: 'CLIENTE' });
+    render(<ProcedureSection caseId="42" lawyerManaged />);
+
+    fireEvent.change(screen.getByLabelText('Repara vehículo'), { target: { value: 'NO' } });
+    fireEvent.change(screen.getByLabelText('Provee repuestos'), { target: { value: 'CLIENTE' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    await waitFor(() => expect(saveLegalCase).toHaveBeenCalledWith('42', expect.objectContaining({ processorCode: 'ABOGADO', claimantCode: 'DANIO_MATERIAL', observations: 'Conservar', repairsVehicle: false })));
+    expect(saveThirdParty).toHaveBeenCalledWith('42', { thirdPartyCompanyId: 8, claimReference: 'TER-42', partsProvisionModeCode: 'CLIENTE' });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '42', 'workspace'] });
   });
 
   it('persists a selected catalog provider as its id and server-owned snapshot', async () => {

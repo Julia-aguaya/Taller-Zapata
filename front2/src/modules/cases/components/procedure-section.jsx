@@ -7,6 +7,7 @@ import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Input } from '@/shared/ui/input';
 import { ProviderSelector } from '@/modules/cases/components/provider-selector';
+import { getLegalCase, getThirdParty, saveLegalCase, saveThirdParty } from '@/modules/cases/api/third-party-api';
 
 const BELOW_MINIMUM_CODE = 'PROCESSING_AMOUNT_BELOW_MINIMUM_CONFIRMATION_REQUIRED';
 const editableFields = ['presentedAt', 'inspectionForwardedAt', 'inspectionDate', 'modalityCode', 'quotationStatusCode', 'quotationDate', 'agreedAmount', 'partsAuthorizationCode', 'partsSupplierText', 'providerId'];
@@ -15,6 +16,7 @@ const partsAuthorizationOptions = [
   { value: 'PARCIAL', label: 'Aprobados parcial' },
   { value: 'RECHAZADO', label: 'Rechazados' },
 ];
+const lawyerPartsProvisionCodes = new Set(['COMPANIA', 'TALLER', 'CLIENTE']);
 
 const Field = ({ label, children, className = '' }) => (
   <div className={`min-w-0 ${className}`}>
@@ -40,21 +42,28 @@ export const buildProcessingPatch = (form, processing) => {
   return patch;
 };
 
-export const ProcedureSection = ({ caseId, thirdPartyWorkshop = false, hideGeneralData = false }) => {
+export const ProcedureSection = ({ caseId, thirdPartyWorkshop = false, hideGeneralData = false, lawyerManaged = false }) => {
   const queryClient = useQueryClient();
   const [form, setForm] = useState(() => processingForm(null));
   const [belowMinimum, setBelowMinimum] = useState(null);
   const [belowMinimumReason, setBelowMinimumReason] = useState('');
   const processingQuery = useQuery({ queryKey: ['cases', String(caseId), 'insurance-processing'], queryFn: () => requestJson(`/cases/${caseId}/insurance-processing`) });
+  const legalCaseQuery = useQuery({ queryKey: ['cases', String(caseId), 'legal'], queryFn: () => getLegalCase(caseId), enabled: lawyerManaged });
+  const thirdPartyQuery = useQuery({ queryKey: ['cases', String(caseId), 'third-party'], queryFn: () => getThirdParty(caseId), enabled: lawyerManaged });
   const catalogsQuery = useQuery({ queryKey: ['insurance', 'catalogs'], queryFn: () => requestJson('/insurance/catalogs') });
   const processing = processingQuery.data;
   const modalityCodes = catalogsQuery.data?.modalityCodes ?? [];
   const quotationStatuses = catalogsQuery.data?.quotationStatusCodes ?? [];
+  const [repairsVehicle, setRepairsVehicle] = useState(true);
+  const [partsProvisionModeCode, setPartsProvisionModeCode] = useState('');
 
   useEffect(() => {
     const next = processingForm(processing);
     setForm(thirdPartyWorkshop ? { ...next, opinionCode: processing?.opinionCode || 'APROBADO' } : next);
   }, [processing, thirdPartyWorkshop]);
+
+  useEffect(() => { setRepairsVehicle(legalCaseQuery.data?.repairsVehicle ?? true); }, [legalCaseQuery.data]);
+  useEffect(() => { setPartsProvisionModeCode(thirdPartyQuery.data?.partsProvisionModeCode ?? ''); }, [thirdPartyQuery.data]);
 
   const invalidateProcessing = async () => {
     await Promise.all([
@@ -67,11 +76,21 @@ export const ProcedureSection = ({ caseId, thirdPartyWorkshop = false, hideGener
   };
 
   const mutation = useMutation({
-    mutationFn: (payload) => requestJson(`/cases/${caseId}/insurance-processing`, { method: 'PATCH', body: JSON.stringify(payload) }),
+    mutationFn: async ({ processingPayload, saveLegal, saveThirdPartyData }) => {
+      if (processingPayload) await requestJson(`/cases/${caseId}/insurance-processing`, { method: 'PATCH', body: JSON.stringify(processingPayload) });
+      if (saveLegal) await saveLegalCase(caseId, { ...legalCaseQuery.data, repairsVehicle });
+      if (saveThirdPartyData) await saveThirdParty(caseId, { thirdPartyCompanyId: thirdPartyQuery.data?.thirdPartyCompanyId ?? null, claimReference: thirdPartyQuery.data?.claimReference ?? null, partsProvisionModeCode: partsProvisionModeCode || null });
+    },
     onSuccess: async () => {
       setBelowMinimum(null);
       setBelowMinimumReason('');
       await invalidateProcessing();
+      if (lawyerManaged) {
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'legal'] }),
+          queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'third-party'] }),
+        ]);
+      }
       toast.success('Tramitacion guardada.');
     },
     onError: async (error) => {
@@ -87,8 +106,11 @@ export const ProcedureSection = ({ caseId, thirdPartyWorkshop = false, hideGener
   const save = (reason = null) => {
     const patch = buildProcessingPatch(form, processing);
     if (thirdPartyWorkshop && form.opinionCode !== processing?.opinionCode) patch.opinionCode = form.opinionCode;
-    if (!Object.keys(patch).length) return;
-    mutation.mutate({ expectedVersion: processing?.version ?? 0, ...patch, ...(reason ? { belowMinimumReason: reason } : {}) });
+    const processingPayload = Object.keys(patch).length ? { expectedVersion: processing?.version ?? 0, ...patch, ...(reason ? { belowMinimumReason: reason } : {}) } : null;
+    const saveLegal = lawyerManaged && legalCaseQuery.data && repairsVehicle !== Boolean(legalCaseQuery.data.repairsVehicle);
+    const saveThirdPartyData = lawyerManaged && thirdPartyQuery.data && partsProvisionModeCode !== (thirdPartyQuery.data.partsProvisionModeCode ?? '');
+    if (!processingPayload && !saveLegal && !saveThirdPartyData) return;
+    mutation.mutate({ processingPayload, saveLegal, saveThirdPartyData });
   };
 
   const approveMutation = useMutation({
@@ -112,6 +134,8 @@ export const ProcedureSection = ({ caseId, thirdPartyWorkshop = false, hideGener
        {!hasPresentedAt ? <div className="mt-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700"><AlertTriangle className="h-3.5 w-3.5 shrink-0" />Registra la fecha de presentacion ante la compania para habilitar el resto de la tramitacion.</div> : null}
       {approval ? <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"><span>Acuerdo bajo minimo: {approval.status === 'PENDIENTE' ? 'pendiente de aprobacion de un administrador global.' : 'aprobado por un administrador global.'}</span>{approval.status === 'PENDIENTE' && approval.canApprove ? <Button type="button" size="sm" onClick={() => approveMutation.mutate()} disabled={approveMutation.isPending}>Aprobar acuerdo</Button> : null}</div> : null}
       <div className="mt-4 grid gap-x-6 gap-y-3 md:grid-cols-4">
+        {lawyerManaged ? <Field label="Repara vehículo"><select aria-label="Repara vehículo" value={repairsVehicle ? 'SI' : 'NO'} onChange={(event) => setRepairsVehicle(event.target.value === 'SI')} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"><option value="SI">Sí</option><option value="NO">No</option></select></Field> : null}
+        {lawyerManaged ? <Field label="Provee repuestos"><select aria-label="Provee repuestos" value={partsProvisionModeCode} onChange={(event) => setPartsProvisionModeCode(event.target.value)} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"><option value="">Seleccionar...</option>{(catalogsQuery.data?.partsProvisionModeCodes ?? []).filter((item) => lawyerPartsProvisionCodes.has(item.code)).map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}</select></Field> : null}
         {!hideGeneralData ? <Field label="Fecha de presentación"><Input aria-label="Fecha presentado" type="date" value={form.presentedAt} onChange={(event) => setField('presentedAt', event.target.value)} /></Field> : null}
         {thirdPartyWorkshop && !hideGeneralData ? <Field label="Dictamen"><select aria-label="Dictamen" value={form.opinionCode || 'APROBADO'} onChange={(event) => setField('opinionCode', event.target.value)} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"><option value="APROBADO">A favor</option><option value="RECHAZADO">En contra</option></select></Field> : null}
         <Field label="Derivado a inspeccion"><Input aria-label="Derivado a inspeccion" type="date" value={form.inspectionForwardedAt} disabled={!hasPresentedAt} onChange={(event) => setField('inspectionForwardedAt', event.target.value)} /></Field>

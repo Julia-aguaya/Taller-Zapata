@@ -53,19 +53,51 @@ describe('DocumentsSection', () => {
     vi.unstubAllGlobals();
   });
 
-  it('isolates and collapses legal-case documentation by module', async () => {
+  it('isolates legal-case documentation and offers only its generic categories', async () => {
     const fetchMock = vi.fn((url) => {
-      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [{ id: 31, code: 'EXPEDIENTE_LEGAL', name: 'Expediente legal', requiresDate: false }, { id: 8, code: 'OTRO', name: 'Otro', requiresDate: false }] }));
+      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [
+        { id: 1, code: 'PERSONAL', name: 'Personal', requiresDate: false },
+        { id: 2, code: 'SEGURO', name: 'Seguro', requiresDate: false },
+        { id: 3, code: 'OTRO', name: 'Otro', requiresDate: false },
+        { id: 4, code: 'VEHICULO', name: 'Vehículo', requiresDate: false },
+        { id: 31, code: 'EXPEDIENTE_LEGAL', name: 'Expediente legal', requiresDate: false },
+        { id: 32, code: 'CIERRE_LEGAL', name: 'Cierre legal', requiresDate: false },
+      ] }));
       if (url === '/api/v1/cases/42/documents?moduleCode=LEGAL') return Promise.resolve(jsonResponse([{ documentId: 7, relationId: 7, moduleCode: 'LEGAL', categoryId: 31, fileName: 'demanda.pdf' }]));
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
     vi.stubGlobal('fetch', fetchMock);
-    renderSection({ moduleCode: 'LEGAL', includeHistorical: false, title: 'Documentación Expediente', categoryCodes: new Set(['EXPEDIENTE_LEGAL']), collapsible: true, showCompleteAction: false });
+    renderSection({ moduleCode: 'LEGAL', includeHistorical: false, title: 'Documentación Expediente', categoryCodes: new Set(['PERSONAL', 'SEGURO', 'OTRO']), collapsible: true, showCompleteAction: false });
     const toggle = await screen.findByRole('button', { name: /documentación expediente/i });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
     fireEvent.click(toggle);
     expect(await screen.findByText('demanda.pdf')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/cases/42/documents?moduleCode=LEGAL', expect.anything());
+    fireEvent.click(screen.getByRole('button', { name: /agregar items/i }));
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['Seleccionar...', 'Personal', 'Seguro', 'Otro']);
+  });
+
+  it('uploads closing documentation only under the legal closing category and module', async () => {
+    saveStoredAuth({ accessToken: 'access-token', refreshToken: 'refresh-token' });
+    const fetchMock = vi.fn((url, options = {}) => {
+      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [{ id: 32, code: 'CIERRE_LEGAL', name: 'Cierre legal', requiresDate: false }, { id: 3, code: 'OTRO', name: 'Otro', requiresDate: false }] }));
+      if (url === '/api/v1/cases/42/documents?moduleCode=LEGAL') return Promise.resolve(jsonResponse([]));
+      if (url === '/api/v1/documents' && options.method === 'POST') return Promise.resolve(jsonResponse({ id: 101 }));
+      if (url === '/api/v1/documents/101/relations' && options.method === 'POST') return Promise.resolve(jsonResponse({ id: 12 }));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderSection({ moduleCode: 'LEGAL', includeHistorical: false, title: 'Documentación de cierre', categoryCodes: new Set(['CIERRE_LEGAL']), showCompleteAction: false });
+    fireEvent.click(await screen.findByRole('button', { name: /agregar items/i }));
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['Seleccionar...', 'Cierre legal']);
+    fireEvent.change(screen.getByLabelText('Categoría'), { target: { value: '32' } });
+    fireEvent.change(screen.getByLabelText('Archivos'), { target: { files: [new File(['convenio'], 'cierre.pdf', { type: 'application/pdf' })] } });
+    fireEvent.click(screen.getByRole('button', { name: /^subir$/i }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/documents/101/relations', expect.objectContaining({ method: 'POST' })));
+    const [, relationOptions] = fetchMock.mock.calls.find(([url]) => url === '/api/v1/documents/101/relations');
+    expect(JSON.parse(relationOptions.body)).toMatchObject({ caseId: 42, entityType: 'CASO', entityId: 42, moduleCode: 'LEGAL' });
   });
 
   it('prepopulates, allows editing, and sends documentDate in ISO format when the selected category requires it', async () => {

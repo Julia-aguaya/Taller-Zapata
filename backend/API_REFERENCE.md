@@ -210,11 +210,27 @@ Las cargas resumibles no requieren hashes en el navegador: el servidor calcula y
 | POST | /api/v1/cases/{caseId}/legal-news | Crear novedad | seguro.crear |
 | GET | /api/v1/cases/{caseId}/legal-expenses | Listar gastos | seguro.ver |
 | POST | /api/v1/cases/{caseId}/legal-expenses | Crear gasto | seguro.crear |
+| PUT | /api/v1/cases/{caseId}/legal-expenses/{expenseId} | Actualizar gasto | seguro.crear |
+| DELETE | /api/v1/cases/{caseId}/legal-expenses/{expenseId} | Desactivar gasto | seguro.crear |
+| GET | /api/v1/cases/{caseId}/legal-expenses/export | Descargar XLSX de gastos activos del caso | seguro.ver |
+| GET | /api/v1/cases/{caseId}/legal-recoverables | Listar rubros recuperables | seguro.ver |
+| POST | /api/v1/cases/{caseId}/legal-recoverables | Crear rubro recuperable | seguro.crear |
+| PUT | /api/v1/cases/{caseId}/legal-recoverables/{itemId} | Actualizar rubro recuperable | seguro.crear |
+| DELETE | /api/v1/cases/{caseId}/legal-recoverables/{itemId} | Desactivar rubro recuperable | seguro.crear |
+| POST | /api/v1/cases/{caseId}/legal-recoverables/{itemId}/collect | Marcar rubro sumable como cobrado | seguro.crear |
 | GET | /api/v1/cases/{caseId}/legal/lesionados | Listar lesionados del expediente | seguro.ver |
-| POST | /api/v1/cases/{caseId}/legal/lesionados | Registrar lesionado | seguro.crear |
-| PUT | /api/v1/cases/{caseId}/legal/lesionados/{lesionadoId} | Actualizar lesionado | seguro.crear |
+| POST | /api/v1/cases/{caseId}/legal/lesionados | Registrar snapshot de lesionado | seguro.crear |
+| PUT | /api/v1/cases/{caseId}/legal/lesionados/{lesionadoId} | Actualizar snapshot de lesionado | seguro.crear |
 | DELETE | /api/v1/cases/{caseId}/legal/lesionados/{lesionadoId} | Eliminar lesionado | seguro.crear |
 | GET | /api/v1/cases/{caseId}/tramite/pdf | Generar PDF de gestion del tramite | seguro.ver |
+
+`POST` y `PUT` de lesionados reciben el snapshot legal (`lastName`, `firstName`, `documentNumber`, `birthDate`, `address`, `civilStatusCode`, `phone`, `email`, `profession`, `provesIncome`, `notes`) y un `personId` opcional como fuente. `CLIENTE` exige una persona con rol `CLIENTE` en el caso y `TITULAR_REGISTRAL`, rol `TITULAR`; `OTRO` puede no tener `personId`. La edad se deriva de `birthDate` y no se persiste.
+
+Los gastos legales usan `concept`, `amount`, `expenseDate` y `paidByCode`; en `RECLAMO_TERCEROS_ABOGADO`, monto debe ser mayor que cero, fecha obligatoria y el pagador sólo puede ser `CLIENTE` o `ABOGADO`. Los `DELETE` son bajas lógicas, por lo que el listado, el total y el XLSX incluyen exclusivamente gastos activos del caso solicitado. El XLSX contiene Concepto, Monto, Fecha y Abonó, más su total.
+
+Los rubros recuperables usan `concept`, `amount`, `expectedPaymentDate`, `sumsToWorkshop` y `effectivePaymentDate`. Si `sumsToWorkshop` es verdadero, el backend crea o actualiza de forma idempotente el único movimiento financiero `LEGAL` vinculado: sin fecha efectiva queda `PENDIENTE`/a cobrar y con fecha efectiva queda `COBRADO`. Cambiarlo a no sumable o eliminarlo revierte solamente ese movimiento vinculado. `POST .../collect` se conserva para Pagos y actualiza el mismo vínculo con la fecha efectiva actual, sin crear duplicados.
+
+`PUT /api/v1/cases/{caseId}/legal` recibe los datos de cierre dentro de `CaseLegalUpsertRequest`: `closedByCode`, `legalCloseDate`, `totalProceedsAmount` y `closingNotes`. Los únicos estados válidos son `PENDIENTE`, `CONCILIACION`, `SENTENCIA` y `DESISTIMIENTO`; los tres definitivos requieren fecha e importe. Al volver temporalmente a `PENDIENTE`, el backend conserva la última fecha e importe históricos.
 
 ### Recuperos
 | Metodo | Endpoint | Descripcion | Permiso |

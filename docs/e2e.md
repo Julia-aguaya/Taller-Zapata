@@ -39,7 +39,7 @@ La configuración no inicia servidores ni usa `page.route`: apunta a `front2` en
 
 ## Casos CLEAS
 
-`scripts/e2e/seed.sql` reserva el rango de IDs `9501` a `9505` y carga estos expedientes:
+`scripts/e2e/seed.sql` reserva el rango de IDs `9501` a `9506` y carga estos expedientes:
 
 | Carpeta | Alcance | Dictamen |
 | --- | --- | --- |
@@ -48,10 +48,11 @@ La configuración no inicia servidores ni usa `page.route`: apunta a `front2` en
 | `E2E-FR-AF` | `FRANQUICIA` | `A_FAVOR` |
 | `E2E-FR-EC` | `FRANQUICIA` | `EN_CONTRA` |
 | `E2E-FLUJO` | sin definición inicial | — |
+| `E2E-ABOGADO-EXTRAS` | Reclamo de terceros por abogado | Administrativa |
 
 La semilla usa los códigos introducidos por las migraciones vigentes V80 y deja que Flyway aplique todo el historial. No modifica migraciones ni lógica de negocio.
 
-La suite recorre además los movimientos críticos desde la UI: factura y nota de crédito parcial para daño total favorable, pago de compañía con comprobante y PDF de liquidación para franquicia favorable, pago y reversión de franquicia adversa con evidencia cliente → compañía, cierre bloqueante para daño total adverso, y el flujo completo definición → tramitación → presupuesto → factura → pago → PDF. La ejecución es serial porque esos flujos modifican la semilla.
+La suite recorre además los movimientos críticos desde la UI: factura y nota de crédito parcial para daño total favorable, pago de compañía con comprobante y PDF de liquidación para franquicia favorable, pago y reversión de franquicia adversa con evidencia cliente → compañía, cierre bloqueante para daño total adverso, el flujo completo definición → tramitación → presupuesto → factura → pago → PDF, y el flujo de trabajos extras de Abogado (activar → presentar → aceptar → cobrar). La ejecución es serial porque esos flujos modifican la semilla.
 
 ## Limpieza
 
