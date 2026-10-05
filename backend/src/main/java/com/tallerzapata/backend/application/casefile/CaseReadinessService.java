@@ -217,7 +217,7 @@ public class CaseReadinessService {
             }
         } else if ("RECUPERO_FRANQUICIA".equals(caseType.getCode())) {
             FranchiseRecoveryEntity recovery = franchiseRecoveryRepository.findByCaseId(caseId).orElse(null);
-            CaseReadinessTabResponse tramiteTab = buildFranchiseRecoveryGestionTramiteReadiness(recovery);
+            CaseReadinessTabResponse tramiteTab = buildFranchiseRecoveryGestionTramiteReadiness(caseEntity, recovery);
             tabs.add(tramiteTab);
             if (recovery != null && "ABOGADO".equals(normalizeCode(recovery.getManagerCode()))) {
                 CaseLegalEntity legal = caseLegalRepository.findByCaseId(caseId).orElse(null);
@@ -575,8 +575,9 @@ public class CaseReadinessService {
 
     // ── RECUPERO_FRANQUICIA ─────────────────────────────────────
 
-    private CaseReadinessTabResponse buildFranchiseRecoveryGestionTramiteReadiness(FranchiseRecoveryEntity recovery) {
+    private CaseReadinessTabResponse buildFranchiseRecoveryGestionTramiteReadiness(CaseEntity caseEntity, FranchiseRecoveryEntity recovery) {
         List<String> blocking = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
         if (recovery == null || recovery.getManagerCode() == null) {
             blocking.add("Falta indicar quien gestiona el recupero (Taller o Abogado)");
         }
@@ -596,7 +597,8 @@ public class CaseReadinessService {
         if (culpaCompartida && (!Boolean.TRUE.equals(recovery.getRecoversClient()) || recovery.getClientAmount() == null || recovery.getClientPaymentStatusCode() == null || recovery.getClientPaymentDate() == null)) {
             blocking.add("Con dictamen de culpa compartida debe registrarse el cobro del 50% al cliente");
         }
-        return toTab("GESTION_TRAMITE", true, blocking, List.of());
+        if (!documentationWorkflowStateService.isComplete(caseEntity)) warnings.add("Carpeta con documentacion pendiente");
+        return toTab("GESTION_TRAMITE", true, blocking, warnings);
     }
 
     private CaseReadinessTabResponse buildFranchiseRecoveryPagosReadiness(Long caseId, FranchiseRecoveryEntity recovery, boolean tramiteCompleted) {

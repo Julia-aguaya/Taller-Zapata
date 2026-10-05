@@ -15,6 +15,15 @@ import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRelation
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRelationRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeRepository;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseIncidentEntity;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseIncidentRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseInsuranceRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseInsuranceEntity;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseThirdPartyRepository;
+import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseThirdPartyEntity;
+import com.tallerzapata.backend.infrastructure.persistence.person.PersonRepository;
+import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleRepository;
+import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetRepository;
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementEntity;
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementRepository;
 import com.tallerzapata.backend.infrastructure.persistence.notification.NotificationEntity;
@@ -30,6 +39,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -50,8 +62,14 @@ public class FranchiseRecoveryService {
     private final FinancialMovementRepository financialMovementRepository;
     private final NotificationRepository notificationRepository;
     private final UserRoleRepository userRoleRepository;
+    private final CaseIncidentRepository caseIncidentRepository;
+    private final CaseInsuranceRepository caseInsuranceRepository;
+    private final CaseThirdPartyRepository caseThirdPartyRepository;
+    private final PersonRepository personRepository;
+    private final VehicleRepository vehicleRepository;
+    private final BudgetRepository budgetRepository;
 
-    public FranchiseRecoveryService(FranchiseRecoveryRepository franchiseRecoveryRepository, FranchiseRecoveryManagerRepository managerRepository, FranchiseRecoveryOpinionRepository opinionRepository, FranchiseRecoveryPaymentStatusRepository paymentStatusRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CaseRelationRepository caseRelationRepository, CaseService caseService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, FinancialMovementRepository financialMovementRepository, NotificationRepository notificationRepository, UserRoleRepository userRoleRepository) {
+    public FranchiseRecoveryService(FranchiseRecoveryRepository franchiseRecoveryRepository, FranchiseRecoveryManagerRepository managerRepository, FranchiseRecoveryOpinionRepository opinionRepository, FranchiseRecoveryPaymentStatusRepository paymentStatusRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CaseRelationRepository caseRelationRepository, CaseService caseService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, FinancialMovementRepository financialMovementRepository, NotificationRepository notificationRepository, UserRoleRepository userRoleRepository, CaseIncidentRepository caseIncidentRepository, CaseInsuranceRepository caseInsuranceRepository, CaseThirdPartyRepository caseThirdPartyRepository, PersonRepository personRepository, VehicleRepository vehicleRepository, BudgetRepository budgetRepository) {
         this.franchiseRecoveryRepository = franchiseRecoveryRepository;
         this.managerRepository = managerRepository;
         this.opinionRepository = opinionRepository;
@@ -66,6 +84,9 @@ public class FranchiseRecoveryService {
         this.financialMovementRepository = financialMovementRepository;
         this.notificationRepository = notificationRepository;
         this.userRoleRepository = userRoleRepository;
+        this.caseIncidentRepository = caseIncidentRepository;
+        this.caseInsuranceRepository = caseInsuranceRepository; this.caseThirdPartyRepository = caseThirdPartyRepository;
+        this.personRepository = personRepository; this.vehicleRepository = vehicleRepository; this.budgetRepository = budgetRepository;
     }
 
     @Transactional(readOnly = true)
@@ -94,12 +115,17 @@ public class FranchiseRecoveryService {
         CaseEntity caseEntity = requireCase(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "recupero.crear");
         requireRecoveryCase(caseEntity);
-        FranchiseRecoveryEntity entity = franchiseRecoveryRepository.findByCaseId(caseId)
-                .orElseThrow(() -> new ConflictException("El recupero solo se crea desde una carpeta TODO_RIESGO vinculada"));
+        FranchiseRecoveryEntity entity = franchiseRecoveryRepository.findByCaseId(caseId).orElseGet(() -> newRecovery(caseId));
         validateRequest(caseEntity, entity, request);
         entity.setCaseId(caseId);
+        associateBaseCaseIfRequested(entity, request);
         entity.setManagerCode(normalizedOptionalCode(request.managerCode()));
         entity.setOpinionCode(normalizedOptionalCode(request.opinionCode()));
+        entity.setPresentedAt(request.presentedAt());
+        entity.setInspectionForwardedAt(request.inspectionForwardedAt()); entity.setInspectionDate(request.inspectionDate());
+        entity.setModalityCode(normalizedOptionalCode(request.modalityCode())); entity.setQuotationStatusCode(normalizedOptionalCode(request.quotationStatusCode())); entity.setQuotationDate(request.quotationDate());
+        entity.setIncludesParts(Boolean.TRUE.equals(request.includesParts())); entity.setRepairsVehicle(Boolean.TRUE.equals(request.repairsVehicle())); entity.setPartsProvisionModeCode(normalizedOptionalCode(request.partsProvisionModeCode()));
+        updateIncidentDate(caseId, request.incidentDate());
         entity.setAgreedAmount(scale(request.agreedAmount()));
         entity.setRecoveryAmount(scale(request.recoveryAmount()));
         entity.setEnablesRepair(Boolean.TRUE.equals(request.enablesRepair()));
@@ -116,7 +142,7 @@ public class FranchiseRecoveryService {
             entity.setApprovedByUserId(null);
             entity.setApprovedAt(null);
         }
-        entity.setReusesBaseData(hasCompatibleBaseSnapshot(entity, caseEntity));
+        entity.setReusesBaseData(entity.getBaseCaseId() != null && hasCompatibleBaseSnapshot(entity, caseEntity));
         entity = franchiseRecoveryRepository.save(entity);
         if (Boolean.TRUE.equals(entity.getEnablesRepair())) caseService.copyRecoveryBudgetFromBase(entity.getBaseCaseId(), caseId);
         if (requiresLowerAgreementApproval(entity) && !Boolean.TRUE.equals(entity.getApprovedLowerAgreement())) {
@@ -139,11 +165,16 @@ public class FranchiseRecoveryService {
         recovery.setManagerCode("TALLER");
         recovery.setBaseCaseId(baseCaseId);
         recovery.setBaseFolderCode(base.getFolderCode());
+        recovery.setBaseFolderName(personRepository.findById(base.getPrincipalCustomerPersonId()).map(person -> person.getNombreMostrar()).orElse("Todo Riesgo"));
+        recovery.setBaseFolderSnapshot(baseSnapshot(base).toString());
+        copyAssociatedInsuranceData(base.getId(), recovery.getCaseId());
+        copyAssociatedIncidentData(base.getId(), recovery.getCaseId());
         recovery.setReusesBaseData(true);
         recovery.setEnablesRepair(false);
         recovery.setRecoversClient(false);
         recovery.setApprovedLowerAgreement(false);
         franchiseRecoveryRepository.save(recovery);
+        copyAssociatedInsuranceData(baseCaseId, child.getId());
 
         CaseRelationEntity relation = new CaseRelationEntity();
         relation.setSourceCaseId(baseCaseId);
@@ -174,6 +205,20 @@ public class FranchiseRecoveryService {
                 caseAuditService.toJson(Map.of("approvedByUserId", currentUser.id(), "reason", recovery.getApprovalNote())), caseAuditService.toJson(Map.of("domain", "recovery")), httpRequest);
         return toResponse(recovery);
     }
+    private void copyAssociatedInsuranceData(Long baseCaseId, Long recoveryCaseId) {
+        if (caseInsuranceRepository.findByCaseId(recoveryCaseId).isEmpty()) caseInsuranceRepository.findByCaseId(baseCaseId).ifPresent(source -> {
+            CaseInsuranceEntity copy = new CaseInsuranceEntity(); copy.setCaseId(recoveryCaseId); copy.setInsuranceCompanyId(source.getInsuranceCompanyId()); copy.setPolicyNumber(source.getPolicyNumber()); copy.setCertificateNumber(source.getCertificateNumber()); copy.setCoverageDetail(source.getCoverageDetail()); copy.setThirdPartyCompanyId(source.getThirdPartyCompanyId()); copy.setCleasNumber(source.getCleasNumber()); copy.setClaimNumber(source.getClaimNumber()); caseInsuranceRepository.save(copy);
+        });
+        if (caseThirdPartyRepository.findByCaseId(recoveryCaseId).isEmpty()) caseThirdPartyRepository.findByCaseId(baseCaseId).ifPresent(source -> {
+            CaseThirdPartyEntity copy = new CaseThirdPartyEntity(); copy.setCaseId(recoveryCaseId); copy.setThirdPartyCompanyId(source.getThirdPartyCompanyId()); copy.setClaimReference(source.getClaimReference()); copy.setDocumentationAccepted(false); caseThirdPartyRepository.save(copy);
+        });
+    }
+    private void copyAssociatedIncidentData(Long baseCaseId, Long recoveryCaseId) {
+        if (caseIncidentRepository.findByCaseId(recoveryCaseId).isPresent()) return;
+        caseIncidentRepository.findByCaseId(baseCaseId).ifPresent(source -> {
+            CaseIncidentEntity copy = new CaseIncidentEntity(); copy.setCaseId(recoveryCaseId); copy.setIncidentDate(source.getIncidentDate()); copy.setIncidentTime(source.getIncidentTime()); copy.setLugar(source.getLugar()); copy.setDinamica(source.getDinamica()); copy.setObservaciones(source.getObservaciones()); caseIncidentRepository.save(copy);
+        });
+    }
 
     /** Internal policy hook for the shared legal module; it does not expose a new legal flow. */
     @Transactional(readOnly = true)
@@ -193,11 +238,12 @@ public class FranchiseRecoveryService {
             if (!Boolean.TRUE.equals(request.recoversClient())) throw new ConflictException("Con culpa compartida debe recuperarse el 50% a cargo del cliente");
             if (request.clientPaymentStatusCode() == null || request.clientPaymentDate() == null) throw new ConflictException("Con culpa compartida debe registrar estado y fecha del cobro al cliente");
         }
-        if (request.baseCaseId() != null && !request.baseCaseId().equals(entity.getBaseCaseId())) throw new ConflictException("La carpeta base del recupero no puede modificarse");
-        if (request.baseFolderCode() != null && !request.baseFolderCode().equals(entity.getBaseFolderCode())) throw new ConflictException("La carpeta base del recupero no puede modificarse");
-        CaseEntity base = requireCase(entity.getBaseCaseId());
-        requireTodoRiesgoBase(base);
-        if (!base.getFolderCode().equals(entity.getBaseFolderCode())) throw new ConflictException("La carpeta base vinculada no coincide con el recupero");
+        if (entity.getBaseCaseId() != null && request.baseCaseId() != null && !request.baseCaseId().equals(entity.getBaseCaseId())) throw new ConflictException("La carpeta asociada del recupero no puede modificarse");
+        if (entity.getBaseCaseId() != null) {
+            CaseEntity base = requireCase(entity.getBaseCaseId());
+            requireTodoRiesgoBase(base);
+            if (!base.getFolderCode().equals(entity.getBaseFolderCode())) throw new ConflictException("La carpeta asociada no coincide con el recupero");
+        }
     }
 
     private CaseEntity requireCase(Long caseId) { return caseRepository.findById(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId)); }
@@ -221,7 +267,31 @@ public class FranchiseRecoveryService {
     private boolean requiresLowerAgreementApproval(FranchiseRecoveryEntity recovery) { return recovery.getAgreedAmount() != null && recovery.getRecoveryAmount() != null && recovery.getRecoveryAmount().compareTo(recovery.getAgreedAmount()) < 0 && !"CULPA_COMPARTIDA".equals(normalizeCode(recovery.getOpinionCode())); }
     private void notifyGlobalAdminsOfLowerAgreement(FranchiseRecoveryEntity recovery, CaseEntity caseEntity, AuthenticatedUser actor) { for (Long adminId : userRoleRepository.findActiveGlobalUserIdsByRoleCode("ROLE_ADMIN")) { NotificationEntity notification = new NotificationEntity(); notification.setUserId(adminId); notification.setCaseId(caseEntity.getId()); notification.setTypeCode("RECUPERO_MONTO_MENOR"); notification.setTitle("Recupero requiere aprobación"); notification.setMessage("Carpeta " + caseEntity.getFolderCode() + ": monto a recuperar menor al acordado. Informado por " + actor.displayName()); notification.setActionUrl("/cases/" + caseEntity.getId()); notification.setEntityType("recupero_franquicia"); notification.setEntityId(recovery.getId()); notificationRepository.save(notification); } }
     private void registerSharedFaultCollectionOnce(FranchiseRecoveryEntity recovery, CaseEntity caseEntity, AuthenticatedUser user, HttpServletRequest request) { if (!"CULPA_COMPARTIDA".equals(normalizeCode(recovery.getOpinionCode())) || !"COBRADO".equals(normalizeCode(recovery.getClientPaymentStatusCode())) || recovery.getClientAmount() == null || recovery.getClientPaymentDate() == null) return; boolean exists = financialMovementRepository.findByCaseId(caseEntity.getId(), org.springframework.data.domain.Sort.unsorted()).stream().anyMatch(m -> "Cobro cliente por culpa compartida".equals(m.getReason())); if (exists) return; FinancialMovementEntity movement = new FinancialMovementEntity(); movement.setCaseId(caseEntity.getId()); movement.setMovementTypeCode("INGRESO"); movement.setFlowOriginCode("CLIENTE"); movement.setCounterpartyTypeCode("PERSONA"); movement.setCounterpartyPersonId(caseEntity.getPrincipalCustomerPersonId()); movement.setMovementAt(recovery.getClientPaymentDate().atStartOfDay()); movement.setGrossAmount(scale(recovery.getClientAmount())); movement.setNetAmount(scale(recovery.getClientAmount())); movement.setPaymentMethodCode("TRANSFERENCIA"); movement.setAdvancePayment(false); movement.setBonification(false); movement.setReason("Cobro cliente por culpa compartida"); movement.setRegisteredBy(user.id()); movement = financialMovementRepository.save(movement); caseAuditService.register(user.id(), caseEntity.getId(), "movimientos_financieros", movement.getId(), "crear_cobro_culpa_compartida", null, caseAuditService.toJson(Map.of("amount", movement.getNetAmount())), caseAuditService.toJson(Map.of("domain", "finanzas")), request); }
-    private FranchiseRecoveryResponse toResponse(FranchiseRecoveryEntity e) { return new FranchiseRecoveryResponse(e.getId(), e.getCaseId(), e.getManagerCode(), e.getBaseCaseId(), e.getBaseFolderCode(), e.getOpinionCode(), e.getAgreedAmount(), e.getRecoveryAmount(), e.getEnablesRepair(), e.getRecoversClient(), e.getClientAmount(), e.getClientPaymentStatusCode(), e.getClientPaymentDate(), e.getApprovedLowerAgreement(), e.getApprovalNote(), e.getApprovedByUserId(), e.getApprovedAt(), e.getReusesBaseData()); }
+    private FranchiseRecoveryEntity newRecovery(Long caseId) { FranchiseRecoveryEntity entity = new FranchiseRecoveryEntity(); entity.setCaseId(caseId); entity.setEnablesRepair(false); entity.setRecoversClient(false); entity.setIncludesParts(false); entity.setRepairsVehicle(false); entity.setApprovedLowerAgreement(false); entity.setReusesBaseData(false); return entity; }
+    private void associateBaseCaseIfRequested(FranchiseRecoveryEntity recovery, FranchiseRecoveryUpsertRequest request) {
+        if (recovery.getBaseCaseId() != null || request.baseCaseId() == null) return;
+        CaseEntity base = requireCase(request.baseCaseId());
+        requireTodoRiesgoBase(base);
+        recovery.setBaseCaseId(base.getId());
+        recovery.setBaseFolderCode(base.getFolderCode());
+        recovery.setBaseFolderName(personRepository.findById(base.getPrincipalCustomerPersonId()).map(person -> person.getNombreMostrar()).orElse("Todo Riesgo"));
+        recovery.setBaseFolderSnapshot(baseSnapshot(base).toString());
+        copyAssociatedInsuranceData(base.getId(), recovery.getCaseId());
+        copyAssociatedIncidentData(base.getId(), recovery.getCaseId());
+        CaseRelationEntity relation = new CaseRelationEntity(); relation.setSourceCaseId(base.getId()); relation.setTargetCaseId(recovery.getCaseId()); relation.setRelationTypeCode("RECUPERO_DE"); relation.setDescription("Recupero de franquicia de la carpeta " + base.getFolderCode()); caseRelationRepository.save(relation);
+    }
+    private LinkedHashMap<String, Object> baseSnapshot(CaseEntity base) {
+        LinkedHashMap<String, Object> snapshot = new LinkedHashMap<>();
+        snapshot.put("folderCode", base.getFolderCode()); snapshot.put("customer", personRepository.findById(base.getPrincipalCustomerPersonId()).map(person -> person.getNombreMostrar()).orElse(null));
+        snapshot.put("vehicle", vehicleRepository.findById(base.getPrincipalVehicleId()).map(vehicle -> vehicle.getPlate()).orElse(null));
+        caseInsuranceRepository.findByCaseId(base.getId()).ifPresent(insurance -> { snapshot.put("insuranceCompanyId", insurance.getInsuranceCompanyId()); snapshot.put("thirdPartyCompanyId", insurance.getThirdPartyCompanyId()); snapshot.put("claimNumber", insurance.getClaimNumber()); });
+        caseThirdPartyRepository.findByCaseId(base.getId()).ifPresent(thirdParty -> { snapshot.put("thirdPartyCompanyId", thirdParty.getThirdPartyCompanyId()); snapshot.put("claimReference", thirdParty.getClaimReference()); });
+        caseIncidentRepository.findByCaseId(base.getId()).ifPresent(incident -> { snapshot.put("incidentDate", incident.getIncidentDate()); snapshot.put("incidentPlace", incident.getLugar()); snapshot.put("incidentDynamics", incident.getDinamica()); });
+        budgetRepository.findByCaseId(base.getId()).ifPresent(budget -> { snapshot.put("budgetDate", budget.getBudgetDate()); snapshot.put("budgetTotal", budget.getTotalQuoted()); snapshot.put("budgetObservations", budget.getObservations()); });
+        snapshot.put("capturedAt", LocalDateTime.now().toString()); return snapshot;
+    }
+    private void updateIncidentDate(Long caseId, LocalDate incidentDate) { if (incidentDate == null) return; CaseIncidentEntity incident = caseIncidentRepository.findByCaseId(caseId).orElseGet(CaseIncidentEntity::new); incident.setCaseId(caseId); incident.setIncidentDate(incidentDate); caseIncidentRepository.save(incident); }
+    private FranchiseRecoveryResponse toResponse(FranchiseRecoveryEntity e) { CaseEntity caseEntity = requireCase(e.getCaseId()); LocalDate incidentDate = caseIncidentRepository.findByCaseId(e.getCaseId()).map(CaseIncidentEntity::getIncidentDate).orElse(null); LocalDate presentedAt = e.getPresentedAt(); LocalDate prescriptionDate = presentedAt == null ? null : presentedAt.plusYears(3); Integer daysInProcess = presentedAt == null ? null : (int) ChronoUnit.DAYS.between(presentedAt, caseEntity.getClosedAt() == null ? LocalDate.now() : caseEntity.getClosedAt().toLocalDate()); return new FranchiseRecoveryResponse(e.getId(), e.getCaseId(), e.getManagerCode(), e.getBaseCaseId(), e.getBaseFolderCode(), e.getOpinionCode(), e.getAgreedAmount(), e.getRecoveryAmount(), e.getEnablesRepair(), e.getRecoversClient(), e.getClientAmount(), e.getClientPaymentStatusCode(), e.getClientPaymentDate(), e.getApprovedLowerAgreement(), e.getApprovalNote(), e.getApprovedByUserId(), e.getApprovedAt(), e.getReusesBaseData(), incidentDate, presentedAt, prescriptionDate, daysInProcess, e.getBaseFolderName(), e.getInspectionForwardedAt(), e.getInspectionDate(), e.getModalityCode(), e.getQuotationStatusCode(), e.getQuotationDate(), e.getIncludesParts(), e.getRepairsVehicle(), e.getPartsProvisionModeCode()); }
     private String normalizeCode(String value) { return value == null || value.isBlank() ? null : value.trim().toUpperCase(); }
     private String normalizedOptionalCode(String value) { return value == null || value.isBlank() ? null : normalizeCode(value); }
     private String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }

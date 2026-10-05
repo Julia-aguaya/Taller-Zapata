@@ -23,7 +23,7 @@ public final class InsuranceRepairCasePolicy {
 
     public boolean isInsuranceCase(String caseTypeCode) {
         String normalized = normalize(caseTypeCode);
-        return isInsuranceRepair(normalized) || "CLEAS".equals(normalized) || isThirdPartyClaim(normalized);
+        return isInsuranceRepair(normalized) || "CLEAS".equals(normalized) || isThirdPartyClaim(normalized) || "RECUPERO_FRANQUICIA".equals(normalized);
     }
 
     public boolean isCleasCase(String caseTypeCode) {

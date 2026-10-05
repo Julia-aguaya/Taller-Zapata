@@ -111,7 +111,7 @@ const personPayload = (person, current = {}) => ({ tipoPersona: current.tipoPers
 
 const PersonSummaryFields = ({ prefix, value, onChange, allowOwnership = false }) => <div className="grid gap-2 md:grid-cols-2"><Input aria-label={`Nombre ${prefix}`} value={value.name} onChange={(event) => onChange((current) => ({ ...current, name: event.target.value }))} placeholder="Nombre" /><Input aria-label={`Apellido ${prefix}`} value={value.lastName} onChange={(event) => onChange((current) => ({ ...current, lastName: event.target.value }))} placeholder="Apellido" /><Input aria-label={`DNI ${prefix}`} value={value.dni} onChange={(event) => onChange((current) => ({ ...current, dni: event.target.value }))} placeholder="DNI" /><Input aria-label={`Domicilio ${prefix}`} value={value.address} onChange={(event) => onChange((current) => ({ ...current, address: event.target.value }))} placeholder="Domicilio" />{allowOwnership ? <Input aria-label={`Porcentaje ${prefix}`} type="number" min="1" max="100" value={value.ownership} onChange={(event) => onChange((current) => ({ ...current, ownership: event.target.value }))} /> : null}</div>;
 
-const ThirdPartyWorkshopIncidentSection = ({ caseId }) => {
+export const ThirdPartyWorkshopIncidentSection = ({ caseId }) => {
   const queryClient = useQueryClient();
   const incidentQuery = useQuery({ queryKey: ['cases', String(caseId), 'incident'], queryFn: () => requestJson(`/cases/${caseId}/incident`) });
   const workshopQuery = useQuery({ queryKey: ['cases', String(caseId), 'third-party-workshop'], queryFn: () => getThirdPartyWorkshop(caseId) });

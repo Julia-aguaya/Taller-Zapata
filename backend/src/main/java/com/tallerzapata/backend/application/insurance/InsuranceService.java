@@ -1202,7 +1202,7 @@ public class InsuranceService {
     }
 
     private void requireThirdPartyWorkshop(CaseEntity caseEntity) {
-        if (!insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeCode(caseEntity)) && !insuranceRepairCasePolicy.isThirdPartyLawyerClaim(caseTypeCode(caseEntity))) throw new ConflictException("Estos datos solo aplican a Reclamo de terceros gestionado por Taller o Abogado");
+        if (!insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeCode(caseEntity)) && !insuranceRepairCasePolicy.isThirdPartyLawyerClaim(caseTypeCode(caseEntity)) && !"RECUPERO_FRANQUICIA".equals(caseTypeCode(caseEntity))) throw new ConflictException("Estos datos solo aplican a Reclamo de terceros o Recupero de franquicia");
     }
     private void requireLawyerThirdPartyClaim(CaseEntity caseEntity) { if (!insuranceRepairCasePolicy.isThirdPartyLawyerClaim(caseTypeCode(caseEntity))) throw new ConflictException("Los datos del siniestro del tercero solo aplican a reclamos de terceros por abogado"); }
 

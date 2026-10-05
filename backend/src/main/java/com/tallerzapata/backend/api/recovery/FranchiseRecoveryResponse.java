@@ -22,6 +22,19 @@ public record FranchiseRecoveryResponse(
         String approvalNote,
         Long approvedByUserId,
         LocalDateTime approvedAt,
-        Boolean reusesBaseData
+        Boolean reusesBaseData,
+        LocalDate incidentDate,
+        LocalDate presentedAt,
+        LocalDate prescriptionDate,
+        Integer daysInProcess,
+        String baseFolderName,
+        LocalDate inspectionForwardedAt,
+        LocalDate inspectionDate,
+        String modalityCode,
+        String quotationStatusCode,
+        LocalDate quotationDate,
+        Boolean includesParts,
+        Boolean repairsVehicle,
+        String partsProvisionModeCode
 ) {
 }

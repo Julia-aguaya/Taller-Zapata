@@ -195,8 +195,8 @@ public class CaseManagementService {
 
     private boolean isThirdPartyWorkshop(CaseEntity caseEntity) { return caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(type.getCode())).orElse(false); }
     private boolean isThirdPartyLawyer(CaseEntity caseEntity) { return caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> insuranceRepairCasePolicy.isThirdPartyLawyerClaim(type.getCode())).orElse(false); }
-    private boolean isThirdPartyOwnershipCase(CaseEntity caseEntity) { return isThirdPartyWorkshop(caseEntity) || isThirdPartyLawyer(caseEntity); }
-    private void requireThirdPartyOwnershipCase(CaseEntity caseEntity) { if (!isThirdPartyOwnershipCase(caseEntity)) throw new ConflictException("Esta gestión de personas sólo aplica a Reclamos de terceros gestionados por Taller o Abogado"); }
+    private boolean isThirdPartyOwnershipCase(CaseEntity caseEntity) { return isThirdPartyWorkshop(caseEntity) || isThirdPartyLawyer(caseEntity) || caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> "RECUPERO_FRANQUICIA".equals(type.getCode())).orElse(false); }
+    private void requireThirdPartyOwnershipCase(CaseEntity caseEntity) { if (!isThirdPartyOwnershipCase(caseEntity)) throw new ConflictException("Esta gestión de personas sólo aplica a Reclamos de terceros o Recupero de franquicia"); }
 
     @Transactional(readOnly = true)
     public List<CasePersonResponse> listCasePersons(Long caseId) {
