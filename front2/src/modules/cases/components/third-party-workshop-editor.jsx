@@ -4,6 +4,8 @@ import { Building2, Car, Save, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { ClaimDataSection } from '@/modules/cases/components/claim-data-section';
 import { DocumentsSection } from '@/modules/cases/components/documents-section';
+import { InsuranceDataSection as LawyerInsuranceDataSection } from '@/modules/cases/components/insurance-data-section';
+import { LawyerProcessingSection } from '@/modules/cases/components/lawyer-processing-section';
 import { LawyerThirdPartyIncidentSection } from '@/modules/cases/components/lawyer-third-party-incident-section';
 import { ProcedureSection } from '@/modules/cases/components/procedure-section';
 import { TaskAgenda } from '@/modules/cases/components/task-agenda';
@@ -23,6 +25,8 @@ const personName = (person) => person?.nombreMostrar || [person?.nombre, person?
 
 export const ThirdPartyWorkshopEditor = ({ caseId, caseDetail, budget, lawyerManaged = false }) => {
   if (lawyerManaged) return <div className="mt-5 space-y-5 pb-20">
+    <LawyerProcessingSection caseId={caseId} />
+    <LawyerInsuranceDataSection caseId={caseId} caseDetail={caseDetail} />
     <LawyerThirdPartyIncidentSection caseId={caseId} />
     <DocumentsSection caseId={caseId} moduleCode="GESTION_TRAMITE" includeHistorical title="Documentación del trámite" showCompleteAction={false} />
     <ProcedureSection caseId={caseId} budget={budget} thirdPartyWorkshop hideGeneralData lawyerManaged />

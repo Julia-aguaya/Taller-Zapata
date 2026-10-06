@@ -185,6 +185,14 @@ public class InsuranceController {
     @PostMapping("/cases/{caseId}/legal-news")
     public LegalNewsResponse createCaseLegalNews(@PathVariable Long caseId, @RequestBody LegalNewsCreateRequest request, HttpServletRequest httpRequest) { return insuranceService.createCaseLegalNews(caseId, request, httpRequest); }
 
+    @PreAuthorize("hasAuthority('seguro.crear')")
+    @PutMapping("/cases/{caseId}/legal-news/{newsId}")
+    public LegalNewsResponse updateCaseLegalNews(@PathVariable Long caseId, @PathVariable Long newsId, @RequestBody LegalNewsUpdateRequest request, HttpServletRequest httpRequest) { return insuranceService.updateCaseLegalNews(caseId, newsId, request, httpRequest); }
+
+    @PreAuthorize("hasAuthority('seguro.crear')")
+    @DeleteMapping("/cases/{caseId}/legal-news/{newsId}")
+    public void deleteCaseLegalNews(@PathVariable Long caseId, @PathVariable Long newsId, HttpServletRequest httpRequest) { insuranceService.deleteCaseLegalNews(caseId, newsId, httpRequest); }
+
     @Operation(summary = "Listar gastos legales", description = "Devuelve los gastos legales de un caso")
     @ApiResponse(responseCode = "200", description = "OK")
     @PreAuthorize("hasAuthority('seguro.ver')")

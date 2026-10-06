@@ -12,6 +12,8 @@ export const getLegalCase = (caseId) => requestJson(`${casePath(caseId)}/legal`)
 export const saveLegalCase = (caseId, payload) => requestJson(`${casePath(caseId)}/legal`, { method: 'PUT', body: JSON.stringify(payload) });
 export const getLegalNews = (caseId) => requestJson(`${casePath(caseId)}/legal-news`);
 export const createLegalNews = (caseId, payload) => requestJson(`${casePath(caseId)}/legal-news`, { method: 'POST', body: JSON.stringify(payload) });
+export const updateLegalNews = (caseId, newsId, payload) => requestJson(`${casePath(caseId)}/legal-news/${newsId}`, { method: 'PUT', body: JSON.stringify(payload) });
+export const deleteLegalNews = (caseId, newsId) => requestJson(`${casePath(caseId)}/legal-news/${newsId}`, { method: 'DELETE' });
 export const getLegalExpenses = (caseId) => requestJson(`${casePath(caseId)}/legal-expenses`);
 export const createLegalExpense = (caseId, payload) => requestJson(`${casePath(caseId)}/legal-expenses`, { method: 'POST', body: JSON.stringify(payload) });
 export const updateLegalExpense = (caseId, expenseId, payload) => requestJson(`${casePath(caseId)}/legal-expenses/${expenseId}`, { method: 'PUT', body: JSON.stringify(payload) });

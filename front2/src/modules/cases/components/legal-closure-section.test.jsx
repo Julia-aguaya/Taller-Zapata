@@ -39,4 +39,38 @@ describe('LegalClosureSection', () => {
       title: 'Documentación de cierre',
     }));
   });
+
+  it('uses shadcn controls for closure, expense payer, and workshop amount', () => {
+    render(<LegalClosureSection caseId={42} legal={{ closedByCode: 'PENDIENTE' }} />);
+
+    expect(screen.getByRole('combobox', { name: 'Cierre por' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar gasto' }));
+    expect(screen.getByRole('dialog', { name: 'Agregar gasto' }).querySelector('[aria-label="Abonó gasto"]')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar diálogo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar rubro' }));
+    expect(screen.getByRole('dialog', { name: 'Agregar rubro' }).querySelector('[aria-label="Suma al taller rubro"]')).toBeTruthy();
+  });
+
+  it('only renders legal close date and total after selecting a definitive closure code', () => {
+    render(<LegalClosureSection caseId={42} legal={{ closedByCode: 'PENDIENTE' }} />);
+
+    expect(screen.queryByLabelText('Fecha de cierre')).toBeNull();
+    expect(screen.queryByLabelText('Importe total')).toBeNull();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Cierre por' }));
+    fireEvent.click(screen.getByRole('option', { name: 'CONCILIACION' }));
+    expect(screen.getByLabelText('Fecha de cierre')).toBeEnabled();
+    expect(screen.getByLabelText('Importe total')).toBeEnabled();
+  });
+
+  it('keeps expense and rubro forms inside their respective dialogs', () => {
+    render(<LegalClosureSection caseId={42} legal={{ closedByCode: 'PENDIENTE' }} />);
+
+    expect(screen.queryByLabelText('Concepto de gasto')).toBeNull();
+    expect(screen.queryByLabelText('Concepto de rubro')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar gasto' }));
+    expect(screen.getByRole('dialog', { name: 'Agregar gasto' })).toContainElement(screen.getByLabelText('Concepto de gasto'));
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar diálogo' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar rubro' }));
+    expect(screen.getByRole('dialog', { name: 'Agregar rubro' })).toContainElement(screen.getByLabelText('Concepto de rubro'));
+  });
 });

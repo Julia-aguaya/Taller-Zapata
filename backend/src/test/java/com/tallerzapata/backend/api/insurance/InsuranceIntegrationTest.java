@@ -680,6 +680,20 @@ class InsuranceIntegrationTest {
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].detail").value("Se presento demanda"));
 
+        Long newsId = jdbcTemplate.queryForObject("SELECT id FROM legal_novedades WHERE caso_legal_id = (SELECT id FROM caso_legal WHERE caso_id = ?)", Long.class, 100L);
+        mockMvc.perform(put("/api/v1/cases/100/legal-news/{newsId}", newsId)
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"newsDate\":\"2026-03-11\",\"detail\":\"Demanda ratificada\",\"notifyCustomer\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.detail").value("Demanda ratificada"))
+                .andExpect(jsonPath("$.notifyCustomer").value(false));
+        mockMvc.perform(delete("/api/v1/cases/100/legal-news/{newsId}", newsId).header("X-User-Id", "3"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/cases/100/legal-news").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(0));
+
         Integer auditCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'crear_legal_novedad'", Integer.class, 100L);
         assertThat(auditCount).isEqualTo(1);
     }

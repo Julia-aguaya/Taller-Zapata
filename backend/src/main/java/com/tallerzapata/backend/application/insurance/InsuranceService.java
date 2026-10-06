@@ -759,14 +759,46 @@ public class InsuranceService {
         requireLegalAllowed(caseEntity);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
         CaseLegalEntity caseLegal = ensureCaseLegal(caseId);
+        validateLegalNews(request.newsDate(), request.detail());
         LegalNewsEntity entity = new LegalNewsEntity();
         entity.setCaseLegalId(caseLegal.getId());
         entity.setNewsDate(request.newsDate());
-        entity.setDetail(request.detail());
+        entity.setDetail(request.detail().trim());
         entity.setNotifyCustomer(Boolean.TRUE.equals(request.notifyCustomer()));
+        entity.setNotifiedAt(Boolean.TRUE.equals(request.notifyCustomer()) ? LocalDateTime.now() : null);
         entity = legalNewsRepository.save(entity);
         caseAuditService.register(currentUser.id(), caseId, "legal_novedades", entity.getId(), "crear_legal_novedad", null, caseAuditService.toJson(Map.of("newsDate", entity.getNewsDate())), caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
         return toLegalNewsResponse(entity);
+    }
+
+    @Transactional
+    public LegalNewsResponse updateCaseLegalNews(Long caseId, Long newsId, LegalNewsUpdateRequest request, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        requireLegalAllowed(caseEntity);
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
+        CaseLegalEntity legal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
+        LegalNewsEntity entity = legalNewsRepository.findById(newsId).filter(news -> news.getCaseLegalId().equals(legal.getId())).orElseThrow(() -> new ResourceNotFoundException("No existe novedad legal para el caso"));
+        validateLegalNews(request.newsDate(), request.detail());
+        entity.setNewsDate(request.newsDate());
+        entity.setDetail(request.detail().trim());
+        entity.setNotifyCustomer(Boolean.TRUE.equals(request.notifyCustomer()));
+        entity.setNotifiedAt(Boolean.TRUE.equals(request.notifyCustomer()) ? LocalDateTime.now() : null);
+        entity = legalNewsRepository.save(entity);
+        caseAuditService.register(currentUser.id(), caseId, "legal_novedades", entity.getId(), "actualizar_legal_novedad", null, caseAuditService.toJson(CaseAuditService.auditMap("newsDate", entity.getNewsDate(), "notifyCustomer", entity.getNotifyCustomer())), caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
+        return toLegalNewsResponse(entity);
+    }
+
+    @Transactional
+    public void deleteCaseLegalNews(Long caseId, Long newsId, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        requireLegalAllowed(caseEntity);
+        accessControlService.requireCaseAccess(currentUser, caseEntity, "seguro.crear");
+        CaseLegalEntity legal = caseLegalRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe caso_legal para el caso " + caseId));
+        LegalNewsEntity entity = legalNewsRepository.findById(newsId).filter(news -> news.getCaseLegalId().equals(legal.getId())).orElseThrow(() -> new ResourceNotFoundException("No existe novedad legal para el caso"));
+        legalNewsRepository.delete(entity);
+        caseAuditService.register(currentUser.id(), caseId, "legal_novedades", newsId, "eliminar_legal_novedad", null, null, caseAuditService.toJson(Map.of("domain", "seguros")), httpRequest);
     }
 
     @Transactional(readOnly = true)
@@ -1311,6 +1343,10 @@ public class InsuranceService {
         String payer = normalizedOptionalCode(paidByCode);
         if (insuranceRepairCasePolicy.isThirdPartyLawyerClaim(caseTypeCode(caseEntity)) && !Set.of("CLIENTE", "ABOGADO").contains(payer)) throw new ConflictException("paidByCode debe ser CLIENTE o ABOGADO");
         if (!legalExpensePayerRepository.existsByCodeAndActiveTrue(payer)) throw new ConflictException("paidByCode no permitido: " + paidByCode);
+    }
+
+    private void validateLegalNews(LocalDate newsDate, String detail) {
+        if (newsDate == null || blankToNull(detail) == null) throw new ConflictException("Fecha de novedad y actualización son obligatorias");
     }
     private String normalizeCode(String value) { return value == null || value.isBlank() ? null : value.trim().toUpperCase(); }
     private boolean isBlank(String value) { return value == null || value.isBlank(); }

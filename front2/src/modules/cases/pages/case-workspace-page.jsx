@@ -22,8 +22,6 @@ import { GestionTramiteEditor } from '@/modules/cases/components/gestion-tramite
 import { FranchiseRecoveryEditor } from '@/modules/cases/components/franchise-recovery-editor';
 import { FranchiseRecoveryPaymentsEditor } from '@/modules/cases/components/franchise-recovery-payments-editor';
 import { ThirdPartyLawyerEditor } from '@/modules/cases/components/third-party-lawyer-editor';
-import { LawyerProcessingSection } from '@/modules/cases/components/lawyer-processing-section';
-import { InsuranceDataSection as CaseInsuranceDataSection } from '@/modules/cases/components/insurance-data-section';
 import { requestJson } from '@/shared/api/http-client';
 import { createPerson, searchPersons } from '@/modules/cases/api/new-case-api';
 import { addCasePerson, deleteCasePerson, getCasePersons, updateCasePerson } from '@/modules/cases/api/third-party-api';
@@ -928,8 +926,6 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
             </div>
           ) : null}
         </div>
-
-        {caseDetail.caseTypeCode === 'RECLAMO_TERCEROS_ABOGADO' ? <><LawyerProcessingSection caseId={caseId} /><CaseInsuranceDataSection caseId={caseId} caseDetail={caseDetail} /></> : null}
 
         <div className="grid gap-5 xl:grid-cols-2">
           <div className="rounded-2xl border border-border/60 bg-background/70 p-5">

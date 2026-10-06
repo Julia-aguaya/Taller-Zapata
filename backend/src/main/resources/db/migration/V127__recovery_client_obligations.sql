@@ -1,6 +1,6 @@
 CREATE TABLE recupero_obligaciones_cliente (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    caso_id BIGINT NOT NULL,
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    caso_id BIGINT UNSIGNED NOT NULL,
     tipo_codigo VARCHAR(50) NOT NULL,
     direccion_codigo VARCHAR(30) NOT NULL,
     importe_original DECIMAL(14,2) NOT NULL,

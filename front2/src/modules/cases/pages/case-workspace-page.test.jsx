@@ -648,28 +648,40 @@ describe('CaseWorkspacePage UI', () => {
     expect(screen.getByRole('button', { name: 'Guardar titularidad' })).toBeInTheDocument();
   });
 
-  it('muestra los datos del trámite sólo para reclamos de terceros con abogado en Ficha Técnica', async () => {
+  it('muestra los datos del trámite de abogado sólo en Gestión del Trámite', async () => {
     await renderPage({
       ...baseWorkspace,
       caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'RECLAMO_TERCEROS_ABOGADO' },
-      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'RECLAMO_TERCEROS_ABOGADO' },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'RECLAMO_TERCEROS_ABOGADO', tabs: [
+        { tabCode: 'FICHA_TECNICA', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+        { tabCode: 'GESTION_TRAMITE', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+      ] },
     });
 
     await userEvent.click(screen.getByRole('tab', { name: /ficha t[eé]cnica/i }));
 
-    expect(screen.getByRole('heading', { name: 'Datos del trámite' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Datos del trámite' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Datos del seguro')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('tab', { name: /gestión del trámite/i }));
+
+    expect(screen.getByText('Datos del trámite')).toBeInTheDocument();
     expect(screen.getByLabelText('Fecha del siniestro')).toBeInTheDocument();
     expect(screen.getByLabelText('Fecha presentado')).toBeInTheDocument();
     expect(screen.getByText('Datos del seguro')).toBeInTheDocument();
     const text = document.body.textContent;
-    expect(text.indexOf('Datos generales de la carpeta')).toBeLessThan(text.indexOf('Datos del trámite'));
     expect(text.indexOf('Datos del trámite')).toBeLessThan(text.indexOf('Datos del seguro'));
-    expect(text.indexOf('Datos del seguro')).toBeLessThan(text.indexOf('Cliente'));
   });
 
-  it('no muestra los datos del trámite de abogado para otros tipos en Ficha Técnica', async () => {
-    await renderPage();
-    await userEvent.click(screen.getByRole('tab', { name: /ficha t[eé]cnica/i }));
+  it('no muestra los datos del trámite de abogado para otros tipos en Gestión del Trámite', async () => {
+    await renderPage({
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'RECLAMO_TERCEROS' },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'RECLAMO_TERCEROS', tabs: [
+        { tabCode: 'GESTION_TRAMITE', allowed: true, completed: false, blockingReasons: [], warningReasons: [] },
+      ] },
+    });
+    await userEvent.click(screen.getByRole('tab', { name: /gestión del trámite/i }));
 
     expect(screen.queryByRole('heading', { name: 'Datos del trámite' })).not.toBeInTheDocument();
   });

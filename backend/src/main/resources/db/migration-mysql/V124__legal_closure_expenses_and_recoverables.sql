@@ -10,7 +10,9 @@ ALTER TABLE movimientos_financieros
     ADD COLUMN estado_cobro_codigo VARCHAR(40) NULL;
 
 ALTER TABLE legal_rubros_recuperables
-    DROP FOREIGN KEY fk_legal_rubros_movimiento,
+    DROP FOREIGN KEY fk_legal_rubros_movimiento;
+
+ALTER TABLE legal_rubros_recuperables
     ADD CONSTRAINT fk_legal_rubros_movimiento FOREIGN KEY (movimiento_financiero_id) REFERENCES movimientos_financieros (id) ON DELETE SET NULL;
 
 UPDATE cierre_por_legal SET activo = 0;
