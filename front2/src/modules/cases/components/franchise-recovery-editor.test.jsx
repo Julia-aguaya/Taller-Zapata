@@ -10,16 +10,18 @@ let companies = [];
 let workshop = null;
 let contacts = [];
 let people = {};
+let obligations = [];
 
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }));
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: ({ queryKey }) => ({ data: queryKey[2] === 'franchise-recovery' ? recovery : (queryKey[2] === 'third-party-workshop' ? workshop : (queryKey[2] === 'persons' ? [] : (queryKey[0] === 'persons' ? people[queryKey[1]] : (queryKey[0] === 'insurance' && queryKey[1] === 'companies' && queryKey.length === 2 ? companies : (queryKey[0] === 'insurance' && queryKey[3] === 'contacts' ? contacts : catalogs))))) }),
+  useQuery: ({ queryKey }) => { let data = catalogs; if (queryKey[2] === 'franchise-recovery-obligations') data = obligations; else if (queryKey[2] === 'franchise-recovery') data = recovery; else if (queryKey[2] === 'third-party-workshop') data = workshop; else if (queryKey[2] === 'persons') data = []; else if (queryKey[0] === 'persons') data = people[queryKey[1]]; else if (queryKey[0] === 'insurance' && queryKey[1] === 'companies' && queryKey.length === 2) data = companies; else if (queryKey[0] === 'insurance' && queryKey[3] === 'contacts') data = contacts; return { data }; },
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
   useMutation: () => ({ isPending: false, mutate: vi.fn() }),
 }));
 vi.mock('@/shared/api/http-client', () => ({ requestJson: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/modules/cases/components/documents-section', () => ({ DocumentsSection: (props) => <div aria-label="Documentación" data-module={props.moduleCode} data-origin={props.originCode}>Documentación</div> }));
+vi.mock('@/modules/cases/components/task-agenda', () => ({ TaskAgenda: ({ caseId, organizationId, branchId }) => <div data-testid="task-agenda" data-case-id={caseId} data-organization-id={organizationId} data-branch-id={branchId}>Agenda de tareas</div> }));
 
 describe('FranchiseRecoveryEditor associated folder', () => {
   beforeEach(() => {
@@ -30,6 +32,7 @@ describe('FranchiseRecoveryEditor associated folder', () => {
     workshop = null;
     contacts = [];
     people = {};
+    obligations = [];
   });
 
   it('shows a clearly labeled navigation action for an associated folder', async () => {
@@ -146,5 +149,39 @@ describe('FranchiseRecoveryEditor associated folder', () => {
     recovery = { id: 7, baseCaseId: 42, baseFolderCode: 'CAR-042', enablesRepair: false };
     render(<FranchiseRecoveryEditor caseId="7" caseDetail={{}} />);
     expect(screen.getByText(/La reparación se gestiona desde la carpeta asociada/)).toBeInTheDocument();
+  });
+
+  it('keeps the task agenda immediately after Tramitación when repair is disabled', () => {
+    recovery = { id: 7, enablesRepair: false };
+    render(<FranchiseRecoveryEditor caseId="7" caseDetail={{ organizationId: 3, branchId: 5 }} />);
+
+    const procedure = screen.getByLabelText('Tramitación');
+    const agenda = screen.getByTestId('task-agenda');
+    expect(agenda).toBeVisible();
+    expect(procedure.compareDocumentPosition(agenda) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(agenda).toHaveAttribute('data-case-id', '7');
+    expect(agenda).toHaveAttribute('data-organization-id', '3');
+    expect(agenda).toHaveAttribute('data-branch-id', '5');
+  });
+
+  it('renders obligation balances, application history, and the payment action without editable statuses', () => {
+    recovery = { id: 7, enablesRepair: false };
+    obligations = [{ id: 8, typeCode: 'REINTEGRO_A_CLIENTE', directionCode: 'PAGAR_A_CLIENTE', originalAmount: 100, outstandingAmount: 75, statusCode: 'ACTIVA', applications: [{ id: 12, movementId: 91, appliedAmount: 25, statusCode: 'APLICADA' }] }];
+    render(<FranchiseRecoveryEditor caseId="7" caseDetail={{}} />);
+    expect(screen.getByDisplayValue('Reintegro a cliente')).toHaveAttribute('readonly');
+    expect(screen.getByDisplayValue('75')).toHaveAttribute('readonly');
+    expect(screen.getByLabelText('Importe a aplicar 8')).toBeInTheDocument();
+    expect(screen.getByText('Movimiento #91')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Estado de cobro|Estado del reintegro/)).not.toBeInTheDocument();
+  });
+
+  it('requires confirmation before annulling an applied obligation payment', async () => {
+    const user = userEvent.setup();
+    obligations = [{ id: 8, typeCode: 'APORTE_CLIENTE_CULPA_COMPARTIDA', directionCode: 'COBRAR_A_CLIENTE', originalAmount: 100, outstandingAmount: 75, statusCode: 'ACTIVA', applications: [{ id: 12, movementId: 91, appliedAmount: 25, statusCode: 'APLICADA' }] }];
+    render(<FranchiseRecoveryEditor caseId="7" caseDetail={{}} />);
+
+    await user.click(screen.getByRole('button', { name: 'Anular' }));
+    expect(screen.getByText(/¿Confirmás la anulación?/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Confirmar anulación' })).toBeInTheDocument();
   });
 });

@@ -1,6 +1,8 @@
 package com.tallerzapata.backend.api.recovery;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tallerzapata.backend.api.operation.OperationalTaskCreateRequest;
+import com.tallerzapata.backend.api.operation.OperationalTaskUpdateRequest;
 import com.tallerzapata.backend.testsupport.TestDatabaseCleaner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -86,6 +88,65 @@ class FranchiseRecoveryIntegrationTest {
                 .andExpect(jsonPath("$.opinionCode").value("PENDIENTE"))
                 .andExpect(jsonPath("$.clientPaymentStatusCode").value("NO_APLICA"))
                 .andExpect(jsonPath("$.recoversClient").value(true));
+    }
+
+    @Test
+    void shouldPersistRecoveryTasksWithoutExposingThemOnAssociatedTodoRiesgoCase() throws Exception {
+        OperationalTaskCreateRequest createRequest = new OperationalTaskCreateRequest(
+                100L, 1L, 1L, "TRAMITE", "agenda", "Contactar al cliente",
+                "Confirmar documentación", LocalDate.of(2026, 6, 20), "MEDIA", "PENDIENTE", 3L, null
+        );
+
+        String response = mockMvc.perform(post("/api/v1/tasks")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(createRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.caseId").value(100))
+                .andExpect(jsonPath("$.title").value("Contactar al cliente"))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+
+        Long taskId = objectMapper.readTree(response).get("id").asLong();
+        mockMvc.perform(get("/api/v1/tasks").header("X-User-Id", "3").param("caseId", "100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].id").value(taskId))
+                .andExpect(jsonPath("$.items[0].resolved").value(false));
+
+        OperationalTaskUpdateRequest updateRequest = new OperationalTaskUpdateRequest(
+                "TRAMITE", "agenda", "Contactar al cliente", "Documentación confirmada",
+                LocalDate.of(2026, 6, 20), "MEDIA", "RESUELTA", 3L, null
+        );
+        mockMvc.perform(put("/api/v1/tasks/{taskId}", taskId)
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(updateRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.resolved").value(true));
+
+        mockMvc.perform(get("/api/v1/tasks").header("X-User-Id", "3").param("caseId", "100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(1))
+                .andExpect(jsonPath("$.items[0].statusCode").value("RESUELTA"));
+        mockMvc.perform(get("/api/v1/tasks").header("X-User-Id", "3").param("caseId", "101"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(0));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM tareas WHERE caso_id = ?", Integer.class, 100L)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM tareas WHERE caso_id = ?", Integer.class, 101L)).isZero();
+
+        mockMvc.perform(delete("/api/v1/tasks/{taskId}", taskId).header("X-User-Id", "3"))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v1/tasks").header("X-User-Id", "3").param("caseId", "100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(0));
+        mockMvc.perform(get("/api/v1/tasks").header("X-User-Id", "3").param("caseId", "101"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(0));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM tareas WHERE caso_id = ?", Integer.class, 100L)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM tareas WHERE caso_id = ?", Integer.class, 101L)).isZero();
     }
 
     @Test
@@ -186,6 +247,85 @@ class FranchiseRecoveryIntegrationTest {
                         .header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(new FranchiseRecoveryUpsertRequest("TALLER", 101L, "0101TZ", opinionCode, agreedAmount, recoveryAmount, false, sharedFault, null, sharedFault ? "PENDIENTE" : null, sharedFault ? LocalDate.of(2026, 1, 1) : null, false, null, true, null, null, null, null, null, null, null, true, false, "TALLER"))))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void shouldMaintainClientObligationsIdempotentlyAndExposeTheirLifecycle() throws Exception {
+        saveRecovery("PROCEDE", false, true, new BigDecimal("40.00"), new BigDecimal("100.00"));
+        saveRecovery("PROCEDE", false, true, new BigDecimal("40.00"), new BigDecimal("100.00"));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM recupero_obligaciones_cliente WHERE caso_id = ? AND tipo_codigo = 'REINTEGRO_A_CLIENTE'", Integer.class, 100L)).isEqualTo(1);
+        mockMvc.perform(get("/api/v1/cases/100/franchise-recovery/client-obligations").header("X-User-Id", "3"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$[1].typeCode").value("REINTEGRO_A_CLIENTE")).andExpect(jsonPath("$[1].directionCode").value("PAGAR_A_CLIENTE")).andExpect(jsonPath("$[1].originalAmount").value(40.00)).andExpect(jsonPath("$[1].outstandingAmount").value(40.00)).andExpect(jsonPath("$[1].statusCode").value("ACTIVA"));
+        saveRecovery("PROCEDE", false, true, new BigDecimal("60.00"), new BigDecimal("100.00"));
+        assertThat(jdbcTemplate.queryForObject("SELECT importe_original FROM recupero_obligaciones_cliente WHERE caso_id = ? AND tipo_codigo = 'REINTEGRO_A_CLIENTE'", BigDecimal.class, 100L)).isEqualByComparingTo("60.00");
+        saveRecovery("PROCEDE", false, false, null, new BigDecimal("100.00"));
+        assertThat(jdbcTemplate.queryForObject("SELECT estado_codigo FROM recupero_obligaciones_cliente WHERE caso_id = ? AND tipo_codigo = 'REINTEGRO_A_CLIENTE'", String.class, 100L)).isEqualTo("INACTIVA");
+        assertThat(jdbcTemplate.queryForObject("SELECT motivo_inactivacion IS NOT NULL FROM recupero_obligaciones_cliente WHERE caso_id = ? AND tipo_codigo = 'REINTEGRO_A_CLIENTE'", Boolean.class, 100L)).isTrue();
+        saveRecovery("CULPA_COMPARTIDA", false, true, null, new BigDecimal("100.00"));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM recupero_obligaciones_cliente WHERE caso_id = ? AND tipo_codigo = 'APORTE_CLIENTE_CULPA_COMPARTIDA' AND estado_codigo = 'ACTIVA'", Integer.class, 100L)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ?", Integer.class, 100L)).isZero();
+    }
+
+    @Test
+    void shouldApplyAndAnnulClientObligationPaymentsIdempotentlyWithDerivedBalances() throws Exception {
+        saveRecovery("PROCEDE", false, true, new BigDecimal("50.00"), new BigDecimal("100.00"));
+        Long obligationId = jdbcTemplate.queryForObject("SELECT id FROM recupero_obligaciones_cliente WHERE caso_id = ? AND tipo_codigo = 'REINTEGRO_A_CLIENTE'", Long.class, 100L);
+        String payment = "{\"amount\":20.00,\"paymentMethodCode\":\"EFECTIVO\",\"reason\":\"Reintegro confirmado\"}";
+
+        mockMvc.perform(post("/api/v1/cases/100/franchise-recovery/client-obligations/{obligationId}/applications", obligationId)
+                        .header("X-User-Id", "3").header("Idempotency-Key", "reintegro-100-1").contentType(MediaType.APPLICATION_JSON).content(payment))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outstandingAmount").value(30.00))
+                .andExpect(jsonPath("$.applications[0].appliedAmount").value(20.00))
+                .andExpect(jsonPath("$.applications[0].statusCode").value("APLICADA"));
+        assertThat(jdbcTemplate.queryForObject("SELECT tipo_movimiento_codigo FROM movimientos_financieros WHERE caso_id = ?", String.class, 100L)).isEqualTo("EGRESO");
+
+        mockMvc.perform(post("/api/v1/cases/100/franchise-recovery/client-obligations/{obligationId}/applications", obligationId)
+                        .header("X-User-Id", "3").header("Idempotency-Key", "reintegro-100-1").contentType(MediaType.APPLICATION_JSON).content(payment))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.outstandingAmount").value(30.00));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ?", Integer.class, 100L)).isEqualTo(1);
+
+        saveRecovery("PROCEDE", false, true, new BigDecimal("60.00"), new BigDecimal("100.00"));
+        assertThat(jdbcTemplate.queryForObject("SELECT saldo_vigente FROM recupero_obligaciones_cliente WHERE id = ?", BigDecimal.class, obligationId)).isEqualByComparingTo("40.00");
+        Long applicationId = jdbcTemplate.queryForObject("SELECT id FROM recupero_obligacion_pago_aplicaciones WHERE obligacion_id = ? AND monto_aplicado > 0", Long.class, obligationId);
+
+        mockMvc.perform(post("/api/v1/cases/100/franchise-recovery/client-obligations/{obligationId}/applications/{applicationId}/annul", obligationId, applicationId)
+                        .header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.outstandingAmount").value(60.00))
+                .andExpect(jsonPath("$.applications[0].statusCode").value("ANULADA"))
+                .andExpect(jsonPath("$.applications[1].appliedAmount").value(-20.00))
+                .andExpect(jsonPath("$.applications[1].reversedApplicationId").value(applicationId));
+        assertThat(jdbcTemplate.queryForObject("SELECT tipo_movimiento_codigo FROM movimientos_financieros WHERE caso_id = ? ORDER BY id DESC LIMIT 1", String.class, 100L)).isEqualTo("INGRESO");
+        mockMvc.perform(post("/api/v1/cases/100/franchise-recovery/client-obligations/{obligationId}/applications/{applicationId}/annul", obligationId, applicationId)
+                        .header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void shouldGateLegalEndpointsByRecoveryManagerWithoutTouchingBaseCase() throws Exception {
+        saveRecovery("PROCEDE", false, false, null, new BigDecimal("100.00"));
+        mockMvc.perform(get("/api/v1/cases/100/legal").header("X-User-Id", "3")).andExpect(status().isConflict());
+        mockMvc.perform(put("/api/v1/cases/100/franchise-recovery").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new FranchiseRecoveryUpsertRequest("ABOGADO", 101L, "0101TZ", "PROCEDE", null, new BigDecimal("100.00"), false, false, null, null, null, false, null, true))))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/v1/cases/100/legal").header("X-User-Id", "3")).andExpect(status().isOk());
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM caso_legal WHERE caso_id = ?", Integer.class, 101L)).isZero();
+    }
+
+    @Test
+    void shouldPersistRecoveryLegalDataOnlyWhileManagedByLawyer() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/franchise-recovery").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(new FranchiseRecoveryUpsertRequest("ABOGADO", 101L, "0101TZ", "PROCEDE", null, new BigDecimal("100.00"), false, false, null, null, null, false, null, true)))).andExpect(status().isOk());
+        mockMvc.perform(put("/api/v1/cases/100/legal").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(new com.tallerzapata.backend.api.insurance.CaseLegalUpsertRequest("CON_PODER", "DANIO_MATERIAL", "JUDICIAL", LocalDate.of(2026, 1, 15), "CIUJ-RF-100", "Juzgado 1", "Autos RF", null, null, null, false, null, null, null, null, null)))).andExpect(status().isOk()).andExpect(jsonPath("$.cuij").value("CIUJ-RF-100"));
+        mockMvc.perform(get("/api/v1/cases/100/legal").header("X-User-Id", "3")).andExpect(status().isOk()).andExpect(jsonPath("$.instanceCode").value("JUDICIAL"));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM caso_legal WHERE caso_id = ?", Integer.class, 101L)).isZero();
+        saveRecovery("PROCEDE", false, false, null, new BigDecimal("100.00"));
+        mockMvc.perform(get("/api/v1/cases/100/legal").header("X-User-Id", "3")).andExpect(status().isConflict());
+        assertThat(jdbcTemplate.queryForObject("SELECT cuij FROM caso_legal WHERE caso_id = ?", String.class, 100L)).isEqualTo("CIUJ-RF-100");
+    }
+
+    private void saveRecovery(String opinion, boolean enablesRepair, boolean recoversClient, BigDecimal clientAmount, BigDecimal recoveryAmount) throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/franchise-recovery").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(new FranchiseRecoveryUpsertRequest("TALLER", 101L, "0101TZ", opinion, null, recoveryAmount, enablesRepair, recoversClient, clientAmount, "PENDIENTE", null, false, null, true)))).andExpect(status().isOk());
     }
 
     @Test

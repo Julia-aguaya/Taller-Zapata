@@ -209,6 +209,31 @@ public class OperationalTaskService {
         return toResponse(entity);
     }
 
+    @Transactional
+    public void delete(Long taskId, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        OperationalTaskEntity entity = operationalTaskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe la tarea " + taskId));
+
+        requireTaskAccess(currentUser, entity, "tarea.editar");
+        Map<String, Object> before = toAuditPayload(entity);
+        operationalTaskRepository.delete(entity);
+
+        if (entity.getCaseId() != null) {
+            caseAuditService.register(
+                    currentUser.id(),
+                    entity.getCaseId(),
+                    "tarea",
+                    taskId,
+                    "eliminar_tarea",
+                    caseAuditService.toJson(before),
+                    null,
+                    caseAuditService.toJson(Map.of("domain", "operacion")),
+                    httpRequest
+            );
+        }
+    }
+
     private TaskScope resolveScopeForCreate(AuthenticatedUser currentUser, Long caseId, Long organizationId, Long branchId) {
         if (caseId != null) {
             CaseEntity caseEntity = caseRepository.findById(caseId)

@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -131,6 +132,15 @@ class TaskIntegrationTest {
                 100L
         );
         assertThat(auditCount).isEqualTo(2);
+
+        mockMvc.perform(delete("/api/v1/tasks/{taskId}", taskId).header("X-User-Id", "3"))
+                .andExpect(status().isNoContent());
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM tareas WHERE id = ?", Integer.class, taskId)).isZero();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'eliminar_tarea'",
+                Integer.class,
+                100L
+        )).isEqualTo(1);
     }
 
     @Test

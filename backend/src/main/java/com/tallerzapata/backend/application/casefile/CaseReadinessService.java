@@ -219,8 +219,9 @@ public class CaseReadinessService {
             FranchiseRecoveryEntity recovery = franchiseRecoveryRepository.findByCaseId(caseId).orElse(null);
             CaseReadinessTabResponse tramiteTab = buildFranchiseRecoveryGestionTramiteReadiness(caseEntity, recovery);
             tabs.add(tramiteTab);
-            if (recovery != null && "ABOGADO".equals(normalizeCode(recovery.getManagerCode()))) {
-                CaseLegalEntity legal = caseLegalRepository.findByCaseId(caseId).orElse(null);
+            boolean lawyerManagedRecovery = recovery != null && "ABOGADO".equals(normalizeCode(recovery.getManagerCode()));
+            CaseLegalEntity legal = lawyerManagedRecovery ? caseLegalRepository.findByCaseId(caseId).orElse(null) : null;
+            if (lawyerManagedRecovery) {
                 List<LegalLesionadoEntity> lesionados = legal == null ? List.of() : legalLesionadoRepository.findByCaseLegalIdOrderByIdAsc(legal.getId());
                 tabs.add(buildAbogadoReadiness(legal, lesionados));
             }
@@ -230,7 +231,7 @@ public class CaseReadinessService {
                 tabs.add(budgetTab);
                 tabs.add(buildTodoRiesgoReparacionReadiness(caseEntity, hasGeneratedBudget(caseId)));
             }
-            tabs.add(buildFranchiseRecoveryPagosReadiness(caseId, recovery, tramiteTab.completed()));
+            tabs.add(lawyerManagedRecovery ? buildLegalPagosReadiness(legal) : buildFranchiseRecoveryPagosReadiness(caseId, recovery, tramiteTab.completed()));
         } else if (insuranceRepairCasePolicy.isThirdPartyClaim(caseType.getCode())) {
             boolean lawyerManaged = insuranceRepairCasePolicy.isThirdPartyLawyerClaim(caseType.getCode());
             CaseLegalEntity legal = caseLegalRepository.findByCaseId(caseId).orElse(null);

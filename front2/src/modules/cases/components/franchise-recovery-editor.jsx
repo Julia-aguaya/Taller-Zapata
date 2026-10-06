@@ -9,6 +9,7 @@ import { listCases } from '@/modules/cases/api/cases-api';
 import { listInsuranceCompanies, listInsuranceCompanyContacts } from '@/modules/cases/api/new-case-api';
 import { ThirdPartyWorkshopIncidentSection } from '@/modules/cases/components/third-party-workshop-editor';
 import { DocumentsSection } from '@/modules/cases/components/documents-section';
+import { TaskAgenda } from '@/modules/cases/components/task-agenda';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 
@@ -50,15 +51,52 @@ const RecoveryInsuranceDataSection = ({ caseId, associatedFolderCode }) => {
 
 const toAmount = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
 
+const ClientObligationsPaymentSection = ({ caseId, obligations }) => {
+  const queryClient = useQueryClient();
+  const [amounts, setAmounts] = useState({});
+  const [annulment, setAnnulment] = useState(null);
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'franchise-recovery-obligations'] });
+  const applyMutation = useMutation({
+    mutationFn: ({ obligationId, amount }) => requestJson(`/cases/${caseId}/franchise-recovery/client-obligations/${obligationId}/applications`, {
+      method: 'POST',
+      headers: { 'Idempotency-Key': crypto.randomUUID() },
+      body: JSON.stringify({ amount: Number(amount), paymentMethodCode: 'EFECTIVO' }),
+    }),
+    onSuccess: () => { refresh(); toast.success('Pago aplicado a la obligación.'); },
+    onError: (error) => toast.error(error.message),
+  });
+  const annulMutation = useMutation({
+    mutationFn: ({ obligationId, applicationId }) => requestJson(`/cases/${caseId}/franchise-recovery/client-obligations/${obligationId}/applications/${applicationId}/annul`, { method: 'POST', body: JSON.stringify({}) }),
+    onSuccess: () => { setAnnulment(null); refresh(); toast.success('Aplicación anulada.'); },
+    onError: (error) => toast.error(error.message),
+  });
+  if (obligations.length === 0) return null;
+  return <section className="rounded-2xl border border-border/70 p-4" aria-label="Obligaciones del cliente">
+    <h5 className="text-sm font-semibold">Obligaciones del cliente</h5>
+    <p className="mt-1 text-xs text-muted-foreground">Los saldos se calculan a partir de las aplicaciones de pago; no se editan manualmente.</p>
+    <div className="mt-4 space-y-4">{obligations.map((obligation) => {
+      const canApply = obligation.statusCode === 'ACTIVA' && Number(obligation.outstandingAmount) > 0;
+      return <div key={obligation.id} className="rounded-xl border border-border/70 bg-muted/20 p-3" aria-label={`Obligación ${obligation.typeCode}`}>
+        <div className="grid gap-3 md:grid-cols-4"><Field label="Tipo"><Input readOnly value={obligation.typeCode === 'REINTEGRO_A_CLIENTE' ? 'Reintegro a cliente' : 'Aporte cliente culpa compartida'} /></Field><Field label="Dirección"><Input readOnly value={obligation.directionCode === 'PAGAR_A_CLIENTE' ? 'A reintegrar al cliente' : 'A cobrar al cliente'} /></Field><Field label="Importe original"><Input readOnly value={obligation.originalAmount ?? ''} /></Field><Field label="Saldo vigente"><Input readOnly value={obligation.outstandingAmount ?? ''} /></Field></div>
+        {canApply ? <div className="mt-3 flex flex-wrap items-end gap-2"><Field label="Aplicar pago"><Input aria-label={`Importe a aplicar ${obligation.id}`} type="number" min="0.01" max={obligation.outstandingAmount} step="0.01" value={amounts[obligation.id] ?? ''} onChange={(event) => setAmounts((current) => ({ ...current, [obligation.id]: event.target.value }))} /></Field><Button type="button" size="sm" disabled={applyMutation.isPending || !amounts[obligation.id]} onClick={() => applyMutation.mutate({ obligationId: obligation.id, amount: amounts[obligation.id] })}>Aplicar pago</Button></div> : null}
+        <div className="mt-3"><p className="text-xs font-semibold text-muted-foreground">Historial de aplicaciones</p>{(obligation.applications ?? []).length === 0 ? <p className="mt-1 text-xs text-muted-foreground">Sin aplicaciones.</p> : <div className="mt-2 space-y-2">{obligation.applications.map((application) => <div key={application.id} className="flex flex-wrap items-center gap-2 text-xs"><span>Movimiento #{application.movementId}</span><span className="font-medium">{application.appliedAmount}</span><span className="text-muted-foreground">{application.statusCode}</span>{application.statusCode === 'APLICADA' ? <Button type="button" size="sm" variant="outline" onClick={() => setAnnulment({ obligationId: obligation.id, applicationId: application.id })}>Anular</Button> : null}</div>)}</div>}</div>
+      </div>;
+    })}</div>
+    {annulment ? <div className="mt-4 rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-sm"><p>¿Confirmás la anulación? Se registrará el movimiento financiero opuesto.</p><div className="mt-2 flex gap-2"><Button type="button" size="sm" variant="destructive" disabled={annulMutation.isPending} onClick={() => annulMutation.mutate(annulment)}>Confirmar anulación</Button><Button type="button" size="sm" variant="outline" onClick={() => setAnnulment(null)}>Cancelar</Button></div></div> : null}
+  </section>;
+};
+
 export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   const recoveryQuery = useQuery({ queryKey: ['cases', String(caseId), 'franchise-recovery'], queryFn: () => requestJson(`/cases/${caseId}/franchise-recovery`) });
+  const obligationsQuery = useQuery({ queryKey: ['cases', String(caseId), 'franchise-recovery-obligations'], queryFn: () => requestJson(`/cases/${caseId}/franchise-recovery/client-obligations`) });
   const catalogsQuery = useQuery({ queryKey: ['recovery', 'catalogs'], queryFn: () => requestJson('/recovery/catalogs') });
   const todoRiesgoCasesQuery = useQuery({ queryKey: ['recovery', 'todo-riesgo-cases'], queryFn: () => listCases({ caseTypeCode: 'TODO_RIESGO', size: 100 }) });
 
   const recovery = recoveryQuery.data;
+  const obligations = obligationsQuery.data ?? [];
   const baseCaseId = recovery?.baseCaseId;
   const baseInsuranceQuery = useQuery({ queryKey: ['cases', String(baseCaseId), 'insurance'], queryFn: () => requestJson(`/cases/${baseCaseId}/insurance`), enabled: Boolean(baseCaseId) });
   const baseIncidentQuery = useQuery({ queryKey: ['cases', String(baseCaseId), 'incident'], queryFn: () => requestJson(`/cases/${baseCaseId}/incident`), enabled: Boolean(baseCaseId) });
@@ -66,7 +104,6 @@ export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
   const basePeopleQuery = useQuery({ queryKey: ['cases', String(baseCaseId), 'persons'], queryFn: () => getCasePersons(baseCaseId), enabled: Boolean(baseCaseId) });
   const managerCodes = (catalogsQuery.data?.managerCodes ?? []).filter(({ code }) => ['TALLER', 'ABOGADO'].includes(code));
   const opinionCodes = catalogsQuery.data?.opinionCodes ?? [];
-  const paymentStatusCodes = catalogsQuery.data?.paymentStatusCodes ?? [];
   const baseInsurance = baseInsuranceQuery.data;
   const baseIncident = baseIncidentQuery.data;
   const baseThirdParty = baseThirdPartyQuery.data;
@@ -130,8 +167,8 @@ export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
       enablesRepair: habilitado,
       recoversClient: recuperaCliente,
       clientAmount: recuperaCliente ? (toAmount(clientAmount) || null) : null,
-      clientPaymentStatusCode: recuperaCliente ? (fd.get('clientPaymentStatusCode') || null) : null,
-      clientPaymentDate: recuperaCliente ? (fd.get('clientPaymentDate') || null) : null,
+       clientPaymentStatusCode: null,
+       clientPaymentDate: null,
       inspectionForwardedAt: fd.get('inspectionForwardedAt') || null,
       inspectionDate: fd.get('inspectionDate') || null,
       modalityCode: fd.get('modalityCode') || null,
@@ -206,6 +243,7 @@ export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
         <ThirdPartyWorkshopIncidentSection caseId={caseId} />
         <DocumentsSection caseId={caseId} moduleCode="GESTION_TRAMITE" originCode="GESTION_TRAMITE" includeHistorical={false} title="Documentación" showCompleteAction showAllCategories editableMetadata />
         <section className="rounded-2xl border border-border/70 p-4" aria-label="Tramitación"><h5 className="text-sm font-semibold">Tramitación</h5><p className="mt-1 text-xs text-muted-foreground">Fecha presentado y Dictamen se administran en Datos generales.</p><div className="mt-4 grid gap-3 md:grid-cols-3"><Field label="Monto a recuperar"><Input aria-label="Monto a recuperar" readOnly value={recoveryAmount} /></Field><Field label="Habilita reparación"><select name="enablesRepair" aria-label="Habilita reparación" value={enablesRepair} onChange={(e) => setEnablesRepair(e.target.value)} className={selectClass}><option value="NO">No</option><option value="SI">Sí</option></select></Field><Field label="Cotización"><select name="quotationStatusCode" aria-label="Cotización" defaultValue={recovery?.quotationStatusCode ?? ''} className={selectClass}><option value="">—</option><option value="PENDIENTE">Pendiente</option><option value="ENVIADA">Enviada</option><option value="ACEPTADA">Aceptada</option><option value="RECHAZADA">Rechazada</option></select></Field><Field label="Fecha cotización"><Input name="quotationDate" aria-label="Fecha cotización" type="date" defaultValue={recovery?.quotationDate ?? ''} /></Field><Field label="Monto acordado"><Input name="agreedAmount" aria-label="Monto acordado" type="number" min="0" step="0.01" value={agreedAmount} onChange={(e) => setAgreedAmount(e.target.value)} /></Field>{enablesRepair === 'SI' ? <><Field label="Derivado a inspección"><Input name="inspectionForwardedAt" aria-label="Derivado a inspección" type="date" defaultValue={recovery?.inspectionForwardedAt ?? ''} /></Field><Field label="Fecha inspección"><Input name="inspectionDate" aria-label="Fecha inspección" type="date" defaultValue={recovery?.inspectionDate ?? ''} /></Field><Field label="Modalidad"><select name="modalityCode" aria-label="Modalidad" defaultValue={recovery?.modalityCode ?? ''} className={selectClass}><option value="">—</option><option value="PRESENCIAL">Presencial</option><option value="FOTOS">Fotos</option><option value="OTRO">Otro</option></select></Field><Field label="Lleva repuestos"><select name="includesParts" aria-label="Lleva repuestos" defaultValue={recovery?.includesParts ? 'SI' : 'NO'} className={selectClass}><option value="NO">No</option><option value="SI">Sí</option></select></Field><Field label="Repara vehículo"><select name="repairsVehicle" aria-label="Repara vehículo" defaultValue={recovery?.repairsVehicle ? 'SI' : 'NO'} className={selectClass}><option value="NO">No</option><option value="SI">Sí</option></select></Field><Field label="Provee repuestos"><select name="partsProvisionModeCode" aria-label="Provee repuestos" defaultValue={recovery?.partsProvisionModeCode ?? ''} className={selectClass}><option value="">—</option><option value="COMPANIA">Compañía</option><option value="TALLER">Taller</option><option value="CLIENTE">Cliente</option></select></Field></> : null}</div></section>
+        <TaskAgenda caseId={caseId} organizationId={caseDetail?.organizationId} branchId={caseDetail?.branchId} />
         <div className="grid gap-x-6 gap-y-3 md:grid-cols-3">
           <Field label="Habilita reparación">
             <select name="enablesRepair" value={enablesRepair} onChange={(e) => setEnablesRepair(e.target.value)} className={selectClass}>
@@ -245,19 +283,12 @@ export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
                 <Field label={culpaCompartida ? 'Monto a cargo del cliente (50%)' : 'Monto a reintegrar al cliente'}>
                   <Input name="clientAmount" type="number" min="0" step="0.01" value={culpaCompartida ? clientShare : clientAmount} onChange={(event) => setClientAmount(event.target.value)} readOnly={culpaCompartida} placeholder={culpaCompartida ? '50% del recupero' : '0'} />
                 </Field>
-                <Field label={culpaCompartida ? 'Estado de cobro al cliente' : 'Estado del reintegro'}>
-                  <select name="clientPaymentStatusCode" defaultValue={recovery?.clientPaymentStatusCode ?? ''} className={selectClass}>
-                    <option value="">—</option>
-                    {paymentStatusCodes.map((p) => (<option key={p.code} value={p.code}>{p.name || p.code}</option>))}
-                  </select>
-                </Field>
-                <Field label={culpaCompartida ? 'Fecha de cobro' : 'Fecha de reintegro'}>
-                  <Input name="clientPaymentDate" type="date" defaultValue={recovery?.clientPaymentDate ?? ''} />
-                </Field>
               </>
             ) : null}
           </div>
         ) : null}
+
+        <ClientObligationsPaymentSection caseId={caseId} obligations={obligations} />
 
         {showLowerAgreementWarning ? (
           <div className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400">

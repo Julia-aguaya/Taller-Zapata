@@ -30,6 +30,36 @@ public class FranchiseRecoveryController {
     @GetMapping("/cases/{caseId}/franchise-recovery")
     public FranchiseRecoveryResponse getFranchiseRecovery(@PathVariable Long caseId) { return franchiseRecoveryService.getFranchiseRecovery(caseId); }
 
+    @PreAuthorize("hasAuthority('recupero.ver')")
+    @GetMapping("/cases/{caseId}/franchise-recovery/client-obligations")
+    public java.util.List<FranchiseRecoveryClientObligationResponse> listClientObligations(@PathVariable Long caseId) {
+        return franchiseRecoveryService.listClientObligations(caseId);
+    }
+
+    @PreAuthorize("hasAuthority('recupero.crear')")
+    @PostMapping("/cases/{caseId}/franchise-recovery/client-obligations/{obligationId}/applications")
+    public FranchiseRecoveryClientObligationResponse applyClientObligationPayment(
+            @PathVariable Long caseId,
+            @PathVariable Long obligationId,
+            @RequestHeader("Idempotency-Key") String idempotencyKey,
+            @RequestBody FranchiseRecoveryClientObligationPaymentRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        return franchiseRecoveryService.applyClientObligationPayment(caseId, obligationId, idempotencyKey, request, httpRequest);
+    }
+
+    @PreAuthorize("hasAuthority('recupero.crear')")
+    @PostMapping("/cases/{caseId}/franchise-recovery/client-obligations/{obligationId}/applications/{applicationId}/annul")
+    public FranchiseRecoveryClientObligationResponse annulClientObligationPayment(
+            @PathVariable Long caseId,
+            @PathVariable Long obligationId,
+            @PathVariable Long applicationId,
+            @RequestBody(required = false) FranchiseRecoveryClientObligationPaymentAnnulmentRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        return franchiseRecoveryService.annulClientObligationPayment(caseId, obligationId, applicationId, request, httpRequest);
+    }
+
     @Operation(summary = "Actualizar recupero de franquicia", description = "Crea o actualiza el recupero de franquicia de un caso")
     @ApiResponse(responseCode = "200", description = "OK")
     @PreAuthorize("hasAuthority('recupero.crear')")

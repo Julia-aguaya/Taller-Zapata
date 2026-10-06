@@ -3,6 +3,10 @@ package com.tallerzapata.backend.application.recovery;
 import com.tallerzapata.backend.api.casefile.CodeCatalogResponse;
 import com.tallerzapata.backend.api.recovery.FranchiseRecoveryCatalogsResponse;
 import com.tallerzapata.backend.api.recovery.FranchiseRecoveryResponse;
+import com.tallerzapata.backend.api.recovery.FranchiseRecoveryClientObligationResponse;
+import com.tallerzapata.backend.api.recovery.FranchiseRecoveryClientObligationPaymentApplicationResponse;
+import com.tallerzapata.backend.api.recovery.FranchiseRecoveryClientObligationPaymentAnnulmentRequest;
+import com.tallerzapata.backend.api.recovery.FranchiseRecoveryClientObligationPaymentRequest;
 import com.tallerzapata.backend.api.recovery.FranchiseRecoveryUpsertRequest;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.InsuranceRepairCasePolicy;
@@ -29,6 +33,7 @@ import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartEntity
 import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartRepository;
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementEntity;
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementRepository;
+import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialPaymentMethodRepository;
 import com.tallerzapata.backend.infrastructure.persistence.notification.NotificationEntity;
 import com.tallerzapata.backend.infrastructure.persistence.notification.NotificationRepository;
 import com.tallerzapata.backend.infrastructure.persistence.recovery.*;
@@ -72,8 +77,11 @@ public class FranchiseRecoveryService {
     private final VehicleRepository vehicleRepository;
     private final BudgetRepository budgetRepository;
     private final CasePartRepository casePartRepository;
+    private final FranchiseRecoveryClientObligationRepository clientObligationRepository;
+    private final FranchiseRecoveryClientObligationPaymentApplicationRepository clientObligationPaymentApplicationRepository;
+    private final FinancialPaymentMethodRepository financialPaymentMethodRepository;
 
-    public FranchiseRecoveryService(FranchiseRecoveryRepository franchiseRecoveryRepository, FranchiseRecoveryManagerRepository managerRepository, FranchiseRecoveryOpinionRepository opinionRepository, FranchiseRecoveryPaymentStatusRepository paymentStatusRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CaseRelationRepository caseRelationRepository, CaseService caseService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, FinancialMovementRepository financialMovementRepository, NotificationRepository notificationRepository, UserRoleRepository userRoleRepository, CaseIncidentRepository caseIncidentRepository, CaseInsuranceRepository caseInsuranceRepository, CaseThirdPartyRepository caseThirdPartyRepository, PersonRepository personRepository, VehicleRepository vehicleRepository, BudgetRepository budgetRepository, CasePartRepository casePartRepository) {
+    public FranchiseRecoveryService(FranchiseRecoveryRepository franchiseRecoveryRepository, FranchiseRecoveryManagerRepository managerRepository, FranchiseRecoveryOpinionRepository opinionRepository, FranchiseRecoveryPaymentStatusRepository paymentStatusRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CaseRelationRepository caseRelationRepository, CaseService caseService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, FinancialMovementRepository financialMovementRepository, NotificationRepository notificationRepository, UserRoleRepository userRoleRepository, CaseIncidentRepository caseIncidentRepository, CaseInsuranceRepository caseInsuranceRepository, CaseThirdPartyRepository caseThirdPartyRepository, PersonRepository personRepository, VehicleRepository vehicleRepository, BudgetRepository budgetRepository, CasePartRepository casePartRepository, FranchiseRecoveryClientObligationRepository clientObligationRepository, FranchiseRecoveryClientObligationPaymentApplicationRepository clientObligationPaymentApplicationRepository, FinancialPaymentMethodRepository financialPaymentMethodRepository) {
         this.franchiseRecoveryRepository = franchiseRecoveryRepository;
         this.managerRepository = managerRepository;
         this.opinionRepository = opinionRepository;
@@ -91,6 +99,9 @@ public class FranchiseRecoveryService {
         this.caseIncidentRepository = caseIncidentRepository;
         this.caseInsuranceRepository = caseInsuranceRepository; this.caseThirdPartyRepository = caseThirdPartyRepository;
         this.personRepository = personRepository; this.vehicleRepository = vehicleRepository; this.budgetRepository = budgetRepository; this.casePartRepository = casePartRepository;
+        this.clientObligationRepository = clientObligationRepository;
+        this.clientObligationPaymentApplicationRepository = clientObligationPaymentApplicationRepository;
+        this.financialPaymentMethodRepository = financialPaymentMethodRepository;
     }
 
     @Transactional(readOnly = true)
@@ -151,6 +162,7 @@ public class FranchiseRecoveryService {
         }
         entity.setReusesBaseData(entity.getBaseCaseId() != null && hasCompatibleBaseSnapshot(entity, caseEntity));
         entity = franchiseRecoveryRepository.save(entity);
+        synchronizeClientObligations(entity);
         if (Boolean.TRUE.equals(entity.getEnablesRepair())) caseService.copyRecoveryBudgetFromBase(entity.getBaseCaseId(), caseId);
         if (requiresLowerAgreementApproval(entity) && !Boolean.TRUE.equals(entity.getApprovedLowerAgreement())) {
             notifyGlobalAdminsOfLowerAgreement(entity, caseEntity, currentUser);
@@ -316,6 +328,197 @@ public class FranchiseRecoveryService {
         return new RecoveryAmounts(minimumLabor, minimumParts, finalPartsAmount, amountToBill, finalForWorkshop);
     }
     private record RecoveryAmounts(BigDecimal minimumLabor, BigDecimal minimumParts, BigDecimal finalParts, BigDecimal amountToBillCompany, BigDecimal finalAmountForWorkshop) { }
+    @Transactional(readOnly = true)
+    public List<FranchiseRecoveryClientObligationResponse> listClientObligations(Long caseId) {
+        AuthenticatedUser user = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        accessControlService.requireCaseAccess(user, caseEntity, "recupero.ver");
+        requireRecoveryCase(caseEntity);
+        return clientObligationRepository.findByCaseIdOrderByIdAsc(caseId).stream().map(this::toObligationResponse).toList();
+    }
+
+    @Transactional
+    public FranchiseRecoveryClientObligationResponse applyClientObligationPayment(Long caseId, Long obligationId, String idempotencyKey, FranchiseRecoveryClientObligationPaymentRequest request, HttpServletRequest httpRequest) {
+        AuthenticatedUser user = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        accessControlService.requireCaseAccess(user, caseEntity, "recupero.crear");
+        requireRecoveryCase(caseEntity);
+        String normalizedIdempotencyKey = requireIdempotencyKey(idempotencyKey);
+        FranchiseRecoveryClientObligationEntity obligation = requireObligationForUpdate(caseId, obligationId);
+        var existing = clientObligationPaymentApplicationRepository.findByObligationIdAndIdempotencyKey(obligationId, normalizedIdempotencyKey);
+        if (existing.isPresent()) return toObligationResponse(obligation);
+        if (!"ACTIVA".equals(obligation.getStatusCode())) throw new ConflictException("La obligación del cliente no está activa");
+        BigDecimal amount = money(request == null ? null : request.amount());
+        if (amount.signum() <= 0) throw new ConflictException("El importe aplicado debe ser positivo");
+        BigDecimal outstanding = derivedOutstandingAmount(obligation);
+        if (amount.compareTo(outstanding) > 0) throw new ConflictException("El importe supera el saldo vigente de la obligación");
+        String paymentMethodCode = normalizedOptionalCode(request.paymentMethodCode());
+        if (paymentMethodCode == null || !financialPaymentMethodRepository.existsByCodeAndActiveTrue(paymentMethodCode)) throw new ConflictException("paymentMethodCode no permitido: " + request.paymentMethodCode());
+
+        FinancialMovementEntity movement = new FinancialMovementEntity();
+        movement.setCaseId(caseId);
+        movement.setMovementTypeCode("APORTE_CLIENTE_CULPA_COMPARTIDA".equals(obligation.getTypeCode()) ? "INGRESO" : "EGRESO");
+        movement.setFlowOriginCode("CLIENTE");
+        movement.setCounterpartyTypeCode("PERSONA");
+        movement.setCounterpartyPersonId(caseEntity.getPrincipalCustomerPersonId());
+        movement.setMovementAt(request.movementAt() == null ? LocalDateTime.now() : request.movementAt());
+        movement.setGrossAmount(amount);
+        movement.setNetAmount(amount);
+        movement.setPaymentMethodCode(paymentMethodCode);
+        movement.setPaymentMethodDetail(blankToNull(request.paymentMethodDetail()));
+        movement.setCancellationTypeCode("FRANQUICIA");
+        movement.setAdvancePayment(false);
+        movement.setBonification(false);
+        movement.setExternalReference(blankToNull(request.externalReference()));
+        movement.setReason(blankToNull(request.reason()) == null ? "Aplicación de obligación de recupero de franquicia" : blankToNull(request.reason()));
+        movement.setRegisteredBy(user.id());
+        movement = financialMovementRepository.saveAndFlush(movement);
+
+        FranchiseRecoveryClientObligationPaymentApplicationEntity application = new FranchiseRecoveryClientObligationPaymentApplicationEntity();
+        application.setObligationId(obligationId);
+        application.setMovementId(movement.getId());
+        application.setAppliedAmount(amount);
+        application.setIdempotencyKey(normalizedIdempotencyKey);
+        application.setStatusCode("APLICADA");
+        application.setCreatedAt(LocalDateTime.now());
+        clientObligationPaymentApplicationRepository.saveAndFlush(application);
+        refreshOutstandingAmount(obligation);
+        caseAuditService.register(user.id(), caseId, "recupero_obligacion_pago_aplicaciones", application.getId(), "aplicar_pago_obligacion_cliente_recupero", null,
+                caseAuditService.toJson(Map.of("obligationId", obligationId, "movementId", movement.getId(), "amount", amount)), caseAuditService.toJson(Map.of("domain", "recovery")), httpRequest);
+        return toObligationResponse(obligation);
+    }
+
+    @Transactional
+    public FranchiseRecoveryClientObligationResponse annulClientObligationPayment(Long caseId, Long obligationId, Long applicationId, FranchiseRecoveryClientObligationPaymentAnnulmentRequest request, HttpServletRequest httpRequest) {
+        AuthenticatedUser user = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = requireCase(caseId);
+        accessControlService.requireCaseAccess(user, caseEntity, "recupero.crear");
+        requireRecoveryCase(caseEntity);
+        FranchiseRecoveryClientObligationEntity obligation = requireObligationForUpdate(caseId, obligationId);
+        FranchiseRecoveryClientObligationPaymentApplicationEntity original = clientObligationPaymentApplicationRepository.findByIdAndObligationId(applicationId, obligationId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe la aplicación de pago de la obligación"));
+        if (original.getAppliedAmount().signum() <= 0 || !"APLICADA".equals(original.getStatusCode())) throw new ConflictException("Sólo puede anularse una aplicación de pago vigente");
+        if (clientObligationPaymentApplicationRepository.existsByReversedApplicationId(applicationId)) throw new ConflictException("La aplicación de pago ya fue anulada");
+        FinancialMovementEntity originalMovement = financialMovementRepository.findById(original.getMovementId())
+                .filter(item -> caseId.equals(item.getCaseId()))
+                .orElseThrow(() -> new ResourceNotFoundException("No existe el movimiento financiero de la aplicación"));
+
+        FinancialMovementEntity reversal = new FinancialMovementEntity();
+        reversal.setCaseId(caseId);
+        reversal.setMovementTypeCode("INGRESO".equals(originalMovement.getMovementTypeCode()) ? "EGRESO" : "INGRESO");
+        reversal.setFlowOriginCode("CLIENTE");
+        reversal.setCounterpartyTypeCode("PERSONA");
+        reversal.setCounterpartyPersonId(originalMovement.getCounterpartyPersonId());
+        reversal.setMovementAt(LocalDateTime.now());
+        reversal.setGrossAmount(original.getAppliedAmount());
+        reversal.setNetAmount(original.getAppliedAmount());
+        reversal.setPaymentMethodCode(originalMovement.getPaymentMethodCode());
+        reversal.setPaymentMethodDetail(originalMovement.getPaymentMethodDetail());
+        reversal.setCancellationTypeCode("FRANQUICIA");
+        reversal.setAdvancePayment(false);
+        reversal.setBonification(false);
+        reversal.setExternalReference(originalMovement.getPublicId());
+        reversal.setReason(request == null || blankToNull(request.reason()) == null ? "Anulación de aplicación de obligación de recupero" : blankToNull(request.reason()));
+        reversal.setRegisteredBy(user.id());
+        reversal = financialMovementRepository.saveAndFlush(reversal);
+
+        original.setStatusCode("ANULADA");
+        original.setAnnulledAt(LocalDateTime.now());
+        clientObligationPaymentApplicationRepository.save(original);
+        FranchiseRecoveryClientObligationPaymentApplicationEntity reversalApplication = new FranchiseRecoveryClientObligationPaymentApplicationEntity();
+        reversalApplication.setObligationId(obligationId);
+        reversalApplication.setMovementId(reversal.getId());
+        reversalApplication.setAppliedAmount(original.getAppliedAmount().negate());
+        reversalApplication.setIdempotencyKey("ANNUL-" + applicationId);
+        reversalApplication.setStatusCode("REVERSO");
+        reversalApplication.setReversedApplicationId(applicationId);
+        reversalApplication.setCreatedAt(LocalDateTime.now());
+        clientObligationPaymentApplicationRepository.saveAndFlush(reversalApplication);
+        refreshOutstandingAmount(obligation);
+        caseAuditService.register(user.id(), caseId, "recupero_obligacion_pago_aplicaciones", reversalApplication.getId(), "anular_pago_obligacion_cliente_recupero", null,
+                caseAuditService.toJson(Map.of("obligationId", obligationId, "applicationId", applicationId, "reversalMovementId", reversal.getId())), caseAuditService.toJson(Map.of("domain", "recovery")), httpRequest);
+        return toObligationResponse(obligation);
+    }
+
+    private FranchiseRecoveryClientObligationEntity requireObligationForUpdate(Long caseId, Long obligationId) {
+        FranchiseRecoveryClientObligationEntity obligation = clientObligationRepository.findByIdForUpdate(obligationId)
+                .orElseThrow(() -> new ResourceNotFoundException("No existe la obligación del cliente"));
+        if (!caseId.equals(obligation.getCaseId())) throw new ResourceNotFoundException("La obligación no pertenece al recupero indicado");
+        return obligation;
+    }
+
+    private void synchronizeClientObligations(FranchiseRecoveryEntity recovery) {
+        boolean sharedFault = "CULPA_COMPARTIDA".equals(normalizeCode(recovery.getOpinionCode()));
+        sync(recovery, "REINTEGRO_A_CLIENTE", "PAGAR_A_CLIENTE", !sharedFault && Boolean.TRUE.equals(recovery.getRecoversClient()) && !Boolean.TRUE.equals(recovery.getEnablesRepair()), recovery.getClientAmount(), "Ya no aplica recupero a favor del cliente");
+        sync(recovery, "APORTE_CLIENTE_CULPA_COMPARTIDA", "COBRAR_A_CLIENTE", sharedFault, recovery.getClientAmount(), "El dictamen dejó de ser culpa compartida");
+    }
+
+    private void sync(FranchiseRecoveryEntity recovery, String type, String direction, boolean applies, BigDecimal amount, String reason) {
+        FranchiseRecoveryClientObligationEntity existing = clientObligationRepository.findByCaseIdAndTypeCode(recovery.getCaseId(), type).orElse(null);
+        if (!applies) {
+            if (existing != null && "ACTIVA".equals(existing.getStatusCode())) {
+                existing.setStatusCode("INACTIVA");
+                existing.setInactivatedAt(LocalDateTime.now());
+                existing.setInactivationReason(reason);
+                existing.setUpdatedAt(LocalDateTime.now());
+                clientObligationRepository.save(existing);
+            }
+            return;
+        }
+        if (amount == null) return;
+        FranchiseRecoveryClientObligationEntity obligation = existing == null ? new FranchiseRecoveryClientObligationEntity() : existing;
+        BigDecimal originalAmount = scale(amount);
+        if (existing != null && !applicationsFor(obligation).isEmpty() && originalAmount.compareTo(appliedAmount(obligation)) < 0) {
+            throw new ConflictException("El importe de la obligación no puede ser menor a lo ya aplicado");
+        }
+        obligation.setCaseId(recovery.getCaseId());
+        obligation.setTypeCode(type);
+        obligation.setDirectionCode(direction);
+        obligation.setOriginalAmount(originalAmount);
+        if (existing == null) obligation.setOutstandingAmount(originalAmount);
+        obligation.setStatusCode("ACTIVA");
+        obligation.setUpdatedAt(LocalDateTime.now());
+        obligation.setInactivatedAt(null);
+        obligation.setInactivationReason(null);
+        if (existing == null) obligation.setCreatedAt(LocalDateTime.now());
+        clientObligationRepository.save(obligation);
+        refreshOutstandingAmount(obligation);
+    }
+
+    private void refreshOutstandingAmount(FranchiseRecoveryClientObligationEntity obligation) {
+        obligation.setOutstandingAmount(derivedOutstandingAmount(obligation));
+        obligation.setUpdatedAt(LocalDateTime.now());
+        clientObligationRepository.save(obligation);
+    }
+
+    private BigDecimal derivedOutstandingAmount(FranchiseRecoveryClientObligationEntity obligation) {
+        return scale(obligation.getOriginalAmount().subtract(appliedAmount(obligation)));
+    }
+
+    private BigDecimal appliedAmount(FranchiseRecoveryClientObligationEntity obligation) {
+        return applicationsFor(obligation).stream().map(FranchiseRecoveryClientObligationPaymentApplicationEntity::getAppliedAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private List<FranchiseRecoveryClientObligationPaymentApplicationEntity> applicationsFor(FranchiseRecoveryClientObligationEntity obligation) {
+        return clientObligationPaymentApplicationRepository.findByObligationIdOrderByIdAsc(obligation.getId());
+    }
+
+    private FranchiseRecoveryClientObligationResponse toObligationResponse(FranchiseRecoveryClientObligationEntity obligation) {
+        List<FranchiseRecoveryClientObligationPaymentApplicationEntity> applications = applicationsFor(obligation);
+        return new FranchiseRecoveryClientObligationResponse(obligation.getId(), obligation.getTypeCode(), obligation.getDirectionCode(), obligation.getOriginalAmount(), scale(obligation.getOriginalAmount().subtract(applications.stream().map(FranchiseRecoveryClientObligationPaymentApplicationEntity::getAppliedAmount).reduce(BigDecimal.ZERO, BigDecimal::add))), obligation.getStatusCode(), obligation.getCreatedAt(), obligation.getUpdatedAt(), obligation.getInactivatedAt(), obligation.getInactivationReason(), applications.stream().map(application -> new FranchiseRecoveryClientObligationPaymentApplicationResponse(application.getId(), application.getMovementId(), application.getAppliedAmount(), application.getStatusCode(), application.getReversedApplicationId(), application.getIdempotencyKey(), application.getCreatedAt(), application.getAnnulledAt())).toList());
+    }
+
+    private String requireIdempotencyKey(String value) {
+        String key = blankToNull(value);
+        if (key == null) throw new ConflictException("Idempotency-Key es obligatorio");
+        if (key.length() > 100) throw new ConflictException("Idempotency-Key supera los 100 caracteres");
+        return key;
+    }
+
+    private BigDecimal money(BigDecimal value) {
+        if (value == null) throw new ConflictException("El importe es obligatorio");
+        return scale(value);
+    }
     private String normalizeCode(String value) { return value == null || value.isBlank() ? null : value.trim().toUpperCase(); }
     private String normalizedOptionalCode(String value) { return value == null || value.isBlank() ? null : normalizeCode(value); }
     private String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }

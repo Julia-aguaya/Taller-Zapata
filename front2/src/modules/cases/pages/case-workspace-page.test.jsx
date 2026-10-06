@@ -814,6 +814,18 @@ describe('CaseWorkspacePage UI', () => {
     expect(JSON.parse(screen.getByTestId('lawyer-editor-context').textContent)).toMatchObject({ caseId: '1', caseDetail: { caseTypeCode: 'RECLAMO_TERCEROS_ABOGADO', organizationId: 9, branchId: 3 } });
   });
 
+  it('renders the recovery lawyer tab only when readiness exposes it', async () => {
+    await renderPage({ ...baseWorkspace, caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'RECUPERO_FRANQUICIA' }, readiness: { ...baseWorkspace.readiness, caseTypeCode: 'RECUPERO_FRANQUICIA', tabs: [{ tabCode: 'GESTION_TRAMITE', allowed: true, completed: false, blockingReasons: [], warningReasons: [] }, { tabCode: 'PAGOS', allowed: true, completed: false, blockingReasons: [], warningReasons: [] }] } });
+    expect(screen.queryByRole('tab', { name: /abogado/i })).not.toBeInTheDocument();
+  });
+
+  it('opens the canonical lawyer editor for a lawyer-managed recovery tab', async () => {
+    const user = userEvent.setup();
+    await renderPage({ ...baseWorkspace, caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'RECUPERO_FRANQUICIA' }, readiness: { ...baseWorkspace.readiness, caseTypeCode: 'RECUPERO_FRANQUICIA', tabs: [{ tabCode: 'ABOGADO', allowed: true, completed: false, blockingReasons: [], warningReasons: [] }] } });
+    await user.click(screen.getByRole('tab', { name: /abogado/i }));
+    expect(screen.getByTestId('lawyer-editor-context')).toBeInTheDocument();
+  });
+
   it('muestra el proximo paso operativo en resumen', async () => {
     await renderPage();
 

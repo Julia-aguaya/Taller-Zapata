@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ListTodo, Plus, Save, User } from 'lucide-react';
+import { ListTodo, Plus, Save, Trash2, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { requestJson } from '@/shared/api/http-client';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
+import { Dialog } from '@/shared/ui/dialog';
 
 export const TaskAgenda = ({ caseId, organizationId, branchId }) => {
   const queryClient = useQueryClient();
@@ -13,6 +14,7 @@ export const TaskAgenda = ({ caseId, organizationId, branchId }) => {
   const [newDesc, setNewDesc] = useState('');
   const [newDueDate, setNewDueDate] = useState('');
   const [newAssignedUserId, setNewAssignedUserId] = useState('');
+  const [taskToDelete, setTaskToDelete] = useState(null);
 
   const tasksQuery = useQuery({
     queryKey: ['tasks', String(caseId)],
@@ -23,7 +25,7 @@ export const TaskAgenda = ({ caseId, organizationId, branchId }) => {
     queryFn: () => requestJson('/users?size=200'),
   });
 
-  const tasks = (tasksQuery.data?.content ?? tasksQuery.data ?? []);
+  const tasks = (tasksQuery.data?.items ?? tasksQuery.data?.content ?? tasksQuery.data ?? []);
   const pendingTasks = Array.isArray(tasks) ? tasks.filter(t => !t.resolved) : [];
   const users = (usersQuery.data?.content ?? usersQuery.data ?? []);
 
@@ -36,6 +38,12 @@ export const TaskAgenda = ({ caseId, organizationId, branchId }) => {
   const updateMutation = useMutation({
     mutationFn: ({ taskId, payload }) => requestJson(`/tasks/${taskId}`, { method: 'PUT', body: JSON.stringify(payload) }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tasks', String(caseId) ] }); },
+    onError: (e) => toast.error(e.message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (taskId) => requestJson(`/tasks/${taskId}`, { method: 'DELETE' }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tasks', String(caseId)] }); setTaskToDelete(null); toast.success('Tarea eliminada.'); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -125,6 +133,7 @@ export const TaskAgenda = ({ caseId, organizationId, branchId }) => {
                 <th className="px-2 py-2 text-left font-semibold uppercase tracking-wider">Agendado</th>
                 <th className="px-2 py-2 text-left font-semibold uppercase tracking-wider">Debe resolver</th>
                 <th className="px-2 py-2 text-left font-semibold uppercase tracking-wider">Hecho</th>
+                <th className="px-2 py-2 text-left font-semibold uppercase tracking-wider">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -146,6 +155,9 @@ export const TaskAgenda = ({ caseId, organizationId, branchId }) => {
                     <input type="checkbox" checked={task.resolved} onChange={() => toggleResolved(task)}
                       className="h-4 w-4 rounded border-border accent-primary cursor-pointer" />
                   </td>
+                  <td className="px-2 py-2.5">
+                    <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-destructive hover:text-destructive" aria-label={`Eliminar tarea ${task.title}`} onClick={() => setTaskToDelete(task)} disabled={deleteMutation.isPending}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -154,6 +166,12 @@ export const TaskAgenda = ({ caseId, organizationId, branchId }) => {
       ) : (
         <p className="mt-4 text-xs text-muted-foreground">No hay tareas pendientes.</p>
       )}
+      <Dialog open={Boolean(taskToDelete)} onClose={() => { if (!deleteMutation.isPending) setTaskToDelete(null); }} title="¿Eliminar tarea?" description={`La tarea ${taskToDelete?.title ?? 'seleccionada'} se eliminará de forma permanente.`}>
+        <div className="flex gap-3">
+          <Button type="button" variant="outline" className="flex-1" data-dialog-initial-focus onClick={() => setTaskToDelete(null)} disabled={deleteMutation.isPending}>Cancelar</Button>
+          <Button type="button" variant="destructive" className="flex-1" onClick={() => taskToDelete && deleteMutation.mutate(taskToDelete.id)} disabled={deleteMutation.isPending}>{deleteMutation.isPending ? 'Eliminando...' : 'Eliminar'}</Button>
+        </div>
+      </Dialog>
     </div>
   );
 };
