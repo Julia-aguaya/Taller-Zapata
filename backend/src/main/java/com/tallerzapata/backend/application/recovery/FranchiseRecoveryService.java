@@ -24,6 +24,9 @@ import com.tallerzapata.backend.infrastructure.persistence.insurance.CaseThirdPa
 import com.tallerzapata.backend.infrastructure.persistence.person.PersonRepository;
 import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleRepository;
 import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetRepository;
+import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetEntity;
+import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartEntity;
+import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartRepository;
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementEntity;
 import com.tallerzapata.backend.infrastructure.persistence.finance.FinancialMovementRepository;
 import com.tallerzapata.backend.infrastructure.persistence.notification.NotificationEntity;
@@ -68,8 +71,9 @@ public class FranchiseRecoveryService {
     private final PersonRepository personRepository;
     private final VehicleRepository vehicleRepository;
     private final BudgetRepository budgetRepository;
+    private final CasePartRepository casePartRepository;
 
-    public FranchiseRecoveryService(FranchiseRecoveryRepository franchiseRecoveryRepository, FranchiseRecoveryManagerRepository managerRepository, FranchiseRecoveryOpinionRepository opinionRepository, FranchiseRecoveryPaymentStatusRepository paymentStatusRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CaseRelationRepository caseRelationRepository, CaseService caseService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, FinancialMovementRepository financialMovementRepository, NotificationRepository notificationRepository, UserRoleRepository userRoleRepository, CaseIncidentRepository caseIncidentRepository, CaseInsuranceRepository caseInsuranceRepository, CaseThirdPartyRepository caseThirdPartyRepository, PersonRepository personRepository, VehicleRepository vehicleRepository, BudgetRepository budgetRepository) {
+    public FranchiseRecoveryService(FranchiseRecoveryRepository franchiseRecoveryRepository, FranchiseRecoveryManagerRepository managerRepository, FranchiseRecoveryOpinionRepository opinionRepository, FranchiseRecoveryPaymentStatusRepository paymentStatusRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CaseRelationRepository caseRelationRepository, CaseService caseService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, FinancialMovementRepository financialMovementRepository, NotificationRepository notificationRepository, UserRoleRepository userRoleRepository, CaseIncidentRepository caseIncidentRepository, CaseInsuranceRepository caseInsuranceRepository, CaseThirdPartyRepository caseThirdPartyRepository, PersonRepository personRepository, VehicleRepository vehicleRepository, BudgetRepository budgetRepository, CasePartRepository casePartRepository) {
         this.franchiseRecoveryRepository = franchiseRecoveryRepository;
         this.managerRepository = managerRepository;
         this.opinionRepository = opinionRepository;
@@ -86,7 +90,7 @@ public class FranchiseRecoveryService {
         this.userRoleRepository = userRoleRepository;
         this.caseIncidentRepository = caseIncidentRepository;
         this.caseInsuranceRepository = caseInsuranceRepository; this.caseThirdPartyRepository = caseThirdPartyRepository;
-        this.personRepository = personRepository; this.vehicleRepository = vehicleRepository; this.budgetRepository = budgetRepository;
+        this.personRepository = personRepository; this.vehicleRepository = vehicleRepository; this.budgetRepository = budgetRepository; this.casePartRepository = casePartRepository;
     }
 
     @Transactional(readOnly = true)
@@ -129,12 +133,15 @@ public class FranchiseRecoveryService {
         entity.setAgreedAmount(scale(request.agreedAmount()));
         entity.setRecoveryAmount(scale(request.recoveryAmount()));
         entity.setEnablesRepair(Boolean.TRUE.equals(request.enablesRepair()));
-        entity.setRecoversClient(Boolean.TRUE.equals(request.recoversClient()));
-        entity.setClientAmount("CULPA_COMPARTIDA".equals(normalizedOptionalCode(request.opinionCode())) && request.recoveryAmount() != null
-                ? scale(request.recoveryAmount().divide(new BigDecimal("2"), 2, RoundingMode.HALF_UP))
-                : scale(request.clientAmount()));
-        entity.setClientPaymentStatusCode(normalizedOptionalCode(request.clientPaymentStatusCode()));
-        entity.setClientPaymentDate(request.clientPaymentDate());
+        boolean sharedFault = "CULPA_COMPARTIDA".equals(normalizedOptionalCode(request.opinionCode()));
+        entity.setRecoversClient(sharedFault || (!Boolean.TRUE.equals(request.enablesRepair()) && Boolean.TRUE.equals(request.recoversClient())));
+        if (Boolean.TRUE.equals(entity.getRecoversClient()) || request.clientAmount() != null || request.clientPaymentStatusCode() != null || request.clientPaymentDate() != null) {
+            entity.setClientAmount(sharedFault && request.recoveryAmount() != null
+                    ? scale(request.recoveryAmount().divide(new BigDecimal("2"), 2, RoundingMode.HALF_UP))
+                    : scale(request.clientAmount()));
+            entity.setClientPaymentStatusCode(normalizedOptionalCode(request.clientPaymentStatusCode()));
+            entity.setClientPaymentDate(request.clientPaymentDate());
+        }
         // La aprobación es una acción privilegiada separada. Nunca proviene del formulario del operador.
         if (!requiresLowerAgreementApproval(entity)) {
             entity.setApprovedLowerAgreement(false);
@@ -148,7 +155,6 @@ public class FranchiseRecoveryService {
         if (requiresLowerAgreementApproval(entity) && !Boolean.TRUE.equals(entity.getApprovedLowerAgreement())) {
             notifyGlobalAdminsOfLowerAgreement(entity, caseEntity, currentUser);
         }
-        registerSharedFaultCollectionOnce(entity, caseEntity, currentUser, httpRequest);
         caseAuditService.register(currentUser.id(), caseId, "recuperos_franquicia", entity.getId(), "upsert_recupero_franquicia", null, caseAuditService.toJson(Map.of("managerCode", entity.getManagerCode(), "opinionCode", entity.getOpinionCode())), caseAuditService.toJson(Map.of("domain", "recovery")), httpRequest);
         return toResponse(entity);
     }
@@ -236,7 +242,11 @@ public class FranchiseRecoveryService {
         if ("CULPA_COMPARTIDA".equals(normalizeCode(request.opinionCode()))) {
             if (request.recoveryAmount() == null || request.recoveryAmount().signum() < 0) throw new ConflictException("Con culpa compartida debe indicar el monto a recuperar");
             if (!Boolean.TRUE.equals(request.recoversClient())) throw new ConflictException("Con culpa compartida debe recuperarse el 50% a cargo del cliente");
-            if (request.clientPaymentStatusCode() == null || request.clientPaymentDate() == null) throw new ConflictException("Con culpa compartida debe registrar estado y fecha del cobro al cliente");
+            BigDecimal expectedClientAmount = scale(request.recoveryAmount().divide(new BigDecimal("2"), 2, RoundingMode.HALF_UP));
+            if (request.clientAmount() != null && scale(request.clientAmount()).compareTo(expectedClientAmount) != 0) throw new ConflictException("Con culpa compartida el cliente debe asumir exactamente el 50% del monto a recuperar");
+        } else if (!Boolean.TRUE.equals(request.enablesRepair()) && Boolean.TRUE.equals(request.recoversClient())) {
+            if (request.clientAmount() == null || request.clientAmount().signum() <= 0) throw new ConflictException("El monto a reintegrar al cliente debe ser mayor a cero");
+            if (request.recoveryAmount() == null || request.clientAmount().compareTo(request.recoveryAmount()) > 0) throw new ConflictException("El monto a reintegrar no puede superar el monto a recuperar");
         }
         if (entity.getBaseCaseId() != null && request.baseCaseId() != null && !request.baseCaseId().equals(entity.getBaseCaseId())) throw new ConflictException("La carpeta asociada del recupero no puede modificarse");
         if (entity.getBaseCaseId() != null) {
@@ -266,7 +276,6 @@ public class FranchiseRecoveryService {
     }
     private boolean requiresLowerAgreementApproval(FranchiseRecoveryEntity recovery) { return recovery.getAgreedAmount() != null && recovery.getRecoveryAmount() != null && recovery.getRecoveryAmount().compareTo(recovery.getAgreedAmount()) < 0 && !"CULPA_COMPARTIDA".equals(normalizeCode(recovery.getOpinionCode())); }
     private void notifyGlobalAdminsOfLowerAgreement(FranchiseRecoveryEntity recovery, CaseEntity caseEntity, AuthenticatedUser actor) { for (Long adminId : userRoleRepository.findActiveGlobalUserIdsByRoleCode("ROLE_ADMIN")) { NotificationEntity notification = new NotificationEntity(); notification.setUserId(adminId); notification.setCaseId(caseEntity.getId()); notification.setTypeCode("RECUPERO_MONTO_MENOR"); notification.setTitle("Recupero requiere aprobación"); notification.setMessage("Carpeta " + caseEntity.getFolderCode() + ": monto a recuperar menor al acordado. Informado por " + actor.displayName()); notification.setActionUrl("/cases/" + caseEntity.getId()); notification.setEntityType("recupero_franquicia"); notification.setEntityId(recovery.getId()); notificationRepository.save(notification); } }
-    private void registerSharedFaultCollectionOnce(FranchiseRecoveryEntity recovery, CaseEntity caseEntity, AuthenticatedUser user, HttpServletRequest request) { if (!"CULPA_COMPARTIDA".equals(normalizeCode(recovery.getOpinionCode())) || !"COBRADO".equals(normalizeCode(recovery.getClientPaymentStatusCode())) || recovery.getClientAmount() == null || recovery.getClientPaymentDate() == null) return; boolean exists = financialMovementRepository.findByCaseId(caseEntity.getId(), org.springframework.data.domain.Sort.unsorted()).stream().anyMatch(m -> "Cobro cliente por culpa compartida".equals(m.getReason())); if (exists) return; FinancialMovementEntity movement = new FinancialMovementEntity(); movement.setCaseId(caseEntity.getId()); movement.setMovementTypeCode("INGRESO"); movement.setFlowOriginCode("CLIENTE"); movement.setCounterpartyTypeCode("PERSONA"); movement.setCounterpartyPersonId(caseEntity.getPrincipalCustomerPersonId()); movement.setMovementAt(recovery.getClientPaymentDate().atStartOfDay()); movement.setGrossAmount(scale(recovery.getClientAmount())); movement.setNetAmount(scale(recovery.getClientAmount())); movement.setPaymentMethodCode("TRANSFERENCIA"); movement.setAdvancePayment(false); movement.setBonification(false); movement.setReason("Cobro cliente por culpa compartida"); movement.setRegisteredBy(user.id()); movement = financialMovementRepository.save(movement); caseAuditService.register(user.id(), caseEntity.getId(), "movimientos_financieros", movement.getId(), "crear_cobro_culpa_compartida", null, caseAuditService.toJson(Map.of("amount", movement.getNetAmount())), caseAuditService.toJson(Map.of("domain", "finanzas")), request); }
     private FranchiseRecoveryEntity newRecovery(Long caseId) { FranchiseRecoveryEntity entity = new FranchiseRecoveryEntity(); entity.setCaseId(caseId); entity.setEnablesRepair(false); entity.setRecoversClient(false); entity.setIncludesParts(false); entity.setRepairsVehicle(false); entity.setApprovedLowerAgreement(false); entity.setReusesBaseData(false); return entity; }
     private void associateBaseCaseIfRequested(FranchiseRecoveryEntity recovery, FranchiseRecoveryUpsertRequest request) {
         if (recovery.getBaseCaseId() != null || request.baseCaseId() == null) return;
@@ -291,7 +300,22 @@ public class FranchiseRecoveryService {
         snapshot.put("capturedAt", LocalDateTime.now().toString()); return snapshot;
     }
     private void updateIncidentDate(Long caseId, LocalDate incidentDate) { if (incidentDate == null) return; CaseIncidentEntity incident = caseIncidentRepository.findByCaseId(caseId).orElseGet(CaseIncidentEntity::new); incident.setCaseId(caseId); incident.setIncidentDate(incidentDate); caseIncidentRepository.save(incident); }
-    private FranchiseRecoveryResponse toResponse(FranchiseRecoveryEntity e) { CaseEntity caseEntity = requireCase(e.getCaseId()); LocalDate incidentDate = caseIncidentRepository.findByCaseId(e.getCaseId()).map(CaseIncidentEntity::getIncidentDate).orElse(null); LocalDate presentedAt = e.getPresentedAt(); LocalDate prescriptionDate = presentedAt == null ? null : presentedAt.plusYears(3); Integer daysInProcess = presentedAt == null ? null : (int) ChronoUnit.DAYS.between(presentedAt, caseEntity.getClosedAt() == null ? LocalDate.now() : caseEntity.getClosedAt().toLocalDate()); return new FranchiseRecoveryResponse(e.getId(), e.getCaseId(), e.getManagerCode(), e.getBaseCaseId(), e.getBaseFolderCode(), e.getOpinionCode(), e.getAgreedAmount(), e.getRecoveryAmount(), e.getEnablesRepair(), e.getRecoversClient(), e.getClientAmount(), e.getClientPaymentStatusCode(), e.getClientPaymentDate(), e.getApprovedLowerAgreement(), e.getApprovalNote(), e.getApprovedByUserId(), e.getApprovedAt(), e.getReusesBaseData(), incidentDate, presentedAt, prescriptionDate, daysInProcess, e.getBaseFolderName(), e.getInspectionForwardedAt(), e.getInspectionDate(), e.getModalityCode(), e.getQuotationStatusCode(), e.getQuotationDate(), e.getIncludesParts(), e.getRepairsVehicle(), e.getPartsProvisionModeCode()); }
+    private FranchiseRecoveryResponse toResponse(FranchiseRecoveryEntity e) { CaseEntity caseEntity = requireCase(e.getCaseId()); LocalDate incidentDate = caseIncidentRepository.findByCaseId(e.getCaseId()).map(CaseIncidentEntity::getIncidentDate).orElse(null); LocalDate presentedAt = e.getPresentedAt(); LocalDate prescriptionDate = presentedAt == null ? null : presentedAt.plusYears(3); Integer daysInProcess = presentedAt == null ? null : (int) ChronoUnit.DAYS.between(presentedAt, caseEntity.getClosedAt() == null ? LocalDate.now() : caseEntity.getClosedAt().toLocalDate()); RecoveryAmounts amounts = calculateRecoveryAmounts(e); return new FranchiseRecoveryResponse(e.getId(), e.getCaseId(), e.getManagerCode(), e.getBaseCaseId(), e.getBaseFolderCode(), e.getOpinionCode(), e.getAgreedAmount(), e.getRecoveryAmount(), e.getEnablesRepair(), e.getRecoversClient(), e.getClientAmount(), e.getClientPaymentStatusCode(), e.getClientPaymentDate(), e.getApprovedLowerAgreement(), e.getApprovalNote(), e.getApprovedByUserId(), e.getApprovedAt(), e.getReusesBaseData(), incidentDate, presentedAt, prescriptionDate, daysInProcess, e.getBaseFolderName(), e.getInspectionForwardedAt(), e.getInspectionDate(), e.getModalityCode(), e.getQuotationStatusCode(), e.getQuotationDate(), e.getIncludesParts(), e.getRepairsVehicle(), e.getPartsProvisionModeCode(), amounts.minimumLabor(), amounts.minimumParts(), amounts.finalParts(), amounts.amountToBillCompany(), amounts.finalAmountForWorkshop()); }
+    private RecoveryAmounts calculateRecoveryAmounts(FranchiseRecoveryEntity recovery) {
+        BudgetEntity budget = budgetRepository.findByCaseId(recovery.getCaseId()).orElse(null);
+        BigDecimal minimumLabor = budget == null ? null : scale(budget.getLaborWithoutVat());
+        BigDecimal minimumParts = budget == null ? null : scale(budget.getPartsTotal());
+        BigDecimal finalParts = casePartRepository.findByCaseIdOrderByIdAsc(recovery.getCaseId()).stream()
+                .filter(part -> !Boolean.TRUE.equals(part.getReturned()))
+                .filter(part -> !"DEVOLVER".equals(normalizeCode(part.getStatusCode())) && !"DEVUELTO".equals(normalizeCode(part.getStatusCode())))
+                .map(CasePartEntity::getFinalPrice).filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal amountToBill = recovery.getAgreedAmount() != null ? scale(recovery.getAgreedAmount()) : budget == null ? null : scale(budget.getTotalQuoted());
+        BigDecimal finalPartsAmount = "TALLER".equals(normalizeCode(recovery.getPartsProvisionModeCode())) ? scale(finalParts) : null;
+        BigDecimal finalForWorkshop = amountToBill == null ? null : finalPartsAmount == null ? amountToBill : scale(amountToBill.subtract(finalPartsAmount));
+        return new RecoveryAmounts(minimumLabor, minimumParts, finalPartsAmount, amountToBill, finalForWorkshop);
+    }
+    private record RecoveryAmounts(BigDecimal minimumLabor, BigDecimal minimumParts, BigDecimal finalParts, BigDecimal amountToBillCompany, BigDecimal finalAmountForWorkshop) { }
     private String normalizeCode(String value) { return value == null || value.isBlank() ? null : value.trim().toUpperCase(); }
     private String normalizedOptionalCode(String value) { return value == null || value.isBlank() ? null : normalizeCode(value); }
     private String blankToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }

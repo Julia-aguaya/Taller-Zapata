@@ -35,6 +35,11 @@ public record FranchiseRecoveryResponse(
         LocalDate quotationDate,
         Boolean includesParts,
         Boolean repairsVehicle,
-        String partsProvisionModeCode
+        String partsProvisionModeCode,
+        BigDecimal minimumLaborAmount,
+        BigDecimal minimumPartsAmount,
+        BigDecimal finalPartsTotal,
+        BigDecimal amountToBillCompany,
+        BigDecimal finalAmountForWorkshop
 ) {
 }

@@ -119,4 +119,32 @@ describe('FranchiseRecoveryEditor associated folder', () => {
     expect(docs).toHaveAttribute('data-module', 'GESTION_TRAMITE');
     expect(docs).toHaveAttribute('data-origin', 'GESTION_TRAMITE');
   });
+
+  it('renders server-calculated recovery amounts as read-only values', () => {
+    recovery = { id: 7, minimumLaborAmount: 100, minimumPartsAmount: 200, finalPartsTotal: 80, amountToBillCompany: 300, finalAmountForWorkshop: 220 };
+    render(<FranchiseRecoveryEditor caseId="7" caseDetail={{}} />);
+
+    expect(screen.getByLabelText('Mínimo mano de obra')).toHaveValue('100');
+    expect(screen.getByLabelText('Mínimo repuestos')).toHaveValue('200');
+    expect(screen.getByLabelText('Total final repuestos')).toHaveValue('80');
+    expect(screen.getByLabelText('A facturar Cía.')).toHaveValue('300');
+    expect(screen.getByLabelText('Final a favor Taller')).toHaveValue('220');
+    expect(screen.getByLabelText('A facturar Cía.')).toHaveAttribute('readonly');
+  });
+
+  it('shows the authorization warning only outside shared fault', () => {
+    recovery = { id: 7, opinionCode: 'PROCEDE', agreedAmount: 100, recoveryAmount: 50 };
+    const { rerender } = render(<FranchiseRecoveryEditor caseId="7" caseDetail={{}} />);
+    expect(screen.getByText(/Requiere autorización del administrador/)).toBeInTheDocument();
+
+    recovery = { ...recovery, opinionCode: 'CULPA_COMPARTIDA' };
+    rerender(<FranchiseRecoveryEditor caseId="7" caseDetail={{}} />);
+    expect(screen.queryByText(/Requiere autorización del administrador/)).not.toBeInTheDocument();
+  });
+
+  it('explains that repair stays managed by the associated folder when disabled', () => {
+    recovery = { id: 7, baseCaseId: 42, baseFolderCode: 'CAR-042', enablesRepair: false };
+    render(<FranchiseRecoveryEditor caseId="7" caseDetail={{}} />);
+    expect(screen.getByText(/La reparación se gestiona desde la carpeta asociada/)).toBeInTheDocument();
+  });
 });

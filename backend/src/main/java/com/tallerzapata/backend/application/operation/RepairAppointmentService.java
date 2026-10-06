@@ -6,6 +6,7 @@ import com.tallerzapata.backend.api.operation.RepairAppointmentUpdateRequest;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.CaseWorkflowService;
 import com.tallerzapata.backend.application.cleas.CleasDownstreamGate;
+import com.tallerzapata.backend.application.recovery.FranchiseRecoveryRepairGate;
 import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.casefile.cleasstate.CleasEffectiveStateRecalculator;
@@ -66,6 +67,7 @@ public class RepairAppointmentService {
     private final CleasDownstreamGate cleasDownstreamGate;
     private final VehicleIntakeRepository vehicleIntakeRepository;
     private final VehicleOutcomeRepository vehicleOutcomeRepository;
+    private final FranchiseRecoveryRepairGate franchiseRecoveryRepairGate;
 
     public RepairAppointmentService(
             RepairAppointmentRepository repairAppointmentRepository,
@@ -86,7 +88,8 @@ public class RepairAppointmentService {
             CasePartRepository casePartRepository,
             CleasDownstreamGate cleasDownstreamGate,
             VehicleIntakeRepository vehicleIntakeRepository,
-            VehicleOutcomeRepository vehicleOutcomeRepository
+            VehicleOutcomeRepository vehicleOutcomeRepository,
+            FranchiseRecoveryRepairGate franchiseRecoveryRepairGate
     ) {
         this.repairAppointmentRepository = repairAppointmentRepository;
         this.repairAppointmentStatusRepository = repairAppointmentStatusRepository;
@@ -107,6 +110,7 @@ public class RepairAppointmentService {
         this.cleasDownstreamGate = cleasDownstreamGate;
         this.vehicleIntakeRepository = vehicleIntakeRepository;
         this.vehicleOutcomeRepository = vehicleOutcomeRepository;
+        this.franchiseRecoveryRepairGate = franchiseRecoveryRepairGate;
     }
 
     @Transactional(readOnly = true)
@@ -129,6 +133,7 @@ public class RepairAppointmentService {
         CaseEntity caseEntity = requireCase(caseId);
         caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "turno.crear");
         cleasDownstreamGate.requireAllowed(caseEntity);
+        franchiseRecoveryRepairGate.requireEnabled(caseEntity);
 
         // Para tramites con seguro: requerir confirmacion explicita si no hay acuerdo.
         CaseTypeEntity caseType = caseTypeRepository.findById(caseEntity.getCaseTypeId()).orElse(null);
@@ -222,6 +227,7 @@ public class RepairAppointmentService {
         CaseEntity caseEntity = requireCase(entity.getCaseId());
         caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "turno.editar");
         cleasDownstreamGate.requireAllowed(caseEntity);
+        franchiseRecoveryRepairGate.requireEnabled(caseEntity);
 
         String statusCode = normalizeStatusCode(request.statusCode());
         requireActiveUser(request.userId());
@@ -263,6 +269,7 @@ public class RepairAppointmentService {
         CaseEntity caseEntity = requireCase(entity.getCaseId());
         caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "turno.editar");
         cleasDownstreamGate.requireAllowed(caseEntity);
+        franchiseRecoveryRepairGate.requireEnabled(caseEntity);
         if (vehicleIntakeRepository.existsByAppointmentId(appointmentId)) {
             throw new ConflictException("No se puede eliminar un turno que ya tiene un ingreso registrado.");
         }

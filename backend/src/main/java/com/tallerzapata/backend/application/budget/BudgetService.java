@@ -5,6 +5,7 @@ import com.tallerzapata.backend.api.casefile.CodeCatalogResponse;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.InsuranceRepairCasePolicy;
 import com.tallerzapata.backend.application.insurance.InsuranceService;
+import com.tallerzapata.backend.application.recovery.FranchiseRecoveryRepairGate;
 import com.tallerzapata.backend.application.casefile.ParticularCaseClosureService;
 import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
@@ -79,9 +80,10 @@ public class BudgetService {
     private final CaseTypeRepository caseTypeRepository;
     private final InsuranceRepairCasePolicy insuranceRepairCasePolicy = new InsuranceRepairCasePolicy();
     private final InsuranceService insuranceService;
+    private final FranchiseRecoveryRepairGate franchiseRecoveryRepairGate;
 
     public BudgetService(BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, BudgetAccessoryWorkRepository budgetAccessoryWorkRepository, CasePartRepository casePartRepository, CaseRepository caseRepository, BudgetReportStatusRepository budgetReportStatusRepository, BudgetTaskRepository budgetTaskRepository, DamageLevelRepository damageLevelRepository, PartDecisionRepository partDecisionRepository, BudgetActionRepository budgetActionRepository, PartStatusRepository partStatusRepository, PartPurchaserRepository partPurchaserRepository, PartPaymentStatusRepository partPaymentStatusRepository, InsurancePartsAuthorizationRepository insurancePartsAuthorizationRepository, PersonRepository personRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService,             BudgetPdfService budgetPdfService, ParticularCaseClosureService particularCaseClosureService,
-            OrganizationRepository organizationRepository, BranchRepository branchRepository, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator, ProviderRepository providerRepository, BudgetComparisonService budgetComparisonService, CanonicalPartReconciliationService canonicalPartReconciliationService, CasePartReconciliationWarningRepository warningRepository, CleasDownstreamGate cleasDownstreamGate, VehicleRepository vehicleRepository, CaseTypeRepository caseTypeRepository, InsuranceService insuranceService) {
+            OrganizationRepository organizationRepository, BranchRepository branchRepository, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator, ProviderRepository providerRepository, BudgetComparisonService budgetComparisonService, CanonicalPartReconciliationService canonicalPartReconciliationService, CasePartReconciliationWarningRepository warningRepository, CleasDownstreamGate cleasDownstreamGate, VehicleRepository vehicleRepository, CaseTypeRepository caseTypeRepository, InsuranceService insuranceService, FranchiseRecoveryRepairGate franchiseRecoveryRepairGate) {
         this.budgetRepository = budgetRepository;
         this.budgetItemRepository = budgetItemRepository;
         this.budgetAccessoryWorkRepository = budgetAccessoryWorkRepository;
@@ -115,6 +117,7 @@ public class BudgetService {
         this.vehicleRepository = vehicleRepository;
         this.caseTypeRepository = caseTypeRepository;
         this.insuranceService = insuranceService;
+        this.franchiseRecoveryRepairGate = franchiseRecoveryRepairGate;
     }
 
     @Transactional(readOnly = true)
@@ -178,6 +181,7 @@ public class BudgetService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCaseForUpdate(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "presupuesto.crear");
+        franchiseRecoveryRepairGate.requireEnabled(caseEntity);
         if (request.reportStatusCode() != null && !budgetReportStatusRepository.existsByCodeAndActiveTrue(normalizeCode(request.reportStatusCode()))) throw new ConflictException("reportStatusCode no permitido: " + request.reportStatusCode());
 
         BudgetEntity entity = budgetRepository.findByCaseId(caseId).orElseGet(BudgetEntity::new);
@@ -245,6 +249,7 @@ public class BudgetService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCaseForUpdate(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "presupuesto.crear");
+        franchiseRecoveryRepairGate.requireEnabled(caseEntity);
         if (request.reportStatusCode() != null && !budgetReportStatusRepository.existsByCodeAndActiveTrue(normalizeCode(request.reportStatusCode()))) throw new ConflictException("reportStatusCode no permitido: " + request.reportStatusCode());
         BudgetEntity entity = budgetRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe presupuesto para el caso " + caseId));
         entity.setReportStatusCode(normalizedOptionalCode(request.reportStatusCode()));
@@ -266,6 +271,7 @@ public class BudgetService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCaseForUpdate(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "presupuesto.crear");
+        franchiseRecoveryRepairGate.requireEnabled(caseEntity);
         String key = idempotencyKey.trim();
         var existing = budgetComparisonService.findSnapshot(caseId, key);
         if (existing.isPresent()) {
@@ -301,6 +307,7 @@ public class BudgetService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCaseForUpdate(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "presupuesto.crear");
+        franchiseRecoveryRepairGate.requireEnabled(caseEntity);
         BudgetEntity budget = budgetRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe presupuesto para el caso " + caseId));
         validateBudgetItemCreateRequest(request);
         BudgetItemEntity entity = new BudgetItemEntity();
@@ -327,6 +334,7 @@ public class BudgetService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCaseForUpdate(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "presupuesto.crear");
+        franchiseRecoveryRepairGate.requireEnabled(caseEntity);
         BudgetEntity budget = budgetRepository.findByCaseId(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe presupuesto para el caso " + caseId));
         BudgetItemEntity entity = budgetItemRepository.findById(itemId).orElseThrow(() -> new ResourceNotFoundException("No existe el item " + itemId));
         if (!entity.getBudgetId().equals(budget.getId())) throw new ConflictException("El item no pertenece al presupuesto del caso");
@@ -361,6 +369,7 @@ public class BudgetService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCaseForUpdate(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "presupuesto.crear");
+        franchiseRecoveryRepairGate.requireEnabled(caseEntity);
         validateCasePartRequest(request);
         CasePartEntity entity = new CasePartEntity();
         entity.setCaseId(caseId);
@@ -394,6 +403,7 @@ public class BudgetService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCaseForUpdate(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "presupuesto.crear");
+        franchiseRecoveryRepairGate.requireEnabled(caseEntity);
         CasePartEntity entity = casePartRepository.findById(partId).orElseThrow(() -> new ResourceNotFoundException("No existe el repuesto " + partId));
         if (!entity.getCaseId().equals(caseId)) throw new ConflictException("El repuesto no pertenece al caso indicado");
         validateCasePartUpdateRequest(request);
@@ -423,6 +433,7 @@ public class BudgetService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCaseForUpdate(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "presupuesto.crear");
+        franchiseRecoveryRepairGate.requireEnabled(caseEntity);
         CasePartEntity entity = casePartRepository.findById(partId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el repuesto " + partId));
         if (!entity.getCaseId().equals(caseId))
@@ -446,6 +457,7 @@ public class BudgetService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCaseForUpdate(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "presupuesto.crear");
+        franchiseRecoveryRepairGate.requireEnabled(caseEntity);
         List<CasePartResponse> result = canonicalPartReconciliationService.reconcile(caseId, currentUser, httpRequest).stream().map(this::toCasePartResponse).toList();
         // El sync crea, actualiza o elimina repuestos: igual que en el alta/edicion manual,
         // la proyeccion de estado efectivo debe recalcularse para no quedar desincronizada.
@@ -462,6 +474,7 @@ public class BudgetService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCaseForUpdate(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "presupuesto.crear");
+        franchiseRecoveryRepairGate.requireEnabled(caseEntity);
         if (!caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(type.getCode())).orElse(false)) throw new ConflictException("La actualización de repuestos sólo aplica a Reclamo de terceros gestionado por Taller");
         int before = casePartRepository.findByCaseIdOrderByIdAsc(caseId).size();
         List<CasePartEntity> synchronizedParts = canonicalPartReconciliationService.reconcile(caseId, currentUser, httpRequest);
@@ -478,6 +491,7 @@ public class BudgetService {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = requireCaseForUpdate(caseId);
         accessControlService.requireCaseAccess(currentUser, caseEntity, "presupuesto.crear");
+        franchiseRecoveryRepairGate.requireEnabled(caseEntity);
         CasePartEntity part = casePartRepository.findById(partId).orElseThrow(() -> new ResourceNotFoundException("No existe el repuesto " + partId));
         if (!part.getCaseId().equals(caseId)) throw new ConflictException("El repuesto no pertenece al caso indicado");
         CasePartReconciliationWarningEntity warning = warningRepository.findById(warningId).orElseThrow(() -> new ResourceNotFoundException("No existe la advertencia " + warningId));

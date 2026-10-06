@@ -4,6 +4,7 @@ import com.tallerzapata.backend.api.operation.RepairPartResponse;
 import com.tallerzapata.backend.api.operation.RepairPartUpdateRequest;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.cleas.CleasDownstreamGate;
+import com.tallerzapata.backend.application.recovery.FranchiseRecoveryRepairGate;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
@@ -36,12 +37,13 @@ public class RepairPartService {
     private final CaseAccessControlService caseAccessControlService;
     private final CleasDownstreamGate cleasDownstreamGate;
     private final CaseAuditService caseAuditService;
+    private final FranchiseRecoveryRepairGate franchiseRecoveryRepairGate;
 
     public RepairPartService(CasePartRepository casePartRepository, CaseRepository caseRepository, BudgetRepository budgetRepository,
                              CaseTypeRepository caseTypeRepository,
-                             ProviderRepository providerRepository, CurrentUserService currentUserService,
-                             CaseAccessControlService caseAccessControlService, CleasDownstreamGate cleasDownstreamGate,
-                             CaseAuditService caseAuditService) {
+                              ProviderRepository providerRepository, CurrentUserService currentUserService,
+                              CaseAccessControlService caseAccessControlService, CleasDownstreamGate cleasDownstreamGate,
+                              CaseAuditService caseAuditService, FranchiseRecoveryRepairGate franchiseRecoveryRepairGate) {
         this.casePartRepository = casePartRepository;
         this.caseRepository = caseRepository;
         this.budgetRepository = budgetRepository;
@@ -51,6 +53,7 @@ public class RepairPartService {
         this.caseAccessControlService = caseAccessControlService;
         this.cleasDownstreamGate = cleasDownstreamGate;
         this.caseAuditService = caseAuditService;
+        this.franchiseRecoveryRepairGate = franchiseRecoveryRepairGate;
     }
 
     @Transactional(readOnly = true)
@@ -67,6 +70,7 @@ public class RepairPartService {
         CaseEntity caseEntity = requireCase(caseId);
         caseAccessControlService.requireCaseAccess(user, caseEntity, "turno.editar");
         cleasDownstreamGate.requireAllowed(caseEntity);
+        franchiseRecoveryRepairGate.requireEnabled(caseEntity);
         requireRepairAccess(caseEntity);
         CasePartEntity part = casePartRepository.findById(partId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el repuesto " + partId));

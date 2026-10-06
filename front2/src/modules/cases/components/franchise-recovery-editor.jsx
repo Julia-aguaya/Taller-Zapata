@@ -89,6 +89,7 @@ export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
   const [dictamen, setDictamen] = useState(recovery?.opinionCode ?? '');
   const [agreedAmount, setAgreedAmount] = useState(recovery?.agreedAmount ?? '');
   const [recoveryAmount, setRecoveryAmount] = useState(recovery?.recoveryAmount ?? '');
+  const [clientAmount, setClientAmount] = useState(recovery?.clientAmount ?? '');
   const [incidentDate, setIncidentDate] = useState(recovery?.incidentDate ?? '');
   const [presentedAt, setPresentedAt] = useState(recovery?.presentedAt ?? '');
   const [selectedBaseCaseId, setSelectedBaseCaseId] = useState(recovery?.baseCaseId ? String(recovery.baseCaseId) : '');
@@ -99,6 +100,7 @@ export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
     setDictamen(recovery?.opinionCode ?? '');
     setAgreedAmount(recovery?.agreedAmount ?? '');
     setRecoveryAmount(recovery?.recoveryAmount ?? '');
+    setClientAmount(recovery?.clientAmount ?? '');
     setIncidentDate(recovery?.incidentDate ?? '');
     setPresentedAt(recovery?.presentedAt ?? '');
     setSelectedBaseCaseId(recovery?.baseCaseId ? String(recovery.baseCaseId) : '');
@@ -127,7 +129,7 @@ export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
       recoveryAmount: toAmount(fd.get('recoveryAmount')) || null,
       enablesRepair: habilitado,
       recoversClient: recuperaCliente,
-      clientAmount: recuperaCliente ? (toAmount(fd.get('clientAmount')) || null) : null,
+      clientAmount: recuperaCliente ? (toAmount(clientAmount) || null) : null,
       clientPaymentStatusCode: recuperaCliente ? (fd.get('clientPaymentStatusCode') || null) : null,
       clientPaymentDate: recuperaCliente ? (fd.get('clientPaymentDate') || null) : null,
       inspectionForwardedAt: fd.get('inspectionForwardedAt') || null,
@@ -220,10 +222,20 @@ export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
           </Field>
         </div>
 
+        <div className="grid gap-x-6 gap-y-3 md:grid-cols-2 xl:grid-cols-5">
+          <Field label="Mínimo mano de obra"><Input aria-label="Mínimo mano de obra" readOnly value={recovery?.minimumLaborAmount ?? ''} className="cursor-not-allowed bg-muted/50" /></Field>
+          <Field label="Mínimo repuestos"><Input aria-label="Mínimo repuestos" readOnly value={recovery?.minimumPartsAmount ?? ''} className="cursor-not-allowed bg-muted/50" /></Field>
+          <Field label="Total final repuestos"><Input aria-label="Total final repuestos" readOnly value={recovery?.finalPartsTotal ?? ''} className="cursor-not-allowed bg-muted/50" /></Field>
+          <Field label="A facturar Cía."><Input aria-label="A facturar Cía." readOnly value={recovery?.amountToBillCompany ?? ''} className="cursor-not-allowed bg-muted/50" /></Field>
+          <Field label="Final a favor Taller"><Input aria-label="Final a favor Taller" readOnly value={recovery?.finalAmountForWorkshop ?? ''} className="cursor-not-allowed bg-muted/50" /></Field>
+        </div>
+
+        {enablesRepair !== 'SI' ? <p className="rounded-xl border border-primary/15 bg-primary/5 px-3 py-2 text-xs text-primary">La reparación se gestiona desde la carpeta asociada mientras Habilita reparación permanezca en No. Los datos propios de Recupero se conservan al volver a habilitarla.</p> : null}
+
         {enablesRepair !== 'SI' || culpaCompartida ? (
           <div className="grid gap-x-6 gap-y-3 md:grid-cols-4">
             <Field label="Recupera a favor del cliente">
-              <select name="recoversClient" value={culpaCompartida ? 'SI' : recoversClient} disabled={culpaCompartida} onChange={(e) => setRecoversClient(e.target.value)} className={selectClass}>
+              <select name="recoversClient" value={culpaCompartida ? 'SI' : recoversClient} disabled={culpaCompartida} onChange={(e) => { setRecoversClient(e.target.value); if (e.target.value === 'SI' && !culpaCompartida && !clientAmount) setClientAmount(recoveryAmount); }} className={selectClass}>
                 <option value="NO">NO</option>
                 <option value="SI">SI</option>
               </select>
@@ -231,7 +243,7 @@ export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
             {culpaCompartida || recoversClient === 'SI' ? (
               <>
                 <Field label={culpaCompartida ? 'Monto a cargo del cliente (50%)' : 'Monto a reintegrar al cliente'}>
-                  <Input name="clientAmount" type="number" min="0" step="0.01" value={culpaCompartida ? clientShare : undefined} defaultValue={culpaCompartida ? undefined : recovery?.clientAmount ?? ''} readOnly={culpaCompartida} placeholder={culpaCompartida ? '50% del recupero' : '0'} />
+                  <Input name="clientAmount" type="number" min="0" step="0.01" value={culpaCompartida ? clientShare : clientAmount} onChange={(event) => setClientAmount(event.target.value)} readOnly={culpaCompartida} placeholder={culpaCompartida ? '50% del recupero' : '0'} />
                 </Field>
                 <Field label={culpaCompartida ? 'Estado de cobro al cliente' : 'Estado del reintegro'}>
                   <select name="clientPaymentStatusCode" defaultValue={recovery?.clientPaymentStatusCode ?? ''} className={selectClass}>

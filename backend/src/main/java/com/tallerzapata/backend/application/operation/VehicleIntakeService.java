@@ -8,6 +8,7 @@ import com.tallerzapata.backend.api.operation.VehicleIntakeUpdateRequest;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.CaseWorkflowService;
 import com.tallerzapata.backend.application.cleas.CleasDownstreamGate;
+import com.tallerzapata.backend.application.recovery.FranchiseRecoveryRepairGate;
 import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.casefile.cleasstate.CleasEffectiveStateRecalculator;
@@ -64,6 +65,7 @@ public class VehicleIntakeService {
     private final TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator;
     private final CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator;
     private final CleasDownstreamGate cleasDownstreamGate;
+    private final FranchiseRecoveryRepairGate franchiseRecoveryRepairGate;
 
     public VehicleIntakeService(
             VehicleIntakeRepository vehicleIntakeRepository,
@@ -81,7 +83,7 @@ public class VehicleIntakeService {
             CaseAccessControlService caseAccessControlService,
             CaseAuditService caseAuditService,
             CaseWorkflowService caseWorkflowService,
-            ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator, CleasDownstreamGate cleasDownstreamGate
+            ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator, CleasDownstreamGate cleasDownstreamGate, FranchiseRecoveryRepairGate franchiseRecoveryRepairGate
     ) {
         this.vehicleIntakeRepository = vehicleIntakeRepository;
         this.vehicleIntakeItemRepository = vehicleIntakeItemRepository;
@@ -102,6 +104,7 @@ public class VehicleIntakeService {
         this.todoRiesgoEffectiveStateRecalculator = todoRiesgoEffectiveStateRecalculator;
         this.cleasEffectiveStateRecalculator = cleasEffectiveStateRecalculator;
         this.cleasDownstreamGate = cleasDownstreamGate;
+        this.franchiseRecoveryRepairGate = franchiseRecoveryRepairGate;
     }
 
     @Transactional(readOnly = true)
@@ -121,6 +124,7 @@ public class VehicleIntakeService {
         CaseEntity caseEntity = requireCase(caseId);
         caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "ingreso.crear");
         cleasDownstreamGate.requireAllowed(caseEntity);
+        franchiseRecoveryRepairGate.requireEnabled(caseEntity);
 
         validateVehicleBelongsToCase(caseEntity, request.vehicleId());
         Long appointmentId = validateAppointment(caseId, request.appointmentId());
@@ -186,6 +190,7 @@ public class VehicleIntakeService {
         CaseEntity caseEntity = requireCase(entity.getCaseId());
         caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "ingreso.crear");
         cleasDownstreamGate.requireAllowed(caseEntity);
+        franchiseRecoveryRepairGate.requireEnabled(caseEntity);
 
         validateVehicleBelongsToCase(caseEntity, request.vehicleId());
         Long appointmentId = validateAppointment(caseEntity.getId(), request.appointmentId());
@@ -248,6 +253,7 @@ public class VehicleIntakeService {
         CaseEntity caseEntity = requireCase(intake.getCaseId());
         caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "ingreso.crear");
         cleasDownstreamGate.requireAllowed(caseEntity);
+        franchiseRecoveryRepairGate.requireEnabled(caseEntity);
         validateItemCodes(request.itemTypeCode(), request.statusCode());
 
         VehicleIntakeItemEntity entity = new VehicleIntakeItemEntity();

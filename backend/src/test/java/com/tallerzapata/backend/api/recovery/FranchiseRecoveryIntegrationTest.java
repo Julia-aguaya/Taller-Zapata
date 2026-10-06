@@ -75,7 +75,7 @@ class FranchiseRecoveryIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsBytes(new FranchiseRecoveryUpsertRequest(
                                 "TALLER", null, null, "PENDIENTE",
-                                null, null, false, true, null,
+                                null, new BigDecimal("100.00"), false, true, new BigDecimal("50.00"),
                                 "NO_APLICA", null, false, null, false))))
                 .andExpect(status().isOk());
 
@@ -111,6 +111,81 @@ class FranchiseRecoveryIntegrationTest {
         mockMvc.perform(post("/api/v1/cases/100/franchise-recovery/lower-agreement-approval")
                         .header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Acuerdo documentado\"}"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void shouldPersistAlertAndAuditGlobalAdminApprovalWithoutFinancialMovements() throws Exception {
+        upsertRecovery("PROCEDE", new BigDecimal("100.00"), new BigDecimal("50.00"));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM notificaciones WHERE caso_id = ? AND tipo_codigo = 'RECUPERO_MONTO_MENOR'", Integer.class, 100L)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ?", Integer.class, 100L)).isZero();
+
+        mockMvc.perform(post("/api/v1/cases/100/franchise-recovery/lower-agreement-approval")
+                        .header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Acuerdo documentado\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.approvedLowerAgreement").value(true))
+                .andExpect(jsonPath("$.approvalNote").value("Acuerdo documentado"))
+                .andExpect(jsonPath("$.approvedByUserId").value(1))
+                .andExpect(jsonPath("$.approvedAt").isNotEmpty());
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'aprobar_monto_recupero_menor'", Integer.class, 100L)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ?", Integer.class, 100L)).isZero();
+    }
+
+    @Test
+    void shouldRequireApprovalReasonAndExemptSharedFault() throws Exception {
+        upsertRecovery("PROCEDE", new BigDecimal("100.00"), new BigDecimal("50.00"));
+        mockMvc.perform(post("/api/v1/cases/100/franchise-recovery/lower-agreement-approval")
+                        .header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\" \"}"))
+                .andExpect(status().isBadRequest());
+
+        upsertRecovery("CULPA_COMPARTIDA", new BigDecimal("100.00"), new BigDecimal("50.00"));
+        mockMvc.perform(post("/api/v1/cases/100/franchise-recovery/lower-agreement-approval")
+                        .header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"No corresponde\"}"))
+                .andExpect(status().isConflict());
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM movimientos_financieros WHERE caso_id = ?", Integer.class, 100L)).isZero();
+    }
+
+    @Test
+    void shouldCalculateRecoveryAmountsFromOwnBudgetAndActiveParts() throws Exception {
+        jdbcTemplate.update("INSERT INTO presupuestos (id, caso_id, organizacion_id, sucursal_id, fecha_presupuesto, informe_estado_codigo, mano_obra_sin_iva, alicuota_iva, mano_obra_iva, mano_obra_con_iva, repuestos_total, total_cotizado, version_actual) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", 500L, 100L, 1L, 1L, LocalDate.of(2026, 1, 1), "CERRADO", new BigDecimal("100.00"), new BigDecimal("21.00"), new BigDecimal("21.00"), new BigDecimal("121.00"), new BigDecimal("200.00"), new BigDecimal("321.00"), 1);
+        jdbcTemplate.update("INSERT INTO repuestos_caso (id, caso_id, descripcion, estado_codigo, precio_final, usado, devuelto, source_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 501L, 100L, "Activo", "PEDIDO", new BigDecimal("80.00"), false, false, "MANUAL");
+        jdbcTemplate.update("INSERT INTO repuestos_caso (id, caso_id, descripcion, estado_codigo, precio_final, usado, devuelto, source_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 502L, 100L, "Devuelto", "DEVUELTO", new BigDecimal("70.00"), false, false, "MANUAL");
+        jdbcTemplate.execute("SET REFERENTIAL_INTEGRITY FALSE");
+        jdbcTemplate.update("INSERT INTO repuestos_caso (id, caso_id, descripcion, estado_codigo, precio_final, usado, devuelto, source_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 503L, 100L, "Alias legado", "DEVOLVER", new BigDecimal("60.00"), false, false, "MANUAL");
+        jdbcTemplate.execute("SET REFERENTIAL_INTEGRITY TRUE");
+        upsertRecovery("PROCEDE", new BigDecimal("300.00"), new BigDecimal("300.00"));
+
+        mockMvc.perform(get("/api/v1/cases/100/franchise-recovery").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.minimumLaborAmount").value(100.00))
+                .andExpect(jsonPath("$.minimumPartsAmount").value(200.00))
+                .andExpect(jsonPath("$.finalPartsTotal").value(80.00))
+                .andExpect(jsonPath("$.amountToBillCompany").value(300.00))
+                .andExpect(jsonPath("$.finalAmountForWorkshop").value(220.00));
+    }
+
+    @Test
+    void shouldGateRecoveryBudgetWritesAndCopyBaseBudgetOnlyOnce() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/budget").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isConflict());
+        jdbcTemplate.update("INSERT INTO presupuestos (id, caso_id, organizacion_id, sucursal_id, fecha_presupuesto, informe_estado_codigo, total_cotizado, version_actual) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 700L, 101L, 1L, 1L, LocalDate.of(2026, 1, 1), "CERRADO", new BigDecimal("500.00"), 1);
+        mockMvc.perform(put("/api/v1/cases/100/franchise-recovery").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new FranchiseRecoveryUpsertRequest("TALLER", 101L, "0101TZ", "PROCEDE", null, null, true, false, null, null, null, false, null, true))))
+                .andExpect(status().isOk());
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM presupuestos WHERE caso_id = ?", Integer.class, 100L)).isEqualTo(1);
+        mockMvc.perform(put("/api/v1/cases/100/franchise-recovery").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new FranchiseRecoveryUpsertRequest("TALLER", 101L, "0101TZ", "PROCEDE", null, null, false, false, null, null, null, false, null, true))))
+                .andExpect(status().isOk());
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM presupuestos WHERE caso_id = ?", Integer.class, 100L)).isEqualTo(1);
+    }
+
+    private void upsertRecovery(String opinionCode, BigDecimal agreedAmount, BigDecimal recoveryAmount) throws Exception {
+        boolean sharedFault = "CULPA_COMPARTIDA".equals(opinionCode);
+        mockMvc.perform(put("/api/v1/cases/100/franchise-recovery")
+                        .header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new FranchiseRecoveryUpsertRequest("TALLER", 101L, "0101TZ", opinionCode, agreedAmount, recoveryAmount, false, sharedFault, null, sharedFault ? "PENDIENTE" : null, sharedFault ? LocalDate.of(2026, 1, 1) : null, false, null, true, null, null, null, null, null, null, null, true, false, "TALLER"))))
+                .andExpect(status().isOk());
     }
 
     @Test
