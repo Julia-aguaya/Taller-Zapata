@@ -14,15 +14,28 @@ import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
 import java.math.BigDecimal;
 import java.text.DecimalFormat;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class BudgetPdfService {
 
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+    private static final Map<String, BranchBranding> BRANCH_BRANDINGS = Map.of(
+            "TZ:Z", new BranchBranding(
+                    "ESTETICA DEL AUTOMOTOR",
+                    "ZAPATA | Mecánica, chapearía & pintura",
+                    "Talleres Zapata SRL",
+                    "30-54986217-5",
+                    "Responsable Inscripto",
+                    "3414261200",
+                    "contacto@tallereszapata.com"
+            )
+    );
 
     private final DocumentRepository documentRepository;
     private final DocumentStorageService documentStorageService;
@@ -46,34 +59,42 @@ public class BudgetPdfService {
             Font sectionFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 10);
             Font brandFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 18);
             Font brandSubFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11);
+            BranchBranding branding = brandingFor(org == null ? null : org.getCode(), branch == null ? null : branch.getCode());
 
             PdfPTable headerBand = new PdfPTable(2);
             headerBand.setWidthPercentage(100);
-            headerBand.setWidths(new float[]{1f, 1f});
+            headerBand.setWidths(new float[]{1.15f, 0.85f});
             headerBand.setSpacingAfter(8);
             PdfPCell brandCell = new PdfPCell();
             brandCell.setPadding(8);
-            brandCell.setMinimumHeight(56);
-            // Logo
+            brandCell.setMinimumHeight(70);
+            boolean hasLogo = false;
             if (org != null && org.getLogoDocumentId() != null) {
                 try {
                     DocumentEntity logoDoc = documentRepository.findById(org.getLogoDocumentId()).orElse(null);
                     if (logoDoc != null && logoDoc.getStorageKey() != null) {
                         Resource logoRes = documentStorageService.open(logoDoc.getStorageKey());
-                        Image logo = Image.getInstance(logoRes.getInputStream().readAllBytes());
-                        logo.scaleToFit(120, 60);
-                        brandCell.addElement(logo);
+                        try (InputStream logoInput = logoRes.getInputStream()) {
+                            Image logo = Image.getInstance(logoInput.readAllBytes());
+                            logo.scaleToFit(120, 42);
+                            brandCell.addElement(logo);
+                            hasLogo = true;
+                        }
                     }
                 } catch (Exception ignored) {
                     // Logo not available, skip
                 }
             }
-            brandCell.addElement(new Paragraph("ESTETICA DEL AUTOMOTOR", brandFont));
-            brandCell.addElement(new Paragraph("ZAPATA | Mecanica, chaperia & pintura", brandSubFont));
+            String brandTitle = branding == null ? nullToStr(org == null ? null : org.getName()) : branding.institutionalTitle();
+            String brandSubtitle = branding == null ? nullToStr(branch == null ? null : branch.getName()) : branding.institutionalSubtitle();
+            Paragraph brandTitleParagraph = new Paragraph(brandTitle, brandFont);
+            if (hasLogo) brandTitleParagraph.setSpacingBefore(3);
+            brandCell.addElement(brandTitleParagraph);
+            brandCell.addElement(new Paragraph(brandSubtitle, brandSubFont));
             PdfPCell legalCell = new PdfPCell();
             legalCell.setPadding(8);
-            legalCell.setMinimumHeight(56);
-            String legalText = buildLegalText(org, branch);
+            legalCell.setMinimumHeight(70);
+            String legalText = buildLegalText(org, branch, branding);
             legalCell.addElement(new Paragraph(legalText, normalFont));
             headerBand.addCell(brandCell);
             headerBand.addCell(legalCell);
@@ -96,6 +117,16 @@ public class BudgetPdfService {
             addMetaCell(vehicleData, "Vehículo:", smallFont, Element.ALIGN_RIGHT, false); addMetaCell(vehicleData, vehicle == null ? "-" : nullToStr((vehicle.getBrandText() == null ? "" : vehicle.getBrandText()) + " " + (vehicle.getModelText() == null ? "" : vehicle.getModelText())).trim(), normalFont, Element.ALIGN_LEFT, false);
             addMetaCell(vehicleData, "Año / Color:", smallFont, Element.ALIGN_RIGHT, false); addMetaCell(vehicleData, vehicle == null ? "-" : (vehicle.getYear() == null ? "-" : vehicle.getYear()) + " / " + nullToStr(vehicle.getColor()), normalFont, Element.ALIGN_LEFT, false);
             addMetaCell(vehicleData, "Carpeta:", smallFont, Element.ALIGN_RIGHT, false); addMetaCell(vehicleData, nullToStr(folderCode), normalFont, Element.ALIGN_LEFT, false);
+            PdfPCell chassisLabel = new PdfPCell(new Phrase("Número de chasis:", smallFont));
+            chassisLabel.setHorizontalAlignment(Element.ALIGN_RIGHT);
+            chassisLabel.setVerticalAlignment(Element.ALIGN_MIDDLE);
+            chassisLabel.setPadding(4);
+            vehicleData.addCell(chassisLabel);
+            PdfPCell chassisValue = new PdfPCell(new Phrase(vehicle == null ? "-" : nullToStr(vehicle.getChasis()), normalFont));
+            chassisValue.setColspan(7);
+            chassisValue.setVerticalAlignment(Element.ALIGN_MIDDLE);
+            chassisValue.setPadding(4);
+            vehicleData.addCell(chassisValue);
             document.add(vehicleData);
 
             Paragraph title = new Paragraph("PRESUPUESTO", titleFont);
@@ -283,7 +314,17 @@ public class BudgetPdfService {
         return d == null ? "-" : "$" + new DecimalFormat("#,##0.00").format(d);
     }
 
-    private String buildLegalText(OrganizationEntity org, BranchEntity branch) {
+    static BranchBranding brandingFor(String organizationCode, String branchCode) {
+        if (organizationCode == null || branchCode == null) return null;
+        return BRANCH_BRANDINGS.get(organizationCode.trim().toUpperCase() + ":" + branchCode.trim().toUpperCase());
+    }
+
+    private String buildLegalText(OrganizationEntity org, BranchEntity branch, BranchBranding branding) {
+        if (branding != null) {
+            return branding.legalName()
+                    + "\nCUIT: " + branding.cuit() + "  IVA: " + branding.vatCondition()
+                    + "\nTel: " + branding.phone() + "  " + branding.email();
+        }
         StringBuilder sb = new StringBuilder();
         if (org != null && org.getRazonSocial() != null) sb.append(org.getRazonSocial()).append("\n");
         if (org != null && org.getCuit() != null) sb.append("CUIT: ").append(org.getCuit()).append("  ");
@@ -297,4 +338,14 @@ public class BudgetPdfService {
         if (branch != null && branch.getEmail() != null) sb.append(branch.getEmail());
         return sb.toString().trim().isEmpty() ? "CUIT / COND. FRENTE AL IVA / DOMICILIO / TEL / CORREO" : sb.toString().trim();
     }
+
+    record BranchBranding(
+            String institutionalTitle,
+            String institutionalSubtitle,
+            String legalName,
+            String cuit,
+            String vatCondition,
+            String phone,
+            String email
+    ) { }
 }

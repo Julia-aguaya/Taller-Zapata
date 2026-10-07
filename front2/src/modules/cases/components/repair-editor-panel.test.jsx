@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { invalidateCaseProjection } from './repair-editor-panel';
+import { invalidateCaseProjection, updateWorkspaceLatestAppointment } from './repair-editor-panel';
 
 const partsApi = { list: vi.fn(), sync: vi.fn(), resolveWarning: vi.fn(), catalogs: vi.fn(), update: vi.fn() };
 const requestJson = vi.fn().mockResolvedValue([]);
@@ -28,6 +28,24 @@ describe('invalidateCaseProjection', () => {
     expect(await screen.findByRole('button', { name: /gestión de pedidos/i })).toBeInTheDocument();
     expect(await screen.findByText(/los repuestos los provee la compañía/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Editar' })).toBeNull();
+  });
+
+  it('actualiza el resumen con el turno recién guardado sin esperar el refetch', () => {
+    const workspace = {
+      latestAppointment: { id: 8, appointmentDate: '2026-09-27', appointmentTime: '08:00' },
+      widgets: { repair: { hasAppointment: true, hasIntake: false, hasDefinitiveOutcome: false } },
+    };
+
+    const updated = updateWorkspaceLatestAppointment(workspace, { id: 9, appointmentDate: '2026-09-28', appointmentTime: '08:00' });
+
+    expect(updated.latestAppointment).toMatchObject({ id: 9, appointmentDate: '2026-09-28', appointmentTime: '08:00' });
+  });
+
+  it('no reemplaza el resumen con un turno anterior distinto', () => {
+    const latest = { id: 9, appointmentDate: '2026-09-28', appointmentTime: '08:00' };
+    const workspace = { latestAppointment: latest, widgets: { repair: { hasAppointment: true } } };
+
+    expect(updateWorkspaceLatestAppointment(workspace, { id: 8, appointmentDate: '2026-09-27', appointmentTime: '08:00' })).toBe(workspace);
   });
   it('invalidates workspace, detail, list, and panel queries after state-affecting mutations', async () => {
     const queryClient = { invalidateQueries: vi.fn().mockResolvedValue(undefined) };

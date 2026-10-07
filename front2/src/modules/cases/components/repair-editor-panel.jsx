@@ -63,6 +63,29 @@ export const invalidateCaseProjection = async (queryClient, caseId) => {
   ]);
 };
 
+const appointmentSortKey = (appointment) => [
+  appointment?.appointmentDate || '',
+  appointment?.appointmentTime || '',
+  String(appointment?.id || '').padStart(20, '0'),
+].join('|');
+
+export const updateWorkspaceLatestAppointment = (workspace, savedAppointment) => {
+  if (!workspace || !savedAppointment) return workspace;
+  const currentAppointment = workspace.latestAppointment;
+  const replacesCurrent = currentAppointment?.id === savedAppointment.id
+    || appointmentSortKey(savedAppointment) >= appointmentSortKey(currentAppointment);
+  if (!replacesCurrent) return workspace;
+
+  return {
+    ...workspace,
+    latestAppointment: savedAppointment,
+    widgets: {
+      ...workspace.widgets,
+      repair: { ...workspace.widgets?.repair, hasAppointment: true },
+    },
+  };
+};
+
 export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, latestIntake, latestOutcome, onSaved }) => {
   const queryClient = useQueryClient();
   const { session } = useSession();
@@ -103,6 +126,10 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     toast.success(message);
   };
 
+  const synchronizeWorkspaceAppointment = (savedAppointment) => {
+    queryClient.setQueryData(['cases', String(caseId), 'workspace'], (workspace) => updateWorkspaceLatestAppointment(workspace, savedAppointment));
+  };
+
   const appointmentStatusOptions = (operationCatalogsQuery.data?.appointmentStatusCodes ?? []).map((item) => ({ value: item.code, label: item.name }));
   const reentryStatusOptions = (operationCatalogsQuery.data?.reentryStatusCodes ?? []).map((item) => ({ value: item.code, label: item.name }));
 
@@ -117,7 +144,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
         estimatedExitDate: appointment.estimatedExitDate || null, statusCode: appointment.statusCode, reentry: appointment.reentry === 'SI', notes: appointment.notes || null, userId, overridePendingParts, overrideMissingAgreement,
       });
     },
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'audit'] }); await refreshWorkspace('Turno creado y workspace actualizado.'); },
+    onSuccess: async (savedAppointment) => { synchronizeWorkspaceAppointment(savedAppointment); await queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'audit'] }); await refreshWorkspace('Turno creado y workspace actualizado.'); },
     onError: (error) => {
       if (error.httpStatus === 409 && error.message.includes('Se requiere confirmacion para agendar:')) {
         setSchedulingConfirmation({
@@ -132,7 +159,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
 
   const updateAppointmentMutation = useMutation({
     mutationFn: ({ appointmentId, payload }) => updateRepairAppointment(appointmentId, payload),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'appointments'] }); await refreshWorkspace('Estado del turno actualizado.'); },
+    onSuccess: async (savedAppointment) => { synchronizeWorkspaceAppointment(savedAppointment); await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'appointments'] }); await refreshWorkspace('Estado del turno actualizado.'); },
     onError: (error) => toast.error(error.message || 'No pude actualizar el turno.'),
   });
 

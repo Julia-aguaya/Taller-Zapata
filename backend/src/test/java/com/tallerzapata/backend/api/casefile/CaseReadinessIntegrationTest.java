@@ -620,6 +620,32 @@ class CaseReadinessIntegrationTest {
     }
 
     @Test
+    void shouldMarkTodoRiesgoBudgetCompletedWhenClosedEvenIfInsuranceDataIsPending() throws Exception {
+        Long caseId = createTodoRiesgoCase();
+        createAndCloseBudget(caseId);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
+                .andExpect(jsonPath("$.tabs[2].completed").value(true))
+                .andExpect(jsonPath("$.tabs[2].colorHint").value("BLUE"));
+    }
+
+    @Test
+    void shouldMarkGranizoBudgetCompletedWhenClosedEvenIfInsuranceDataIsPending() throws Exception {
+        Long caseId = createGranizoCase();
+        createAndCloseBudget(caseId);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[2].tabCode").value("PRESUPUESTO"))
+                .andExpect(jsonPath("$.tabs[2].completed").value(true))
+                .andExpect(jsonPath("$.tabs[2].colorHint").value("BLUE"));
+    }
+
+    @Test
     void shouldCompleteRepairReadinessWhenEffectiveStateIsNoRepair() throws Exception {
         Long caseId = createTodoRiesgoCase();
 

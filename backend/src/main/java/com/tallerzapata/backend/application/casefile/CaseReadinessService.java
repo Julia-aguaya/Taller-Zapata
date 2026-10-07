@@ -458,6 +458,9 @@ public class CaseReadinessService {
     }
 
     private CaseReadinessTabResponse buildTodoRiesgoPresupuestoReadiness(Long caseId, VehicleEntity vehicle, boolean tramiteCompleted) {
+        if (hasClosedBudget(caseId)) {
+            return toTab("PRESUPUESTO", true, List.of(), List.of());
+        }
         List<String> accessBlocking = collectInsuranceRepairBudgetAccessBlockingReasons(caseId);
         if (!accessBlocking.isEmpty()) {
             return toTab("PRESUPUESTO", false, accessBlocking, List.of());
@@ -466,6 +469,9 @@ public class CaseReadinessService {
     }
 
     private CaseReadinessTabResponse buildGranizoPresupuestoReadiness(Long caseId, VehicleEntity vehicle, List<String> budgetAccessBlockingReasons) {
+        if (hasClosedBudget(caseId)) {
+            return toTab("PRESUPUESTO", true, List.of(), List.of());
+        }
         if (!budgetAccessBlockingReasons.isEmpty()) {
             return toTab("PRESUPUESTO", false, budgetAccessBlockingReasons, List.of());
         }
@@ -881,6 +887,13 @@ public class CaseReadinessService {
 
     private boolean hasGeneratedBudget(Long caseId) {
         return budgetRepository.findByCaseId(caseId).isPresent();
+    }
+
+    private boolean hasClosedBudget(Long caseId) {
+        return budgetRepository.findByCaseId(caseId)
+                .map(BudgetEntity::getReportStatusCode)
+                .map("CERRADO"::equals)
+                .orElse(false);
     }
 
     private BigDecimal scale(BigDecimal value) {
