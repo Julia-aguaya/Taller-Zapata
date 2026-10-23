@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { uploadFileResumably } from '@/modules/cases/api/resumable-file-upload-api';
 import { requestJson } from '@/shared/api/http-client';
 import { useSession } from '@/modules/auth/providers/session-provider';
+import { hasGlobalAdminScope } from '@/modules/auth/lib/global-admin-scope';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { Card } from '@/shared/ui/card';
@@ -16,44 +17,55 @@ const fetchBranches = (orgId) => requestJson(`/branches?organizationId=${orgId}`
 const updateOrganization = (id, payload) => requestJson(`/organizations/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
 const updateBranch = (id, payload) => requestJson(`/branches/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
 const EMPTY_BRANCHES = [];
+const EMPTY_ORGS = [];
 
 const createOrgForm = (org) => ({
   name: org?.name || '',
   razonSocial: org?.razonSocial || '',
-  cuit: org?.cuit || '',
-  condicionIva: org?.condicionIva || '',
   phone: org?.phone || '',
   email: org?.email || '',
-  logoDocumentId: org?.logoDocumentId || null,
 });
 
 const createBranchForm = (branch) => ({
   name: branch?.name || '',
+  cuit: branch?.cuit || '',
+  condicionIva: branch?.condicionIva || '',
   addressLine1: branch?.addressLine1 || '',
   city: branch?.city || '',
   province: branch?.province || '',
   phone: branch?.phone || '',
+  whatsapp: branch?.whatsapp || '',
   email: branch?.email || '',
+  logoDocumentId: branch?.logoDocumentId || null,
 });
 
 export const ManagementPage = () => {
   const queryClient = useQueryClient();
   const { session } = useSession();
   const scopes = session?.scopes ?? [];
-  const firstOrgId = scopes[0]?.organizationId;
+  const isGlobalAdmin = hasGlobalAdminScope(session);
+  const scopeOrgId = scopes[0]?.organizationId;
 
-  const [selectedOrgId] = useState(firstOrgId);
+  const [selectedOrgId, setSelectedOrgId] = useState(scopeOrgId);
   const [orgEditing, setOrgEditing] = useState(false);
   const [orgForm, setOrgForm] = useState(createOrgForm(null));
   const [branchEditing, setBranchEditing] = useState({});
   const [branchForms, setBranchForms] = useState({});
   const logoInputRef = useRef(null);
+  const logoTargetBranchIdRef = useRef(null);
 
-  const orgsQuery = useQuery({ queryKey: ['organizations'], queryFn: fetchOrganizations, enabled: Boolean(firstOrgId) });
+  const orgsQuery = useQuery({ queryKey: ['organizations'], queryFn: fetchOrganizations, enabled: Boolean(scopeOrgId) || isGlobalAdmin });
   const branchesQuery = useQuery({ queryKey: ['branches', selectedOrgId], queryFn: () => fetchBranches(selectedOrgId), enabled: Boolean(selectedOrgId) });
 
-  const org = (orgsQuery.data ?? []).find((item) => item.id === selectedOrgId);
+  const orgs = orgsQuery.data ?? EMPTY_ORGS;
+  const org = orgs.find((item) => item.id === selectedOrgId);
   const branches = branchesQuery.data ?? EMPTY_BRANCHES;
+
+  useEffect(() => {
+    if (selectedOrgId == null && orgs.length > 0) {
+      setSelectedOrgId(orgs[0].id);
+    }
+  }, [orgs, selectedOrgId]);
 
   useEffect(() => {
     if (org) {
@@ -70,7 +82,7 @@ export const ManagementPage = () => {
   }, [branches]);
 
   const orgMutation = useMutation({
-    mutationFn: () => updateOrganization(selectedOrgId, { ...orgForm, logoDocumentId: orgForm.logoDocumentId || null }),
+    mutationFn: () => updateOrganization(selectedOrgId, { ...orgForm }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['organizations'] });
       setOrgEditing(false);
@@ -89,12 +101,19 @@ export const ManagementPage = () => {
     onError: (error) => toast.error(error.message || 'No pude actualizar la sucursal.'),
   });
 
+  const documentCatalogsQuery = useQuery({
+    queryKey: ['document-catalogs'],
+    queryFn: () => requestJson('/documents/catalogs'),
+  });
+  const logoCategoryId = (documentCatalogsQuery.data?.categories ?? []).find((category) => category.code === 'LOGO')?.id;
+
   const uploadLogoMutation = useMutation({
-    mutationFn: async (file) => {
-      return uploadFileResumably({ file, metadata: { categoryId: 4, originCode: 'TALLER', observations: file.name } });
+    mutationFn: async ({ file, branchId }) => {
+      if (logoCategoryId == null) throw new Error('No se encontró la categoría documental para el logo.');
+      return uploadFileResumably({ file, metadata: { categoryId: logoCategoryId, originCode: 'TALLER', observations: file.name } });
     },
-    onSuccess: (documentPayload) => {
-      setOrgForm((current) => ({ ...current, logoDocumentId: documentPayload.id }));
+    onSuccess: (documentPayload, { branchId }) => {
+      setBranchForms((current) => ({ ...current, [branchId]: { ...current[branchId], logoDocumentId: documentPayload.id } }));
       toast.success('Logo subido. Guardá para confirmar el cambio.');
     },
     onError: (error) => toast.error(error.message || 'No pude subir el logo.'),
@@ -117,6 +136,22 @@ export const ManagementPage = () => {
 
       {org ? (
         <Card className="border-white/60 bg-card/95 p-5 shadow-haze">
+          {isGlobalAdmin && orgs.length > 1 ? (
+            <div className="mb-5">
+              <label className="space-y-2">
+                <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Organización</span>
+                <select
+                  className="w-full rounded-2xl border border-border/60 bg-background/70 px-4 py-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={selectedOrgId ?? ''}
+                  onChange={(event) => setSelectedOrgId(Number(event.target.value))}
+                >
+                  {orgs.map((item) => (
+                    <option key={item.id} value={item.id}>{item.name}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : null}
           <div className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <div className="flex items-center gap-3">
@@ -149,39 +184,9 @@ export const ManagementPage = () => {
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             <Field label="Nombre comercial" value={orgForm.name} disabled={!orgEditing} onChange={(value) => setOrgForm((current) => ({ ...current, name: value }))} />
             <Field label="Razón social" value={orgForm.razonSocial} disabled={!orgEditing} onChange={(value) => setOrgForm((current) => ({ ...current, razonSocial: value }))} />
-            <Field label="CUIT" value={orgForm.cuit} disabled={!orgEditing} onChange={(value) => setOrgForm((current) => ({ ...current, cuit: value }))} />
-            <Field label="Condición IVA" value={orgForm.condicionIva} disabled={!orgEditing} onChange={(value) => setOrgForm((current) => ({ ...current, condicionIva: value }))} />
             <Field label="Teléfono" value={orgForm.phone} disabled={!orgEditing} onChange={(value) => setOrgForm((current) => ({ ...current, phone: value }))} />
             <Field label="Email" value={orgForm.email} disabled={!orgEditing} type="email" onChange={(value) => setOrgForm((current) => ({ ...current, email: value }))} />
-            <div className="rounded-3xl border border-border/60 bg-background/70 p-4">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Logo</p>
-              {orgEditing ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button variant="outline" size="sm" onClick={() => logoInputRef.current?.click()} disabled={uploadLogoMutation.isPending}>
-                    <ImagePlus className="mr-2 h-4 w-4" />{orgForm.logoDocumentId ? 'Reemplazar logo' : 'Subir logo'}
-                  </Button>
-                  {orgForm.logoDocumentId ? (
-                    <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setOrgForm((current) => ({ ...current, logoDocumentId: null }))}>
-                      Quitar
-                    </Button>
-                  ) : null}
-                </div>
-              ) : (
-                <p className="mt-2 text-sm text-foreground">{orgForm.logoDocumentId ? 'Logo cargado' : 'Sin logo cargado'}</p>
-              )}
-            </div>
           </div>
-
-          <input
-            ref={logoInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) uploadLogoMutation.mutate(file);
-            }}
-          />
         </Card>
       ) : null}
 
@@ -237,17 +242,52 @@ export const ManagementPage = () => {
 
                 <div className="grid gap-3 md:grid-cols-2">
                   <Field label="Nombre" value={branchForm.name} disabled={!editing} onChange={(value) => setBranchForms((current) => ({ ...current, [branch.id]: { ...current[branch.id], name: value } }))} />
+                  <Field label="CUIT" value={branchForm.cuit} disabled={!editing} onChange={(value) => setBranchForms((current) => ({ ...current, [branch.id]: { ...current[branch.id], cuit: value } }))} />
+                  <Field label="Condición IVA" value={branchForm.condicionIva} disabled={!editing} onChange={(value) => setBranchForms((current) => ({ ...current, [branch.id]: { ...current[branch.id], condicionIva: value } }))} />
                   <Field label="Dirección" value={branchForm.addressLine1} disabled={!editing} onChange={(value) => setBranchForms((current) => ({ ...current, [branch.id]: { ...current[branch.id], addressLine1: value } }))} />
                   <Field label="Ciudad" value={branchForm.city} disabled={!editing} onChange={(value) => setBranchForms((current) => ({ ...current, [branch.id]: { ...current[branch.id], city: value } }))} />
                   <Field label="Provincia" value={branchForm.province} disabled={!editing} onChange={(value) => setBranchForms((current) => ({ ...current, [branch.id]: { ...current[branch.id], province: value } }))} />
                   <Field label="Teléfono" value={branchForm.phone} disabled={!editing} onChange={(value) => setBranchForms((current) => ({ ...current, [branch.id]: { ...current[branch.id], phone: value } }))} />
+                  <Field label="WhatsApp" value={branchForm.whatsapp} disabled={!editing} onChange={(value) => setBranchForms((current) => ({ ...current, [branch.id]: { ...current[branch.id], whatsapp: value } }))} />
                   <Field label="Email" value={branchForm.email} disabled={!editing} type="email" onChange={(value) => setBranchForms((current) => ({ ...current, [branch.id]: { ...current[branch.id], email: value } }))} />
+                  <div className="rounded-3xl border border-border/60 bg-background/70 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Logo</p>
+                    {editing ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button variant="outline" size="sm" onClick={() => { logoTargetBranchIdRef.current = branch.id; logoInputRef.current?.click(); }} disabled={uploadLogoMutation.isPending || logoCategoryId == null}>
+                          <ImagePlus className="mr-2 h-4 w-4" />{branchForm.logoDocumentId ? 'Reemplazar logo' : 'Subir logo'}
+                        </Button>
+                        {branchForm.logoDocumentId ? (
+                          <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setBranchForms((current) => ({ ...current, [branch.id]: { ...current[branch.id], logoDocumentId: null } }))}>
+                            Quitar
+                          </Button>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-sm text-foreground">{branchForm.logoDocumentId ? 'Logo cargado' : 'Sin logo cargado'}</p>
+                    )}
+                  </div>
                 </div>
               </Card>
             );
           })}
         </div>
       </Card>
+
+      <input
+        ref={logoInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/gif,image/bmp"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          const branchId = logoTargetBranchIdRef.current;
+          if (file && branchId != null) {
+            uploadLogoMutation.mutate({ file, branchId });
+          }
+          event.target.value = '';
+        }}
+      />
     </div>
   );
 };

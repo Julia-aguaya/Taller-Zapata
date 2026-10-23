@@ -135,14 +135,15 @@ public class CaseWorkspaceService {
         return new CaseWorkshopInfoResponse(
                 org != null ? org.getName() : null,
                 org != null ? org.getRazonSocial() : null,
-                org != null ? org.getCuit() : null,
-                org != null ? org.getCondicionIva() : null,
+                branch != null ? branch.getCuit() : null,
+                branch != null ? branch.getCondicionIva() : null,
                 branch != null ? branch.getCode() : null,
                 branch != null ? branch.getName() : null,
                 branch != null ? branch.getAddressLine1() : null,
                 branch != null ? branch.getCity() : null,
                 branch != null ? branch.getProvince() : null,
                 branch != null ? branch.getPhone() : null,
+                branch != null ? branch.getWhatsapp() : null,
                 branch != null ? branch.getEmail() : null
         );
     }

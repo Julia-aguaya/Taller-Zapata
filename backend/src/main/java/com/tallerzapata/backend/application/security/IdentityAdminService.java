@@ -79,7 +79,7 @@ public class IdentityAdminService {
         requirePermission(currentUser, "identity.roles.manage");
         if (accessControlService.hasGlobalScope(currentUser)) {
             return organizationRepository.findAllByOrderByNameAsc().stream()
-                    .map(item -> new OrganizationResponse(item.getId(), item.getPublicId(), item.getCode(), item.getName(), item.getRazonSocial(), item.getCuit(), item.getCondicionIva(), item.getPhone(), item.getEmail(), item.getLogoDocumentId()))
+                    .map(item -> new OrganizationResponse(item.getId(), item.getPublicId(), item.getCode(), item.getName(), item.getRazonSocial(), item.getPhone(), item.getEmail()))
                     .toList();
         }
         List<UserRoleEntity> scopedRoles = userRoleRepository.findByUserIdAndActiveTrue(currentUser.id());
@@ -93,7 +93,7 @@ public class IdentityAdminService {
 
         return organizationRepository.findAllByOrderByNameAsc().stream()
                 .filter(item -> allowedOrganizationIds.contains(item.getId()))
-                .map(item -> new OrganizationResponse(item.getId(), item.getPublicId(), item.getCode(), item.getName(), item.getRazonSocial(), item.getCuit(), item.getCondicionIva(), item.getPhone(), item.getEmail(), item.getLogoDocumentId()))
+                .map(item -> new OrganizationResponse(item.getId(), item.getPublicId(), item.getCode(), item.getName(), item.getRazonSocial(), item.getPhone(), item.getEmail()))
                 .toList();
     }
 
@@ -135,13 +135,10 @@ public class IdentityAdminService {
                 .orElseThrow(() -> new ResourceNotFoundException("No existe la organizacion " + organizationId));
         if (request.name() != null) entity.setName(request.name());
         if (request.razonSocial() != null) entity.setRazonSocial(request.razonSocial());
-        if (request.cuit() != null) entity.setCuit(request.cuit());
-        if (request.condicionIva() != null) entity.setCondicionIva(request.condicionIva());
         if (request.phone() != null) entity.setPhone(request.phone());
         if (request.email() != null) entity.setEmail(request.email());
-        if (request.logoDocumentId() != null) entity.setLogoDocumentId(request.logoDocumentId());
         entity = organizationRepository.save(entity);
-        return new OrganizationResponse(entity.getId(), entity.getPublicId(), entity.getCode(), entity.getName(), entity.getRazonSocial(), entity.getCuit(), entity.getCondicionIva(), entity.getPhone(), entity.getEmail(), entity.getLogoDocumentId());
+        return new OrganizationResponse(entity.getId(), entity.getPublicId(), entity.getCode(), entity.getName(), entity.getRazonSocial(), entity.getPhone(), entity.getEmail());
     }
 
     @Transactional
@@ -155,9 +152,13 @@ public class IdentityAdminService {
         if (request.city() != null) entity.setCity(request.city());
         if (request.province() != null) entity.setProvince(request.province());
         if (request.phone() != null) entity.setPhone(request.phone());
+        if (request.whatsapp() != null) entity.setWhatsapp(request.whatsapp());
         if (request.email() != null) entity.setEmail(request.email());
+        if (request.cuit() != null) entity.setCuit(request.cuit());
+        if (request.condicionIva() != null) entity.setCondicionIva(request.condicionIva());
+        if (request.logoDocumentId() != null) entity.setLogoDocumentId(request.logoDocumentId());
         entity = branchRepository.save(entity);
-        return new BranchResponse(entity.getId(), entity.getCode(), entity.getName(), entity.getOrganizationId(), entity.getAddressLine1(), entity.getCity(), entity.getProvince(), entity.getPhone(), entity.getEmail());
+        return toBranchResponse(entity);
     }
 
     private boolean canReadBranch(
@@ -170,7 +171,7 @@ public class IdentityAdminService {
     }
 
     private BranchResponse toBranchResponse(BranchEntity item) {
-        return new BranchResponse(item.getId(), item.getCode(), item.getName(), item.getOrganizationId(), item.getAddressLine1(), item.getCity(), item.getProvince(), item.getPhone(), item.getEmail());
+        return new BranchResponse(item.getId(), item.getCode(), item.getName(), item.getOrganizationId(), item.getAddressLine1(), item.getCity(), item.getProvince(), item.getPhone(), item.getWhatsapp(), item.getEmail(), item.getCuit(), item.getCondicionIva(), item.getLogoDocumentId());
     }
 
     @Transactional(readOnly = true)

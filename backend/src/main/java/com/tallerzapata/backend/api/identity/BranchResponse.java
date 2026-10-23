@@ -9,6 +9,10 @@ public record BranchResponse(
         String city,
         String province,
         String phone,
-        String email
+        String whatsapp,
+        String email,
+        String cuit,
+        String condicionIva,
+        Long logoDocumentId
 ) {
 }

@@ -6,10 +6,7 @@ public record OrganizationResponse(
         String code,
         String name,
         String razonSocial,
-        String cuit,
-        String condicionIva,
         String phone,
-        String email,
-        Long logoDocumentId
+        String email
 ) {
 }

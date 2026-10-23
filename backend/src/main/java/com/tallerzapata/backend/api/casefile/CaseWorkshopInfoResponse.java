@@ -11,6 +11,7 @@ public record CaseWorkshopInfoResponse(
         String city,
         String province,
         String phone,
+        String whatsapp,
         String email
 ) {
 }

@@ -44,12 +44,12 @@ vi.mock('@/shared/api/http-client', () => ({
   requestJson: (...args) => mockRequestJson(...args),
 }));
 
+const mockSession = vi.hoisted(() => ({
+  scopes: [{ organizationId: 1, branchId: 10, branchCode: 'Z', branchName: 'Casa central' }],
+}));
+
 vi.mock('@/modules/auth/providers/session-provider', () => ({
-  useSession: () => ({
-    session: {
-      scopes: [{ organizationId: 1, branchId: 10, branchCode: 'Z', branchName: 'Casa central' }],
-    },
-  }),
+  useSession: () => ({ session: mockSession }),
 }));
 
 const { ManagementClientsPage } = await import('./management-clients-page');
@@ -82,6 +82,7 @@ beforeEach(() => {
   mockCatalogDeactivate.mockReset();
   mockRequestJson.mockReset();
   mockToastError.mockReset();
+  mockSession.scopes = [{ organizationId: 1, branchId: 10, branchCode: 'Z', branchName: 'Casa central' }];
 });
 
 afterEach(() => {
@@ -221,10 +222,13 @@ describe('management pages', () => {
 
     mockRequestJson.mockImplementation((path) => {
       if (path === '/organizations') {
-        return Promise.resolve([{ id: 1, name: 'Taller Zapata', razonSocial: 'Taller Zapata SA', cuit: '30-12345678-9', condicionIva: 'RI', phone: '3415550000', email: 'admin@taller.com', logoDocumentId: null }]);
+        return Promise.resolve([{ id: 1, name: 'Taller Zapata', razonSocial: 'Taller Zapata SA', phone: '3415550000', email: 'admin@taller.com' }]);
       }
       if (path === '/branches?organizationId=1') {
-        return Promise.resolve([{ id: 10, code: 'Z', name: 'Casa central', addressLine1: 'San Martín 100', city: 'Rosario', province: 'Santa Fe', phone: '3415551111', email: 'central@taller.com' }]);
+        return Promise.resolve([{ id: 10, code: 'Z', name: 'Zapata', cuit: '30-71877589-9', condicionIva: 'Responsable Inscripto', addressLine1: 'Pje. Casablanca 2537', city: 'Rosario', province: 'Santa Fe', phone: '3414320467', whatsapp: '3415151270', email: 'administracion@tallereszapata.com', logoDocumentId: null }]);
+      }
+      if (path === '/documents/catalogs') {
+        return Promise.resolve({ categories: [{ id: 900, code: 'LOGO', name: 'Logo de sucursal', moduleCode: 'OPERACION', caseTypeId: null, requiresDate: false, visibleToCustomer: false }] });
       }
       throw new Error(`unexpected path ${path}`);
     });
@@ -236,6 +240,34 @@ describe('management pages', () => {
 
     await user.click(screen.getAllByRole('button', { name: /^Editar$/i })[0]);
     expect(await screen.findByDisplayValue('Taller Zapata SA')).toBeInTheDocument();
+  });
+
+  it('administrador global ve el taller y puede subir el logo de una sucursal sin alcance de organización', async () => {
+    const user = userEvent.setup();
+    mockSession.scopes = [{ organizationId: null, branchId: null, branchCode: null, branchName: null }];
+
+    mockRequestJson.mockImplementation((path) => {
+      if (path === '/organizations') {
+        return Promise.resolve([{ id: 1, name: 'Taller Zapata', razonSocial: 'Taller Zapata SA', phone: '3415550000', email: 'admin@taller.com' }]);
+      }
+      if (path === '/branches?organizationId=1') {
+        return Promise.resolve([{ id: 10, code: 'Z', name: 'Zapata', cuit: '30-71877589-9', condicionIva: 'Responsable Inscripto', addressLine1: 'Pje. Casablanca 2537', city: 'Rosario', province: 'Santa Fe', phone: '3414320467', whatsapp: '3415151270', email: 'administracion@tallereszapata.com', logoDocumentId: null }]);
+      }
+      if (path === '/documents/catalogs') {
+        return Promise.resolve({ categories: [{ id: 900, code: 'LOGO', name: 'Logo de sucursal', moduleCode: 'OPERACION', caseTypeId: null, requiresDate: false, visibleToCustomer: false }] });
+      }
+      throw new Error(`unexpected path ${path}`);
+    });
+
+    renderWithQuery(<ManagementPage />);
+
+    expect(await screen.findByRole('heading', { name: 'Taller Zapata' })).toBeInTheDocument();
+    // Esperamos a que cargue la sucursal (el logo ahora es por sucursal).
+    expect(await screen.findByRole('heading', { name: 'Zapata' })).toBeInTheDocument();
+
+    // Entramos en edición de la sucursal (segundo botón Editar).
+    await user.click(screen.getAllByRole('button', { name: /^Editar$/i })[1]);
+    expect(await screen.findByRole('button', { name: /subir logo/i })).toBeInTheDocument();
   });
 
   it('seguros y proveedores exponen sus catálogos operativos', async () => {

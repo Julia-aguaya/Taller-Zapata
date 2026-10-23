@@ -298,11 +298,12 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
           <div><h3 className="text-lg font-bold tracking-tight">{workshopInfo?.razonSocial || workshopInfo?.organizationName || 'Taller Zapata'}</h3><p className="text-xs text-muted-foreground">Mecánica, chapería & pintura</p></div>
           <span className="text-sm font-medium">{caseDetail?.folderCode} — {caseDetail?.principalCustomerName}</span>
         </div>
-        <div className="grid gap-x-4 gap-y-2 text-sm md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-x-4 gap-y-2 text-sm md:grid-cols-2 xl:grid-cols-5">
           <span><span className="text-muted-foreground">CUIT:</span> {workshopInfo?.cuit || '—'}</span>
           <span><span className="text-muted-foreground">IVA:</span> {workshopInfo?.condicionIva || '—'}</span>
           <span><span className="text-muted-foreground">Dirección:</span> {workshopInfo?.addressLine1 || '—'}{workshopInfo?.city ? `, ${workshopInfo.city}` : ''}</span>
           <span><span className="text-muted-foreground">Tel:</span> {workshopInfo?.phone || '—'}</span>
+          <span><span className="text-muted-foreground">Wsp:</span> {workshopInfo?.whatsapp || '—'}</span>
         </div>
         <div className="mt-3 grid gap-3 md:grid-cols-3">
           <div className="space-y-1"><Label className="text-xs">Fecha presupuesto</Label><Input type="date" value={header.budgetDate} onChange={(e) => setHeader((c) => ({ ...c, budgetDate: e.target.value }))} /></div>
