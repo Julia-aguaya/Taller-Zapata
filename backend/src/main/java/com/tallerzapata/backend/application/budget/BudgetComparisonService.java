@@ -9,6 +9,7 @@ import com.tallerzapata.backend.infrastructure.persistence.casefile.*;
 import com.tallerzapata.backend.infrastructure.persistence.extrabudget.ExtraBudgetItemEntity;
 import com.tallerzapata.backend.infrastructure.persistence.extrabudget.ExtraBudgetItemRepository;
 import com.tallerzapata.backend.infrastructure.persistence.extrabudget.ExtraBudgetVersionEntity;
+import com.tallerzapata.backend.infrastructure.persistence.extrabudget.ExtraBudgetVersionRepository;
 import com.tallerzapata.backend.infrastructure.persistence.extrabudget.ExtraBudgetRepository;
 import com.tallerzapata.backend.infrastructure.persistence.provider.*;
 import com.tallerzapata.backend.infrastructure.security.*;
