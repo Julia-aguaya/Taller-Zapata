@@ -8,7 +8,14 @@ import { Button } from '@/shared/ui/button';
 import { Label } from '@/shared/ui/label';
 
 const API = '/api/v1';
-const fetchJson = (url) => requestJson(url);
+const fetchJson = (url, options) => requestJson(url, options);
+const requireRelationId = (relationId) => {
+  const normalizedId = Number(relationId);
+  if (!Number.isInteger(normalizedId) || normalizedId <= 0) {
+    throw new Error('No se puede desvincular el documento porque falta el identificador de la relación. Recargá la carpeta e intentá nuevamente.');
+  }
+  return normalizedId;
+};
 const VISIBLE_DOCUMENT_CATEGORY_CODES = new Set(['PERSONAL', 'SEGURO', 'VEHICULO', 'OTRO']);
 
 export const DocumentacionEditor = ({ caseId, docStatus, onDocStatusChange, onSaved }) => {
@@ -40,8 +47,8 @@ export const DocumentacionEditor = ({ caseId, docStatus, onDocStatusChange, onSa
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (docId) => fetchJson(`/documents/${docId}`, { method: 'DELETE' }),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'documents'] }); await onSaved?.(); toast.success('Documento eliminado.'); },
+    mutationFn: (relationId) => fetchJson(`/document-relations/${requireRelationId(relationId)}`, { method: 'DELETE' }),
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'documents'] }); await onSaved?.(); toast.success('Documento desvinculado de la carpeta.'); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -100,7 +107,7 @@ export const DocumentacionEditor = ({ caseId, docStatus, onDocStatusChange, onSa
         <>
           <div className="mb-3 flex items-center justify-between">
             <span className="text-xs text-muted-foreground">{docs.length} archivo(s)</span>
-            <Button variant="outline" size="sm" onClick={() => docs.forEach((d) => window.open(`${API}/cases/${caseId}/documents/${d.id}/download`, '_blank'))}>
+            <Button variant="outline" size="sm" onClick={() => docs.forEach((d) => window.open(`${API}/cases/${caseId}/documents/${d.documentId}/download`, '_blank'))}>
               <Download className="mr-1.5 h-4 w-4" />Descargar todo
             </Button>
           </div>
@@ -116,7 +123,7 @@ export const DocumentacionEditor = ({ caseId, docStatus, onDocStatusChange, onSa
                 </div>
                 <div className="flex shrink-0 gap-1">
                   <button type="button" className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-primary/10 hover:text-primary" onClick={() => setPreviewUrl(`${API}/cases/${caseId}/documents/${doc.documentId}/download`)} title="Previsualizar"><Eye className="h-4 w-4" /></button>
-                  <button type="button" className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950" onClick={() => deleteMutation.mutate(doc.documentId)} title="Eliminar"><Trash2 className="h-4 w-4" /></button>
+                  <button type="button" className="rounded-lg p-1.5 text-muted-foreground transition hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-950" onClick={() => deleteMutation.mutate(doc.relationId)} title="Desvincular de esta carpeta"><Trash2 className="h-4 w-4" /></button>
                 </div>
               </div>
             ))}

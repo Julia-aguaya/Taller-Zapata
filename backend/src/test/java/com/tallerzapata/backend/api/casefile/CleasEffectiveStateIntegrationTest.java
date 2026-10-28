@@ -122,7 +122,7 @@ class CleasEffectiveStateIntegrationTest {
 
     private long createCase() throws Exception {
         Long typeId = jdbcTemplate.queryForObject("SELECT id FROM tipos_tramite WHERE codigo = 'CLEAS'", Long.class);
-        MvcResult result = mockMvc.perform(post("/api/v1/cases").header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON)
+        MvcResult result = mockMvc.perform(post("/api/v1/cases").header("X-User-Id", "1").header("Idempotency-Key", "cleas-effective-" + System.nanoTime()).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"caseTypeId\":" + typeId + ",\"organizationId\":1,\"branchId\":1,\"principalVehicleId\":10,\"principalCustomerPersonId\":10,\"referenced\":false,\"customerRoleCode\":\"CLIENTE\",\"principalVehicleRoleCode\":\"PRINCIPAL\"}"))
                 .andExpect(status().isOk()).andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsString()).get("id").asLong();

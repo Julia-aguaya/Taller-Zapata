@@ -3,11 +3,12 @@ package com.tallerzapata.backend.api.budget;
 import jakarta.validation.constraints.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 public final class BudgetComparisonDtos {
     private BudgetComparisonDtos() { }
-    public record Snapshot(Long id, Integer generation, LocalDate budgetDate, Integer budgetVersion, String mode, int importedPieceCount, String context) { }
+    public record Snapshot(Long id, Integer generation, LocalDate budgetDate, Integer budgetVersion, String mode, int importedPieceCount, String context, LocalDateTime updatedAt) { }
     public record ProviderColumn(Long id, Long providerId, String name, String billingCode, String paymentMethodCode, long priceCount) { }
     public record Cell(Long providerColumnId, BigDecimal amount, boolean minimum) { }
     public record Piece(Long id, String description, String actionCode, BigDecimal sourcePartValue, String origin, List<Cell> cells) { }

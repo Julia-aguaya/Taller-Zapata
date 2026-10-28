@@ -198,4 +198,93 @@ class VehicleIntegrationTest {
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].id").value(11));
     }
+
+    @Test
+    void shouldCreatePersistentVehicleTypeCategoryAndExposeItInCatalog() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/vehicles/catalogs/types")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"  Casa   rodante  \"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Casa rodante"))
+                .andReturn();
+
+        String code = objectMapper.readTree(result.getResponse().getContentAsByteArray()).get("code").asText();
+
+        mockMvc.perform(get("/api/v1/vehicles/catalogs")
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.vehicleTypeCodes[?(@.code == '" + code + "' && @.name == 'Casa rodante')]").isNotEmpty())
+                .andExpect(jsonPath("$.vehicleTypeCodes[?(@.code == 'OTRO' && @.name == 'Otro')]").isNotEmpty());
+    }
+
+    @Test
+    void shouldRejectBlankAndDuplicateVehicleTypeCategoryNames() throws Exception {
+        mockMvc.perform(post("/api/v1/vehicles/catalogs/types")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"   \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.details[0]").value("name: El nombre de la categoría es obligatorio"));
+
+        mockMvc.perform(post("/api/v1/vehicles/catalogs/types")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"  sedan  \"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("VEHICLE_TYPE_EXISTS"))
+                .andExpect(jsonPath("$.data.vehicleType.code").value("SEDAN"));
+    }
+
+    @Test
+    void shouldRequireAuthenticationToCreateVehicleTypeCategories() throws Exception {
+        mockMvc.perform(post("/api/v1/vehicles/catalogs/types")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Casa rodante\"}"))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void shouldCreatePersistentVehicleBrandAndExposeItInCatalog() throws Exception {
+        MvcResult result = mockMvc.perform(post("/api/v1/vehicles/brands")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"  Alfa   Romeo  \"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nombre").value("Alfa Romeo"))
+                .andReturn();
+
+        Long brandId = objectMapper.readTree(result.getResponse().getContentAsByteArray()).get("id").asLong();
+
+        mockMvc.perform(get("/api/v1/vehicles/brands")
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.id == " + brandId + " && @.nombre == 'Alfa Romeo')]").isNotEmpty());
+    }
+
+    @Test
+    void shouldRejectBlankAndDuplicateVehicleBrandNames() throws Exception {
+        mockMvc.perform(post("/api/v1/vehicles/brands")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"   \"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.details[0]").value("name: El nombre de la marca es obligatorio"));
+
+        mockMvc.perform(post("/api/v1/vehicles/brands")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"  fOrD  \"}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("VEHICLE_BRAND_EXISTS"))
+                .andExpect(jsonPath("$.data.vehicleBrand.id").value(1));
+    }
+
+    @Test
+    void shouldRequireAuthenticationToCreateVehicleBrands() throws Exception {
+        mockMvc.perform(post("/api/v1/vehicles/brands")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Alfa Romeo\"}"))
+                .andExpect(status().isUnauthorized());
+    }
 }

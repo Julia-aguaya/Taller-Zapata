@@ -155,6 +155,7 @@ export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
     const habilitado = fd.get('enablesRepair') === 'SI';
     const recuperaCliente = culpaCompartida || (!habilitado && fd.get('recoversClient') === 'SI');
 
+    const includesParts = fd.get('includesParts');
     mutation.mutate({
       managerCode: fd.get('managerCode') || null,
       baseCaseId: recovery?.baseCaseId ?? (selectedBaseCaseId ? Number(selectedBaseCaseId) : null),
@@ -174,7 +175,7 @@ export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
       modalityCode: fd.get('modalityCode') || null,
       quotationStatusCode: fd.get('quotationStatusCode') || null,
       quotationDate: fd.get('quotationDate') || null,
-      includesParts: fd.get('includesParts') === 'SI',
+       ...(includesParts == null ? {} : { includesParts: includesParts === 'SI' }),
       repairsVehicle: fd.get('repairsVehicle') === 'SI',
       partsProvisionModeCode: fd.get('partsProvisionModeCode') || null,
       approvedLowerAgreement: false,

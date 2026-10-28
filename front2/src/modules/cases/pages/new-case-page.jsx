@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { FolderOpen, FolderPlus, Search, UserPlus, Car } from 'lucide-react';
 import { toast } from 'sonner';
-import { createCase, createCaseWithReferenciador, createPerson, createVehicle, getCaseCatalogs, getPersonVehicles, getVehicleCatalogs, listBranches, listVehicleBrands, listVehicleModels, searchPersons, searchVehicles } from '@/modules/cases/api/new-case-api';
+import { createCase, createCaseWithReferenciador, createPerson, createVehicle, createVehicleBrand, createVehicleTypeCategory, getCaseCatalogs, getPersonVehicles, getVehicleCatalogs, listBranches, listVehicleBrands, listVehicleModels, searchPersons, searchVehicles } from '@/modules/cases/api/new-case-api';
 import { searchReferenciadores } from '@/modules/cases/api/cases-api';
 import { useSession } from '@/modules/auth/providers/session-provider';
 import { hasGlobalAdminScope } from '@/modules/auth/lib/global-admin-scope';
@@ -42,10 +42,15 @@ const createInitialState = () => ({
   },
 });
 
+const createIdempotencyKey = () => globalThis.crypto?.randomUUID?.()
+  ?? `case-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
 export const requiresReferenciador = (referenced, referenciadorId) => referenced === 'SI' && !referenciadorId;
 export const hasReferenciadorName = (value) => Boolean(value.trim());
 
 export const NewCasePage = () => {
+  const creationIdempotencyKey = useRef(createIdempotencyKey());
+  const queryClient = useQueryClient();
   const [createdCase, setCreatedCase] = useState(null);
 
   const navigate = useNavigate();
@@ -60,6 +65,9 @@ export const NewCasePage = () => {
   const [errors, setErrors] = useState({});
   const [form, setForm] = useState(createInitialState());
   const [referenciadorSearchDebounced, setReferenciadorSearchDebounced] = useState('');
+  const [newVehicleTypeName, setNewVehicleTypeName] = useState('');
+  const [showNewVehicleBrand, setShowNewVehicleBrand] = useState(false);
+  const [newVehicleBrandName, setNewVehicleBrandName] = useState('');
 
   const personDebounced = personSearch.trim();
   const vehicleDebounced = vehicleSearch.trim();
@@ -129,6 +137,68 @@ export const NewCasePage = () => {
   const vehicleCatalogsQuery = useQuery({
     queryKey: ['vehicles', 'catalogs'],
     queryFn: getVehicleCatalogs,
+  });
+
+  const selectVehicleType = (category) => {
+    setForm((current) => ({
+      ...current,
+      vehicle: { ...current.vehicle, vehicleTypeCode: category.code },
+    }));
+    setNewVehicleTypeName('');
+    queryClient.setQueryData(['vehicles', 'catalogs'], (current) => {
+      if (!current) return current;
+      const vehicleTypeCodes = [...(current.vehicleTypeCodes ?? []).filter((item) => item.code !== category.code), category]
+        .sort((left, right) => left.name.localeCompare(right.name));
+      return { ...current, vehicleTypeCodes };
+    });
+  };
+
+  const createVehicleTypeMutation = useMutation({
+    mutationFn: () => createVehicleTypeCategory(newVehicleTypeName),
+    onSuccess: (category) => {
+      selectVehicleType(category);
+      toast.success(`Categoría “${category.name}” agregada y seleccionada.`);
+    },
+    onError: (error) => {
+      const existingCategory = error.payload?.data?.vehicleType;
+      if (existingCategory) {
+        selectVehicleType(existingCategory);
+        toast.message(`La categoría “${existingCategory.name}” ya existía. La seleccionamos.`);
+        return;
+      }
+      toast.error(error.message || 'No se pudo guardar la categoría. Revisá tu conexión e intentá nuevamente.');
+    },
+  });
+
+  const selectVehicleBrand = (brand) => {
+    setForm((current) => ({
+      ...current,
+      vehicle: { ...current.vehicle, brandText: brand.nombre },
+    }));
+    setNewVehicleBrandName('');
+    setShowNewVehicleBrand(false);
+    queryClient.setQueryData(['vehicles', 'brands'], (current) => {
+      if (!current) return current;
+      return [...current.filter((item) => item.id !== brand.id), brand]
+        .sort((left, right) => left.nombre.localeCompare(right.nombre));
+    });
+  };
+
+  const createVehicleBrandMutation = useMutation({
+    mutationFn: () => createVehicleBrand(newVehicleBrandName),
+    onSuccess: (brand) => {
+      selectVehicleBrand(brand);
+      toast.success(`Marca “${brand.nombre}” agregada y seleccionada.`);
+    },
+    onError: (error) => {
+      const existingBrand = error.payload?.data?.vehicleBrand;
+      if (existingBrand) {
+        selectVehicleBrand(existingBrand);
+        toast.message(`La marca “${existingBrand.nombre}” ya existía. La seleccionamos.`);
+        return;
+      }
+      toast.error(error.message || 'No se pudo guardar la marca. Revisá tu conexión e intentá nuevamente.');
+    },
   });
 
   const selectedBrand = useMemo(
@@ -265,9 +335,9 @@ export const NewCasePage = () => {
         principalVehicleRoleCode: 'PRINCIPAL',
       };
       if (newReferenciador) {
-        return createCaseWithReferenciador({ caseRequest: casePayload, referenciador: newReferenciador });
+        return createCaseWithReferenciador({ caseRequest: casePayload, referenciador: newReferenciador }, creationIdempotencyKey.current);
       }
-      return createCase(casePayload);
+      return createCase(casePayload, creationIdempotencyKey.current);
     },
     onSuccess: (payload) => {
       setCreatedCase(payload);
@@ -636,10 +706,22 @@ export const NewCasePage = () => {
 
             <div className={`grid gap-4 md:grid-cols-2 ${selectedVehicleId ? 'opacity-50 pointer-events-none' : ''}`}>
               <Field label="Marca">
-                <Input list="vehicle-brand-options" className={errors.vehicleMarca ? 'border-destructive ring-1 ring-destructive' : ''} value={form.vehicle.brandText} onChange={(event) => updateNested(setForm, 'vehicle', 'brandText', event.target.value)} />
-                <datalist id="vehicle-brand-options">
-                  {brandOptions.map((option) => <option key={option.id} value={option.nombre} />)}
-                </datalist>
+                <Select
+                  className={errors.vehicleMarca ? 'border-destructive ring-1 ring-destructive' : ''}
+                  value={selectedBrand ? String(selectedBrand.id) : ''}
+                  onChange={(event) => {
+                    if (event.target.value === 'ADD_NEW_BRAND') {
+                      setShowNewVehicleBrand(true);
+                      return;
+                    }
+                    const brand = brandOptions.find((option) => String(option.id) === event.target.value);
+                    updateNested(setForm, 'vehicle', 'brandText', brand?.nombre ?? '');
+                  }}
+                >
+                  <option value="">Seleccionar marca</option>
+                  {brandOptions.map((option) => <option key={option.id} value={option.id}>{option.nombre}</option>)}
+                  <option value="ADD_NEW_BRAND">Agregar marca</option>
+                </Select>
                 {errors.vehicleMarca ? <p className="mt-1 text-xs text-destructive">{errors.vehicleMarca}</p> : null}
               </Field>
               <Field label="Modelo">
@@ -675,6 +757,49 @@ export const NewCasePage = () => {
                 <Input value={form.vehicle.color} onChange={(event) => updateNested(setForm, 'vehicle', 'color', event.target.value)} />
               </Field>
             </div>
+
+            {showNewVehicleBrand ? (
+              <div className="mt-4 rounded-2xl border border-dashed border-border/70 bg-muted/30 p-4">
+                <p className="text-sm font-medium">Agregar marca</p>
+                <p className="mt-1 text-xs text-muted-foreground">Guardala para poder usarla en esta y en futuras carpetas.</p>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    aria-label="Nombre de la nueva marca"
+                    maxLength={120}
+                    placeholder="Ej.: Alfa Romeo"
+                    value={newVehicleBrandName}
+                    onChange={(event) => setNewVehicleBrandName(event.target.value)}
+                  />
+                  <Button type="button" onClick={() => createVehicleBrandMutation.mutate()} disabled={createVehicleBrandMutation.isPending || !newVehicleBrandName.trim()}>
+                    {createVehicleBrandMutation.isPending ? 'Guardando...' : 'Guardar marca'}
+                  </Button>
+                  <Button type="button" variant="ghost" onClick={() => setShowNewVehicleBrand(false)} disabled={createVehicleBrandMutation.isPending}>Cancelar</Button>
+                </div>
+              </div>
+            ) : null}
+
+            {form.vehicle.vehicleTypeCode === 'OTRO' ? (
+              <div className="mt-4 rounded-2xl border border-dashed border-border/70 bg-muted/30 p-4">
+                <p className="text-sm font-medium">Agregar categoría</p>
+                <p className="mt-1 text-xs text-muted-foreground">Creala para poder usarla en esta y en futuras carpetas.</p>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    aria-label="Nombre de la nueva categoría"
+                    maxLength={120}
+                    placeholder="Ej.: Casa rodante"
+                    value={newVehicleTypeName}
+                    onChange={(event) => setNewVehicleTypeName(event.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => createVehicleTypeMutation.mutate()}
+                    disabled={createVehicleTypeMutation.isPending || !newVehicleTypeName.trim()}
+                  >
+                    {createVehicleTypeMutation.isPending ? 'Guardando...' : 'Agregar categoría'}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
 
             <div className="mt-4">
               <Field label="Observaciones del vehículo">

@@ -14,4 +14,5 @@ public interface DocumentUploadSessionRepository extends JpaRepository<DocumentU
     @Query("select session from DocumentUploadSessionEntity session where session.publicId = :publicId")
     Optional<DocumentUploadSessionEntity> findByPublicIdForUpdate(String publicId);
     List<DocumentUploadSessionEntity> findByStatusAndExpiresAtBefore(String status, LocalDateTime expiresAt);
+    boolean existsByDocumentId(Long documentId);
 }

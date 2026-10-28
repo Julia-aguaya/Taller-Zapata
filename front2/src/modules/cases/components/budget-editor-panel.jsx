@@ -41,6 +41,19 @@ const toItemState = (item) => ({
 });
 
 const toDecimal = (v) => { const p = Number(v); return Number.isFinite(p) ? p : 0; };
+const requireRelationId = (relationId) => {
+  const normalizedId = Number(relationId);
+  if (!Number.isInteger(normalizedId) || normalizedId <= 0) {
+    throw new Error('No se puede desvincular el documento porque falta el identificador de la relación. Recargá la carpeta e intentá nuevamente.');
+  }
+  return normalizedId;
+};
+
+export const withBudgetDocumentRelation = (document, relation, blobUrl = null) => ({
+  ...document,
+  relationId: relation.relationId,
+  blobUrl,
+});
 
 export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, onSaved }) => {
   const queryClient = useQueryClient();
@@ -238,7 +251,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
             const resp = await fetch(`/api/v1/cases/${caseId}/documents/${doc.id}/download`, { headers: { Authorization: `Bearer ${stored.accessToken}` } });
             if (resp.ok) { const blob = await resp.blob(); blobUrl = URL.createObjectURL(blob); }
           }
-          return { ...doc, relationId: rel.id, blobUrl };
+          return withBudgetDocumentRelation(doc, rel, blobUrl);
         } catch { return null; }
       }));
       return docs.filter(Boolean);
@@ -259,8 +272,8 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
     onError: (error) => toast.error(error.message),
   });
   const deleteDocMutation = useMutation({
-    mutationFn: (docId) => requestJson(`/documents/${docId}`, { method: 'DELETE' }),
-    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'documents'] }); toast.success('Eliminado.'); },
+    mutationFn: (relationId) => requestJson(`/document-relations/${requireRelationId(relationId)}`, { method: 'DELETE' }),
+    onSuccess: async () => { await queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'documents'] }); toast.success('Documento desvinculado del presupuesto.'); },
     onError: (error) => toast.error(error.message),
   });
 
@@ -416,7 +429,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
             {(docsQuery.data ?? []).map((doc) => (
               <button key={doc.id} type="button" className="group relative block h-32 w-32 overflow-hidden rounded-2xl border border-border/60 bg-muted" onClick={() => setPreviewDoc(doc)}>
                 {doc.mimeType?.startsWith('image/') ? (<><img src={doc.blobUrl || ''} alt={doc.fileName} className="h-full w-full object-cover" /><div className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/30 group-hover:opacity-100"><Eye className="h-6 w-6 text-white drop-shadow" /></div></>) : doc.mimeType?.startsWith('video/') ? (<div className="flex h-full w-full items-center justify-center bg-black/20"><Eye className="h-6 w-6 text-white drop-shadow" /><span className="absolute bottom-1 right-1 rounded bg-black/60 px-1 text-[9px] text-white">VIDEO</span></div>) : (<div className="flex h-full w-full flex-col items-center justify-center gap-1 text-xs text-muted-foreground"><Eye className="h-4 w-4" />{doc.extension?.toUpperCase()}</div>)}
-                <button type="button" className="absolute right-1 top-1 rounded-lg bg-black/50 p-1 text-white opacity-0 transition hover:bg-red-600 group-hover:opacity-100" onClick={(e) => { e.stopPropagation(); setDeleteConfirm(doc); }}><Trash2 className="h-3 w-3" /></button>
+                <button type="button" aria-label={`Desvincular ${doc.fileName}`} className="absolute right-1 top-1 rounded-lg bg-black/50 p-1 text-white opacity-0 transition hover:bg-red-600 group-hover:opacity-100" onClick={(e) => { e.stopPropagation(); setDeleteConfirm(doc); }}><Trash2 className="h-3 w-3" /></button>
               </button>
             ))}
           </div>
@@ -434,15 +447,15 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
       ) : null}
       </div>
       {canViewComparison ? <div id="budget-panel-comparison" role="tabpanel" aria-labelledby="budget-tab-comparison" hidden={activeTab !== 'comparison'} className="mt-5">
-        {activeTab === 'comparison' ? <BudgetComparisonPanel caseId={caseId} focusRef={comparisonHeadingRef} canViewProviders={session?.authorities?.includes('proveedor.ver')} canManageProviders={session?.authorities?.includes('proveedor.gestionar')} /> : null}
+        {activeTab === 'comparison' ? <BudgetComparisonPanel caseId={caseId} focusRef={comparisonHeadingRef} canViewProviders={session?.authorities?.includes('proveedor.ver')} canManageProviders={session?.authorities?.includes('proveedor.gestionar')} onGenerate={() => guardedSave(true)} /> : null}
       </div> : null}
 
       {/* Delete confirm */}
       {deleteConfirm ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setDeleteConfirm(null)}>
           <div className="w-full max-w-sm rounded-3xl border border-border bg-card p-6 shadow-haze" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold">¿Eliminar documento?</h3><p className="mt-2 text-sm text-muted-foreground">Se va a borrar <strong>{deleteConfirm.fileName}</strong>.</p>
-            <div className="mt-5 flex gap-3"><Button variant="outline" className="flex-1" onClick={() => setDeleteConfirm(null)}>Cancelar</Button><Button variant="destructive" className="flex-1" onClick={() => { deleteDocMutation.mutate(deleteConfirm.id); setDeleteConfirm(null); }}><Trash2 className="mr-1.5 h-4 w-4" />Eliminar</Button></div>
+            <h3 className="text-lg font-semibold">¿Quitar documento del presupuesto?</h3><p className="mt-2 text-sm text-muted-foreground">Se desvinculará <strong>{deleteConfirm.fileName}</strong> de este presupuesto.</p>
+            <div className="mt-5 flex gap-3"><Button variant="outline" className="flex-1" onClick={() => setDeleteConfirm(null)}>Cancelar</Button><Button variant="destructive" className="flex-1" onClick={() => { deleteDocMutation.mutate(deleteConfirm.relationId); setDeleteConfirm(null); }}><Trash2 className="mr-1.5 h-4 w-4" />Desvincular</Button></div>
           </div>
         </div>
       ) : null}

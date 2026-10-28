@@ -11,12 +11,17 @@ let workshop = null;
 let contacts = [];
 let people = {};
 let obligations = [];
+let mutations = [];
 
 vi.mock('react-router-dom', () => ({ useNavigate: () => navigate }));
 vi.mock('@tanstack/react-query', () => ({
   useQuery: ({ queryKey }) => { let data = catalogs; if (queryKey[2] === 'franchise-recovery-obligations') data = obligations; else if (queryKey[2] === 'franchise-recovery') data = recovery; else if (queryKey[2] === 'third-party-workshop') data = workshop; else if (queryKey[2] === 'persons') data = []; else if (queryKey[0] === 'persons') data = people[queryKey[1]]; else if (queryKey[0] === 'insurance' && queryKey[1] === 'companies' && queryKey.length === 2) data = companies; else if (queryKey[0] === 'insurance' && queryKey[3] === 'contacts') data = contacts; return { data }; },
   useQueryClient: () => ({ invalidateQueries: vi.fn() }),
-  useMutation: () => ({ isPending: false, mutate: vi.fn() }),
+  useMutation: () => {
+    const mutation = { isPending: false, mutate: vi.fn() };
+    mutations.push(mutation);
+    return mutation;
+  },
 }));
 vi.mock('@/shared/api/http-client', () => ({ requestJson: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -33,6 +38,7 @@ describe('FranchiseRecoveryEditor associated folder', () => {
     contacts = [];
     people = {};
     obligations = [];
+    mutations = [];
   });
 
   it('shows a clearly labeled navigation action for an associated folder', async () => {
@@ -162,6 +168,16 @@ describe('FranchiseRecoveryEditor associated folder', () => {
     expect(agenda).toHaveAttribute('data-case-id', '7');
     expect(agenda).toHaveAttribute('data-organization-id', '3');
     expect(agenda).toHaveAttribute('data-branch-id', '5');
+  });
+
+  it('omits hidden Lleva repuestos instead of overwriting its saved value', async () => {
+    const user = userEvent.setup();
+    recovery = { id: 7, includesParts: true, enablesRepair: false };
+    render(<FranchiseRecoveryEditor caseId="7" caseDetail={{}} />);
+
+    await user.click(screen.getAllByRole('button', { name: 'Guardar' })[0]);
+
+    expect(mutations[0].mutate).toHaveBeenCalledWith(expect.not.objectContaining({ includesParts: expect.anything() }));
   });
 
   it('renders obligation balances, application history, and the payment action without editable statuses', () => {

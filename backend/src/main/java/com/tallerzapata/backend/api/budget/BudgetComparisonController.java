@@ -13,6 +13,7 @@ public class BudgetComparisonController {
     private final BudgetComparisonService service; private final BudgetComparisonPdfService pdfService;
     public BudgetComparisonController(BudgetComparisonService service, BudgetComparisonPdfService pdfService) { this.service=service; this.pdfService=pdfService; }
     @GetMapping @PreAuthorize("hasAuthority('presupuesto.ver')") public List<Snapshot> list(@PathVariable Long caseId, @RequestParam(required = false) String context) { return service.list(caseId, context); }
+    @PostMapping("/extra/{versionId}/generate") @PreAuthorize("hasAuthority('presupuesto.crear')") public Long generateExtra(@PathVariable Long caseId,@PathVariable Long versionId) { return service.generateExtraSnapshot(caseId,versionId); }
     @GetMapping("/{snapshotId}") @PreAuthorize("hasAuthority('presupuesto.ver')") public Detail detail(@PathVariable Long caseId,@PathVariable Long snapshotId) { return service.detail(caseId,snapshotId); }
     @GetMapping("/{snapshotId}/legacy-audit") @PreAuthorize("hasAuthority('presupuesto.ver')") public LegacyAudit legacyAudit(@PathVariable Long caseId,@PathVariable Long snapshotId) { return service.legacyAudit(caseId,snapshotId); }
     @PostMapping("/{snapshotId}/providers") @PreAuthorize("hasAuthority('presupuesto.crear')") public Detail addProvider(@PathVariable Long caseId,@PathVariable Long snapshotId,@Valid @RequestBody ProviderRequest request) { return service.addProvider(caseId,snapshotId,request); }

@@ -118,6 +118,7 @@ class DocumentIntegrationTest {
                         .header("X-User-Id", "3")
                         .param("moduleCode", "OPERACION"))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].relationId").isNumber())
                 .andExpect(jsonPath("$[0].documentId").value(documentId))
                 .andExpect(jsonPath("$[0].observations").value("Carga inicial"))
                 .andExpect(jsonPath("$[0].principal").value(true));
@@ -398,10 +399,106 @@ class DocumentIntegrationTest {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    void shouldRefuseToDeleteDocumentWithCompletedUploadSessionWithoutPartialChanges() throws Exception {
+        Long categoryId = activeCategoryId("OTRO");
+        Long protectedDocumentId = completeResumableUpload(categoryId, "respaldo-egreso.txt", "respaldo".getBytes());
+        Long otherDocumentId = uploadDocument(categoryId, 100L, "1");
+
+        mockMvc.perform(post("/api/v1/documents/{documentId}/relations", protectedDocumentId)
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new DocumentRelationCreateRequest(100L, "CASO", 100L, "EGRESO_DEFINITIVO", false, false, 0))))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(delete("/api/v1/documents/{documentId}", protectedDocumentId)
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("No se puede eliminar el documento porque conserva una carga completada. Desvinculalo de la carpeta si solo querés quitarlo de esa vista."));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM documentos WHERE id = ?", Integer.class, protectedDocumentId)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT documento_id FROM documento_cargas WHERE documento_id = ?", Long.class, protectedDocumentId)).isEqualTo(protectedDocumentId);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM documento_relaciones WHERE documento_id = ?", Integer.class, protectedDocumentId)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM documentos WHERE id = ?", Integer.class, otherDocumentId)).isEqualTo(1);
+        mockMvc.perform(get("/api/v1/cases/100/documents/{documentId}/download", protectedDocumentId).header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(content().bytes("respaldo".getBytes()));
+    }
+
+    @Test
+    void shouldUnlinkEgresoDocumentationInParticularCaseWithoutDeletingItsDocumentOrUploadSession() throws Exception {
+        Long categoryId = activeCategoryId("OTRO");
+        jdbcTemplate.update(
+                "INSERT INTO ingresos_vehiculo (id, public_id, caso_id, turno_id, vehiculo_id, fecha_ingreso, recibido_por_usuario_id, persona_entrega_id, kilometraje_ingreso, combustible_codigo, fecha_salida_estimada, con_observaciones, detalle_observaciones) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                700L, "00000000-0000-0000-0000-000000009700", 100L, null, 10L, java.time.LocalDateTime.of(2026, 5, 6, 8, 45), 3L, 10L, 125000, "MEDIO", LocalDate.of(2026, 5, 10), false, null
+        );
+        jdbcTemplate.update(
+                "INSERT INTO egresos_vehiculo (id, public_id, caso_id, ingreso_id, fecha_egreso, entregado_por_usuario_id, egreso_definitivo, debe_reingresar, fotos_reparado_cargadas) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                700L, "00000000-0000-0000-0000-000000009701", 100L, 700L, java.time.LocalDateTime.of(2026, 5, 10, 18, 0), 3L, true, false, true
+        );
+        Long documentId = completeResumableUpload(categoryId, "foto-egreso.txt", "egreso".getBytes());
+        String relationResponse = mockMvc.perform(post("/api/v1/documents/{documentId}/relations", documentId)
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new DocumentRelationCreateRequest(100L, "EGRESO", 700L, "EGRESO_DEFINITIVO", false, false, 0))))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        Long relationId = objectMapper.readTree(relationResponse).get("id").asLong();
+
+        mockMvc.perform(delete("/api/v1/document-relations/{relationId}", relationId).header("X-User-Id", "1"))
+                .andExpect(status().isOk());
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM documento_relaciones WHERE id = ?", Integer.class, relationId)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM documentos WHERE id = ?", Integer.class, documentId)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT documento_id FROM documento_cargas WHERE documento_id = ?", Long.class, documentId)).isEqualTo(documentId);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM egresos_vehiculo WHERE id = ?", Integer.class, 700L)).isEqualTo(1);
+    }
+
+    @Test
+    void shouldDeleteDocumentWithoutCompletedUploadSessionAndKeepOtherDocuments() throws Exception {
+        Long categoryId = activeCategoryId("OTRO");
+        Long documentId = uploadDocument(categoryId, 100L, "3");
+        Long otherDocumentId = uploadDocument(categoryId, 100L, "1");
+        String storageKey = jdbcTemplate.queryForObject("SELECT storage_key FROM documentos WHERE id = ?", String.class, documentId);
+        assertThat(Files.exists(Path.of("target/test-storage").resolve(storageKey))).isTrue();
+
+        mockMvc.perform(delete("/api/v1/documents/{documentId}", documentId).header("X-User-Id", "1"))
+                .andExpect(status().isOk());
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM documentos WHERE id = ?", Integer.class, documentId)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM documentos WHERE id = ?", Integer.class, otherDocumentId)).isEqualTo(1);
+        assertThat(Files.exists(Path.of("target/test-storage").resolve(storageKey))).isFalse();
+    }
+
+    @Test
+    void shouldRejectInvalidDocumentRelationIdWithBadRequest() throws Exception {
+        mockMvc.perform(delete("/api/v1/document-relations/undefined").header("X-User-Id", "1"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("El parámetro de ruta 'relationId' debe ser un número válido"))
+                .andExpect(jsonPath("$.path").value("/api/v1/document-relations/undefined"))
+                .andExpect(jsonPath("$.details[0]").value("relationId: valor inválido 'undefined'"));
+    }
+
     private org.springframework.test.web.servlet.ResultActions uploadChunk(String uploadId, int index, byte[] content) throws Exception {
         return mockMvc.perform(multipart("/api/v1/document-uploads/{uploadId}/chunks/{index}", uploadId, index)
                 .file(new MockMultipartFile("file", "chunk.bin", MediaType.APPLICATION_OCTET_STREAM_VALUE, content))
                 .header("X-User-Id", "3"));
+    }
+
+    private Long completeResumableUpload(Long categoryId, String fileName, byte[] content) throws Exception {
+        String sessionResponse = mockMvc.perform(post("/api/v1/document-uploads")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"caseId\":100,\"categoryId\":" + categoryId + ",\"fileName\":\"" + fileName + "\",\"mimeType\":\"text/plain\",\"sizeBytes\":" + content.length + ",\"chunkCount\":1}"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        String uploadId = objectMapper.readTree(sessionResponse).get("uploadId").asText();
+        uploadChunk(uploadId, 0, content).andExpect(status().isOk());
+        String completed = mockMvc.perform(post("/api/v1/document-uploads/{uploadId}/complete", uploadId).header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return objectMapper.readTree(completed).get("id").asLong();
     }
 
     private String sha256(byte[] value) throws Exception {

@@ -40,6 +40,8 @@ public record CaseResponse(
         CaseVisibleStateResponse visibleTramiteState,
         CaseVisibleStateResponse visibleRepairState,
         String principalCustomerName,
+        String principalCustomerFirstName,
+        String principalCustomerLastName,
         String principalVehiclePlate
 ) {
 }

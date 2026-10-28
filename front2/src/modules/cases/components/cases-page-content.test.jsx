@@ -1,13 +1,15 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { CasesPageContent } from '@/modules/cases/components/cases-page-content';
+import { CasesPageContent, formatPrincipalCustomerName } from '@/modules/cases/components/cases-page-content';
 
 const baseItems = [
   {
     id: 1,
     folderCode: 'CAR-001',
     principalCustomerName: 'Ana Uno',
+    principalCustomerFirstName: 'ANA',
+    principalCustomerLastName: 'UNO',
     principalVehiclePlate: 'AA111AA',
     caseTypeCode: 'PARTICULAR',
     currentCaseStateCode: 'EN_TRAMITE',
@@ -24,6 +26,8 @@ const baseItems = [
     id: 2,
     folderCode: 'CAR-002',
     principalCustomerName: 'Beto Dos',
+    principalCustomerFirstName: 'BETO',
+    principalCustomerLastName: 'DOS',
     principalVehiclePlate: 'BB222BB',
     caseTypeCode: 'TODO_RIESGO',
     currentCaseStateCode: 'CERRADO',
@@ -74,6 +78,34 @@ function expectRenderedResultsLabel(label) {
 }
 
 describe('CasesPageContent', () => {
+  it('muestra apellido y nombre normalizados sin alterar los datos usados para buscar ni el orden recibido', async () => {
+    const user = userEvent.setup();
+    renderView({
+      items: [
+        { ...baseItems[0], principalCustomerFirstName: '  JUAN   CARLOS ', principalCustomerLastName: 'PÉREZ  GÓMEZ' },
+        { ...baseItems[1], principalCustomerFirstName: '', principalCustomerLastName: '  DEL   VALLE ' },
+        { ...baseItems[1], id: 3, folderCode: 'CAR-003', principalCustomerFirstName: '  ÁNA ', principalCustomerLastName: ' ' },
+      ],
+      totalCount: 3,
+    });
+
+    expect(screen.getByText('Pérez Gómez, Juan Carlos')).toBeInTheDocument();
+    expect(screen.getByText('Del Valle')).toBeInTheDocument();
+    expect(screen.getByText('Ána')).toBeInTheDocument();
+    expect(screen.getAllByText(/CAR-00[123]/).map((element) => element.textContent)).toEqual(['CAR-001', 'CAR-002', 'CAR-003']);
+
+    await user.type(screen.getByLabelText('Buscar carpeta, cliente o dominio'), 'Beto');
+    await user.click(screen.getByRole('button', { name: 'Aplicar filtros' }));
+
+    expect(screen.getByText('CAR-002')).toBeInTheDocument();
+    expect(screen.getByText('CAR-003')).toBeInTheDocument();
+    expect(screen.queryByText('CAR-001')).not.toBeInTheDocument();
+  });
+
+  it('usa el nombre visible como alternativa para respuestas previas sin campos separados', () => {
+    expect(formatPrincipalCustomerName({ principalCustomerName: '  MARÍA   LÓPEZ ' })).toBe('María López');
+  });
+
   it('filtra por carpeta, cliente y dominio desde la barra principal', async () => {
     const user = userEvent.setup();
     const { rerender } = renderView();

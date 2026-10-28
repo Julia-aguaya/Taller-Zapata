@@ -435,7 +435,6 @@ public class ExtraBudgetService {
         List<ExtraBudgetItemRequest> inputs = requested == null ? List.of() : requested;
         replaceManualItems(version, inputs);
         refreshTotals(version);
-        comparisons.syncExtraDraft(caseEntity.getId(), version, items.findByExtraBudgetVersionIdOrderByVisualOrderAsc(version.getId()));
     }
 
     private void replaceManualItems(ExtraBudgetVersionEntity version, List<ExtraBudgetItemRequest> requested) {

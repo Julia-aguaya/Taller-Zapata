@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BUDGET_GENERATION_TIMEOUT_MS, BudgetEditorPanel } from './budget-editor-panel';
+import { BUDGET_GENERATION_TIMEOUT_MS, BudgetEditorPanel, withBudgetDocumentRelation } from './budget-editor-panel';
 
 const mockUpsertCaseBudget = vi.fn().mockResolvedValue({});
 const mockCreateCaseBudgetItem = vi.fn().mockResolvedValue({});
@@ -19,9 +19,10 @@ const budgetCatalogs = {
   actionCodes: [{ code: 'REPARAR', name: 'Reparar' }, { code: 'REEMPLAZAR_Y_PINTAR', name: 'Reemplazar y pintar' }],
 };
 let catalogsReady = true;
+let budgetDocuments = [];
 
 vi.mock('@tanstack/react-query', () => ({
-  useQuery: ({ queryKey }) => ({ data: queryKey[0] === 'budget' && catalogsReady ? budgetCatalogs : [], isLoading: false }),
+  useQuery: ({ queryKey }) => ({ data: queryKey[0] === 'budget' && catalogsReady ? budgetCatalogs : (queryKey[2] === 'documents' ? budgetDocuments : []), isLoading: false }),
   useMutation: ({ mutationFn, onSuccess, onError, onSettled }) => {
     const [isPending, setIsPending] = useState(false);
     return {
@@ -68,7 +69,8 @@ const workshopCaseDetail = { caseTypeCode: 'RECLAMO_TERCEROS', principalCustomer
 afterEach(() => {
   vi.useRealTimers();
   window.sessionStorage.clear();
-  catalogsReady = true;
+    catalogsReady = true;
+    budgetDocuments = [];
   mockInvalidateQueries.mockClear();
   mockGenerateCaseBudget.mockReset();
   mockGenerateCaseBudget.mockResolvedValue({ comparisonSnapshot: { importedPieceCount: 1 } });
@@ -204,5 +206,16 @@ describe('BudgetEditorPanel comparison tabs', () => {
     const firstUploadRequest = requestJson.mock.calls.find(([url]) => url === '/document-uploads')[1];
     expect(JSON.parse(firstUploadRequest.body)).toMatchObject({ caseId: 42, categoryId: 8, chunkCount: 1 });
     await waitFor(() => expect(requestJson).toHaveBeenCalledWith('/documents/91/relations', expect.objectContaining({ method: 'POST' })));
+  });
+
+  it('uses relationId from the real case-documents contract when unlinking a budget attachment', async () => {
+    const relation = { relationId: 77, documentId: 12, moduleCode: 'PRESUPUESTO' };
+    budgetDocuments = [withBudgetDocumentRelation({ id: 12, fileName: 'reparacion.jpg', mimeType: 'image/jpeg' }, relation)];
+    render(<BudgetEditorPanel caseId="42" budget={validBudget} caseDetail={particularCaseDetail} workshopInfo={{}} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Desvincular reparacion.jpg' }));
+    fireEvent.click(screen.getByRole('button', { name: /^desvincular$/i }));
+
+    await waitFor(() => expect(requestJson).toHaveBeenCalledWith('/document-relations/77', { method: 'DELETE' }));
   });
 });

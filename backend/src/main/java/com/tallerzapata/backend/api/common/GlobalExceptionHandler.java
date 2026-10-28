@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -114,6 +115,21 @@ public class GlobalExceptionHandler {
             HttpServletRequest request
     ) {
         return build(HttpStatus.METHOD_NOT_ALLOWED, exception.getMessage(), request, List.of());
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiErrorResponse> handlePathVariableTypeMismatch(
+            MethodArgumentTypeMismatchException exception,
+            HttpServletRequest request
+    ) {
+        String parameter = exception.getName();
+        String value = String.valueOf(exception.getValue());
+        return build(
+                HttpStatus.BAD_REQUEST,
+                "El parámetro de ruta '" + parameter + "' debe ser un número válido",
+                request,
+                List.of(parameter + ": valor inválido '" + value + "'")
+        );
     }
 
     @ExceptionHandler(Exception.class)

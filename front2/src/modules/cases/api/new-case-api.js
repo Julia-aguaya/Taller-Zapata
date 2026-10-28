@@ -1,5 +1,7 @@
 import { requestJson } from '@/shared/api/http-client';
 
+const withIdempotencyKey = (idempotencyKey) => idempotencyKey ? { headers: { 'Idempotency-Key': idempotencyKey } } : {};
+
 export const createPerson = (payload) => requestJson('/persons', {
   method: 'POST',
   body: JSON.stringify(payload),
@@ -10,18 +12,21 @@ export const createVehicle = (payload) => requestJson('/vehicles', {
   body: JSON.stringify(payload),
 });
 
-export const createCase = (payload) => requestJson('/cases', {
+export const createCase = (payload, idempotencyKey) => requestJson('/cases', {
   method: 'POST',
+  ...withIdempotencyKey(idempotencyKey),
   body: JSON.stringify(payload),
 });
 
-export const createCaseWithReferenciador = (payload) => requestJson('/cases/with-referenciador', {
+export const createCaseWithReferenciador = (payload, idempotencyKey) => requestJson('/cases/with-referenciador', {
   method: 'POST',
+  ...withIdempotencyKey(idempotencyKey),
   body: JSON.stringify(payload),
 });
 
-export const createCaseWithInsurance = (payload) => requestJson('/cases/with-insurance', {
+export const createCaseWithInsurance = (payload, idempotencyKey) => requestJson('/cases/with-insurance', {
   method: 'POST',
+  ...withIdempotencyKey(idempotencyKey),
   body: JSON.stringify(payload),
 });
 
@@ -39,9 +44,19 @@ export const listBranches = (organizationId) => requestJson(`/branches${organiza
 
 export const listVehicleBrands = () => requestJson('/vehicles/brands');
 
+export const createVehicleBrand = (name) => requestJson('/vehicles/brands', {
+  method: 'POST',
+  body: JSON.stringify({ name }),
+});
+
 export const listVehicleModels = (brandId) => requestJson(`/vehicles/models${brandId ? `?brandId=${brandId}` : ''}`);
 
 export const getVehicleCatalogs = () => requestJson('/vehicles/catalogs');
+
+export const createVehicleTypeCategory = (name) => requestJson('/vehicles/catalogs/types', {
+  method: 'POST',
+  body: JSON.stringify({ name }),
+});
 
 export const searchPersons = (params = {}) => {
   const sp = new URLSearchParams();

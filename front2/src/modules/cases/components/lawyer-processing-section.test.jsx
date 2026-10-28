@@ -48,4 +48,21 @@ describe('LawyerProcessingSection', () => {
       body: JSON.stringify({ expectedVersion: 7, presentedAt: '2026-04-12', opinionCode: 'RECHAZADO' }),
     });
   });
+
+  it('submits the available lawyer claim data without a presentation date', async () => {
+    processing = { version: 0, presentedAt: null, opinionCode: 'APROBADO' };
+    render(<LawyerProcessingSection caseId="42" />);
+
+    fireEvent.change(screen.getByLabelText('Fecha del siniestro'), { target: { value: '2026-04-10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    await waitFor(() => expect(requestJson).toHaveBeenNthCalledWith(1, '/cases/42/incident', {
+      method: 'PUT',
+      body: JSON.stringify({ incidentDate: '2026-04-10', incidentTime: '10:30', location: 'Mitre 400', dynamics: 'Alcance', observations: 'Sin heridos' }),
+    }));
+    expect(requestJson).toHaveBeenNthCalledWith(2, '/cases/42/insurance-processing', {
+      method: 'PATCH',
+      body: JSON.stringify({ expectedVersion: 0, presentedAt: null, opinionCode: 'APROBADO' }),
+    });
+  });
 });

@@ -2,6 +2,7 @@ package com.tallerzapata.backend.infrastructure.persistence.budget;
 
 import jakarta.persistence.*;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "comparacion_presupuesto_snapshot")
@@ -16,6 +17,7 @@ public class BudgetComparisonSnapshotEntity {
     @Column(name = "version_presupuesto", updatable = false) private Integer budgetVersion;
     @Column(name = "idempotency_key", nullable = false, updatable = false) private String idempotencyKey;
     @Column(name = "modo", nullable = false) private String mode;
+    @Column(name = "updated_at") private LocalDateTime updatedAt;
     public Long getId() { return id; } public Long getCaseId() { return caseId; } public void setCaseId(Long value) { caseId = value; }
     public String getContext() { return context; } public void setContext(String value) { context = value; }
     public Long getBudgetId() { return budgetId; } public void setBudgetId(Long value) { budgetId = value; }
@@ -25,4 +27,6 @@ public class BudgetComparisonSnapshotEntity {
     public Integer getBudgetVersion() { return budgetVersion; } public void setBudgetVersion(Integer value) { budgetVersion = value; }
     public String getIdempotencyKey() { return idempotencyKey; } public void setIdempotencyKey(String value) { idempotencyKey = value; }
     public String getMode() { return mode; } public void setMode(String value) { mode = value; }
+    public LocalDateTime getUpdatedAt() { return updatedAt; }
+    public void setUpdatedAt(LocalDateTime value) { updatedAt = value; }
 }

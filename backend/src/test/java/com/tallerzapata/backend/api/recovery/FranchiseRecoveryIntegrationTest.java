@@ -62,7 +62,9 @@ class FranchiseRecoveryIntegrationTest {
                 .andExpect(jsonPath("$.clientAmount").value(200.00))
                 .andExpect(jsonPath("$.clientPaymentStatusCode").value("PENDIENTE"))
                 .andExpect(jsonPath("$.approvedLowerAgreement").value(false))
-                .andExpect(jsonPath("$.reusesBaseData").value(true));
+                .andExpect(jsonPath("$.reusesBaseData").value(true))
+                .andExpect(jsonPath("$.includesParts").value(false))
+                .andExpect(jsonPath("$.repairsVehicle").value(false));
 
         Integer auditCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'upsert_recupero_franquicia'",
@@ -88,6 +90,44 @@ class FranchiseRecoveryIntegrationTest {
                 .andExpect(jsonPath("$.opinionCode").value("PENDIENTE"))
                 .andExpect(jsonPath("$.clientPaymentStatusCode").value("NO_APLICA"))
                 .andExpect(jsonPath("$.recoversClient").value(true));
+    }
+
+    @Test
+    void shouldPersistBothPartChoicesAndPreserveTheExistingChoiceWhenTheFieldIsAbsent() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/franchise-recovery")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"managerCode\":\"TALLER\",\"enablesRepair\":false,\"includesParts\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.includesParts").value(false));
+
+        mockMvc.perform(put("/api/v1/cases/100/franchise-recovery")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"managerCode\":\"ABOGADO\",\"enablesRepair\":true,\"includesParts\":true}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.managerCode").value("ABOGADO"))
+                .andExpect(jsonPath("$.includesParts").value(true));
+
+        mockMvc.perform(put("/api/v1/cases/100/franchise-recovery")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"managerCode\":\"TALLER\",\"enablesRepair\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.managerCode").value("TALLER"))
+                .andExpect(jsonPath("$.includesParts").value(true));
+
+        mockMvc.perform(get("/api/v1/cases/100/franchise-recovery").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.managerCode").value("TALLER"))
+                .andExpect(jsonPath("$.includesParts").value(true));
+
+        mockMvc.perform(put("/api/v1/cases/100/franchise-recovery")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"managerCode\":\"TALLER\",\"enablesRepair\":true,\"includesParts\":false}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.includesParts").value(false));
     }
 
     @Test

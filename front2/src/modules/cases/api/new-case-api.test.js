@@ -4,9 +4,19 @@ const requestJson = vi.fn();
 
 vi.mock('@/shared/api/http-client', () => ({ requestJson }));
 
-const { searchPersons, searchVehicles } = await import('./new-case-api');
+const { createCase, searchPersons, searchVehicles } = await import('./new-case-api');
 
 describe('autocomplete search API', () => {
+  it('sends the idempotency key when creating a folder', () => {
+    createCase({ caseTypeId: 4 }, 'cleas-retry-001');
+
+    expect(requestJson).toHaveBeenCalledWith('/cases', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': 'cleas-retry-001' },
+      body: JSON.stringify({ caseTypeId: 4 }),
+    });
+  });
+
   it('serializes person free-text autocomplete as q only', () => {
     searchPersons({ q: 'perez' });
 

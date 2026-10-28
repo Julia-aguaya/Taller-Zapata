@@ -15,6 +15,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -127,22 +128,22 @@ public class CaseController {
     @Operation(summary = "Crear caso", description = "Crea un nuevo caso/expediente en el sistema")
     @ApiResponse(responseCode = "200", description = "OK")
     @PostMapping
-    public CaseResponse create(@Valid @RequestBody CaseCreateRequest request, HttpServletRequest httpRequest) {
-        return caseService.create(request, httpRequest);
+    public CaseResponse create(@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey, @Valid @RequestBody CaseCreateRequest request, HttpServletRequest httpRequest) {
+        return caseService.create(request, idempotencyKey, httpRequest);
     }
 
     @Operation(summary = "Crear caso con referenciador", description = "Crea una carpeta y su referenciador en una sola transaccion")
     @ApiResponse(responseCode = "200", description = "OK")
     @PostMapping("/with-referenciador")
-    public CaseResponse createWithReferenciador(@Valid @RequestBody CaseCreateWithReferenciadorRequest request, HttpServletRequest httpRequest) {
-        return caseService.createWithReferenciador(request, httpRequest);
+    public CaseResponse createWithReferenciador(@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey, @Valid @RequestBody CaseCreateWithReferenciadorRequest request, HttpServletRequest httpRequest) {
+        return caseService.createWithReferenciador(request, idempotencyKey, httpRequest);
     }
 
     @Operation(summary = "Crear caso con seguro", description = "Crea una carpeta y su contacto tramitador de aseguradora en una sola transaccion")
     @ApiResponse(responseCode = "200", description = "OK")
     @PostMapping("/with-insurance")
-    public CaseResponse createWithInsurance(@Valid @RequestBody CaseCreateWithInsuranceRequest request, HttpServletRequest httpRequest) {
-        return caseService.createWithInsurance(request, httpRequest);
+    public CaseResponse createWithInsurance(@RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey, @Valid @RequestBody CaseCreateWithInsuranceRequest request, HttpServletRequest httpRequest) {
+        return caseService.createWithInsurance(request, idempotencyKey, httpRequest);
     }
 
     @Operation(summary = "Actualizar caso", description = "Actualiza los datos de un caso existente")

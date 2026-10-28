@@ -213,7 +213,8 @@ public class CaseWorkflowService {
     private void requireNoRepairPartsEligible(Long caseId) {
         boolean pendingRequiredPart = casePartRepository.findByCaseIdOrderByIdAsc(caseId).stream()
                 .anyMatch(part -> !"RECHAZADO".equalsIgnoreCase(part.getAuthorizedCode())
-                        && !"RECIBIDO".equalsIgnoreCase(part.getStatusCode()));
+                        && !"RECIBIDO".equalsIgnoreCase(part.getStatusCode())
+                        && !"INSTALADO".equalsIgnoreCase(part.getStatusCode()));
         if (pendingRequiredPart) {
             throw new ConflictException("No se puede marcar no debe repararse mientras existan repuestos requeridos sin recibir");
         }

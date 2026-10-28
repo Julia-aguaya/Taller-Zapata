@@ -161,6 +161,25 @@ class InsuranceIntegrationTest {
     }
 
     @Test
+    void shouldCreateFranchiseRecoveryWithRequiredProcessingBooleansDisabled() throws Exception {
+        mockMvc.perform(put("/api/v1/cases/100/franchise")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CaseFranchiseUpsertRequest(
+                                "PENDIENTE", new BigDecimal("500.00"), "CIA_TERCERO", null,
+                                "A_FAVOR", true, new BigDecimal("500.00"), null))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.relatedCaseId").isNumber());
+
+        Long recoveryCaseId = jdbcTemplate.queryForObject(
+                "SELECT caso_id FROM recuperos_franquicia WHERE caso_base_id = ?", Long.class, 100L);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT lleva_repuestos FROM recuperos_franquicia WHERE caso_id = ?", Boolean.class, recoveryCaseId)).isFalse();
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT repara_vehiculo FROM recuperos_franquicia WHERE caso_id = ?", Boolean.class, recoveryCaseId)).isFalse();
+    }
+
+    @Test
     void shouldReturnDerivedProcessingProjectionBeforeAnyProcessingIsSaved() throws Exception {
         jdbcTemplate.update("INSERT INTO presupuestos (id, caso_id, organizacion_id, sucursal_id, fecha_presupuesto, informe_estado_codigo, monto_minimo_cierre_mo, version_actual) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 500L, 100L, 1L, 1L, LocalDate.of(2026, 1, 1), "PENDIENTE", new BigDecimal("100.00"), 1);
         jdbcTemplate.update("INSERT INTO presupuesto_items (id, presupuesto_id, orden_visual, pieza_afectada, requiere_reemplazo, valor_repuesto, importe_mano_obra, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 501L, 500L, 1, "Paragolpes", true, BigDecimal.ZERO, BigDecimal.ZERO, true);
@@ -904,6 +923,22 @@ class InsuranceIntegrationTest {
     }
 
     @Test
+    void shouldCreateFranchiseRecoveryWithPartsDerivedFromTheTodoRiesgoBaseCase() throws Exception {
+        createBudgetWithReplacementPart(100L);
+
+        String franchise = mockMvc.perform(put("/api/v1/cases/100/franchise")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"franchiseStatusCode\":\"PENDIENTE\",\"franchiseAmount\":50000,\"recoveryTypeCode\":\"CIA_TERCERO\",\"franchiseOpinionCode\":\"A_FAVOR\",\"exceedsFranchise\":true,\"recoveryAmount\":50000}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.relatedCaseId").isNumber())
+                .andReturn().getResponse().getContentAsString();
+        Long recoveryCaseId = objectMapper.readTree(franchise).get("relatedCaseId").asLong();
+
+        assertThat(jdbcTemplate.queryForObject("SELECT lleva_repuestos FROM recuperos_franquicia WHERE caso_id = ?", Boolean.class, recoveryCaseId)).isTrue();
+    }
+
+    @Test
     void shouldStoreInsuranceProviderSnapshotAndRejectInactiveProviders() throws Exception {
         jdbcTemplate.update("INSERT INTO proveedores (id, public_id, nombre, activo) VALUES (?, ?, ?, ?)", 702L, "00000000-0000-0000-0000-000000007002", "Proveedor Seguro", true);
 
@@ -1022,6 +1057,54 @@ class InsuranceIntegrationTest {
     }
 
     @Test
+    void shouldSaveLawyerThirdPartyDataBeforePresentationAndTransitionWhenPresentedLater() throws Exception {
+        setCaseType("RECLAMO_TERCEROS_ABOGADO");
+
+        mockMvc.perform(put("/api/v1/cases/100/incident")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"incidentDate\":\"2026-02-10\",\"incidentTime\":null,\"location\":\"Mitre 400\",\"dynamics\":\"Alcance\",\"observations\":\"Sin heridos\"}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\":0,\"presentedAt\":null,\"opinionCode\":\"APROBADO\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.presentedAt").doesNotExist())
+                .andExpect(jsonPath("$.opinionCode").value("APROBADO"));
+
+        mockMvc.perform(get("/api/v1/cases/100/incident").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.incidentDate").value("2026-02-10"))
+                .andExpect(jsonPath("$.location").value("Mitre 400"));
+        mockMvc.perform(get("/api/v1/cases/100").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.visibleTramiteState.code").value("SIN_PRESENTAR"));
+
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\":0,\"agreedAmount\":100}"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("PROCESSING_PRESENTATION_DATE_REQUIRED"));
+
+        mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"expectedVersion\":0,\"presentedAt\":\"2026-02-15\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.presentedAt").value("2026-02-15"));
+
+        mockMvc.perform(get("/api/v1/cases/100/insurance-processing").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.presentedAt").value("2026-02-15"));
+        mockMvc.perform(get("/api/v1/cases/100").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.visibleTramiteState.code").value("PRESENTADO"));
+    }
+
+    @Test
     void shouldRecalculateAmountToBillFromCurrentFranchise() throws Exception {
         mockMvc.perform(patch("/api/v1/cases/100/insurance-processing")
                         .header("X-User-Id", "3")
@@ -1052,7 +1135,7 @@ class InsuranceIntegrationTest {
     }
 
     @Test
-    void shouldPersistProcessingPartsAuthorizationWithoutChangingIndividualParts() throws Exception {
+    void shouldClearPartsAuthorizationWhenBudgetNoLongerRequiresPartsEvenIfHistoricalPartRemains() throws Exception {
         jdbcTemplate.update("INSERT INTO presupuestos (id, caso_id, organizacion_id, sucursal_id, fecha_presupuesto, informe_estado_codigo, version_actual) VALUES (?, ?, ?, ?, ?, ?, ?)", 500L, 100L, 1L, 1L, LocalDate.of(2026, 1, 1), "PENDIENTE", 1);
         jdbcTemplate.update("INSERT INTO presupuesto_items (id, presupuesto_id, orden_visual, pieza_afectada, requiere_reemplazo, valor_repuesto, importe_mano_obra, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", 501L, 500L, 1, "Paragolpes", true, BigDecimal.ZERO, BigDecimal.ZERO, true);
         jdbcTemplate.update("INSERT INTO repuestos_caso (id, caso_id, presupuesto_item_id, descripcion, autorizado_codigo, estado_codigo, usado, devuelto, source_type) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'BUDGET_ITEM')", 502L, 100L, 501L, "Paragolpes", "AUTORIZADO", "PEDIDO", false, false);
@@ -1081,10 +1164,10 @@ class InsuranceIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.partsAuthorizationCode").doesNotExist());
 
-        jdbcTemplate.update("UPDATE presupuesto_items SET requiere_reemplazo = false WHERE presupuesto_id = ?", 500L);
+        jdbcTemplate.update("UPDATE presupuesto_items SET requiere_reemplazo = false, accion_codigo = 'REPARAR', decision_repuesto_codigo = 'REPARAR' WHERE presupuesto_id = ?", 500L);
         mockMvc.perform(get("/api/v1/cases/100/insurance-processing").header("X-User-Id", "3"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.includesParts").value(true))
+                .andExpect(jsonPath("$.includesParts").value(false))
                 .andExpect(jsonPath("$.partsAuthorizationCode").doesNotExist());
     }
 

@@ -9,6 +9,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -27,6 +28,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.hamcrest.Matchers.containsString;
@@ -112,6 +114,46 @@ class BudgetIntegrationTest {
                 "SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'upsert_presupuesto'",
                 Integer.class, 100L);
         assertThat(auditCount).isEqualTo(1);
+    }
+
+    @Test
+    void shouldKeepClosedBudgetAndCanonicalPartsWhenUploadingCasePhotoAndReloadingWorkspace() throws Exception {
+        generateComparison("photo-preserves-budget", List.of(comparisonItem(1, "Óptica delantera", "REEMPLAZAR", 250)));
+        Long categoryId = jdbcTemplate.queryForObject("SELECT id FROM categorias_documentales WHERE codigo = 'OTRO' AND activo = TRUE", Long.class);
+
+        mockMvc.perform(get("/api/v1/cases/100/budget/pdf").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", containsString(MediaType.APPLICATION_PDF_VALUE)));
+
+        String uploaded = mockMvc.perform(multipart("/api/v1/documents")
+                        .file(new MockMultipartFile("file", "reparacion.jpg", MediaType.IMAGE_JPEG_VALUE, "foto de reparacion".getBytes()))
+                        .param("caseId", "100")
+                        .param("categoryId", categoryId.toString())
+                        .param("originCode", "TALLER")
+                        .header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        Long documentId = objectMapper.readTree(uploaded).get("id").asLong();
+        mockMvc.perform(post("/api/v1/documents/{documentId}/relations", documentId)
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"caseId\":100,\"entityType\":\"CASO\",\"entityId\":100,\"moduleCode\":\"OPERACION\",\"principal\":false,\"visibleToCustomer\":false,\"visualOrder\":0}"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/v1/cases/100/budget").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reportStatusCode").value("CERRADO"))
+                .andExpect(jsonPath("$.items[0].affectedPiece").value("Óptica delantera"))
+                .andExpect(jsonPath("$.items[0].actionCode").value("REEMPLAZAR"));
+        mockMvc.perform(get("/api/v1/cases/100/workspace").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.budget.reportStatusCode").value("CERRADO"))
+                .andExpect(jsonPath("$.budget.items[0].affectedPiece").value("Óptica delantera"));
+        mockMvc.perform(get("/api/v1/cases/100/budget/pdf").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", containsString(MediaType.APPLICATION_PDF_VALUE)));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM repuestos_caso WHERE caso_id = 100 AND descripcion = 'Óptica delantera' AND source_type = 'BUDGET_ITEM'", Integer.class)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT precio_presupuestado FROM repuestos_caso WHERE caso_id = 100 AND descripcion = 'Óptica delantera'", BigDecimal.class)).isEqualByComparingTo("250.00");
     }
 
     @Test

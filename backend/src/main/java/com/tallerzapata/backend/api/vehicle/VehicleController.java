@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.api.vehicle;
 
 import com.tallerzapata.backend.application.vehicle.VehicleService;
+import com.tallerzapata.backend.api.casefile.CodeCatalogResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -71,12 +72,28 @@ public class VehicleController {
         return vehicleService.listCatalogs();
     }
 
+    @Operation(summary = "Agregar categoría de vehículo", description = "Agrega una categoría reutilizable para el tipo de vehículo")
+    @ApiResponse(responseCode = "200", description = "Categoría creada")
+    @PreAuthorize("hasAuthority('vehiculo.crear')")
+    @PostMapping("/catalogs/types")
+    public CodeCatalogResponse createVehicleTypeCategory(@Valid @RequestBody VehicleTypeCategoryCreateRequest request) {
+        return vehicleService.createVehicleTypeCategory(request);
+    }
+
     @Operation(summary = "Listar marcas", description = "Devuelve el catalogo de marcas de vehiculos")
     @ApiResponse(responseCode = "200", description = "OK")
     @PreAuthorize("hasAuthority('vehiculo.ver')")
     @GetMapping("/brands")
     public List<VehicleBrandResponse> listBrands() {
         return vehicleService.listBrands();
+    }
+
+    @Operation(summary = "Agregar marca de vehículo", description = "Agrega una marca reutilizable para vehículos")
+    @ApiResponse(responseCode = "200", description = "Marca creada")
+    @PreAuthorize("hasAuthority('vehiculo.crear')")
+    @PostMapping("/brands")
+    public VehicleBrandResponse createBrand(@Valid @RequestBody VehicleBrandCreateRequest request) {
+        return vehicleService.createBrand(request);
     }
 
     @Operation(summary = "Listar modelos", description = "Devuelve el catalogo de modelos, opcionalmente filtrados por marca")

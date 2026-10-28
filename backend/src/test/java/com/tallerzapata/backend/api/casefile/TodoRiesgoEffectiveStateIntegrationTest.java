@@ -208,6 +208,17 @@ class TodoRiesgoEffectiveStateIntegrationTest {
     }
 
     @Test
+    void exposesPresentedWithPendingDocumentationUsingItsCanonicalLabel() throws Exception {
+        long caseId = createCase("TODO_RIESGO");
+        upsertInsuranceProcessing(caseId, "2026-08-09", null, null, null, null);
+
+        mockMvc.perform(get("/api/v1/cases/{caseId}", caseId).header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.visibleTramiteState.code").value("PRESENTADO_PD"))
+                .andExpect(jsonPath("$.visibleTramiteState.label").value("Presentado (PD)"));
+    }
+
+    @Test
     void noRepairEndpointsRequireGlobalAdminEvenWhenTheUserRetainsAdminPermissions() throws Exception {
         long caseId = createCase("TODO_RIESGO");
 
@@ -255,6 +266,21 @@ class TodoRiesgoEffectiveStateIntegrationTest {
                 .andExpect(jsonPath("$.priorityCode").value("URGENTE"));
         assertThat(jdbcTemplate.queryForObject("SELECT reparacion_urgente_actor_usuario_id FROM todo_riesgo_state_facts WHERE caso_id = ?", Long.class, urgentCaseId)).isEqualTo(1L);
         assertThat(jdbcTemplate.queryForObject("SELECT cause FROM todo_riesgo_effective_state_history WHERE caso_id = ? ORDER BY id DESC LIMIT 1", String.class, urgentCaseId)).isEqualTo("URGENT_REPAIR");
+    }
+
+    @Test
+    void allowsNoRepairWhenEveryRequiredPartWasAlreadyInstalled() throws Exception {
+        long caseId = createCase("TODO_RIESGO");
+        long partId = createPart(caseId, "INSTALADO");
+        jdbcTemplate.update("UPDATE repuestos_caso SET autorizado_codigo = 'AUTORIZADO' WHERE id = ?", partId);
+        recalculator.recalculate(caseId);
+
+        mockMvc.perform(post("/api/v1/cases/{caseId}/todo-riesgo/no-repair", caseId).header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Reparacion no requerida tras instalar repuestos\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.visibleRepairState.code").value("NO_DEBE_REPARARSE"));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM notificaciones WHERE caso_id = ? AND usuario_id = 1 AND tipo_codigo = 'TODO_RIESGO_NO_REPARA'", Integer.class, caseId)).isEqualTo(1);
     }
 
     @Test

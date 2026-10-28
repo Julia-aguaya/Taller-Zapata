@@ -240,6 +240,50 @@ class CaseCreateIntegrationTest {
     }
 
     @Test
+    void shouldReturnTheSameCleasCaseWhenTheCreateRequestIsRepeated() throws Exception {
+        CaseCreateRequest request = new CaseCreateRequest(
+                4L, 1L, 1L, 10L, 10L, false, null, null, null, null,
+                null, null, null, null, null, null, null, null, "CLIENTE", "PRINCIPAL"
+        );
+
+        MvcResult first = mockMvc.perform(post("/api/v1/cases")
+                        .header("X-User-Id", "1")
+                        .header("Idempotency-Key", "cleas-retry-001")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.caseTypeCode").value("CLEAS"))
+                .andReturn();
+
+        MvcResult repeated = mockMvc.perform(post("/api/v1/cases")
+                        .header("X-User-Id", "1")
+                        .header("Idempotency-Key", "cleas-retry-001")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        assertThat(objectMapper.readTree(repeated.getResponse().getContentAsString()).get("id").asLong())
+                .isEqualTo(objectMapper.readTree(first.getResponse().getContentAsString()).get("id").asLong());
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM casos WHERE tipo_tramite_id = 4", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void shouldRequireAnIdempotencyKeyForCleasCreation() throws Exception {
+        CaseCreateRequest request = new CaseCreateRequest(
+                4L, 1L, 1L, 10L, 10L, false, null, null, null, null,
+                null, null, null, null, null, null, null, null, "CLIENTE", "PRINCIPAL"
+        );
+
+        mockMvc.perform(post("/api/v1/cases")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Idempotency-Key es obligatorio para crear una carpeta CLEAS"));
+    }
+
+    @Test
     void shouldRejectCreateWhenPrincipalPersonDoesNotExist() throws Exception {
         CaseCreateRequest request = new CaseCreateRequest(
                 1L,

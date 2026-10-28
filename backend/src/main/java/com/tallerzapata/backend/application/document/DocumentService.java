@@ -24,6 +24,8 @@ import com.tallerzapata.backend.infrastructure.persistence.document.DocumentEnti
 import com.tallerzapata.backend.infrastructure.persistence.document.DocumentRelationEntity;
 import com.tallerzapata.backend.infrastructure.persistence.document.DocumentRelationRepository;
 import com.tallerzapata.backend.infrastructure.persistence.document.DocumentRepository;
+import com.tallerzapata.backend.infrastructure.persistence.document.DocumentUploadSessionRepository;
+import com.tallerzapata.backend.infrastructure.persistence.finance.IssuedReceiptRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleIntakeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleOutcomeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.person.PersonRepository;
@@ -39,6 +41,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import java.io.ByteArrayOutputStream;
@@ -67,6 +71,8 @@ public class DocumentService {
     private final DocumentCategoryRepository documentCategoryRepository;
     private final DocumentRepository documentRepository;
     private final DocumentRelationRepository documentRelationRepository;
+    private final DocumentUploadSessionRepository documentUploadSessionRepository;
+    private final IssuedReceiptRepository issuedReceiptRepository;
     private final CaseRepository caseRepository;
     private final CasePersonRepository casePersonRepository;
     private final CaseVehicleRepository caseVehicleRepository;
@@ -84,6 +90,8 @@ public class DocumentService {
             DocumentCategoryRepository documentCategoryRepository,
             DocumentRepository documentRepository,
             DocumentRelationRepository documentRelationRepository,
+            DocumentUploadSessionRepository documentUploadSessionRepository,
+            IssuedReceiptRepository issuedReceiptRepository,
             CaseRepository caseRepository,
             CasePersonRepository casePersonRepository,
             CaseVehicleRepository caseVehicleRepository,
@@ -100,6 +108,8 @@ public class DocumentService {
         this.documentCategoryRepository = documentCategoryRepository;
         this.documentRepository = documentRepository;
         this.documentRelationRepository = documentRelationRepository;
+        this.documentUploadSessionRepository = documentUploadSessionRepository;
+        this.issuedReceiptRepository = issuedReceiptRepository;
         this.caseRepository = caseRepository;
         this.casePersonRepository = casePersonRepository;
         this.caseVehicleRepository = caseVehicleRepository;
@@ -356,6 +366,7 @@ public class DocumentService {
 
         DocumentEntity entity = documentRepository.findById(documentId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el documento " + documentId));
+        requireDocumentCanBeDeleted(documentId);
 
         List<DocumentRelationEntity> relations = documentRelationRepository.findByDocumentIdOrderByVisualOrderAscIdAsc(documentId);
         for (DocumentRelationEntity relation : relations) {
@@ -369,12 +380,30 @@ public class DocumentService {
                     caseAuditService.toJson(Map.of("domain", "documentos")), httpRequest);
         }
         documentRelationRepository.deleteAll(relations);
+        documentRepository.delete(entity);
+        documentRepository.flush();
 
         if (entity.getStorageKey() != null) {
-            documentStorageService.delete(entity.getStorageKey());
+            String storageKey = entity.getStorageKey();
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    documentStorageService.delete(storageKey);
+                }
+            });
         }
+    }
 
-        documentRepository.delete(entity);
+    private void requireDocumentCanBeDeleted(Long documentId) {
+        if (documentUploadSessionRepository.existsByDocumentId(documentId)) {
+            throw new ConflictException("No se puede eliminar el documento porque conserva una carga completada. Desvinculalo de la carpeta si solo querés quitarlo de esa vista.");
+        }
+        if (issuedReceiptRepository.existsByDocumentId(documentId)) {
+            throw new ConflictException("No se puede eliminar el documento porque está asociado a un comprobante emitido.");
+        }
+        if (documentRepository.existsByReplacesDocumentId(documentId)) {
+            throw new ConflictException("No se puede eliminar el documento porque es el antecedente de una versión posterior.");
+        }
     }
 
     @Transactional

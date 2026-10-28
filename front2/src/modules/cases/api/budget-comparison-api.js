@@ -10,3 +10,4 @@ export const saveComparisonPrice = (caseId, snapshotId, pieceId, columnId, paylo
 export const clearComparisonPrice = (caseId, snapshotId, pieceId, columnId) => requestJson(`${base(caseId, snapshotId)}/pieces/${pieceId}/prices/${columnId}`, { method: 'DELETE' });
 export const selectComparisonQuote = (caseId, snapshotId, pieceId, columnId) => requestJson(`${base(caseId, snapshotId)}/pieces/${pieceId}/providers/${columnId}/select`, { method: 'POST' });
 export const downloadBudgetComparisonPdf = (caseId, snapshotId) => requestBlob(`${base(caseId, snapshotId)}/pdf`);
+export const generateExtraBudgetComparison = (caseId, versionId) => requestJson(`${base(caseId)}/extra/${versionId}/generate`, { method: 'POST' });

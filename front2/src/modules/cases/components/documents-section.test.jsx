@@ -4,6 +4,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DocumentsSection } from './documents-section';
 import { clearStoredAuth, saveStoredAuth } from '@/shared/auth/session-storage';
 
+const { toast } = vi.hoisted(() => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+
+vi.mock('sonner', () => ({ toast }));
+
 vi.mock('@/modules/cases/api/resumable-file-upload-api', () => ({
   uploadFileResumably: async ({ file, metadata, relation }) => {
     const form = new FormData();
@@ -36,11 +40,14 @@ const jsonResponse = (body) => new Response(JSON.stringify(body), {
 
 const renderSection = (props = {}) => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  return {
+    ...render(
     <QueryClientProvider client={queryClient}>
       <DocumentsSection caseId="42" {...props} />
     </QueryClientProvider>,
-  );
+    ),
+    queryClient,
+  };
 };
 
 describe('DocumentsSection', () => {
@@ -50,6 +57,8 @@ describe('DocumentsSection', () => {
       scopes: [{ organizationId: null, branchId: null }],
     };
     clearStoredAuth();
+    toast.success.mockClear();
+    toast.error.mockClear();
     vi.unstubAllGlobals();
   });
 
@@ -199,6 +208,29 @@ describe('DocumentsSection', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/documents/2/relations', expect.objectContaining({ method: 'POST' }));
   });
 
+  it('refreshes only documents after uploading a photo, preserving the budget workspace state', async () => {
+    saveStoredAuth({ accessToken: 'access-token', refreshToken: 'refresh-token' });
+    const fetchMock = vi.fn((url, options = {}) => {
+      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [{ id: 8, code: 'OTRO', name: 'Otro', requiresDate: false }] }));
+      if (url === '/api/v1/cases/42/documents') return Promise.resolve(jsonResponse([]));
+      if (url === '/api/v1/documents' && options.method === 'POST') return Promise.resolve(jsonResponse({ id: 100 }));
+      if (url === '/api/v1/documents/100/relations' && options.method === 'POST') return Promise.resolve(jsonResponse({ id: 11 }));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { queryClient } = renderSection();
+    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries');
+
+    fireEvent.click(screen.getByRole('button', { name: /agregar items/i }));
+    await screen.findByRole('option', { name: 'Otro' });
+    fireEvent.change(screen.getByLabelText('Categoría'), { target: { value: '8' } });
+    fireEvent.change(screen.getByLabelText('Archivos'), { target: { files: [new File(['foto'], 'reparacion.jpg', { type: 'image/jpeg' })] } });
+    fireEvent.click(screen.getByRole('button', { name: /^subir$/i }));
+
+    await waitFor(() => expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['cases', '42', 'documents'] }));
+    expect(invalidateQueries).not.toHaveBeenCalledWith({ queryKey: ['cases', '42', 'workspace'] });
+  });
+
   it('sends editable observations using the backend field name', async () => {
     saveStoredAuth({ accessToken: 'access-token', refreshToken: 'refresh-token' });
     const fetchMock = vi.fn((url, options = {}) => {
@@ -288,11 +320,11 @@ describe('DocumentsSection', () => {
     ));
   });
 
-  it('requires an accessible confirmation before deleting a document', async () => {
+  it('requires an accessible confirmation before unlinking a document from its folder', async () => {
     const fetchMock = vi.fn((url, options = {}) => {
       if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [] }));
       if (url === '/api/v1/cases/42/documents') return Promise.resolve(jsonResponse([{ relationId: 1, documentId: 12, fileName: 'foto.pdf' }]));
-      if (url === '/api/v1/documents/12' && options.method === 'DELETE') return Promise.resolve(jsonResponse({}));
+      if (url === '/api/v1/document-relations/1' && options.method === 'DELETE') return Promise.resolve(jsonResponse({}));
       return Promise.reject(new Error(`Unexpected request: ${url}`));
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -303,28 +335,45 @@ describe('DocumentsSection', () => {
     fireEvent.click(screen.getByRole('button', { name: /^eliminar$/i }));
 
     expect(screen.getByRole('dialog', { name: '¿Eliminar documento?' })).toBeInTheDocument();
-    expect(screen.getByText('El documento foto.pdf se eliminará de forma permanente.')).toBeInTheDocument();
-    expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/documents/12', expect.anything());
+    expect(screen.getByText('El documento foto.pdf se desvinculará de esta carpeta. El archivo y sus vínculos en otras carpetas se conservarán.')).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/document-relations/1', expect.anything());
     expect(screen.getByRole('button', { name: /^cancelar$/i })).toHaveFocus();
 
     fireEvent.click(screen.getByRole('button', { name: /^cancelar$/i }));
     expect(screen.queryByRole('dialog', { name: '¿Eliminar documento?' })).not.toBeInTheDocument();
-    expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/documents/12', expect.anything());
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/document-relations/1', expect.anything());
 
     fireEvent.click(screen.getByRole('button', { name: /^eliminar$/i }));
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.queryByRole('dialog', { name: '¿Eliminar documento?' })).not.toBeInTheDocument();
-    expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/documents/12', expect.anything());
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/document-relations/1', expect.anything());
 
     fireEvent.click(screen.getByRole('button', { name: /^eliminar$/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar diálogo' }));
     expect(screen.queryByRole('dialog', { name: '¿Eliminar documento?' })).not.toBeInTheDocument();
-    expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/documents/12', expect.anything());
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/document-relations/1', expect.anything());
 
     fireEvent.click(screen.getByRole('button', { name: /^eliminar$/i }));
     const confirmationDialog = screen.getByRole('dialog', { name: '¿Eliminar documento?' });
-    fireEvent.click(within(confirmationDialog).getByRole('button', { name: /^eliminar$/i }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/documents/12', expect.objectContaining({ method: 'DELETE' })));
+    fireEvent.click(within(confirmationDialog).getByRole('button', { name: /^desvincular$/i }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/document-relations/1', expect.objectContaining({ method: 'DELETE' })));
+  });
+
+  it('does not request unlinking when the real listing response lacks relationId', async () => {
+    const fetchMock = vi.fn((url) => {
+      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [] }));
+      if (url === '/api/v1/cases/42/documents') return Promise.resolve(jsonResponse([{ documentId: 12, fileName: 'foto-sin-relacion.jpg' }]));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderSection();
+    fireEvent.click(await screen.findByRole('button', { name: /^eliminar$/i }));
+    const confirmationDialog = screen.getByRole('dialog', { name: '¿Eliminar documento?' });
+    fireEvent.click(within(confirmationDialog).getByRole('button', { name: /^desvincular$/i }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('No se puede desvincular el documento porque falta el identificador de la relación. Recargá la carpeta e intentá nuevamente.'));
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/document-relations/undefined', expect.anything());
   });
 
   it('hides destructive document actions without the matching capability', async () => {

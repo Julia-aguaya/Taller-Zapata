@@ -11,6 +11,7 @@ import com.tallerzapata.backend.api.recovery.FranchiseRecoveryUpsertRequest;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.InsuranceRepairCasePolicy;
 import com.tallerzapata.backend.application.casefile.CaseService;
+import com.tallerzapata.backend.application.insurance.CasePartsInclusionPolicy;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
@@ -77,11 +78,12 @@ public class FranchiseRecoveryService {
     private final VehicleRepository vehicleRepository;
     private final BudgetRepository budgetRepository;
     private final CasePartRepository casePartRepository;
+    private final CasePartsInclusionPolicy casePartsInclusionPolicy;
     private final FranchiseRecoveryClientObligationRepository clientObligationRepository;
     private final FranchiseRecoveryClientObligationPaymentApplicationRepository clientObligationPaymentApplicationRepository;
     private final FinancialPaymentMethodRepository financialPaymentMethodRepository;
 
-    public FranchiseRecoveryService(FranchiseRecoveryRepository franchiseRecoveryRepository, FranchiseRecoveryManagerRepository managerRepository, FranchiseRecoveryOpinionRepository opinionRepository, FranchiseRecoveryPaymentStatusRepository paymentStatusRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CaseRelationRepository caseRelationRepository, CaseService caseService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, FinancialMovementRepository financialMovementRepository, NotificationRepository notificationRepository, UserRoleRepository userRoleRepository, CaseIncidentRepository caseIncidentRepository, CaseInsuranceRepository caseInsuranceRepository, CaseThirdPartyRepository caseThirdPartyRepository, PersonRepository personRepository, VehicleRepository vehicleRepository, BudgetRepository budgetRepository, CasePartRepository casePartRepository, FranchiseRecoveryClientObligationRepository clientObligationRepository, FranchiseRecoveryClientObligationPaymentApplicationRepository clientObligationPaymentApplicationRepository, FinancialPaymentMethodRepository financialPaymentMethodRepository) {
+    public FranchiseRecoveryService(FranchiseRecoveryRepository franchiseRecoveryRepository, FranchiseRecoveryManagerRepository managerRepository, FranchiseRecoveryOpinionRepository opinionRepository, FranchiseRecoveryPaymentStatusRepository paymentStatusRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CaseRelationRepository caseRelationRepository, CaseService caseService, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, FinancialMovementRepository financialMovementRepository, NotificationRepository notificationRepository, UserRoleRepository userRoleRepository, CaseIncidentRepository caseIncidentRepository, CaseInsuranceRepository caseInsuranceRepository, CaseThirdPartyRepository caseThirdPartyRepository, PersonRepository personRepository, VehicleRepository vehicleRepository, BudgetRepository budgetRepository, CasePartRepository casePartRepository, CasePartsInclusionPolicy casePartsInclusionPolicy, FranchiseRecoveryClientObligationRepository clientObligationRepository, FranchiseRecoveryClientObligationPaymentApplicationRepository clientObligationPaymentApplicationRepository, FinancialPaymentMethodRepository financialPaymentMethodRepository) {
         this.franchiseRecoveryRepository = franchiseRecoveryRepository;
         this.managerRepository = managerRepository;
         this.opinionRepository = opinionRepository;
@@ -98,7 +100,7 @@ public class FranchiseRecoveryService {
         this.userRoleRepository = userRoleRepository;
         this.caseIncidentRepository = caseIncidentRepository;
         this.caseInsuranceRepository = caseInsuranceRepository; this.caseThirdPartyRepository = caseThirdPartyRepository;
-        this.personRepository = personRepository; this.vehicleRepository = vehicleRepository; this.budgetRepository = budgetRepository; this.casePartRepository = casePartRepository;
+        this.personRepository = personRepository; this.vehicleRepository = vehicleRepository; this.budgetRepository = budgetRepository; this.casePartRepository = casePartRepository; this.casePartsInclusionPolicy = casePartsInclusionPolicy;
         this.clientObligationRepository = clientObligationRepository;
         this.clientObligationPaymentApplicationRepository = clientObligationPaymentApplicationRepository;
         this.financialPaymentMethodRepository = financialPaymentMethodRepository;
@@ -139,7 +141,8 @@ public class FranchiseRecoveryService {
         entity.setPresentedAt(request.presentedAt());
         entity.setInspectionForwardedAt(request.inspectionForwardedAt()); entity.setInspectionDate(request.inspectionDate());
         entity.setModalityCode(normalizedOptionalCode(request.modalityCode())); entity.setQuotationStatusCode(normalizedOptionalCode(request.quotationStatusCode())); entity.setQuotationDate(request.quotationDate());
-        entity.setIncludesParts(Boolean.TRUE.equals(request.includesParts())); entity.setRepairsVehicle(Boolean.TRUE.equals(request.repairsVehicle())); entity.setPartsProvisionModeCode(normalizedOptionalCode(request.partsProvisionModeCode()));
+        if (request.includesParts() != null) entity.setIncludesParts(request.includesParts());
+        entity.setRepairsVehicle(Boolean.TRUE.equals(request.repairsVehicle())); entity.setPartsProvisionModeCode(normalizedOptionalCode(request.partsProvisionModeCode()));
         updateIncidentDate(caseId, request.incidentDate());
         entity.setAgreedAmount(scale(request.agreedAmount()));
         entity.setRecoveryAmount(scale(request.recoveryAmount()));
@@ -188,8 +191,10 @@ public class FranchiseRecoveryService {
         copyAssociatedInsuranceData(base.getId(), recovery.getCaseId());
         copyAssociatedIncidentData(base.getId(), recovery.getCaseId());
         recovery.setReusesBaseData(true);
+        recovery.setIncludesParts(casePartsInclusionPolicy.includesParts(baseCaseId));
         recovery.setEnablesRepair(false);
         recovery.setRecoversClient(false);
+        recovery.setRepairsVehicle(false);
         recovery.setApprovedLowerAgreement(false);
         franchiseRecoveryRepository.save(recovery);
         copyAssociatedInsuranceData(baseCaseId, child.getId());
@@ -297,6 +302,7 @@ public class FranchiseRecoveryService {
         recovery.setBaseFolderCode(base.getFolderCode());
         recovery.setBaseFolderName(personRepository.findById(base.getPrincipalCustomerPersonId()).map(person -> person.getNombreMostrar()).orElse("Todo Riesgo"));
         recovery.setBaseFolderSnapshot(baseSnapshot(base).toString());
+        if (request.includesParts() == null) recovery.setIncludesParts(casePartsInclusionPolicy.includesParts(base.getId()));
         copyAssociatedInsuranceData(base.getId(), recovery.getCaseId());
         copyAssociatedIncidentData(base.getId(), recovery.getCaseId());
         CaseRelationEntity relation = new CaseRelationEntity(); relation.setSourceCaseId(base.getId()); relation.setTargetCaseId(recovery.getCaseId()); relation.setRelationTypeCode("RECUPERO_DE"); relation.setDescription("Recupero de franquicia de la carpeta " + base.getFolderCode()); caseRelationRepository.save(relation);

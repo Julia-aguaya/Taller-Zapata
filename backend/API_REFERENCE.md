@@ -61,7 +61,9 @@ Header: `Authorization: Bearer <token>`
 | POST | /api/v1/vehicles | Crear vehiculo | vehiculo.crear |
 | PUT | /api/v1/vehicles/{vehicleId} | Actualizar vehiculo | vehiculo.crear |
 | GET | /api/v1/vehicles/brands | Listar marcas | vehiculo.ver |
+| POST | /api/v1/vehicles/brands | Agregar marca de vehículo | vehiculo.crear |
 | GET | /api/v1/vehicles/models | Listar modelos | vehiculo.ver |
+| POST | /api/v1/vehicles/catalogs/types | Agregar categoría de vehículo | vehiculo.crear |
 | GET | /api/v1/vehicles/{vehicleId}/persons | Listar personas de vehiculo | vehiculo.ver |
 | POST | /api/v1/vehicles/{vehicleId}/persons | Crear relacion vehiculo-persona | vehiculo.crear |
 | PUT | /api/v1/vehicles/{vehicleId}/persons/{relationId} | Actualizar relacion vehiculo-persona | vehiculo.crear |

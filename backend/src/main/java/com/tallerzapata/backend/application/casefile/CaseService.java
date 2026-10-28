@@ -19,6 +19,8 @@ import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseCreationIdempotencyEntity;
+import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseCreationIdempotencyRepository;
 import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetEntity;
 import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetItemEntity;
 import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetItemRepository;
@@ -85,6 +87,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -128,6 +131,7 @@ public class CaseService {
     private final BudgetRepository budgetRepository;
     private final BudgetItemRepository budgetItemRepository;
     private final CaseThirdPartyRepository caseThirdPartyRepository;
+    private final CaseCreationIdempotencyRepository caseCreationIdempotencyRepository;
 
     public CaseService(
             CaseRepository caseRepository,
@@ -161,7 +165,8 @@ public class CaseService {
             CaseAccessControlService caseAccessControlService,
             CaseVisibleStateResolver caseVisibleStateResolver, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator,
             TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator,
-            BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CaseThirdPartyRepository caseThirdPartyRepository
+            BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CaseThirdPartyRepository caseThirdPartyRepository,
+            CaseCreationIdempotencyRepository caseCreationIdempotencyRepository
     ) {
         this.caseRepository = caseRepository;
         this.caseTypeRepository = caseTypeRepository;
@@ -199,6 +204,7 @@ public class CaseService {
         this.budgetRepository = budgetRepository;
         this.budgetItemRepository = budgetItemRepository;
         this.caseThirdPartyRepository = caseThirdPartyRepository;
+        this.caseCreationIdempotencyRepository = caseCreationIdempotencyRepository;
     }
 
     @Transactional(readOnly = true)
@@ -319,14 +325,24 @@ public class CaseService {
     }
 
     @Transactional
-    public CaseResponse create(CaseCreateRequest request, HttpServletRequest httpRequest) {
+    public CaseResponse create(CaseCreateRequest request, String idempotencyKey, HttpServletRequest httpRequest) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         caseAccessControlService.requirePermission(currentUser, "caso.crear");
+        String normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey);
+        if (normalizedIdempotencyKey != null) {
+            Optional<CaseResponse> existing = findIdempotentCase(currentUser.id(), normalizedIdempotencyKey);
+            if (existing.isPresent()) {
+                return existing.get();
+            }
+        }
         CreationScope creationScope = resolveCreationScope(currentUser, request.organizationId(), request.branchId());
         caseAccessControlService.requireOrganizationScope(currentUser, creationScope.organizationId(), creationScope.branchId());
 
         CaseTypeEntity caseType = caseTypeRepository.findById(request.caseTypeId())
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el tipo de tramite " + request.caseTypeId()));
+        if ("CLEAS".equalsIgnoreCase(caseType.getCode()) && normalizedIdempotencyKey == null) {
+            throw new ConflictException("Idempotency-Key es obligatorio para crear una carpeta CLEAS");
+        }
         BranchEntity branch = branchRepository.findById(creationScope.branchId())
                 .orElseThrow(() -> new ResourceNotFoundException("No existe la sucursal " + creationScope.branchId()));
 
@@ -470,11 +486,27 @@ public class CaseService {
         todoRiesgoEffectiveStateRecalculator.recalculate(entity.getId());
         cleasEffectiveStateRecalculator.recalculate(entity.getId());
 
+        if (normalizedIdempotencyKey != null) {
+            CaseCreationIdempotencyEntity idempotency = new CaseCreationIdempotencyEntity();
+            idempotency.setUserId(currentUser.id());
+            idempotency.setIdempotencyKey(normalizedIdempotencyKey);
+            idempotency.setCaseId(entity.getId());
+            caseCreationIdempotencyRepository.saveAndFlush(idempotency);
+        }
+
         return toResponse(entity);
     }
 
     @Transactional
-    public CaseResponse createWithReferenciador(CaseCreateWithReferenciadorRequest request, HttpServletRequest httpRequest) {
+    public CaseResponse createWithReferenciador(CaseCreateWithReferenciadorRequest request, String idempotencyKey, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        String normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey);
+        if (normalizedIdempotencyKey != null) {
+            Optional<CaseResponse> existing = findIdempotentCase(currentUser.id(), normalizedIdempotencyKey);
+            if (existing.isPresent()) {
+                return existing.get();
+            }
+        }
         if (request.caseRequest().referenciadorId() != null) {
             throw new ConflictException("No se puede seleccionar y crear un referenciador a la vez");
         }
@@ -495,11 +527,19 @@ public class CaseService {
                 caseRequest.incidentTime(), caseRequest.incidentPlace(), caseRequest.incidentDynamics(),
                 caseRequest.incidentObservations(), caseRequest.prescriptionDate(), caseRequest.daysInProcess(),
                 caseRequest.customerRoleCode(), caseRequest.principalVehicleRoleCode()
-        ), httpRequest);
+        ), normalizedIdempotencyKey, httpRequest);
     }
 
     @Transactional
-    public CaseResponse createWithInsurance(CaseCreateWithInsuranceRequest request, HttpServletRequest httpRequest) {
+    public CaseResponse createWithInsurance(CaseCreateWithInsuranceRequest request, String idempotencyKey, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        String normalizedIdempotencyKey = normalizeIdempotencyKey(idempotencyKey);
+        if (normalizedIdempotencyKey != null) {
+            Optional<CaseResponse> existing = findIdempotentCase(currentUser.id(), normalizedIdempotencyKey);
+            if (existing.isPresent()) {
+                return existing.get();
+            }
+        }
         caseAccessControlService.requirePermission(currentUserService.requireCurrentUser(), "seguro.crear");
         Long companyId = request.insurance().insuranceCompanyId();
         InsuranceCompanyEntity company = insuranceCompanyRepository.findById(companyId)
@@ -525,7 +565,7 @@ public class CaseService {
             PersonEntity person = personRepository.findById(existingProcessorPersonId).orElseThrow(() -> new ResourceNotFoundException("No existe la persona " + existingProcessorPersonId));
             if (!Boolean.TRUE.equals(person.getActivo()) || !insuranceCompanyContactRepository.existsByCompanyIdAndPersonIdAndContactRoleCode(companyId, existingProcessorPersonId, "TRAMITADOR")) throw new ConflictException("La persona seleccionada no es un contacto activo TRAMITADOR de la compania indicada");
         }
-        CaseResponse response = create(request.caseRequest(), httpRequest);
+        CaseResponse response = create(request.caseRequest(), normalizedIdempotencyKey, httpRequest);
         if (!insuranceCompanyContactRepository.existsByCompanyIdAndPersonIdAndContactRoleCode(companyId, processorPersonId, "TRAMITADOR")) {
             InsuranceCompanyContactEntity contact = new InsuranceCompanyContactEntity();
             contact.setCompanyId(companyId); contact.setPersonId(processorPersonId); contact.setContactRoleCode("TRAMITADOR");
@@ -1041,10 +1081,15 @@ public class CaseService {
         Map<String, CaseVisibleStateResponse> visibleStates = caseVisibleStateResolver.resolveForCase(entity);
 
         String principalCustomerName = null;
+        String principalCustomerFirstName = null;
+        String principalCustomerLastName = null;
         if (entity.getPrincipalCustomerPersonId() != null) {
-            principalCustomerName = personRepository.findById(entity.getPrincipalCustomerPersonId())
-                    .map(PersonEntity::getNombreMostrar)
-                    .orElse(null);
+            PersonEntity person = personRepository.findById(entity.getPrincipalCustomerPersonId()).orElse(null);
+            if (person != null) {
+                principalCustomerName = person.getNombreMostrar();
+                principalCustomerFirstName = person.getNombre();
+                principalCustomerLastName = person.getApellido();
+            }
         }
         String principalVehiclePlate = null;
         if (entity.getPrincipalVehicleId() != null) {
@@ -1092,6 +1137,8 @@ public class CaseService {
                 visibleStates.get("tramite"),
                 visibleStates.get("reparacion"),
                 principalCustomerName,
+                principalCustomerFirstName,
+                principalCustomerLastName,
                 principalVehiclePlate
         );
     }
@@ -1114,9 +1161,15 @@ public class CaseService {
         Map<String, CaseVisibleStateResponse> visibleStates = caseVisibleStateResolver.resolveForCase(entity);
 
         String principalCustomerName = null;
+        String principalCustomerFirstName = null;
+        String principalCustomerLastName = null;
         if (entity.getPrincipalCustomerPersonId() != null) {
             PersonEntity person = personsById.get(entity.getPrincipalCustomerPersonId());
-            principalCustomerName = person != null ? person.getNombreMostrar() : null;
+            if (person != null) {
+                principalCustomerName = person.getNombreMostrar();
+                principalCustomerFirstName = person.getNombre();
+                principalCustomerLastName = person.getApellido();
+            }
         }
         String principalVehiclePlate = null;
         if (entity.getPrincipalVehicleId() != null) {
@@ -1163,6 +1216,8 @@ public class CaseService {
                 visibleStates.get("tramite"),
                 visibleStates.get("reparacion"),
                 principalCustomerName,
+                principalCustomerFirstName,
+                principalCustomerLastName,
                 principalVehiclePlate
         );
     }
@@ -1177,6 +1232,22 @@ public class CaseService {
             return null;
         }
         return value.trim();
+    }
+
+    private String normalizeIdempotencyKey(String value) {
+        String key = blankToNull(value);
+        if (key == null) return null;
+        if (key.length() > 100) {
+            throw new ConflictException("Idempotency-Key supera los 100 caracteres");
+        }
+        return key;
+    }
+
+    private Optional<CaseResponse> findIdempotentCase(Long userId, String idempotencyKey) {
+        return caseCreationIdempotencyRepository.findByUserIdAndIdempotencyKey(userId, idempotencyKey)
+                .map(CaseCreationIdempotencyEntity::getCaseId)
+                .flatMap(caseRepository::findById)
+                .map(this::toResponse);
     }
 
     private CreationScope resolveCreationScope(AuthenticatedUser currentUser, Long requestedOrganizationId, Long requestedBranchId) {

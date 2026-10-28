@@ -21,6 +21,13 @@ const currentLocalDate = () => {
   const offset = now.getTimezoneOffset() * 60_000;
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 };
+const requireRelationId = (relationId) => {
+  const normalizedId = Number(relationId);
+  if (!Number.isInteger(normalizedId) || normalizedId <= 0) {
+    throw new Error('No se puede desvincular el documento porque falta el identificador de la relación. Recargá la carpeta e intentá nuevamente.');
+  }
+  return normalizedId;
+};
 
 export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode = null, originCode = 'SEED_LOCAL', includeHistorical = false, showCompleteAction = true, title = 'Documentación', categoryCodes = VISIBLE_DOCUMENT_CATEGORY_CODES, collapsible = false, showAllCategories = false, editableMetadata = false }) => {
   const queryClient = useQueryClient();
@@ -43,11 +50,12 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
   const [editObservations, setEditObservations] = useState('');
   const [documentationFeedback, setDocumentationFeedback] = useState('');
   const [expanded, setExpanded] = useState(!collapsible);
+  const invalidateDocumentViews = () => queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'documents'] });
   const invalidateCaseViews = () => Promise.all([
     queryClient.invalidateQueries({ queryKey: ['cases'] }),
     queryClient.invalidateQueries({ queryKey: ['cases', String(caseId)] }),
     queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'workspace'] }),
-    queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'documents'] }),
+    invalidateDocumentViews(),
     queryClient.invalidateQueries({ queryKey: ['panel'] }),
   ]);
 
@@ -78,8 +86,8 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
   const editRequiresDate = Boolean(selectedEditCategory?.requiresDate);
 
   const deleteMutation = useMutation({
-    mutationFn: (docId) => requestJson(`/documents/${docId}`, { method: 'DELETE' }),
-    onSuccess: async () => { await invalidateCaseViews(); setDocumentToDelete(null); toast.success('Documento eliminado.'); },
+    mutationFn: (relationId) => requestJson(`/document-relations/${requireRelationId(relationId)}`, { method: 'DELETE' }),
+    onSuccess: async () => { await invalidateDocumentViews(); setDocumentToDelete(null); toast.success('Documento desvinculado de la carpeta.'); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -95,7 +103,7 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
         active: documentToEdit.active ?? true,
       }),
     }),
-    onSuccess: async () => { await invalidateCaseViews(); setDocumentToEdit(null); toast.success('Documento actualizado.'); },
+    onSuccess: async () => { await invalidateDocumentViews(); setDocumentToEdit(null); toast.success('Documento actualizado.'); },
     onError: (error) => toast.error(error.message),
   });
 
@@ -127,7 +135,7 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
       }
       return uploaded;
     },
-    onSuccess: async (uploaded) => { await invalidateCaseViews(); toast.success(`${uploaded.length} documento(s) subido(s).`); setShowUpload(false); setUploadFiles([]); setUploadDate(''); setUploadObservations(''); },
+    onSuccess: async (uploaded) => { await invalidateDocumentViews(); toast.success(`${uploaded.length} documento(s) subido(s).`); setShowUpload(false); setUploadFiles([]); setUploadDate(''); setUploadObservations(''); },
     onError: (e) => toast.error(e.message),
   });
 
@@ -282,12 +290,12 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
         open={Boolean(documentToDelete)}
         onClose={() => { if (!deleteMutation.isPending) setDocumentToDelete(null); }}
         title="¿Eliminar documento?"
-        description={`El documento ${documentToDelete?.fileName ?? 'seleccionado'} se eliminará de forma permanente.`}
+        description={`El documento ${documentToDelete?.fileName ?? 'seleccionado'} se desvinculará de esta carpeta. El archivo y sus vínculos en otras carpetas se conservarán.`}
       >
         <div className="flex gap-3">
           <Button type="button" variant="outline" className="flex-1" data-dialog-initial-focus onClick={() => setDocumentToDelete(null)} disabled={deleteMutation.isPending}>Cancelar</Button>
-          <Button type="button" variant="destructive" className="flex-1" onClick={() => documentToDelete && deleteMutation.mutate(documentToDelete.documentId)} disabled={deleteMutation.isPending}>
-            {deleteMutation.isPending ? 'Eliminando...' : 'Eliminar'}
+          <Button type="button" variant="destructive" className="flex-1" onClick={() => documentToDelete && deleteMutation.mutate(documentToDelete.relationId)} disabled={deleteMutation.isPending}>
+            {deleteMutation.isPending ? 'Desvinculando...' : 'Desvincular'}
           </Button>
         </div>
       </Dialog>

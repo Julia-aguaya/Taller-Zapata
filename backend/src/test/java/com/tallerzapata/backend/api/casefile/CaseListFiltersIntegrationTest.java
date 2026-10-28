@@ -228,7 +228,9 @@ class CaseListFiltersIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items.length()").value(1))
                 .andExpect(jsonPath("$.items[0].id").value(101))
-                .andExpect(jsonPath("$.items[0].principalCustomerName").value("Beto Dos"));
+                .andExpect(jsonPath("$.items[0].principalCustomerName").value("Beto Dos"))
+                .andExpect(jsonPath("$.items[0].principalCustomerFirstName").value("Beto"))
+                .andExpect(jsonPath("$.items[0].principalCustomerLastName").value("Dos"));
     }
 
     @Test

@@ -28,4 +28,7 @@ public class VehicleBrandEntity {
     public String getCodigo() { return codigo; }
     public String getNombre() { return nombre; }
     public Boolean getActivo() { return activo; }
+    public void setCodigo(String codigo) { this.codigo = codigo; }
+    public void setNombre(String nombre) { this.nombre = nombre; }
+    public void setActivo(Boolean activo) { this.activo = activo; }
 }

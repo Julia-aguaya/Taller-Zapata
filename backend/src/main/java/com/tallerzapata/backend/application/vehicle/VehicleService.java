@@ -1,14 +1,17 @@
 package com.tallerzapata.backend.application.vehicle;
 
 import com.tallerzapata.backend.api.vehicle.VehicleBrandResponse;
+import com.tallerzapata.backend.api.vehicle.VehicleBrandCreateRequest;
 import com.tallerzapata.backend.api.casefile.CodeCatalogResponse;
 import com.tallerzapata.backend.api.vehicle.VehicleCatalogsResponse;
 import com.tallerzapata.backend.api.vehicle.VehicleModelResponse;
 import com.tallerzapata.backend.api.vehicle.VehiclePersonResponse;
 import com.tallerzapata.backend.api.vehicle.VehiclePersonUpsertRequest;
 import com.tallerzapata.backend.api.vehicle.VehicleResponse;
+import com.tallerzapata.backend.api.vehicle.VehicleTypeCategoryCreateRequest;
 import com.tallerzapata.backend.api.vehicle.VehicleUpsertRequest;
 import com.tallerzapata.backend.application.common.ConflictException;
+import com.tallerzapata.backend.application.common.DomainConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
 import com.tallerzapata.backend.infrastructure.persistence.person.PersonRepository;
 import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleBrandEntity;
@@ -20,11 +23,21 @@ import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehiclePerson
 import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehiclePersonRepository;
 import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleRoleRepository;
 import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleRepository;
+import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleTypeCategoryEntity;
+import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleTypeCategoryRepository;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.UUID;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.nio.charset.StandardCharsets;
+import java.util.HexFormat;
 
 @Service
 public class VehicleService {
@@ -35,6 +48,7 @@ public class VehicleService {
     private final VehicleModelRepository vehicleModelRepository;
     private final VehiclePersonRepository vehiclePersonRepository;
     private final VehicleRoleRepository vehicleRoleRepository;
+    private final VehicleTypeCategoryRepository vehicleTypeCategoryRepository;
 
     public VehicleService(
             VehicleRepository vehicleRepository,
@@ -42,7 +56,8 @@ public class VehicleService {
             VehicleBrandRepository vehicleBrandRepository,
             VehicleModelRepository vehicleModelRepository,
             VehiclePersonRepository vehiclePersonRepository,
-            VehicleRoleRepository vehicleRoleRepository
+            VehicleRoleRepository vehicleRoleRepository,
+            VehicleTypeCategoryRepository vehicleTypeCategoryRepository
     ) {
         this.vehicleRepository = vehicleRepository;
         this.personRepository = personRepository;
@@ -50,6 +65,7 @@ public class VehicleService {
         this.vehicleModelRepository = vehicleModelRepository;
         this.vehiclePersonRepository = vehiclePersonRepository;
         this.vehicleRoleRepository = vehicleRoleRepository;
+        this.vehicleTypeCategoryRepository = vehicleTypeCategoryRepository;
     }
 
     @Transactional(readOnly = true)
@@ -117,15 +133,7 @@ public class VehicleService {
     @Transactional(readOnly = true)
     public VehicleCatalogsResponse listCatalogs() {
         return new VehicleCatalogsResponse(
-                List.of(
-                        new CodeCatalogResponse("SEDAN", "Sedan"),
-                        new CodeCatalogResponse("PICK_UP", "Pick up"),
-                        new CodeCatalogResponse("FURGON", "Furgon"),
-                        new CodeCatalogResponse("UTILITARIO", "Utilitario"),
-                        new CodeCatalogResponse("CAMION", "Camion"),
-                        new CodeCatalogResponse("MOTO", "Moto"),
-                        new CodeCatalogResponse("OTRO", "Otro")
-                ),
+                vehicleTypeCategoryRepository.findByActiveTrueOrderByNameAsc().stream().map(this::toResponse).toList(),
                 List.of(
                         new CodeCatalogResponse("PARTICULAR", "Particular"),
                         new CodeCatalogResponse("COMERCIAL", "Comercial"),
@@ -138,12 +146,66 @@ public class VehicleService {
         );
     }
 
+    public CodeCatalogResponse createVehicleTypeCategory(VehicleTypeCategoryCreateRequest request) {
+        String name = request.name().trim().replaceAll("\\s+", " ");
+        String normalizedName = name.toLowerCase(Locale.ROOT);
+
+        vehicleTypeCategoryRepository.findByNormalizedName(normalizedName)
+                .ifPresent(this::throwVehicleTypeAlreadyExists);
+
+        VehicleTypeCategoryEntity category = new VehicleTypeCategoryEntity();
+        category.setCode("CUSTOM_" + UUID.randomUUID().toString().replace("-", "").substring(0, 20).toUpperCase(Locale.ROOT));
+        category.setName(name);
+        category.setNormalizedName(normalizedName);
+        category.setActive(true);
+
+        try {
+            return toResponse(vehicleTypeCategoryRepository.saveAndFlush(category));
+        } catch (DataIntegrityViolationException exception) {
+            vehicleTypeCategoryRepository.findByNormalizedName(normalizedName)
+                    .ifPresent(this::throwVehicleTypeAlreadyExists);
+            throw exception;
+        }
+    }
+
     @Transactional(readOnly = true)
     public List<VehicleBrandResponse> listBrands() {
         return vehicleBrandRepository.findByActivoTrueOrderByNombreAsc()
                 .stream()
                 .map(entity -> toResponse(entity))
                 .toList();
+    }
+
+    public VehicleBrandResponse createBrand(VehicleBrandCreateRequest request) {
+        String name = normalizeDisplayName(request.name());
+        String normalizedName = normalizeComparableName(name);
+
+        VehicleBrandEntity existing = vehicleBrandRepository.findAll().stream()
+                .filter(brand -> normalizeComparableName(brand.getNombre()).equals(normalizedName))
+                .findFirst()
+                .orElse(null);
+        if (existing != null) {
+            if (!Boolean.TRUE.equals(existing.getActivo())) {
+                existing.setActivo(true);
+                vehicleBrandRepository.save(existing);
+            }
+            throwVehicleBrandAlreadyExists(existing);
+        }
+
+        VehicleBrandEntity brand = new VehicleBrandEntity();
+        brand.setCodigo(createVehicleBrandCode(normalizedName));
+        brand.setNombre(name);
+        brand.setActivo(true);
+
+        try {
+            return toResponse(vehicleBrandRepository.saveAndFlush(brand));
+        } catch (DataIntegrityViolationException exception) {
+            vehicleBrandRepository.findAll().stream()
+                    .filter(candidate -> normalizeComparableName(candidate.getNombre()).equals(normalizedName))
+                    .findFirst()
+                    .ifPresent(this::throwVehicleBrandAlreadyExists);
+            throw exception;
+        }
     }
 
     @Transactional(readOnly = true)
@@ -294,6 +356,43 @@ public class VehicleService {
                 entity.getObservaciones(),
                 entity.getActivo()
         );
+    }
+
+    private CodeCatalogResponse toResponse(VehicleTypeCategoryEntity entity) {
+        return new CodeCatalogResponse(entity.getCode(), entity.getName());
+    }
+
+    private void throwVehicleTypeAlreadyExists(VehicleTypeCategoryEntity category) {
+        throw new DomainConflictException(
+                "VEHICLE_TYPE_EXISTS",
+                "Ya existe una categoría de vehículo con ese nombre",
+                Map.of("vehicleType", toResponse(category))
+        );
+    }
+
+    private void throwVehicleBrandAlreadyExists(VehicleBrandEntity brand) {
+        throw new DomainConflictException(
+                "VEHICLE_BRAND_EXISTS",
+                "Ya existe una marca de vehículo con ese nombre",
+                Map.of("vehicleBrand", toResponse(brand))
+        );
+    }
+
+    private String createVehicleBrandCode(String normalizedName) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(normalizedName.getBytes(StandardCharsets.UTF_8));
+            return "CUSTOM_" + HexFormat.of().formatHex(digest).substring(0, 40).toUpperCase(Locale.ROOT);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 no está disponible", exception);
+        }
+    }
+
+    private String normalizeDisplayName(String value) {
+        return value.trim().replaceAll("\\s+", " ");
+    }
+
+    private String normalizeComparableName(String value) {
+        return normalizeDisplayName(value).toLowerCase(Locale.ROOT);
     }
 
     private VehicleBrandResponse toResponse(VehicleBrandEntity entity) {

@@ -29,6 +29,24 @@ const formatDate = (value) => {
   return new Date(value).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 };
 
+const formatNamePart = (value) => String(value || '')
+  .trim()
+  .replace(/\s+/g, ' ')
+  .split(' ')
+  .filter(Boolean)
+  .map((word) => word.charAt(0).toLocaleUpperCase('es-AR') + word.slice(1).toLocaleLowerCase('es-AR'))
+  .join(' ');
+
+export const formatPrincipalCustomerName = (item) => {
+  const firstName = formatNamePart(item?.principalCustomerFirstName);
+  const lastName = formatNamePart(item?.principalCustomerLastName);
+
+  if (firstName && lastName) return `${lastName}, ${firstName}`;
+  if (lastName || firstName) return lastName || firstName;
+
+  return formatNamePart(item?.principalCustomerName);
+};
+
 function FilterField({ label, children, className = '' }) {
   return (
     <label className={`flex flex-col gap-2 ${className}`}>
@@ -408,7 +426,7 @@ export const CasesPageContent = ({
               <TableRow key={item.id}>
                 <TableCell className="font-semibold">{item.folderCode}</TableCell>
                 <TableCell>
-                  <span className="text-sm">{item.principalCustomerName || '-'}</span>
+                  <span className="text-sm">{formatPrincipalCustomerName(item) || '-'}</span>
                   <span className="ml-2 text-xs text-muted-foreground">{item.principalVehiclePlate || ''}</span>
                 </TableCell>
                 <TableCell>

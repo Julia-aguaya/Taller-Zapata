@@ -12,4 +12,6 @@ public interface DocumentRepository extends JpaRepository<DocumentEntity, Long> 
     Optional<DocumentEntity> findByChecksumSha256AndSizeBytesAndActiveTrue(String checksumSha256, Long sizeBytes);
 
     List<DocumentEntity> findByIdIn(List<Long> ids);
+
+    boolean existsByReplacesDocumentId(Long replacesDocumentId);
 }

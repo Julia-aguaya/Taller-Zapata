@@ -102,6 +102,7 @@ public class InsuranceService {
     private final BudgetRepository budgetRepository;
     private final BudgetItemRepository budgetItemRepository;
     private final CasePartRepository casePartRepository;
+    private final CasePartsInclusionPolicy casePartsInclusionPolicy;
     private final PartSupplierQuoteRepository partSupplierQuoteRepository;
     private final FinancialMovementRepository financialMovementRepository;
     private final FranchiseRecoveryService franchiseRecoveryService;
@@ -116,7 +117,7 @@ public class InsuranceService {
 
     private static final String ADMIN_ROLE_CODE = "ROLE_ADMIN";
 
-    public InsuranceService(InsuranceCompanyRepository companyRepository, InsuranceCompanyContactRepository companyContactRepository, InsuranceRoleContactRepository roleContactRepository, PersonRepository personRepository, VehicleRepository vehicleRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CasePersonRepository casePersonRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, BelowMinimumAgreementApprovalRepository belowMinimumAgreementApprovalRepository, CaseFranchiseRepository caseFranchiseRepository, InsuranceModalityRepository modalityRepository, InsuranceOpinionRepository opinionRepository, InsuranceQuotationStatusRepository quotationStatusRepository, InsurancePartsAuthorizationRepository partsAuthorizationRepository, FranchiseStatusRepository franchiseStatusRepository, FranchiseRecoveryTypeRepository franchiseRecoveryTypeRepository, FranchiseOpinionRepository franchiseOpinionRepository, CaseCleasRepository caseCleasRepository, CaseThirdPartyRepository caseThirdPartyRepository, CleasScopeRepository cleasScopeRepository, CleasOpinionRepository cleasOpinionRepository, PaymentStatusRepository paymentStatusRepository, ThirdPartyDocumentationStatusRepository thirdPartyDocumentationStatusRepository, PartsProvisionModeRepository partsProvisionModeRepository, CaseLegalRepository caseLegalRepository, LegalNewsRepository legalNewsRepository, LegalExpenseRepository legalExpenseRepository, LegalProcessorRepository legalProcessorRepository, LegalClaimantRepository legalClaimantRepository, LegalInstanceRepository legalInstanceRepository, LegalClosureReasonRepository legalClosureReasonRepository, LegalExpensePayerRepository legalExpensePayerRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, TodoRiesgoStateFactsRepository todoRiesgoStateFactsRepository, ProviderRepository providerRepository, BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CasePartRepository casePartRepository, PartSupplierQuoteRepository partSupplierQuoteRepository, FinancialMovementRepository financialMovementRepository, FranchiseRecoveryService franchiseRecoveryService, UserRoleRepository userRoleRepository, NotificationRepository notificationRepository, LegalLesionadoRepository legalLesionadoRepository, LesionadoEsTypeRepository lesionadoEsTypeRepository, DocumentationWorkflowStateService documentationWorkflowStateService) {
+    public InsuranceService(InsuranceCompanyRepository companyRepository, InsuranceCompanyContactRepository companyContactRepository, InsuranceRoleContactRepository roleContactRepository, PersonRepository personRepository, VehicleRepository vehicleRepository, CaseRepository caseRepository, CaseTypeRepository caseTypeRepository, CasePersonRepository casePersonRepository, CaseInsuranceRepository caseInsuranceRepository, InsuranceProcessingRepository insuranceProcessingRepository, BelowMinimumAgreementApprovalRepository belowMinimumAgreementApprovalRepository, CaseFranchiseRepository caseFranchiseRepository, InsuranceModalityRepository modalityRepository, InsuranceOpinionRepository opinionRepository, InsuranceQuotationStatusRepository quotationStatusRepository, InsurancePartsAuthorizationRepository partsAuthorizationRepository, FranchiseStatusRepository franchiseStatusRepository, FranchiseRecoveryTypeRepository franchiseRecoveryTypeRepository, FranchiseOpinionRepository franchiseOpinionRepository, CaseCleasRepository caseCleasRepository, CaseThirdPartyRepository caseThirdPartyRepository, CleasScopeRepository cleasScopeRepository, CleasOpinionRepository cleasOpinionRepository, PaymentStatusRepository paymentStatusRepository, ThirdPartyDocumentationStatusRepository thirdPartyDocumentationStatusRepository, PartsProvisionModeRepository partsProvisionModeRepository, CaseLegalRepository caseLegalRepository, LegalNewsRepository legalNewsRepository, LegalExpenseRepository legalExpenseRepository, LegalProcessorRepository legalProcessorRepository, LegalClaimantRepository legalClaimantRepository, LegalInstanceRepository legalInstanceRepository, LegalClosureReasonRepository legalClosureReasonRepository, LegalExpensePayerRepository legalExpensePayerRepository, CurrentUserService currentUserService, CaseAccessControlService accessControlService, CaseAuditService caseAuditService, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, TodoRiesgoStateFactsRepository todoRiesgoStateFactsRepository, ProviderRepository providerRepository, BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CasePartRepository casePartRepository, CasePartsInclusionPolicy casePartsInclusionPolicy, PartSupplierQuoteRepository partSupplierQuoteRepository, FinancialMovementRepository financialMovementRepository, FranchiseRecoveryService franchiseRecoveryService, UserRoleRepository userRoleRepository, NotificationRepository notificationRepository, LegalLesionadoRepository legalLesionadoRepository, LesionadoEsTypeRepository lesionadoEsTypeRepository, DocumentationWorkflowStateService documentationWorkflowStateService) {
         this.companyRepository = companyRepository;
         this.companyContactRepository = companyContactRepository;
         this.roleContactRepository = roleContactRepository;
@@ -159,6 +160,7 @@ public class InsuranceService {
         this.budgetRepository = budgetRepository;
         this.budgetItemRepository = budgetItemRepository;
         this.casePartRepository = casePartRepository;
+        this.casePartsInclusionPolicy = casePartsInclusionPolicy;
         this.partSupplierQuoteRepository = partSupplierQuoteRepository;
         this.financialMovementRepository = financialMovementRepository;
         this.franchiseRecoveryService = franchiseRecoveryService;
@@ -325,9 +327,10 @@ public class InsuranceService {
         }
         entity.setCaseId(caseId);
         boolean cleas = "CLEAS".equals(caseTypeCode(caseEntity));
+        boolean lawyerThirdPartyClaim = insuranceRepairCasePolicy.isThirdPartyLawyerClaim(caseTypeCode(caseEntity));
         String previousPartsAuthorizationCode = entity.getPartsAuthorizationCode();
         applyPatch(entity, request, cleas);
-        if (entity.getPresentedAt() == null && hasOperationalPatch(request, cleas)) {
+        if (entity.getPresentedAt() == null && hasOperationalPatch(request, cleas, lawyerThirdPartyClaim)) {
             throw new DomainConflictException("PROCESSING_PRESENTATION_DATE_REQUIRED", "Debe registrar la fecha de presentacion antes de continuar la tramitacion", Map.of());
         }
 
@@ -1373,8 +1376,9 @@ public class InsuranceService {
         if (request.has("estimatedPaymentDate")) entity.setEstimatedPaymentDate(dateValue(request.estimatedPaymentDate(), "estimatedPaymentDate"));
     }
 
-    private boolean hasOperationalPatch(InsuranceProcessingPatchRequest request, boolean cleas) {
-        boolean coreFields = request.has("inspectionForwardedAt") || request.has("inspectionDate") || request.has("modalityCode") || request.has("opinionCode")
+    private boolean hasOperationalPatch(InsuranceProcessingPatchRequest request, boolean cleas, boolean lawyerThirdPartyClaim) {
+        boolean coreFields = request.has("inspectionForwardedAt") || request.has("inspectionDate") || request.has("modalityCode")
+                || (!lawyerThirdPartyClaim && request.has("opinionCode"))
                 || request.has("quotationStatusCode") || request.has("quotationDate") || request.has("agreedAmount") || request.has("partsAuthorizationCode") || request.has("partsSupplierText")
                 || request.has("providerId") || request.has("finalAmountForWorkshop") || request.has("passedToPaymentsAt") || request.has("estimatedPaymentDate");
         // El minimo de cierre manual y el flag de repuestos solo son operativos en CLEAS;
@@ -1389,8 +1393,7 @@ public class InsuranceService {
                 .filter(this::isReplacementBudgetItem)
                 .map(BudgetItemEntity::getId)
                 .collect(Collectors.toSet());
-        boolean includesParts = !replacementItemIds.isEmpty()
-                || !casePartRepository.findByCaseIdOrderByIdAsc(caseId).isEmpty();
+        boolean includesParts = casePartsInclusionPolicy.includesParts(caseId);
         CaseFranchiseEntity franchise = caseFranchiseRepository.findByCaseId(caseId).orElse(null);
         BigDecimal amountToBill = null;
         if (agreedAmount != null) {
