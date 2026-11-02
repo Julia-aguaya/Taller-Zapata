@@ -11,6 +11,12 @@ vi.mock('react-router-dom', () => ({
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: (...args) => useQueryMock(...args),
+  useMutation: () => ({ mutate: vi.fn() }),
+  useQueryClient: () => ({ invalidateQueries: vi.fn() }),
+}));
+
+vi.mock('@/modules/auth/providers/session-provider', () => ({
+  useSession: () => ({ session: { authorities: [] } }),
 }));
 
 vi.mock('@/modules/cases/api/cases-api', () => ({

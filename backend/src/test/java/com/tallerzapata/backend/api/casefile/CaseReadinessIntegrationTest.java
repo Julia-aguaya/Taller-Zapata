@@ -1164,7 +1164,7 @@ class CaseReadinessIntegrationTest {
         mockMvc.perform(put("/api/v1/cases/{caseId}/legal", caseId)
                         .header("X-User-Id", "1")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL\",\"instanceCode\":\"ADMINISTRATIVA\",\"entryDate\":\"2026-01-15\",\"repairsVehicle\":true,\"closedByCode\":\"CONCILIACION\"}"))
+                        .content("{\"processorCode\":\"CON_PODER\",\"claimantCode\":\"DANIO_MATERIAL\",\"instanceCode\":\"ADMINISTRATIVA\",\"entryDate\":\"2026-01-15\",\"repairsVehicle\":true}"))
                 .andExpect(status().isOk());
 
         mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId)
@@ -1173,7 +1173,7 @@ class CaseReadinessIntegrationTest {
                 .andExpect(jsonPath("$.tabs[5].tabCode").value("PAGOS"))
                 .andExpect(jsonPath("$.tabs[5].completed").value(false))
                 .andExpect(jsonPath("$.tabs[5].blockingReasons").value(org.hamcrest.Matchers.hasItem("Falta registrar el importe total del expediente")))
-                .andExpect(jsonPath("$.tabs[5].blockingReasons").value(org.hamcrest.Matchers.hasItem("Falta la fecha de cierre del expediente")));
+                .andExpect(jsonPath("$.tabs[5].blockingReasons").value(org.hamcrest.Matchers.hasItem("Falta registrar el cierre del expediente")));
 
         mockMvc.perform(put("/api/v1/cases/{caseId}/legal", caseId)
                         .header("X-User-Id", "1")

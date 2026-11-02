@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { listCases } from '@/modules/cases/api/cases-api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { deleteCase, listCases } from '@/modules/cases/api/cases-api';
 import { getCaseCatalogs, getInsuranceCatalogs } from '@/modules/cases/api/new-case-api';
 import { listOperationalTasks } from '@/modules/agenda/api/agenda-api';
 import { FullScreenLoader } from '@/shared/ui/full-screen-loader';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { CasesPageContent } from '@/modules/cases/components/cases-page-content';
+import { useSession } from '@/modules/auth/providers/session-provider';
 
 export const CasesPage = () => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const { session } = useSession();
   const [appliedBackendFilters, setAppliedBackendFilters] = useState({});
   const [lastSuccessfulCasesPayload, setLastSuccessfulCasesPayload] = useState(null);
   const [lastSuccessfulFilterSourcePayload, setLastSuccessfulFilterSourcePayload] = useState(null);
@@ -41,6 +45,17 @@ export const CasesPage = () => {
     queryKey: ['cases', 'list', 'filter-options-source'],
     queryFn: () => listCases({ size: 200 }),
     placeholderData: (previousData) => previousData,
+  });
+
+  const canDeleteCases = session?.authorities?.includes('caso.eliminar') ?? false;
+
+  const deleteMutation = useMutation({
+    mutationFn: ({ caseId, reason }) => deleteCase(caseId, reason),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['cases'] });
+      toast.success('Carpeta eliminada.');
+    },
+    onError: (error) => toast.error(error.message || 'No se pudo eliminar la carpeta.'),
   });
 
   useEffect(() => {
@@ -87,6 +102,8 @@ export const CasesPage = () => {
       isRefreshing={casesQuery.isFetching}
       onApplyFilters={setAppliedBackendFilters}
       onOpenCase={(item) => navigate(`/cases/${item.id}`)}
+      canDeleteCases={canDeleteCases}
+      onDeleteCase={(item, reason) => deleteMutation.mutate({ caseId: item.id, reason })}
     />
   );
 };

@@ -23,7 +23,7 @@ import { FranchiseRecoveryEditor } from '@/modules/cases/components/franchise-re
 import { FranchiseRecoveryPaymentsEditor } from '@/modules/cases/components/franchise-recovery-payments-editor';
 import { ThirdPartyLawyerEditor } from '@/modules/cases/components/third-party-lawyer-editor';
 import { requestJson } from '@/shared/api/http-client';
-import { createPerson, searchPersons } from '@/modules/cases/api/new-case-api';
+import { createPerson, getCaseCatalogs, searchPersons } from '@/modules/cases/api/new-case-api';
 import { addCasePerson, deleteCasePerson, getCasePersons, updateCasePerson } from '@/modules/cases/api/third-party-api';
 import { getCleasTabs, getOperationalTabs, getTabIcon, getTabLabel } from '@/modules/cases/lib/tab-registry';
 import { useSession } from '@/modules/auth/providers/session-provider';
@@ -711,9 +711,16 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
     queryFn: fetchVehicleCatalogs,
   });
 
+  const caseCatalogsQuery = useQuery({
+    queryKey: ['cases', 'catalogs'],
+    queryFn: getCaseCatalogs,
+  });
+
   const person = personQuery.data;
   const vehicle = vehicleQuery.data;
   const vCat = vehicleCatalogsQuery.data;
+  const caseTypes = caseCatalogsQuery.data?.caseTypes ?? [];
+  const canChangeCaseType = caseDetail?.currentCaseStateCode === 'INGRESADO';
   const fichaSummary = getFichaSummary(readinessTab);
 
   const [form, setForm] = useState({});
@@ -745,11 +752,12 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
         motor: vehicle?.motor || '',
         mileage: vehicle?.mileage ? String(vehicle.mileage) : '',
         observacionesVehiculo: vehicle?.observaciones || '',
+        caseTypeId: caseDetail.caseTypeId,
         referenced: Boolean(caseDetail.referenced),
         referenciadorId: caseDetail.referenciadorId || null,
       });
     }
-  }, [person, vehicle]);
+  }, [person, vehicle, caseDetail.caseTypeId]);
 
   const referenciadoresQuery = useQuery({
     queryKey: ['referenciadores', 'ficha', referenciadorSearch],
@@ -825,6 +833,7 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
         generalObservations: caseDetail.generalObservations || null,
         closedAt: null,
         archivedAt: caseDetail.archivedAt || null,
+        ...(form.caseTypeId != null ? { caseTypeId: form.caseTypeId } : {}),
       });
     },
     onSuccess: async () => {
@@ -876,7 +885,23 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
         <div className="rounded-2xl border border-border/60 bg-background/70 p-4">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Datos generales de la carpeta</p>
           <div className="mt-3 grid gap-3 md:grid-cols-2">
-            <ReadOnlyField label="Tipo de tramite" value={caseDetail.caseTypeCode || '—'} />
+            {editing && canChangeCaseType ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="field-Tipo de tramite">Tipo de tramite</Label>
+                <select
+                  id="field-Tipo de tramite"
+                  className="flex h-12 w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  value={form.caseTypeId ?? caseDetail.caseTypeId}
+                  onChange={(event) => setForm((current) => ({ ...current, caseTypeId: Number(event.target.value) }))}
+                >
+                  {caseTypes.map((type) => (
+                    <option key={type.id} value={type.id}>{type.name}</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <ReadOnlyField label="Tipo de tramite" value={caseDetail.caseTypeCode || '—'} />
+            )}
             {editing ? (
               <SelectField label="Referenciado" value={form.referenced ? 'SI' : 'NO'} editing onChange={(value) => setForm((current) => ({ ...current, referenced: value === 'SI', referenciadorId: value === 'SI' ? current.referenciadorId : null }))} options={['NO', 'SI']} />
             ) : (

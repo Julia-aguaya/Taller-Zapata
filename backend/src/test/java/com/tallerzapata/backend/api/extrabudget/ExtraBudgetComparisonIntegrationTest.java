@@ -206,7 +206,9 @@ class ExtraBudgetComparisonIntegrationTest {
                         .content("{\"expectedVersion\":0,\"items\":[{\"visualOrder\":1,\"description\":\"Espejo extra\",\"quantity\":1,\"partUnitAmount\":0,\"affectedPiece\":\"Espejo\",\"actionCode\":\"REEMPLAZAR\",\"damageLevelCode\":\"LEVE\",\"partsAmount\":0,\"active\":true}]}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
 
-        long snapshotId = draft.at("/versions/0/comparisonSnapshotId").asLong();
+        long versionId = draft.at("/versions/0/id").asLong();
+        long snapshotId = json.readTree(mockMvc.perform(post("/api/v1/cases/100/budget-comparisons/extra/" + versionId + "/generate").header("X-User-Id", "3"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).asLong();
         assertThat(draft.at("/versions/0/generalLaborVatApplies").asBoolean()).isFalse();
         assertThat(snapshotId).isPositive();
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM comparacion_pieza WHERE snapshot_id = ? AND contexto = 'EXTRA'", Integer.class, snapshotId)).isEqualTo(1);

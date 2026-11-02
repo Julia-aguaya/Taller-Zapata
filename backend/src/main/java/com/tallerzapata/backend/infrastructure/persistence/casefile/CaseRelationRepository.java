@@ -10,4 +10,8 @@ public interface CaseRelationRepository extends JpaRepository<CaseRelationEntity
     List<CaseRelationEntity> findBySourceCaseIdOrderByIdDesc(Long sourceCaseId);
 
     Optional<CaseRelationEntity> findBySourceCaseIdAndTargetCaseIdAndRelationTypeCode(Long sourceCaseId, Long targetCaseId, String relationTypeCode);
+
+    void deleteBySourceCaseId(Long sourceCaseId);
+
+    void deleteByTargetCaseId(Long targetCaseId);
 }

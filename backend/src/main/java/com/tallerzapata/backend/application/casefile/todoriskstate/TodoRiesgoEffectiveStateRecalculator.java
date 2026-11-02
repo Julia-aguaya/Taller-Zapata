@@ -34,6 +34,12 @@ public class TodoRiesgoEffectiveStateRecalculator {
     @Transactional public RecalculationResult recalculate(Long caseId) { return calculate(caseId, true); }
     @Transactional(readOnly = true) public RecalculationResult preview(Long caseId) { return calculate(caseId, false); }
 
+    @Transactional public void clear(Long caseId) {
+        stateRepository.deleteByCaseId(caseId);
+        factsRepository.deleteByCaseId(caseId);
+        historyRepository.deleteByCaseId(caseId);
+    }
+
     @Transactional
     public void recordProcedureFacts(Long caseId, LocalDate agreementDate, LocalDate passedToPaymentsDate, LocalDate paymentDate, Long actorUserId) {
         requireTodoRiesgoEffectiveState(caseId);

@@ -36,6 +36,16 @@ export const listCases = (params = {}) => {
   return requestJson(`/cases${qs ? `?${qs}` : ''}`);
 };
 
+export const updateCase = (caseId, payload) => requestJson(`/cases/${caseId}`, {
+  method: 'PUT',
+  body: JSON.stringify(payload),
+});
+
+export const deleteCase = (caseId, reason) => requestJson(`/cases/${caseId}`, {
+  method: 'DELETE',
+  body: JSON.stringify({ reason }),
+});
+
 export const searchReferenciadores = (q) => requestJson(`/referenciadores?q=${encodeURIComponent(q)}`);
 
 export const createReferenciador = (data) => requestJson('/referenciadores', {

@@ -11,4 +11,6 @@ public interface CaseVehicleRepository extends JpaRepository<CaseVehicleEntity, 
     boolean existsByCaseIdAndPrincipalTrue(Long caseId);
 
     List<CaseVehicleEntity> findByCaseIdAndVehicleRoleCodeOrderByIdAsc(Long caseId, String vehicleRoleCode);
+
+    void deleteByCaseId(Long caseId);
 }

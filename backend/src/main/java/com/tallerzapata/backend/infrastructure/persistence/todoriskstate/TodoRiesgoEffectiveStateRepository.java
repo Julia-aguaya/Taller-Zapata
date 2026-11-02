@@ -12,4 +12,6 @@ public interface TodoRiesgoEffectiveStateRepository extends JpaRepository<TodoRi
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select state from TodoRiesgoEffectiveStateEntity state where state.caseId = :caseId")
     Optional<TodoRiesgoEffectiveStateEntity> findByCaseIdForUpdate(Long caseId);
+
+    void deleteByCaseId(Long caseId);
 }

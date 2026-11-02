@@ -10,6 +10,7 @@ public record CaseUpdateRequest(
         String priorityCode,
         String generalObservations,
         LocalDateTime closedAt,
-        LocalDateTime archivedAt
+        LocalDateTime archivedAt,
+        Long caseTypeId
 ) {
 }

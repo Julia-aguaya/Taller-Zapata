@@ -42,6 +42,12 @@ public class ParticularEffectiveStateRecalculator {
         return calculate(caseId, false);
     }
 
+    @Transactional
+    public void clear(Long caseId) {
+        stateRepository.deleteByCaseId(caseId);
+        historyRepository.deleteByCaseId(caseId);
+    }
+
     private RecalculationResult calculate(Long caseId, boolean persist) {
         CaseEntity caseEntity = caseRepository.findByIdForUpdate(caseId).orElseThrow();
         if (!caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> "PARTICULAR".equals(normalize(type.getCode()))).orElse(false)) {

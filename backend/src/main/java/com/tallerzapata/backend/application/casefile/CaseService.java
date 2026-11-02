@@ -132,6 +132,7 @@ public class CaseService {
     private final BudgetItemRepository budgetItemRepository;
     private final CaseThirdPartyRepository caseThirdPartyRepository;
     private final CaseCreationIdempotencyRepository caseCreationIdempotencyRepository;
+    private final CaseActivityGuard caseActivityGuard;
 
     public CaseService(
             CaseRepository caseRepository,
@@ -166,7 +167,8 @@ public class CaseService {
             CaseVisibleStateResolver caseVisibleStateResolver, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator,
             TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator,
             BudgetRepository budgetRepository, BudgetItemRepository budgetItemRepository, CaseThirdPartyRepository caseThirdPartyRepository,
-            CaseCreationIdempotencyRepository caseCreationIdempotencyRepository
+            CaseCreationIdempotencyRepository caseCreationIdempotencyRepository,
+            CaseActivityGuard caseActivityGuard
     ) {
         this.caseRepository = caseRepository;
         this.caseTypeRepository = caseTypeRepository;
@@ -205,6 +207,7 @@ public class CaseService {
         this.budgetItemRepository = budgetItemRepository;
         this.caseThirdPartyRepository = caseThirdPartyRepository;
         this.caseCreationIdempotencyRepository = caseCreationIdempotencyRepository;
+        this.caseActivityGuard = caseActivityGuard;
     }
 
     @Transactional(readOnly = true)
@@ -720,6 +723,17 @@ public class CaseService {
         CaseTypeEntity caseType = caseTypeRepository.findById(caseTypeId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el tipo de tramite " + caseTypeId));
 
+        boolean typeChanged = request.caseTypeId() != null && !request.caseTypeId().equals(caseTypeId);
+        CaseTypeEntity newCaseType = null;
+        if (typeChanged) {
+            newCaseType = caseTypeRepository.findById(request.caseTypeId())
+                    .orElseThrow(() -> new ResourceNotFoundException("No existe el tipo de tramite " + request.caseTypeId()));
+            if (!Boolean.TRUE.equals(newCaseType.getActive())) {
+                throw new ConflictException("El tipo de tramite esta inactivo: " + newCaseType.getCode());
+            }
+            caseActivityGuard.requireVirgin(entity, "cambiar el tipo de");
+        }
+
         if ("PARTICULAR".equals(normalizeCode(caseType.getCode())) && request.closedAt() != null) {
             throw new ConflictException("closedAt se calcula automaticamente para tramites PARTICULARES");
         }
@@ -739,6 +753,8 @@ public class CaseService {
         before.put("generalObservations", entity.getGeneralObservations());
         before.put("closedAt", entity.getClosedAt());
         before.put("archivedAt", entity.getArchivedAt());
+        before.put("caseTypeId", entity.getCaseTypeId());
+        before.put("folderCode", entity.getFolderCode());
 
         if (request.referenced() != null) {
             entity.setReferenced(request.referenced());
@@ -770,6 +786,19 @@ public class CaseService {
             entity.setArchivedAt(request.archivedAt());
         }
 
+        if (typeChanged) {
+            entity.setCaseTypeId(newCaseType.getId());
+            Long branchId = entity.getBranchId();
+            Long orderNumber = entity.getOrderNumber();
+            BranchEntity branch = branchRepository.findById(branchId)
+                    .orElseThrow(() -> new ResourceNotFoundException("No existe la sucursal " + branchId));
+            entity.setFolderCode(CaseFolderCodeGenerator.generate(
+                    orderNumber,
+                    insuranceRepairCasePolicy.folderPrefix(newCaseType.getCode(), newCaseType.getFolderPrefix()),
+                    branch.getCode()
+            ));
+        }
+
         entity = caseRepository.save(entity);
 
         Map<String, Object> after = new LinkedHashMap<>();
@@ -781,6 +810,8 @@ public class CaseService {
         after.put("generalObservations", entity.getGeneralObservations());
         after.put("closedAt", entity.getClosedAt());
         after.put("archivedAt", entity.getArchivedAt());
+        after.put("caseTypeId", entity.getCaseTypeId());
+        after.put("folderCode", entity.getFolderCode());
 
         caseAuditService.register(
                 currentUser.id(),
@@ -793,6 +824,15 @@ public class CaseService {
                 null,
                 httpRequest
         );
+
+        if (typeChanged) {
+            particularEffectiveStateRecalculator.clear(entity.getId());
+            todoRiesgoEffectiveStateRecalculator.clear(entity.getId());
+            cleasEffectiveStateRecalculator.clear(entity.getId());
+            particularEffectiveStateRecalculator.recalculate(entity.getId());
+            todoRiesgoEffectiveStateRecalculator.recalculate(entity.getId());
+            cleasEffectiveStateRecalculator.recalculate(entity.getId());
+        }
 
         return toResponse(entity);
     }

@@ -11,4 +11,6 @@ public interface ParticularEffectiveStateRepository extends JpaRepository<Partic
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select state from ParticularEffectiveStateEntity state where state.caseId = :caseId")
     Optional<ParticularEffectiveStateEntity> findByCaseIdForUpdate(Long caseId);
+
+    void deleteByCaseId(Long caseId);
 }

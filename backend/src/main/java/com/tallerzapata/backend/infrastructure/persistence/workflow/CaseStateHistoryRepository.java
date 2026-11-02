@@ -7,4 +7,6 @@ import java.util.List;
 public interface CaseStateHistoryRepository extends JpaRepository<CaseStateHistoryEntity, Long> {
 
     List<CaseStateHistoryEntity> findByCaseIdOrderByStateDateDescIdDesc(Long caseId);
+
+    void deleteByCaseId(Long caseId);
 }

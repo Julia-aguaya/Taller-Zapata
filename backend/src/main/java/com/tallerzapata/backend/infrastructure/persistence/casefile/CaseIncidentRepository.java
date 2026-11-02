@@ -7,4 +7,6 @@ import java.util.Optional;
 public interface CaseIncidentRepository extends JpaRepository<CaseIncidentEntity, Long> {
 
     Optional<CaseIncidentEntity> findByCaseId(Long caseId);
+
+    void deleteByCaseId(Long caseId);
 }

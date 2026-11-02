@@ -170,7 +170,7 @@ public class FranchiseRecoveryService {
         if (requiresLowerAgreementApproval(entity) && !Boolean.TRUE.equals(entity.getApprovedLowerAgreement())) {
             notifyGlobalAdminsOfLowerAgreement(entity, caseEntity, currentUser);
         }
-        caseAuditService.register(currentUser.id(), caseId, "recuperos_franquicia", entity.getId(), "upsert_recupero_franquicia", null, caseAuditService.toJson(Map.of("managerCode", entity.getManagerCode(), "opinionCode", entity.getOpinionCode())), caseAuditService.toJson(Map.of("domain", "recovery")), httpRequest);
+        caseAuditService.register(currentUser.id(), caseId, "recuperos_franquicia", entity.getId(), "upsert_recupero_franquicia", null, caseAuditService.toJson(CaseAuditService.auditMap("managerCode", entity.getManagerCode(), "opinionCode", entity.getOpinionCode())), caseAuditService.toJson(Map.of("domain", "recovery")), httpRequest);
         return toResponse(entity);
     }
 

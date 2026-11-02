@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.api.casefile;
 
 import com.tallerzapata.backend.application.casefile.CaseService;
+import com.tallerzapata.backend.application.casefile.CaseDeletionService;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
 import com.tallerzapata.backend.application.casefile.CaseListFilters;
 import com.tallerzapata.backend.application.casefile.CaseReadinessService;
@@ -12,6 +13,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -31,6 +33,7 @@ import java.time.LocalDate;
 public class CaseController {
 
     private final CaseService caseService;
+    private final CaseDeletionService caseDeletionService;
     private final CaseReadinessService caseReadinessService;
     private final CaseWorkspaceService caseWorkspaceService;
     private final CaseWorkflowService caseWorkflowService;
@@ -38,12 +41,14 @@ public class CaseController {
 
     public CaseController(
             CaseService caseService,
+            CaseDeletionService caseDeletionService,
             CaseReadinessService caseReadinessService,
             CaseWorkspaceService caseWorkspaceService,
             CaseWorkflowService caseWorkflowService,
             CaseAuditService caseAuditService
     ) {
         this.caseService = caseService;
+        this.caseDeletionService = caseDeletionService;
         this.caseReadinessService = caseReadinessService;
         this.caseWorkspaceService = caseWorkspaceService;
         this.caseWorkflowService = caseWorkflowService;
@@ -155,6 +160,17 @@ public class CaseController {
             HttpServletRequest httpRequest
     ) {
         return caseService.update(caseId, request, httpRequest);
+    }
+
+    @Operation(summary = "Eliminar caso", description = "Elimina definitivamente una carpeta sin actividad. Requiere permiso caso.eliminar (solo admin)")
+    @ApiResponse(responseCode = "200", description = "OK")
+    @DeleteMapping("/{caseId}")
+    public void delete(
+            @PathVariable Long caseId,
+            @RequestBody DeleteCaseRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        caseDeletionService.delete(caseId, request.reason(), httpRequest);
     }
 
     @Operation(summary = "Listar relaciones de caso", description = "Devuelve las relaciones de un caso con otros casos")

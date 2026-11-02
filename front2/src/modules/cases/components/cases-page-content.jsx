@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { ChevronDown, FolderOpen, Search, SlidersHorizontal, X } from 'lucide-react';
+import { ChevronDown, FolderOpen, Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/shared/ui/table';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
@@ -7,6 +7,7 @@ import { Input } from '@/shared/ui/input';
 import { Select } from '@/shared/ui/select';
 import { Card } from '@/shared/ui/card';
 import { EmptyState } from '@/shared/ui/empty-state';
+import { Dialog } from '@/shared/ui/dialog';
 import {
   ADVANCED_FILTER_KEYS,
   EMPTY_CASE_FILTERS,
@@ -69,11 +70,15 @@ export const CasesPageContent = ({
   filterSourceItems = items,
   onApplyFilters,
   onOpenCase,
+  canDeleteCases = false,
+  onDeleteCase,
 }) => {
   const [draftFilters, setDraftFilters] = useState(EMPTY_CASE_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState(EMPTY_CASE_FILTERS);
   const [isMoreFiltersOpen, setIsMoreFiltersOpen] = useState(false);
   const [validationMessage, setValidationMessage] = useState('');
+  const [caseToDelete, setCaseToDelete] = useState(null);
+  const [deleteReason, setDeleteReason] = useState('');
   const resultsRef = useRef(null);
 
   const filterOptions = useMemo(() => buildCaseFilterOptions({
@@ -445,16 +450,66 @@ export const CasesPageContent = ({
                 <TableCell className="text-xs text-muted-foreground">{formatDate(item.createdAt)}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{formatDate(item.closedAt)}</TableCell>
                 <TableCell>
-                  <Button size="sm" variant="outline" onClick={() => onOpenCase(item)}>
-                    <FolderOpen className="mr-1 h-3.5 w-3.5" />
-                    Abrir
-                  </Button>
+                  <div className="flex items-center justify-end gap-2">
+                    <Button size="sm" variant="outline" onClick={() => onOpenCase(item)}>
+                      <FolderOpen className="mr-1 h-3.5 w-3.5" />
+                      Abrir
+                    </Button>
+                    {canDeleteCases ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive hover:text-destructive"
+                        aria-label={`Eliminar carpeta ${item.folderCode}`}
+                        onClick={() => { setDeleteReason(''); setCaseToDelete(item); }}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    ) : null}
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       )}
+
+      <Dialog
+        open={Boolean(caseToDelete)}
+        onClose={() => setCaseToDelete(null)}
+        title="Eliminar carpeta"
+        description="Esta acción es permanente. Solo se puede eliminar una carpeta sin datos cargados; el número quedará disponible nuevamente."
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Vas a eliminar <strong>{caseToDelete?.folderCode}</strong>. Esta acción no se puede deshacer.
+          </p>
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Motivo (obligatorio)</label>
+            <textarea
+              className="flex min-h-[80px] w-full rounded-2xl border border-input bg-background px-4 py-3 text-sm shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+              placeholder="¿Por qué se elimina la carpeta?"
+              value={deleteReason}
+              onChange={(event) => setDeleteReason(event.target.value)}
+            />
+          </div>
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={() => setCaseToDelete(null)}>Cancelar</Button>
+            <Button
+              variant="destructive"
+              className="flex-1"
+              disabled={!deleteReason.trim()}
+              onClick={() => {
+                onDeleteCase?.(caseToDelete, deleteReason.trim());
+                setCaseToDelete(null);
+                setDeleteReason('');
+              }}
+            >
+              Eliminar definitivamente
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </div>
   );
 };

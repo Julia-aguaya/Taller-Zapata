@@ -22,4 +22,6 @@ public interface CasePersonRepository extends JpaRepository<CasePersonEntity, Lo
     List<CasePersonEntity> findByCaseIdOrderByIdAsc(Long caseId);
 
     List<CasePersonEntity> findByCaseIdAndCaseRoleCodeOrderByIdAsc(Long caseId, String caseRoleCode);
+
+    void deleteByCaseId(Long caseId);
 }

@@ -8,4 +8,6 @@ import java.util.List;
 public interface AuditEventRepository extends JpaRepository<AuditEventEntity, Long> {
 
     List<AuditEventEntity> findByCaseIdOrderByIdDesc(Long caseId, Pageable pageable);
+
+    void deleteByCaseId(Long caseId);
 }

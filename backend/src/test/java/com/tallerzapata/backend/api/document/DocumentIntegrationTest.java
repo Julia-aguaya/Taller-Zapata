@@ -158,11 +158,12 @@ class DocumentIntegrationTest {
                         .header("X-User-Id", "3")
                         .param("moduleCode", "OPERACION"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.categories.length()").value(4))
+                .andExpect(jsonPath("$.categories.length()").value(5))
                 .andExpect(jsonPath("$.categories[?(@.code == 'PERSONAL')]").isNotEmpty())
                 .andExpect(jsonPath("$.categories[?(@.code == 'VEHICULO')]").isNotEmpty())
                 .andExpect(jsonPath("$.categories[?(@.code == 'SEGURO')]").isNotEmpty())
-                .andExpect(jsonPath("$.categories[?(@.code == 'OTRO')]").isNotEmpty());
+                .andExpect(jsonPath("$.categories[?(@.code == 'OTRO')]").isNotEmpty())
+                .andExpect(jsonPath("$.categories[?(@.code == 'LOGO')]").isNotEmpty());
     }
 
     @Test

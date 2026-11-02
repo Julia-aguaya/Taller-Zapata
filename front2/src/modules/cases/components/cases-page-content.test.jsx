@@ -388,4 +388,41 @@ describe('CasesPageContent', () => {
     expect(screen.getByText('Todavía no hay nombres visibles para responsables; podés filtrar por ID exacto.')).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'ID 7' })).not.toBeInTheDocument();
   });
+
+  it('no muestra el boton de eliminar sin el permiso de eliminacion', () => {
+    renderView();
+
+    expect(screen.queryByLabelText('Eliminar carpeta CAR-001')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Eliminar carpeta CAR-002')).not.toBeInTheDocument();
+  });
+
+  it('muestra confirmacion y elimina la carpeta con el motivo ingresado', async () => {
+    const user = userEvent.setup();
+    const onDeleteCase = vi.fn();
+    renderView({ canDeleteCases: true, onDeleteCase });
+
+    await user.click(screen.getByLabelText('Eliminar carpeta CAR-001'));
+
+    expect(screen.getByText('Eliminar carpeta')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Eliminar definitivamente' })).toBeDisabled();
+
+    await user.type(screen.getByPlaceholderText('¿Por qué se elimina la carpeta?'), 'Creada por error');
+    await user.click(screen.getByRole('button', { name: 'Eliminar definitivamente' }));
+
+    expect(onDeleteCase).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 1, folderCode: 'CAR-001' }),
+      'Creada por error',
+    );
+  });
+
+  it('no confirma la eliminacion sin un motivo', async () => {
+    const user = userEvent.setup();
+    const onDeleteCase = vi.fn();
+    renderView({ canDeleteCases: true, onDeleteCase });
+
+    await user.click(screen.getByLabelText('Eliminar carpeta CAR-002'));
+
+    expect(screen.getByRole('button', { name: 'Eliminar definitivamente' })).toBeDisabled();
+    expect(onDeleteCase).not.toHaveBeenCalled();
+  });
 });
