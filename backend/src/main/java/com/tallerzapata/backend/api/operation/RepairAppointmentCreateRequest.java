@@ -13,6 +13,7 @@ public record RepairAppointmentCreateRequest(
         @Min(0) Integer estimatedDays,
         LocalDate estimatedExitDate,
         String statusCode,
+        String followUpStatusCode,
         Boolean reentry,
         String notes,
         @NotNull Long userId,

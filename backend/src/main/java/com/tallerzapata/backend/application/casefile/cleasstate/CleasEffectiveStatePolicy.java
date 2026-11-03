@@ -26,7 +26,7 @@ public final class CleasEffectiveStatePolicy {
         if (facts.hasValidNormalAppointment()) return "CON_TURNO";
         if (!hasAgreement(facts)) return "EN_TRAMITE";
         boolean pendingAuthorization = false; boolean authorizedUnreceived = false;
-        for (CleasEffectiveStateFacts.PartFact part : facts.parts()) { String authorization = normalize(part.authorizationCode()); if ("RECHAZADO".equals(authorization)) continue; if (authorization.isEmpty() || "PENDIENTE".equals(authorization)) pendingAuthorization = true; if ("AUTORIZADO".equals(authorization) && !"RECIBIDO".equals(normalize(part.statusCode()))) authorizedUnreceived = true; }
+        for (CleasEffectiveStateFacts.PartFact part : facts.parts()) { String authorization = normalize(part.authorizationCode()); if ("RECHAZADO".equals(authorization)) continue; if (authorization.isEmpty() || "PENDIENTE".equals(authorization)) pendingAuthorization = true; if ("AUTORIZADO".equals(authorization) && !part.fullyReceived()) authorizedUnreceived = true; }
         if (pendingAuthorization) return "EN_TRAMITE";
         return authorizedUnreceived ? "FALTAN_REPUESTOS" : "DAR_TURNO";
     }

@@ -7,6 +7,6 @@ public record CleasEffectiveStateFacts(LocalDate presentedAt, boolean documentat
                                        BigDecimal companyTarget, BigDecimal companyPaid, BigDecimal customerTarget, BigDecimal customerPaid,
                                        BigDecimal companyFranchiseTarget, String companyFranchiseStatus,
                                        boolean noRepairActive, boolean urgentRepairActive, OutcomeFact latestOutcome, boolean hasValidNormalAppointment, List<PartFact> parts) {
-    public record PartFact(String authorizationCode, String statusCode) { }
+    public record PartFact(String authorizationCode, boolean fullyReceived) { }
     public record OutcomeFact(boolean repaired, boolean mustReenter, boolean hasSatisfiedReentry) { }
 }

@@ -10,6 +10,7 @@ import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleInta
 import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleIntakeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleOutcomeEntity;
 import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleOutcomeRepository;
+import com.tallerzapata.backend.application.operation.RepairPartReceiptAvailabilityService;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Sort;
 
@@ -117,7 +118,7 @@ class ParticularEffectiveStateFactsLoaderTest {
     }
 
     @Test
-    void treatsOnlyReceivedPartsAsResolvedAndOnlyFacturaOrReciboAsQualifying() {
+    void derivesUnreceivedPartsFromLedgerAvailabilityAndOnlyFacturaOrReciboAsQualifying() {
         assertTrue(load(List.of(), List.of(), List.of(), List.of(part("AUTORIZADO")), List.of()).hasUnreceivedPart());
         assertFalse(load(List.of(), List.of(), List.of(), List.of(part("RECIBIDO")), List.of()).hasUnreceivedPart());
         assertFalse(load(List.of(), List.of(), List.of(), List.of(), List.of()).hasUnreceivedPart());
@@ -138,13 +139,18 @@ class ParticularEffectiveStateFactsLoaderTest {
         CasePartRepository partsRepository = mock(CasePartRepository.class);
         IssuedReceiptRepository receiptsRepository = mock(IssuedReceiptRepository.class);
         ParticularFinancialBalanceService balanceService = mock(ParticularFinancialBalanceService.class);
+        RepairPartReceiptAvailabilityService receiptAvailabilityService = mock(RepairPartReceiptAvailabilityService.class);
         when(outcomesRepository.findByCaseId(CASE_ID, Sort.unsorted())).thenReturn(outcomes);
         when(intakesRepository.findByCaseId(CASE_ID, Sort.unsorted())).thenReturn(intakes);
         when(appointmentsRepository.findByCaseId(CASE_ID, Sort.by("createdAt").ascending().and(Sort.by("id").ascending()))).thenReturn(appointments);
         when(partsRepository.findByCaseIdOrderByIdAsc(CASE_ID)).thenReturn(parts);
         when(receiptsRepository.findByCaseId(CASE_ID, Sort.unsorted())).thenReturn(receipts);
         when(balanceService.balanceFor(CASE_ID)).thenReturn(BigDecimal.ZERO);
-        return new ParticularEffectiveStateFactsLoader(outcomesRepository, intakesRepository, appointmentsRepository, partsRepository, receiptsRepository, balanceService).load(CASE_ID, null);
+        for (CasePartEntity part : parts) {
+            boolean fullyReceived = "RECIBIDO".equals(part.getStatusCode());
+            when(receiptAvailabilityService.isFullyReceived(part)).thenReturn(fullyReceived);
+        }
+        return new ParticularEffectiveStateFactsLoader(outcomesRepository, intakesRepository, appointmentsRepository, partsRepository, receiptsRepository, balanceService, receiptAvailabilityService).load(CASE_ID, null);
     }
 
     private VehicleOutcomeEntity outcome(Long id, LocalDateTime outcomeAt, LocalDateTime createdAt, Long reentryId, boolean definitive, boolean shouldReenter) {

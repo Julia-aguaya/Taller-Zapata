@@ -4,20 +4,23 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { invalidateCaseProjection, updateWorkspaceLatestAppointment } from './repair-editor-panel';
 
-const partsApi = { list: vi.fn(), sync: vi.fn(), resolveWarning: vi.fn(), catalogs: vi.fn(), update: vi.fn() };
+const partsApi = { list: vi.fn(), sync: vi.fn(), resolveWarning: vi.fn(), catalogs: vi.fn(), update: vi.fn(), createReceipt: vi.fn(), updateReceipt: vi.fn(), deleteReceipt: vi.fn(), downloadLabel: vi.fn() };
 const requestJson = vi.fn().mockResolvedValue([]);
 const getThirdParty = vi.fn().mockResolvedValue({ partsProvisionModeCode: 'TALLER' });
+const { toast } = vi.hoisted(() => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+const { sessionState } = vi.hoisted(() => ({ sessionState: { current: { user: { id: 1 }, scopes: [{ organizationId: null, branchId: null }] } } }));
 vi.mock('@/modules/cases/api/third-party-api', () => ({ getThirdParty: (...args) => getThirdParty(...args) }));
 vi.mock('@/modules/cases/api/parts-api', () => ({
   createCasePart: vi.fn(), deleteCasePart: vi.fn(), updateCasePart: (...args) => partsApi.update(...args),
   listCaseParts: (...args) => partsApi.list(...args), syncPartsFromBudget: (...args) => partsApi.sync(...args), resolvePartReconciliationWarning: (...args) => partsApi.resolveWarning(...args), getPartsCatalogs: (...args) => partsApi.catalogs(...args),
   listRepairParts: (...args) => partsApi.list(...args), updateRepairPart: (...args) => partsApi.update(...args),
+  createRepairPartReceipt: (...args) => partsApi.createReceipt(...args), updateRepairPartReceipt: (...args) => partsApi.updateReceipt(...args), deleteRepairPartReceipt: (...args) => partsApi.deleteReceipt(...args), downloadRepairPartLabel: (...args) => partsApi.downloadLabel(...args),
 }));
-const operationsApi = { create: vi.fn(), remove: vi.fn(), list: vi.fn().mockResolvedValue([]), intakes: vi.fn().mockResolvedValue([]), updateIntake: vi.fn() };
-vi.mock('@/modules/cases/api/operations-api', () => ({ createRepairAppointment: (...args) => operationsApi.create(...args), deleteRepairAppointment: (...args) => operationsApi.remove(...args), createVehicleIntake: vi.fn(), createVehicleOutcome: vi.fn(), getOperationCatalogs: vi.fn().mockResolvedValue({}), listRepairAppointments: (...args) => operationsApi.list(...args), listVehicleIntakes: (...args) => operationsApi.intakes(...args), listVehicleOutcomes: vi.fn().mockResolvedValue([]), updateRepairAppointment: vi.fn(), updateVehicleIntake: (...args) => operationsApi.updateIntake(...args) }));
-vi.mock('@/modules/auth/providers/session-provider', () => ({ useSession: () => ({ session: { user: { id: 1 }, scopes: [{ organizationId: null, branchId: null }] } }) }));
+const operationsApi = { create: vi.fn(), remove: vi.fn(), update: vi.fn(), list: vi.fn().mockResolvedValue([]), intakes: vi.fn().mockResolvedValue([]), updateIntake: vi.fn() };
+vi.mock('@/modules/cases/api/operations-api', () => ({ createRepairAppointment: (...args) => operationsApi.create(...args), deleteRepairAppointment: (...args) => operationsApi.remove(...args), createVehicleIntake: vi.fn(), createVehicleOutcome: vi.fn(), getOperationCatalogs: vi.fn().mockResolvedValue({}), listRepairAppointments: (...args) => operationsApi.list(...args), listVehicleIntakes: (...args) => operationsApi.intakes(...args), listVehicleOutcomes: vi.fn().mockResolvedValue([]), updateRepairAppointment: (...args) => operationsApi.update(...args), updateVehicleIntake: (...args) => operationsApi.updateIntake(...args) }));
+vi.mock('@/modules/auth/providers/session-provider', () => ({ useSession: () => ({ session: sessionState.current }) }));
 vi.mock('@/shared/api/http-client', () => ({ requestJson: (...args) => requestJson(...args) }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast }));
 
 describe('invalidateCaseProjection', () => {
   it('shows Gestión de pedidos for Taller and explains when the company provides parts', async () => {
@@ -73,7 +76,7 @@ describe('invalidateCaseProjection', () => {
 
     expect(screen.queryByRole('button', { name: 'Sincronizar repuestos' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Traer repuestos desde comparación' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'No debe repararse' })).toBeNull();
+    expect(await screen.findByRole('button', { name: 'No debe repararse' })).toBeInTheDocument();
     expect(screen.queryByRole('columnheader', { name: 'Inventario' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Autorizado' })).toBeNull();
     expect(screen.queryByLabelText('Autorización Paragolpes')).toBeNull();
@@ -110,6 +113,34 @@ describe('invalidateCaseProjection', () => {
     render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'PARTICULAR', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
     await screen.findByRole('button', { name: 'Editar' });
     expect(screen.queryByRole('button', { name: 'Agregar repuesto extra' })).toBeNull();
+  });
+
+  it('keeps the displayed part data when label generation fails', async () => {
+    const user = userEvent.setup();
+    partsApi.list.mockResolvedValue([{ id: 7, description: 'Paragolpes', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' }]);
+    partsApi.catalogs.mockResolvedValue({});
+    partsApi.downloadLabel.mockRejectedValue(new Error('Servicio PDF no disponible'));
+    const { RepairEditorPanel } = await import('./repair-editor-panel');
+
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'PARTICULAR', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
+
+    await user.click(await screen.findByRole('button', { name: 'Descargar etiqueta Paragolpes' }));
+
+    await waitFor(() => expect(partsApi.downloadLabel).toHaveBeenCalledWith('42', 7));
+    expect(screen.getByText('Paragolpes')).toBeInTheDocument();
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('Los datos del repuesto no se modificaron'));
+  });
+
+  it('shows the part identifier and prevents receipt registration when authorization is rejected', async () => {
+    partsApi.list.mockResolvedValue([{ id: 7, description: 'Paragolpes', authorizationCode: 'RECHAZADO', statusCode: 'PENDIENTE', purchasedByCode: 'TALLER', paymentStatusCode: 'PENDIENTE' }]);
+    partsApi.catalogs.mockResolvedValue({ authorizationCodes: [{ code: 'RECHAZADO', name: 'Rechazado' }] });
+    const { RepairEditorPanel } = await import('./repair-editor-panel');
+
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'TODO_RIESGO', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
+
+    expect(await screen.findByText('REP-7')).toBeInTheDocument();
+    expect(screen.getByText('No se puede registrar recepción: autorización rechazada.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Agregar recepción Paragolpes' })).toBeNull();
   });
 
   it('opens supplier search in a separate modal while editing a part', async () => {
@@ -196,7 +227,7 @@ describe('invalidateCaseProjection', () => {
     expect(partsApi.sync).not.toHaveBeenCalled();
   });
 
-  it.each(['TODO_RIESGO', 'GRANIZO'])('offers no-repair and revert actions for insured repair cases: %s', async (caseTypeCode) => {
+  it.each(['PARTICULAR', 'TODO_RIESGO', 'GRANIZO', 'CLEAS', 'RECLAMO_TERCEROS', 'RECLAMO_TERCEROS_ABOGADO', 'RECUPERO_FRANQUICIA'])('offers no-repair and revert actions for every case type: %s', async (caseTypeCode) => {
     partsApi.list.mockResolvedValue([]);
     partsApi.catalogs.mockResolvedValue({});
     partsApi.sync.mockResolvedValue([]);
@@ -208,6 +239,36 @@ describe('invalidateCaseProjection', () => {
 
     rerender(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode, visibleRepairState: { code: 'NO_DEBE_REPARARSE' } }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
     expect(await screen.findByRole('button', { name: 'Volver a automático' })).toBeInTheDocument();
+  });
+
+  it('submits the mandatory reason through the universal endpoint', async () => {
+    const user = userEvent.setup();
+    requestJson.mockClear();
+    partsApi.list.mockResolvedValue([]);
+    partsApi.catalogs.mockResolvedValue({});
+    const { RepairEditorPanel } = await import('./repair-editor-panel');
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'PARTICULAR', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
+
+    await screen.findByRole('button', { name: 'No debe repararse' });
+    requestJson.mockClear();
+    await user.click(screen.getByRole('button', { name: 'No debe repararse' }));
+    await user.click(screen.getByRole('button', { name: 'Confirmar' }));
+    expect(toast.error).toHaveBeenCalledWith('El motivo es obligatorio.');
+    expect(requestJson).not.toHaveBeenCalled();
+
+    await user.type(screen.getByRole('textbox'), 'Daño estructural');
+    await user.click(screen.getByRole('button', { name: 'Confirmar' }));
+    await waitFor(() => expect(requestJson).toHaveBeenCalledWith('/cases/42/repair/no-repair', expect.objectContaining({ method: 'POST', body: JSON.stringify({ reason: 'Daño estructural' }) })));
+  });
+
+  it('does not expose the action to a non-global administrator', async () => {
+    sessionState.current = { user: { id: 1 }, scopes: [{ organizationId: 1, branchId: 1 }] };
+    partsApi.list.mockResolvedValue([]);
+    partsApi.catalogs.mockResolvedValue({});
+    const { RepairEditorPanel } = await import('./repair-editor-panel');
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'PARTICULAR', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
+    expect(screen.queryByRole('button', { name: 'No debe repararse' })).toBeNull();
+    sessionState.current = { user: { id: 1 }, scopes: [{ organizationId: null, branchId: null }] };
   });
 
   it('requires and submits an audited manual resolution for an active canonical warning', async () => {
@@ -311,5 +372,45 @@ describe('invalidateCaseProjection', () => {
 
     await user.click(screen.getByRole('button', { name: /^Egreso/ }));
     expect(await screen.findByText('Rayón previo en paragolpes')).toBeInTheDocument();
+  });
+
+  it.each(['PROBABLE_A_CONFIRMAR', 'A_CONFIRMAR_CLIENTE', 'CONFIRMADO', 'REPROGRAMAR'])('creates an appointment with optional follow-up %s', async (followUpStatusCode) => {
+    const user = userEvent.setup();
+    operationsApi.create.mockResolvedValueOnce({ id: 9 });
+    const { RepairEditorPanel } = await import('./repair-editor-panel');
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'PARTICULAR', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
+
+    await user.click(screen.getByRole('button', { name: /^Turno/ }));
+    await user.selectOptions(screen.getByLabelText('Seguimiento inicial del turno'), followUpStatusCode);
+    await user.click(screen.getByRole('button', { name: 'Agendar' }));
+
+    await waitFor(() => expect(operationsApi.create).toHaveBeenLastCalledWith('42', expect.objectContaining({ followUpStatusCode })));
+  });
+
+  it('marks reprogramming, saves a new date, and preserves terminal appointments as accessible', async () => {
+    const user = userEvent.setup();
+    const reprogrammingAppointment = { id: 9, appointmentDate: '2026-09-15', appointmentTime: '09:00', estimatedDays: 3, estimatedExitDate: '2026-09-18', statusCode: 'PENDIENTE', followUpStatusCode: 'REPROGRAMAR', reentry: false, userId: 1 };
+    operationsApi.list.mockReset().mockResolvedValue([
+      { id: 9, appointmentDate: '2026-09-15', appointmentTime: '09:00', estimatedDays: 3, estimatedExitDate: '2026-09-18', statusCode: 'PENDIENTE', followUpStatusCode: null, reentry: false, userId: 1 },
+      { id: 10, appointmentDate: '2026-09-16', appointmentTime: '09:00', estimatedDays: 3, estimatedExitDate: '2026-09-19', statusCode: 'CUMPLIDO', followUpStatusCode: null, reentry: false, userId: 1 },
+      { id: 11, appointmentDate: '2026-09-17', appointmentTime: '09:00', estimatedDays: 3, estimatedExitDate: '2026-09-20', statusCode: 'CANCELADO', followUpStatusCode: null, reentry: false, userId: 1 },
+    ]);
+    operationsApi.update.mockReset().mockImplementation(() => {
+      operationsApi.list.mockResolvedValue([reprogrammingAppointment]);
+      return Promise.resolve({ ...reprogrammingAppointment });
+    });
+    const { RepairEditorPanel } = await import('./repair-editor-panel');
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><RepairEditorPanel caseId="42" caseDetail={{ caseTypeCode: 'PARTICULAR', visibleRepairState: {} }} latestAppointment={null} latestIntake={null} latestOutcome={null} onSaved={vi.fn()} /></QueryClientProvider>);
+
+    await user.click(screen.getByRole('button', { name: /^Turno/ }));
+    expect(screen.getByLabelText('Seguimiento de confirmación del turno 10')).toBeDisabled();
+    expect(screen.getByLabelText('Seguimiento de confirmación del turno 11')).toBeDisabled();
+    await user.selectOptions(screen.getByLabelText('Seguimiento de confirmación del turno 9'), 'REPROGRAMAR');
+    await waitFor(() => expect(operationsApi.update).toHaveBeenCalledWith(9, expect.objectContaining({ followUpStatusCode: 'REPROGRAMAR' })));
+
+    await user.click(await screen.findByRole('button', { name: 'Reprogramar fecha' }));
+    fireEvent.change(screen.getByLabelText('Nueva fecha'), { target: { value: '2026-09-20' } });
+    await user.click(screen.getByRole('button', { name: 'Guardar reprogramación' }));
+    await waitFor(() => expect(operationsApi.update).toHaveBeenLastCalledWith(9, expect.objectContaining({ appointmentDate: '2026-09-20', followUpStatusCode: 'REPROGRAMAR' })));
   });
 });

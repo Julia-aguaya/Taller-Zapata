@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.application.casefile.particular;
 
 import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartRepository;
+import com.tallerzapata.backend.application.operation.RepairPartReceiptAvailabilityService;
 import com.tallerzapata.backend.infrastructure.persistence.finance.IssuedReceiptRepository;
 import com.tallerzapata.backend.infrastructure.persistence.operation.RepairAppointmentEntity;
 import com.tallerzapata.backend.infrastructure.persistence.operation.RepairAppointmentRepository;
@@ -22,16 +23,18 @@ public class ParticularEffectiveStateFactsLoader {
     private final CasePartRepository partRepository;
     private final IssuedReceiptRepository receiptRepository;
     private final ParticularFinancialBalanceService balanceService;
+    private final RepairPartReceiptAvailabilityService receiptAvailabilityService;
 
     public ParticularEffectiveStateFactsLoader(VehicleOutcomeRepository outcomeRepository, VehicleIntakeRepository intakeRepository, RepairAppointmentRepository appointmentRepository,
-                                                CasePartRepository partRepository, IssuedReceiptRepository receiptRepository,
-                                                ParticularFinancialBalanceService balanceService) {
+                                                 CasePartRepository partRepository, IssuedReceiptRepository receiptRepository,
+                                                 ParticularFinancialBalanceService balanceService, RepairPartReceiptAvailabilityService receiptAvailabilityService) {
         this.outcomeRepository = outcomeRepository;
         this.intakeRepository = intakeRepository;
         this.appointmentRepository = appointmentRepository;
         this.partRepository = partRepository;
         this.receiptRepository = receiptRepository;
         this.balanceService = balanceService;
+        this.receiptAvailabilityService = receiptAvailabilityService;
     }
 
     public ParticularEffectiveStateFacts load(Long caseId, ParticularEffectiveStateEntity projection) {
@@ -46,7 +49,7 @@ public class ParticularEffectiveStateFactsLoader {
                 projection == null ? null : projection.getProcedureTerminalOverrideCode(),
                 latestOutcome == null ? null : new ParticularEffectiveStateFacts.OutcomeFact(latestOutcome.getId(), latestOutcome.getOutcomeAt(), latestOutcome.getDefinitive(), latestOutcome.getShouldReenter(), hasReentry, hasLaterIntake(caseId, latestOutcome)),
                 appointments.stream().anyMatch(this::isValidNormalAppointment),
-                partRepository.findByCaseIdOrderByIdAsc(caseId).stream().anyMatch(part -> !"RECIBIDO".equals(normalize(part.getStatusCode()))),
+                partRepository.findByCaseIdOrderByIdAsc(caseId).stream().anyMatch(part -> !receiptAvailabilityService.isFullyReceived(part)),
                 hasQualifyingReceiptOrIntent(caseId, projection),
                 balanceService.balanceFor(caseId),
                 balanceService.expectedQuotedTotal(caseId),

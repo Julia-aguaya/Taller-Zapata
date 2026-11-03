@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarPlus2, CarFront, Clock, Flag, ImagePlus, Lock, PackagePlus, Save, Trash2 } from 'lucide-react';
+import { CalendarPlus2, CarFront, Clock, Download, Flag, ImagePlus, Lock, PackagePlus, Pencil, Save, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createRepairAppointment, createVehicleIntake, createVehicleOutcome, deleteRepairAppointment, getOperationCatalogs, listRepairAppointments, listVehicleIntakes, listVehicleOutcomes, updateRepairAppointment, updateVehicleIntake } from '@/modules/cases/api/operations-api';
-import { getPartsCatalogs, listRepairParts, resolvePartReconciliationWarning, updateRepairPart } from '@/modules/cases/api/parts-api';
+import { createRepairPartReceipt, deleteRepairPartReceipt, downloadRepairPartLabel, getPartsCatalogs, listRepairParts, resolvePartReconciliationWarning, updateRepairPart, updateRepairPartReceipt } from '@/modules/cases/api/parts-api';
 import { requestJson } from '@/shared/api/http-client';
 import { useSession } from '@/modules/auth/providers/session-provider';
 import { hasGlobalAdminScope } from '@/modules/auth/lib/global-admin-scope';
@@ -36,6 +36,7 @@ const createAppointmentState = (appointment) => ({
   estimatedDays: appointment?.estimatedDays?.toString?.() || '3',
   estimatedExitDate: appointment?.estimatedExitDate || addBusinessDays(appointment?.appointmentDate, appointment?.estimatedDays),
   statusCode: 'PENDIENTE',
+  followUpStatusCode: appointment?.followUpStatusCode || '',
   reentry: appointment?.reentry ? 'SI' : 'NO',
   notes: appointment?.notes || '',
 });
@@ -48,6 +49,28 @@ const createIntakeState = (intake, fallbackVehicleId) => ({
   observationDetail: intake?.observationDetail || '',
   observationCreatedAt: intake?.observationCreatedAt || null,
 });
+
+const RECEIPT_STATUS_LABELS = {
+  PENDIENTE: 'Pendiente de recepción',
+  PARCIAL: 'Recepción parcial',
+  RECIBIDO: 'Recibido completo',
+};
+
+const APPOINTMENT_FOLLOW_UP_OPTIONS = [
+  { value: 'PROBABLE_A_CONFIRMAR', label: 'Probable a confirmar' },
+  { value: 'A_CONFIRMAR_CLIENTE', label: 'A confirmar cliente' },
+  { value: 'CONFIRMADO', label: 'Confirmado' },
+  { value: 'REPROGRAMAR', label: 'Reprogramar' },
+];
+
+const isTerminalAppointment = (appointment) => ['CANCELADO', 'CUMPLIDO'].includes(appointment.statusCode);
+
+const createReceiptForm = (receipt) => ({
+  quantity: receipt?.quantity?.toString?.() || '',
+  receiptDate: receipt?.receiptDate || new Date().toISOString().slice(0, 10),
+});
+
+const hasRejectedAuthorization = (part) => part?.authorizationCode?.trim().toUpperCase() === 'RECHAZADO';
 
 export const invalidateCaseProjection = async (queryClient, caseId) => {
   await Promise.all([
@@ -119,6 +142,8 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const [outcomeFiles, setOutcomeFiles] = useState([]);
   const [schedulingConfirmation, setSchedulingConfirmation] = useState(null);
   const [appointmentToDelete, setAppointmentToDelete] = useState(null);
+  const [appointmentToReschedule, setAppointmentToReschedule] = useState(null);
+  const [rescheduleForm, setRescheduleForm] = useState({ appointmentDate: '', appointmentTime: '', estimatedDays: '', notes: '' });
 
   const refreshWorkspace = async (message) => {
     await invalidateCaseProjection(queryClient, caseId);
@@ -141,7 +166,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
       return createRepairAppointment(caseId, {
         appointmentDate: appointment.appointmentDate, appointmentTime: appointment.appointmentTime,
         estimatedDays: Number.parseInt(appointment.estimatedDays || '0', 10) || 0,
-        estimatedExitDate: appointment.estimatedExitDate || null, statusCode: appointment.statusCode, reentry: appointment.reentry === 'SI', notes: appointment.notes || null, userId, overridePendingParts, overrideMissingAgreement,
+        estimatedExitDate: appointment.estimatedExitDate || null, statusCode: appointment.statusCode, followUpStatusCode: appointment.followUpStatusCode || null, reentry: appointment.reentry === 'SI', notes: appointment.notes || null, userId, overridePendingParts, overrideMissingAgreement,
       });
     },
     onSuccess: async (savedAppointment) => { synchronizeWorkspaceAppointment(savedAppointment); await queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'audit'] }); await refreshWorkspace('Turno creado y workspace actualizado.'); },
@@ -192,7 +217,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
         await updateRepairAppointment(appt.id, {
           appointmentDate: appt.appointmentDate, appointmentTime: appt.appointmentTime,
           estimatedDays: appt.estimatedDays, estimatedExitDate: appt.estimatedExitDate,
-          statusCode: 'CUMPLIDO', reentry: appt.reentry || false,
+           statusCode: 'CUMPLIDO', followUpStatusCode: appt.followUpStatusCode || null, reentry: appt.reentry || false,
           notes: appt.notes || null, userId: Number(appt.userId || userId),
         });
         await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'appointments'] });
@@ -278,7 +303,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const isInsuranceRepair = ['TODO_RIESGO', 'GRANIZO', 'CLEAS'].includes(caseDetail?.caseTypeCode);
   const isThirdPartyWorkshop = caseDetail?.caseTypeCode === 'RECLAMO_TERCEROS';
   const partsProvidedByWorkshop = !isThirdPartyWorkshop || thirdPartyQuery.data?.partsProvisionModeCode === 'TALLER';
-  const supportsNoRepair = ['TODO_RIESGO', 'GRANIZO', 'CLEAS'].includes(caseDetail?.caseTypeCode);
+  const supportsNoRepair = Boolean(caseDetail?.caseTypeCode);
   const canManageExceptionalRepair = hasGlobalAdminScope(session);
   const supportsUrgentRepair = ['TODO_RIESGO', 'CLEAS'].includes(caseDetail?.caseTypeCode) && caseDetail?.visibleTramiteState?.code === 'SIN_PRESENTAR';
   const isNoRepair = caseDetail?.visibleRepairState?.code === 'NO_DEBE_REPARARSE';
@@ -288,7 +313,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const [urgentRepairReason, setUrgentRepairReason] = useState('');
 
   const noRepairMutation = useMutation({
-    mutationFn: ({ revert, reason }) => requestJson(`/cases/${caseId}/${caseDetail?.caseTypeCode === 'CLEAS' ? 'cleas' : 'todo-riesgo'}/no-repair${revert ? '/revert' : ''}`, {
+    mutationFn: ({ revert, reason }) => requestJson(`/cases/${caseId}/repair/no-repair${revert ? '/revert' : ''}`, {
       method: 'POST',
       body: JSON.stringify({ reason }),
     }),
@@ -314,6 +339,23 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const [subTab, setSubTab] = useState('repuestos');
   const [warningToResolve, setWarningToResolve] = useState(null);
   const [warningResolution, setWarningResolution] = useState('');
+  const [receiptDialog, setReceiptDialog] = useState(null);
+  const [receiptForm, setReceiptForm] = useState(() => createReceiptForm());
+
+  const downloadLabel = async (part) => {
+    try {
+      const blob = await downloadRepairPartLabel(caseId, part.id);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `etiqueta-${caseDetail?.folderCode || caseId}-REP-${part.id}.pdf`;
+      link.click();
+      URL.revokeObjectURL(url);
+      toast.success('Etiqueta de repuesto descargada.');
+    } catch (error) {
+      toast.error(`No pude generar la etiqueta. Los datos del repuesto no se modificaron.${error.message ? ` ${error.message}` : ''}`);
+    }
+  };
 
   const resolveWarningMutation = useMutation({
     mutationFn: ({ partId, warningId, resolution }) => resolvePartReconciliationWarning(caseId, partId, warningId, resolution),
@@ -324,6 +366,27 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
       toast.success('Advertencia resuelta y auditada. El repuesto se conservó sin cambios automáticos.');
     },
     onError: (error) => toast.error(error.message || 'No pude resolver la advertencia.'),
+  });
+
+  const receiptMutation = useMutation({
+    mutationFn: ({ partId, receiptId, payload }) => (
+      receiptId
+        ? updateRepairPartReceipt(caseId, partId, receiptId, payload)
+        : createRepairPartReceipt(caseId, partId, payload)
+    ),
+    onSuccess: async (_, variables) => {
+      setReceiptDialog(null);
+      await refreshWorkspace(variables.receiptId ? 'Recepción actualizada.' : 'Recepción registrada.');
+    },
+    onError: (error) => toast.error(error.message || 'No pude guardar la recepción.'),
+  });
+
+  const deleteReceiptMutation = useMutation({
+    mutationFn: ({ partId, receiptId }) => deleteRepairPartReceipt(caseId, partId, receiptId),
+    onSuccess: async () => {
+      await refreshWorkspace('Recepción eliminada.');
+    },
+    onError: (error) => toast.error(error.message || 'No pude eliminar la recepción.'),
   });
 
 
@@ -369,6 +432,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
         if (draft.purchasedByCode !== original.purchasedByCode) changes.purchasedByCode = draft.purchasedByCode;
         if (draft.paymentStatusCode !== original.paymentStatusCode) changes.paymentStatusCode = draft.paymentStatusCode || null;
         if ((draft.authorizationCode || null) !== (original.authorizationCode || null)) changes.authorizationCode = draft.authorizationCode || null;
+        if (Number(draft.orderedQuantity || 1) !== Number(original.orderedQuantity || 1)) changes.orderedQuantity = Number(draft.orderedQuantity || 1);
         if (Object.keys(changes).length > 0) {
           promises.push(updateRepairPart(caseId, draft.id, {
             finalSupplier: draft.finalSupplier || null,
@@ -380,6 +444,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
             receivedDate: original.receivedDate || null,
             used: Boolean(original.used),
             returned: Boolean(original.returned),
+            orderedQuantity: Number(draft.orderedQuantity || 1),
           }));
         }
       }
@@ -514,7 +579,9 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                 <tr className="border-b border-border/60 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   <th className="px-3 py-3 text-left">Repuesto</th>
                   <th className="px-3 py-3 text-left">Proveedor</th>
-                  <th className="px-3 py-3 text-left">Estado</th>
+                  <th className="px-3 py-3 text-left">Pedido / recibido</th>
+                  <th className="px-3 py-3 text-left">Estado operativo</th>
+                  <th className="px-3 py-3 text-left">Recepción física</th>
                   <th className="px-3 py-3 text-left">Compra</th>
                   <th className="px-3 py-3 text-left">Pago</th>
                    {isInsuranceRepair ? <th className="px-3 py-3 text-left">Autorización</th> : null}
@@ -524,7 +591,10 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
               <tbody>
                 {displayParts.map((part) => (
                   <tr key={part._tempId || part.id} className="border-b border-border/40 hover:bg-muted/30 transition-colors">
-                    <td className="px-3 py-3 font-medium max-w-[200px] truncate">{part.description || 'Sin descripción'}{part.accessory ? <span className="ml-2 rounded-full border px-2 py-0.5 text-xs font-normal text-muted-foreground">Trabajo extra</span> : null}</td>
+                    <td className="px-3 py-3 font-medium max-w-[200px]">
+                      <div className="truncate">{part.description || 'Sin descripción'}{part.accessory ? <span className="ml-2 rounded-full border px-2 py-0.5 text-xs font-normal text-muted-foreground">Trabajo extra</span> : null}</div>
+                      <span className="mt-1 block font-mono text-xs font-normal text-muted-foreground">REP-{part.id}</span>
+                    </td>
                     <td className="px-3 py-3">
                       {editMode ? (
                         <Button type="button" variant="outline" size="sm" onClick={() => setProviderAssignment({ partId: part._tempId || part.id, providerId: part.providerId || null, finalSupplier: part.finalSupplier || '' })}>
@@ -533,6 +603,34 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                       ) : (
                         <span className="text-sm">{part.finalSupplier || '—'}</span>
                       )}
+                    </td>
+                    <td className="px-3 py-3 min-w-[190px]">
+                      <div className="flex items-center gap-2">
+                        {editMode ? (
+                          <Input
+                            aria-label={`Cantidad pedida ${part.description || part.id}`}
+                            className="h-9 w-20 rounded-xl px-2 text-sm"
+                            type="number"
+                            min="1"
+                            value={part.orderedQuantity ?? 1}
+                            onChange={(event) => updateDraftField(part._tempId || part.id, 'orderedQuantity', event.target.value)}
+                          />
+                        ) : (
+                          <span className="font-medium">{part.orderedQuantity ?? 1}</span>
+                        )}
+                        <span className="text-muted-foreground">/ {part.receivedQuantity ?? 0}</span>
+                      </div>
+                      {(part.receipts ?? []).length > 0 ? (
+                        <ul className="mt-2 space-y-1" aria-label={`Historial de recepciones de ${part.description || part.id}`}>
+                          {part.receipts.map((receipt) => (
+                            <li key={receipt.id} className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <span>{receipt.quantity} u. · {receipt.receiptDate || 'Fecha histórica no registrada'}</span>
+                              {partsProvidedByWorkshop && !hasRejectedAuthorization(part) ? <Button type="button" variant="ghost" size="sm" className="h-6 px-1.5" aria-label={`Editar recepción ${receipt.receiptDate}`} onClick={() => { setReceiptDialog({ part, receipt }); setReceiptForm(createReceiptForm(receipt)); }}><Pencil className="h-3 w-3" /></Button> : null}
+                              {partsProvidedByWorkshop ? <Button type="button" variant="ghost" size="sm" className="h-6 px-1.5 text-destructive hover:text-destructive" aria-label={`Eliminar recepción ${receipt.receiptDate}`} disabled={deleteReceiptMutation.isPending} onClick={() => deleteReceiptMutation.mutate({ partId: part.id, receiptId: receipt.id })}><Trash2 className="h-3 w-3" /></Button> : null}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : <p className="mt-2 text-xs text-muted-foreground">Sin recepciones registradas.</p>}
                     </td>
                     <td className="px-3 py-3">
                       {editMode ? (
@@ -543,6 +641,9 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                       ) : (
                         <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/50 px-2.5 py-0.5 text-xs font-medium">{statusCodeOptions.find(o => o.value === part.statusCode)?.label || part.statusCode || '—'}</span>
                       )}
+                    </td>
+                    <td className="px-3 py-3">
+                      <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/50 px-2.5 py-0.5 text-xs font-medium">{RECEIPT_STATUS_LABELS[part.receiptStatus] || part.receiptStatus || 'Pendiente de recepción'}</span>
                     </td>
                     <td className="px-3 py-3">
                       {editMode ? (
@@ -581,6 +682,13 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                         )}
                       </td>
                     ) : null}
+                    <td className="px-3 py-3 text-right">
+                      <Button type="button" variant="outline" size="sm" aria-label={`Descargar etiqueta ${part.description || part.id}`} onClick={() => downloadLabel(part)}>
+                        <Download className="mr-1.5 h-4 w-4" />Etiqueta
+                      </Button>
+                       {partsProvidedByWorkshop && !hasRejectedAuthorization(part) ? <Button type="button" variant="outline" size="sm" aria-label={`Agregar recepción ${part.description || part.id}`} onClick={() => { setReceiptDialog({ part, receipt: null }); setReceiptForm(createReceiptForm()); }}>Registrar recepción</Button> : null}
+                       {hasRejectedAuthorization(part) ? <span className="block max-w-36 text-xs text-destructive">No se puede registrar recepción: autorización rechazada.</span> : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -610,6 +718,15 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
             <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setWarningToResolve(null)}>Cancelar</Button><Button type="submit" disabled={resolveWarningMutation.isPending}>{resolveWarningMutation.isPending ? 'Registrando...' : 'Registrar resolución'}</Button></div>
           </form>
         </Dialog>
+        <Dialog open={Boolean(receiptDialog)} onClose={() => { if (!receiptMutation.isPending) setReceiptDialog(null); }} title={receiptDialog?.receipt ? 'Editar recepción' : 'Registrar recepción'} description="La recepción física se registra por fecha y actualiza el saldo recibido del repuesto.">
+          <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); const quantity = Number(receiptForm.quantity); if (!Number.isInteger(quantity) || quantity <= 0 || !receiptForm.receiptDate) { toast.error('Ingresá una cantidad positiva y una fecha de recepción.'); return; } receiptMutation.mutate({ partId: receiptDialog.part.id, receiptId: receiptDialog.receipt?.id, payload: { quantity, receiptDate: receiptForm.receiptDate } }); }}>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1"><Label htmlFor="receipt-quantity">Cantidad recibida</Label><Input id="receipt-quantity" data-dialog-initial-focus type="number" min="1" step="1" value={receiptForm.quantity} onChange={(event) => setReceiptForm((current) => ({ ...current, quantity: event.target.value }))} required /></div>
+              <div className="space-y-1"><Label htmlFor="receipt-date">Fecha de recepción</Label><Input id="receipt-date" type="date" value={receiptForm.receiptDate} onChange={(event) => setReceiptForm((current) => ({ ...current, receiptDate: event.target.value }))} required /></div>
+            </div>
+            <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setReceiptDialog(null)} disabled={receiptMutation.isPending}>Cancelar</Button><Button type="submit" disabled={receiptMutation.isPending}>{receiptMutation.isPending ? 'Guardando...' : 'Guardar recepción'}</Button></div>
+          </form>
+        </Dialog>
         <Dialog open={Boolean(providerAssignment)} onClose={() => setProviderAssignment(null)} title="Asignar proveedor" description="Buscá un proveedor existente o ingresá un nombre manual para este repuesto.">
           <div className="space-y-4">
             <ProviderSelector value={providerAssignment?.finalSupplier || ''} providerId={providerAssignment?.providerId || null} onChange={({ providerId, snapshot }) => setProviderAssignment((current) => ({ ...current, providerId, finalSupplier: snapshot || '' }))} />
@@ -634,12 +751,13 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
           </div>
         </div>
         <div className="mb-5 rounded-2xl border border-dashed border-border/60 bg-background/70 p-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
             <div className="space-y-1"><Label className="text-xs">Fecha</Label><Input className="h-9 rounded-xl text-sm" type="date" value={appointment.appointmentDate} onChange={(e) => setAppointment((c) => ({ ...c, appointmentDate: e.target.value }))} /></div>
             <div className="space-y-1"><Label className="text-xs">Hora</Label><Input className="h-9 rounded-xl text-sm" type="time" value={appointment.appointmentTime} onChange={(e) => setAppointment((c) => ({ ...c, appointmentTime: e.target.value }))} /></div>
             <div className="space-y-1"><Label className="text-xs">Días est.</Label><Input className="h-9 rounded-xl text-sm" type="number" min="0" value={appointment.estimatedDays} onChange={(e) => setAppointment((c) => ({ ...c, estimatedDays: e.target.value }))} /></div>
             <div className="space-y-1"><Label className="text-xs">Salida est.</Label><Input className="h-9 rounded-xl text-sm bg-muted/50 cursor-default" type="date" value={appointment.estimatedExitDate || ''} readOnly /></div>
-            <div className="space-y-1"><Label className="text-xs">Notas</Label><Input className="h-9 rounded-xl text-sm" value={appointment.notes} onChange={(e) => setAppointment((c) => ({ ...c, notes: e.target.value }))} placeholder="Opcional" /></div>
+             <div className="space-y-1"><Label className="text-xs">Notas</Label><Input className="h-9 rounded-xl text-sm" value={appointment.notes} onChange={(e) => setAppointment((c) => ({ ...c, notes: e.target.value }))} placeholder="Opcional" /></div>
+             <div className="space-y-1"><Label className="text-xs">Seguimiento</Label><select aria-label="Seguimiento inicial del turno" className="h-9 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20" value={appointment.followUpStatusCode} onChange={(e) => setAppointment((c) => ({ ...c, followUpStatusCode: e.target.value }))}><option value="">Sin definir</option>{APPOINTMENT_FOLLOW_UP_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></div>
             <div className="flex items-end"><Button className="w-full" size="sm" onClick={() => appointmentMutation.mutate(false)} disabled={appointmentMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Agendar</Button></div>
           </div>
         </div>
@@ -654,7 +772,8 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                   <th className="px-3 py-3 text-left">Hora</th>
                   <th className="px-3 py-3 text-center">Días</th>
                   <th className="px-3 py-3 text-left">Salida est.</th>
-                  <th className="px-3 py-3 text-left">Estado</th>
+                  <th className="px-3 py-3 text-left">Estado operativo</th>
+                  <th className="px-3 py-3 text-left">Seguimiento</th>
                   <th className="px-3 py-3 text-left">Notas</th>
                   <th className="px-3 py-3 text-right"><span className="sr-only">Acciones</span></th>
                 </tr>
@@ -666,20 +785,30 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                     <td className="px-3 py-3 text-muted-foreground">{a.appointmentTime || '—'}</td>
                     <td className="px-3 py-3 text-center">{a.estimatedDays ?? '—'}</td>
                     <td className="px-3 py-3 text-muted-foreground">{a.estimatedExitDate || '—'}</td>
+                    <td className="px-3 py-3 whitespace-nowrap">
+                      <span className="inline-flex items-center rounded-full border border-border/60 bg-muted/50 px-2.5 py-0.5 text-xs font-medium">{appointmentStatusOptions.find((opt) => opt.value === a.statusCode)?.label || a.statusCode || '—'}</span>
+                    </td>
                     <td className="px-3 py-3">
                       <select
-                        className="h-9 w-full min-w-[120px] rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
-                        value={a.statusCode || ''}
-                        onChange={(e) => updateAppointmentMutation.mutate({ appointmentId: a.id, payload: { appointmentDate: a.appointmentDate, appointmentTime: a.appointmentTime, estimatedDays: a.estimatedDays, estimatedExitDate: a.estimatedExitDate, statusCode: e.target.value, reentry: a.reentry || false, notes: a.notes || null, userId: Number(a.userId) } })}
+                        aria-label={`Seguimiento de confirmación del turno ${a.id}`}
+                        className="h-9 w-full min-w-[190px] rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        value={a.followUpStatusCode || ''}
+                        disabled={isTerminalAppointment(a)}
+                        onChange={(e) => updateAppointmentMutation.mutate({ appointmentId: a.id, payload: { appointmentDate: a.appointmentDate, appointmentTime: a.appointmentTime, estimatedDays: a.estimatedDays, estimatedExitDate: a.estimatedExitDate, statusCode: a.statusCode, followUpStatusCode: e.target.value || null, reentry: a.reentry || false, notes: a.notes || null, userId: Number(a.userId) } })}
                       >
-                        {appointmentStatusOptions.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
+                        <option value="">Sin definir</option>
+                        {APPOINTMENT_FOLLOW_UP_OPTIONS.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                       </select>
+                      {isTerminalAppointment(a) ? <p className="mt-1 text-xs text-muted-foreground">No aplica a turnos {a.statusCode.toLowerCase()}s.</p> : null}
                     </td>
                     <td className="px-3 py-3 text-xs text-muted-foreground max-w-[180px] truncate">{a.notes || '—'}</td>
                     <td className="px-3 py-3 text-right">
+                      <div className="flex justify-end gap-1">
+                      {a.followUpStatusCode === 'REPROGRAMAR' && !isTerminalAppointment(a) ? <Button size="sm" variant="outline" onClick={() => { setAppointmentToReschedule(a); setRescheduleForm({ appointmentDate: a.appointmentDate, appointmentTime: a.appointmentTime || '09:00', estimatedDays: a.estimatedDays?.toString() || '', notes: a.notes || '' }); }}>Reprogramar fecha</Button> : null}
                       {!a.reentry ? <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive" onClick={() => setAppointmentToDelete(a)} title="Eliminar turno">
                         <Trash2 className="h-4 w-4" /><span className="sr-only">Eliminar turno</span>
                       </Button> : <span className="text-xs text-muted-foreground">Reingreso automático</span>}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -846,7 +975,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
           <h4 className="text-lg font-semibold">Historial de Movimiento</h4>
           <p className="mt-1 mb-5 text-sm text-muted-foreground">Registro cronológico de turnos, ingresos y egresos.</p>
           <div className="grid gap-4 xl:grid-cols-4">
-            <HistoryCard title="Historial de turnos" items={appointmentsQuery.data ?? []} renderItem={(item) => `${item.appointmentDate} ${item.appointmentTime || ''} → ${item.estimatedExitDate || '—'} (${item.estimatedDays || 0}d) — ${item.statusCode || 'SIN ESTADO'}`} />
+            <HistoryCard title="Historial de turnos" items={appointmentsQuery.data ?? []} renderItem={(item) => `${item.appointmentDate} ${item.appointmentTime || ''} → ${item.estimatedExitDate || '—'} (${item.estimatedDays || 0}d) — ${appointmentStatusOptions.find((option) => option.value === item.statusCode)?.label || item.statusCode || 'SIN ESTADO'} / ${APPOINTMENT_FOLLOW_UP_OPTIONS.find((option) => option.value === item.followUpStatusCode)?.label || 'Sin definir'}`} />
             <HistoryCard title="Turnos eliminados" items={deletedAppointments} renderItem={(item) => appointmentAuditSummary(item.beforeJson)} />
             <HistoryCard title="Historial de ingresos" items={intakesQuery.data ?? []} renderItem={(item) => `${item.intakeAt} → salida est. ${item.estimatedExitDate || '—'} — km ${item.mileage ?? 0}`} />
             <HistoryCard title="Historial de egresos" items={outcomesQuery.data ?? []} renderItem={(item) => `${item.outcomeAt} - ${item.definitive ? 'Definitivo' : 'Parcial'}${item.shouldReenter ? ' / Reingresa' : ''}`} />
@@ -871,6 +1000,18 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
           <Button type="button" variant="destructive" disabled={deleteAppointmentMutation.isPending} onClick={() => deleteAppointmentMutation.mutate(appointmentToDelete.id)}>
             {deleteAppointmentMutation.isPending ? 'Eliminando...' : 'Eliminar turno'}
           </Button>
+        </div>
+      </Dialog>
+      <Dialog open={Boolean(appointmentToReschedule)} onClose={() => setAppointmentToReschedule(null)} title="Reprogramar turno" description="Al guardar la nueva fecha, el estado operativo quedará como Reprogramado y el seguimiento volverá a Sin definir.">
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1"><Label htmlFor="reschedule-date">Nueva fecha</Label><Input id="reschedule-date" type="date" value={rescheduleForm.appointmentDate} onChange={(event) => setRescheduleForm((current) => ({ ...current, appointmentDate: event.target.value }))} /></div>
+            <div className="space-y-1"><Label htmlFor="reschedule-time">Nueva hora</Label><Input id="reschedule-time" type="time" value={rescheduleForm.appointmentTime} onChange={(event) => setRescheduleForm((current) => ({ ...current, appointmentTime: event.target.value }))} /></div>
+            <div className="space-y-1"><Label htmlFor="reschedule-days">Días estimados</Label><Input id="reschedule-days" type="number" min="1" value={rescheduleForm.estimatedDays} onChange={(event) => setRescheduleForm((current) => ({ ...current, estimatedDays: event.target.value }))} /></div>
+            <div className="space-y-1"><Label>Salida estimada</Label><Input type="date" readOnly className="bg-muted/50 cursor-default" value={addBusinessDays(rescheduleForm.appointmentDate, Number(rescheduleForm.estimatedDays) || 0)} /></div>
+          </div>
+          <div className="space-y-1"><Label htmlFor="reschedule-notes">Notas</Label><Textarea id="reschedule-notes" rows={3} value={rescheduleForm.notes} onChange={(event) => setRescheduleForm((current) => ({ ...current, notes: event.target.value }))} /></div>
+          <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setAppointmentToReschedule(null)}>Cancelar</Button><Button type="button" disabled={updateAppointmentMutation.isPending} onClick={() => { if (!rescheduleForm.appointmentDate || !rescheduleForm.appointmentTime || Number(rescheduleForm.estimatedDays) <= 0) { toast.error('Ingresá la nueva fecha, hora y días estimados.'); return; } updateAppointmentMutation.mutate({ appointmentId: appointmentToReschedule.id, payload: { appointmentDate: rescheduleForm.appointmentDate, appointmentTime: rescheduleForm.appointmentTime, estimatedDays: Number(rescheduleForm.estimatedDays), estimatedExitDate: addBusinessDays(rescheduleForm.appointmentDate, Number(rescheduleForm.estimatedDays)), statusCode: appointmentToReschedule.statusCode, followUpStatusCode: appointmentToReschedule.followUpStatusCode, reentry: appointmentToReschedule.reentry || false, notes: rescheduleForm.notes || null, userId: Number(appointmentToReschedule.userId) } }); setAppointmentToReschedule(null); }}>Guardar reprogramación</Button></div>
         </div>
       </Dialog>
     </div>

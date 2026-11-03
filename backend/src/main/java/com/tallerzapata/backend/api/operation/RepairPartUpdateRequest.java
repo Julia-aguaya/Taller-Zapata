@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.api.operation;
 
 import java.time.LocalDate;
+import jakarta.validation.constraints.Positive;
 
 /** Fields owned by repair operations, never by the commercial budget. */
 public record RepairPartUpdateRequest(
@@ -12,6 +13,7 @@ public record RepairPartUpdateRequest(
         LocalDate receivedDate,
         Boolean used,
         Boolean returned,
-        Long providerId
+        Long providerId,
+        @Positive Integer orderedQuantity
 ) {
 }

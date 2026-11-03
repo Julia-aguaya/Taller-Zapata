@@ -13,6 +13,7 @@ public record RepairAppointmentResponse(
         Integer estimatedDays,
         LocalDate estimatedExitDate,
         String statusCode,
+        String followUpStatusCode,
         Boolean reentry,
         String notes,
         Long userId,

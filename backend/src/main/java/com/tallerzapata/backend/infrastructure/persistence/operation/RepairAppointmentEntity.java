@@ -42,6 +42,9 @@ public class RepairAppointmentEntity {
     @Column(name = "estado_codigo", nullable = false)
     private String statusCode;
 
+    @Column(name = "seguimiento_confirmacion_codigo")
+    private String followUpStatusCode;
+
     @Column(name = "es_reingreso", nullable = false)
     private Boolean reentry;
 
@@ -81,6 +84,8 @@ public class RepairAppointmentEntity {
     public void setEstimatedExitDate(LocalDate estimatedExitDate) { this.estimatedExitDate = estimatedExitDate; }
     public String getStatusCode() { return statusCode; }
     public void setStatusCode(String statusCode) { this.statusCode = statusCode; }
+    public String getFollowUpStatusCode() { return followUpStatusCode; }
+    public void setFollowUpStatusCode(String followUpStatusCode) { this.followUpStatusCode = followUpStatusCode; }
     public Boolean getReentry() { return reentry; }
     public void setReentry(Boolean reentry) { this.reentry = reentry; }
     public String getNotes() { return notes; }

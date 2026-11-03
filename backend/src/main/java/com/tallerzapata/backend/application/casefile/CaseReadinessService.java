@@ -3,6 +3,7 @@ package com.tallerzapata.backend.application.casefile;
 import com.tallerzapata.backend.api.casefile.CaseReadinessResponse;
 import com.tallerzapata.backend.api.casefile.CaseReadinessTabResponse;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
+import com.tallerzapata.backend.application.operation.RepairPartReceiptAvailabilityService;
 import com.tallerzapata.backend.application.cleas.CleasClosurePolicy;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
 import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetEntity;
@@ -95,6 +96,7 @@ public class CaseReadinessService {
     private final CaseAccessControlService caseAccessControlService;
     private final ThirdPartyWorkshopCompanyPaymentProjection thirdPartyWorkshopCompanyPaymentProjection;
     private final DocumentationWorkflowStateService documentationWorkflowStateService;
+    private final RepairPartReceiptAvailabilityService receiptAvailabilityService;
     private final InsuranceRepairCasePolicy insuranceRepairCasePolicy = new InsuranceRepairCasePolicy();
 
     public CaseReadinessService(
@@ -126,7 +128,8 @@ public class CaseReadinessService {
             CurrentUserService currentUserService,
             CaseAccessControlService caseAccessControlService,
             ThirdPartyWorkshopCompanyPaymentProjection thirdPartyWorkshopCompanyPaymentProjection,
-            DocumentationWorkflowStateService documentationWorkflowStateService
+            DocumentationWorkflowStateService documentationWorkflowStateService,
+            RepairPartReceiptAvailabilityService receiptAvailabilityService
     ) {
         this.caseRepository = caseRepository;
         this.caseTypeRepository = caseTypeRepository;
@@ -157,6 +160,7 @@ public class CaseReadinessService {
         this.caseAccessControlService = caseAccessControlService;
         this.thirdPartyWorkshopCompanyPaymentProjection = thirdPartyWorkshopCompanyPaymentProjection;
         this.documentationWorkflowStateService = documentationWorkflowStateService;
+        this.receiptAvailabilityService = receiptAvailabilityService;
     }
 
     @Transactional(readOnly = true)
@@ -337,6 +341,11 @@ public class CaseReadinessService {
         List<String> blockingReasons = new ArrayList<>();
         List<String> warningReasons = new ArrayList<>();
 
+        CaseEntity caseEntity = caseRepository.findById(caseId).orElseThrow();
+        if (isRepairSuppressed(caseEntity)) {
+            return new CaseReadinessTabResponse("GESTION_REPARACION", true, true, "BLUE", List.of(), List.of());
+        }
+
         boolean allowed = budgetCompleted;
         if (!budgetCompleted) {
             blockingReasons.add("Debe cerrar el presupuesto antes de avanzar a gestion reparacion");
@@ -351,7 +360,7 @@ public class CaseReadinessService {
         if (appointments.isEmpty()) {
             blockingReasons.add("Falta agendar el turno de reparacion");
         }
-        if (!parts.isEmpty() && parts.stream().anyMatch(part -> !"RECIBIDO".equals(normalizeCode(part.getStatusCode())))) {
+        if (parts.stream().anyMatch(part -> !receiptAvailabilityService.isFullyReceived(part))) {
             warningReasons.add("Hay repuestos pendientes de recibir");
         }
         if (appointments.stream().findFirst().isPresent() && intakes.isEmpty()) {

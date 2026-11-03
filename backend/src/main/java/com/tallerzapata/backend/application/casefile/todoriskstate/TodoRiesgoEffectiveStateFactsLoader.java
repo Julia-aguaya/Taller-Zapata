@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.application.casefile.todoriskstate;
 
 import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartRepository;
+import com.tallerzapata.backend.application.operation.RepairPartReceiptAvailabilityService;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseTypeRepository;
 import com.tallerzapata.backend.infrastructure.persistence.insurance.InsuranceProcessingRepository;
@@ -25,13 +26,16 @@ public class TodoRiesgoEffectiveStateFactsLoader {
     private final CasePartRepository partRepository;
     private final RepairAppointmentRepository appointmentRepository;
     private final VehicleOutcomeRepository outcomeRepository;
+    private final RepairPartReceiptAvailabilityService receiptAvailabilityService;
 
     public TodoRiesgoEffectiveStateFactsLoader(TodoRiesgoStateFactsRepository factsRepository, InsuranceProcessingRepository insuranceProcessingRepository, CaseTypeRepository caseTypeRepository,
                                                WorkflowStateRepository workflowStateRepository, CasePartRepository partRepository,
-                                               RepairAppointmentRepository appointmentRepository, VehicleOutcomeRepository outcomeRepository) {
+                                               RepairAppointmentRepository appointmentRepository, VehicleOutcomeRepository outcomeRepository,
+                                               RepairPartReceiptAvailabilityService receiptAvailabilityService) {
         this.factsRepository = factsRepository; this.insuranceProcessingRepository = insuranceProcessingRepository; this.caseTypeRepository = caseTypeRepository;
         this.workflowStateRepository = workflowStateRepository; this.partRepository = partRepository;
         this.appointmentRepository = appointmentRepository; this.outcomeRepository = outcomeRepository;
+        this.receiptAvailabilityService = receiptAvailabilityService;
     }
 
     public TodoRiesgoEffectiveStateFacts load(CaseEntity caseEntity) {
@@ -51,7 +55,7 @@ public class TodoRiesgoEffectiveStateFactsLoader {
                 facts != null && Boolean.TRUE.equals(facts.getUrgentRepairActive()),
                 latestOutcome == null ? null : new TodoRiesgoEffectiveStateFacts.OutcomeFact(latestOutcome.getId(), isRepaired(latestOutcome), Boolean.TRUE.equals(latestOutcome.getShouldReenter()), hasSatisfiedReentry(latestOutcome, appointments)),
                 appointments.stream().anyMatch(this::isValidNormalAppointment),
-                partRepository.findByCaseIdOrderByIdAsc(caseId).stream().map(part -> new TodoRiesgoEffectiveStateFacts.PartFact(part.getAuthorizedCode(), part.getStatusCode())).toList()
+                partRepository.findByCaseIdOrderByIdAsc(caseId).stream().map(part -> new TodoRiesgoEffectiveStateFacts.PartFact(part.getAuthorizedCode(), receiptAvailabilityService.isFullyReceived(part))).toList()
         );
     }
 

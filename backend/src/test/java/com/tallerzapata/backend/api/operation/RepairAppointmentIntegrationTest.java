@@ -55,6 +55,7 @@ class RepairAppointmentIntegrationTest {
                 3,
                 LocalDate.of(2026, 5, 7),
                 null,
+                null,
                 false,
                 "Recepcion inicial",
                 3L,
@@ -68,6 +69,7 @@ class RepairAppointmentIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(createRequest)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.statusCode").value("PENDIENTE"))
+                .andExpect(jsonPath("$.followUpStatusCode").doesNotExist())
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
@@ -85,6 +87,7 @@ class RepairAppointmentIntegrationTest {
                 2,
                 LocalDate.of(2026, 5, 7),
                 "REPROGRAMADO",
+                "CONFIRMADO",
                 true,
                 "Vuelve por detalle menor",
                 3L
@@ -96,6 +99,7 @@ class RepairAppointmentIntegrationTest {
                         .content(objectMapper.writeValueAsBytes(updateRequest)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.statusCode").value("REPROGRAMADO"))
+                .andExpect(jsonPath("$.followUpStatusCode").value("CONFIRMADO"))
                 .andExpect(jsonPath("$.reentry").value(true));
 
         Integer auditCount = jdbcTemplate.queryForObject(
@@ -120,6 +124,7 @@ class RepairAppointmentIntegrationTest {
                 3,
                 null,
                 null,
+                null,
                 false,
                 "Recepcion cerca de feriado",
                 3L,
@@ -137,7 +142,7 @@ class RepairAppointmentIntegrationTest {
 
     @Test
     void shouldDeleteAnUnstartedAppointmentAndAuditTheDeletion() throws Exception {
-        RepairAppointmentCreateRequest request = new RepairAppointmentCreateRequest(LocalDate.of(2026, 5, 4), LocalTime.of(9, 0), 3, null, null, false, "Turno a cancelar", 3L, null, true);
+        RepairAppointmentCreateRequest request = new RepairAppointmentCreateRequest(LocalDate.of(2026, 5, 4), LocalTime.of(9, 0), 3, null, null, null, false, "Turno a cancelar", 3L, null, true);
         Long appointmentId = objectMapper.readTree(mockMvc.perform(post("/api/v1/cases/100/appointments")
                         .header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(request)))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).get("id").asLong();
@@ -148,6 +153,82 @@ class RepairAppointmentIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isEmpty());
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'eliminar_turno'", Integer.class, 100L)).isEqualTo(1);
+    }
+
+    @Test
+    void requiresPendingPartsOverrideUntilEveryOrderedQuantityIsReceived() throws Exception {
+        jdbcTemplate.update("INSERT INTO repuestos_caso (id, caso_id, descripcion, autorizado_codigo, estado_codigo, cantidad_pedida, usado, devuelto, source_type) VALUES (501, 100, 'Optica', 'AUTORIZADO', 'RECIBIDO', 3, false, false, 'MANUAL')");
+        jdbcTemplate.update("INSERT INTO repuestos_caso (id, caso_id, descripcion, autorizado_codigo, estado_codigo, cantidad_pedida, usado, devuelto, source_type) VALUES (502, 100, 'Paragolpes', 'AUTORIZADO', 'RECIBIDO', 2, false, false, 'MANUAL')");
+        jdbcTemplate.update("INSERT INTO repuestos_caso_recepciones (repuesto_id, cantidad, fecha_recepcion) VALUES (501, 2, '2026-05-01')");
+        jdbcTemplate.update("INSERT INTO repuestos_caso_recepciones (repuesto_id, cantidad, fecha_recepcion) VALUES (502, 2, '2026-05-01')");
+
+        RepairAppointmentCreateRequest request = new RepairAppointmentCreateRequest(LocalDate.of(2026, 5, 4), LocalTime.of(9, 0), 1, null, null, null, false, null, 3L, false, true);
+        mockMvc.perform(post("/api/v1/cases/100/appointments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isConflict());
+
+        jdbcTemplate.update("INSERT INTO repuestos_caso_recepciones (repuesto_id, cantidad, fecha_recepcion) VALUES (501, 1, '2026-05-02')");
+        mockMvc.perform(post("/api/v1/cases/100/appointments").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(request)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void shouldPersistEveryFollowUpStatusAndLeaveNewAppointmentsUndefinedWhenOmitted() throws Exception {
+        String[] followUpStatuses = {"PROBABLE_A_CONFIRMAR", "A_CONFIRMAR_CLIENTE", "CONFIRMADO", "REPROGRAMAR"};
+
+        for (int index = 0; index < followUpStatuses.length; index++) {
+            RepairAppointmentCreateRequest request = new RepairAppointmentCreateRequest(
+                    LocalDate.of(2026, 6, 1).plusDays(index), LocalTime.of(9, 0), 1, null,
+                    "PENDIENTE", followUpStatuses[index], false, null, 3L, null, true
+            );
+            mockMvc.perform(post("/api/v1/cases/100/appointments")
+                            .header("X-User-Id", "3")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsBytes(request)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.followUpStatusCode").value(followUpStatuses[index]));
+        }
+
+        RepairAppointmentCreateRequest undefinedRequest = new RepairAppointmentCreateRequest(
+                LocalDate.of(2026, 6, 10), LocalTime.of(9, 0), 1, null,
+                "PENDIENTE", null, false, null, 3L, null, true
+        );
+        mockMvc.perform(post("/api/v1/cases/100/appointments")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(undefinedRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.followUpStatusCode").doesNotExist());
+    }
+
+    @Test
+    void shouldCompleteReschedulingByChangingTheOperationalStateAndClearingFollowUp() throws Exception {
+        RepairAppointmentCreateRequest createRequest = new RepairAppointmentCreateRequest(
+                LocalDate.of(2026, 6, 1), LocalTime.of(9, 0), 2, null,
+                "PENDIENTE", "REPROGRAMAR", false, null, 3L, null, true
+        );
+        Long appointmentId = objectMapper.readTree(mockMvc.perform(post("/api/v1/cases/100/appointments")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(createRequest)))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString()).get("id").asLong();
+
+        RepairAppointmentUpdateRequest updateRequest = new RepairAppointmentUpdateRequest(
+                LocalDate.of(2026, 6, 3), LocalTime.of(10, 0), 2, null,
+                "PENDIENTE", "REPROGRAMAR", false, null, 3L
+        );
+        mockMvc.perform(put("/api/v1/appointments/{appointmentId}", appointmentId)
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(updateRequest)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.statusCode").value("REPROGRAMADO"))
+                .andExpect(jsonPath("$.followUpStatusCode").doesNotExist());
+
+        mockMvc.perform(get("/api/v1/cases/100/appointments").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].statusCode").value("REPROGRAMADO"))
+                .andExpect(jsonPath("$[0].followUpStatusCode").doesNotExist());
     }
 
     private void seedCases() {

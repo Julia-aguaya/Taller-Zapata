@@ -48,6 +48,14 @@ import java.time.LocalTime;
 @Service
 public class RepairAppointmentService {
 
+    private static final String FOLLOW_UP_REPROGRAM = "REPROGRAMAR";
+    private static final List<String> FOLLOW_UP_STATUS_CODES = List.of(
+            "PROBABLE_A_CONFIRMAR",
+            "A_CONFIRMAR_CLIENTE",
+            "CONFIRMADO",
+            FOLLOW_UP_REPROGRAM
+    );
+
     private final RepairAppointmentRepository repairAppointmentRepository;
     private final RepairAppointmentStatusRepository repairAppointmentStatusRepository;
     private final CaseRepository caseRepository;
@@ -64,6 +72,7 @@ public class RepairAppointmentService {
     private final InsuranceProcessingRepository insuranceProcessingRepository;
     private final CaseTypeRepository caseTypeRepository;
     private final CasePartRepository casePartRepository;
+    private final RepairPartReceiptAvailabilityService receiptAvailabilityService;
     private final CleasDownstreamGate cleasDownstreamGate;
     private final VehicleIntakeRepository vehicleIntakeRepository;
     private final VehicleOutcomeRepository vehicleOutcomeRepository;
@@ -86,6 +95,7 @@ public class RepairAppointmentService {
             InsuranceProcessingRepository insuranceProcessingRepository,
             CaseTypeRepository caseTypeRepository,
             CasePartRepository casePartRepository,
+            RepairPartReceiptAvailabilityService receiptAvailabilityService,
             CleasDownstreamGate cleasDownstreamGate,
             VehicleIntakeRepository vehicleIntakeRepository,
             VehicleOutcomeRepository vehicleOutcomeRepository,
@@ -107,6 +117,7 @@ public class RepairAppointmentService {
         this.insuranceProcessingRepository = insuranceProcessingRepository;
         this.caseTypeRepository = caseTypeRepository;
         this.casePartRepository = casePartRepository;
+        this.receiptAvailabilityService = receiptAvailabilityService;
         this.cleasDownstreamGate = cleasDownstreamGate;
         this.vehicleIntakeRepository = vehicleIntakeRepository;
         this.vehicleOutcomeRepository = vehicleOutcomeRepository;
@@ -149,9 +160,7 @@ public class RepairAppointmentService {
 
         // Validar repuestos pendientes: si hay repuestos no recibidos, advertir
         List<CasePartEntity> parts = casePartRepository.findByCaseIdOrderByIdAsc(caseId);
-        boolean hasPendingParts = !parts.isEmpty() && parts.stream().anyMatch(p ->
-                !"RECIBIDO".equals(normalizeCode(p.getStatusCode())) && !"INSTALADO".equals(normalizeCode(p.getStatusCode()))
-        );
+        boolean hasPendingParts = parts.stream().anyMatch(part -> !receiptAvailabilityService.isFullyReceived(part));
         List<String> requiredConfirmations = new java.util.ArrayList<>();
         if (missingAgreement && !Boolean.TRUE.equals(request.overrideMissingAgreement())) {
             requiredConfirmations.add("SIN_ACUERDO");
@@ -164,6 +173,7 @@ public class RepairAppointmentService {
         }
 
         String statusCode = normalizeStatusCode(request.statusCode());
+        String followUpStatusCode = normalizeFollowUpStatusCode(request.followUpStatusCode());
         requireActiveUser(request.userId());
 
         RepairAppointmentEntity entity = new RepairAppointmentEntity();
@@ -173,6 +183,7 @@ public class RepairAppointmentService {
         entity.setEstimatedDays(request.estimatedDays());
         entity.setEstimatedExitDate(resolveEstimatedExitDate(request.appointmentDate(), request.estimatedDays(), request.estimatedExitDate()));
         entity.setStatusCode(statusCode);
+        entity.setFollowUpStatusCode(followUpStatusCode);
         entity.setReentry(Boolean.TRUE.equals(request.reentry()));
         entity.setNotes(blankToNull(request.notes()));
         entity.setUserId(request.userId());
@@ -230,14 +241,20 @@ public class RepairAppointmentService {
         franchiseRecoveryRepairGate.requireEnabled(caseEntity);
 
         String statusCode = normalizeStatusCode(request.statusCode());
+        String followUpStatusCode = normalizeFollowUpStatusCode(request.followUpStatusCode());
         requireActiveUser(request.userId());
         Map<String, Object> before = toAuditPayload(entity);
+
+        boolean rescheduled = FOLLOW_UP_REPROGRAM.equals(entity.getFollowUpStatusCode())
+                && (!entity.getAppointmentDate().equals(request.appointmentDate())
+                || !entity.getAppointmentTime().equals(request.appointmentTime()));
 
         entity.setAppointmentDate(request.appointmentDate());
         entity.setAppointmentTime(request.appointmentTime());
         entity.setEstimatedDays(request.estimatedDays());
         entity.setEstimatedExitDate(resolveEstimatedExitDate(request.appointmentDate(), request.estimatedDays(), request.estimatedExitDate()));
-        entity.setStatusCode(statusCode);
+        entity.setStatusCode(rescheduled ? "REPROGRAMADO" : statusCode);
+        entity.setFollowUpStatusCode(rescheduled ? null : followUpStatusCode);
         entity.setReentry(Boolean.TRUE.equals(request.reentry()));
         entity.setNotes(blankToNull(request.notes()));
         entity.setUserId(request.userId());
@@ -437,6 +454,17 @@ public class RepairAppointmentService {
         return normalizedCode;
     }
 
+    private String normalizeFollowUpStatusCode(String followUpStatusCode) {
+        if (followUpStatusCode == null || followUpStatusCode.isBlank()) {
+            return null;
+        }
+        String normalizedCode = followUpStatusCode.trim().toUpperCase(Locale.ROOT);
+        if (!FOLLOW_UP_STATUS_CODES.contains(normalizedCode)) {
+            throw new ConflictException("followUpStatusCode no permitido: " + followUpStatusCode);
+        }
+        return normalizedCode;
+    }
+
     private String normalizeCode(String value) { return value == null || value.isBlank() ? null : value.trim().toUpperCase(Locale.ROOT); }
 
     private void requireActiveUser(Long userId) {
@@ -457,6 +485,7 @@ public class RepairAppointmentService {
                 entity.getEstimatedDays(),
                 entity.getEstimatedExitDate(),
                 entity.getStatusCode(),
+                entity.getFollowUpStatusCode(),
                 entity.getReentry(),
                 entity.getNotes(),
                 entity.getUserId(),
@@ -474,6 +503,7 @@ public class RepairAppointmentService {
         payload.put("estimatedDays", entity.getEstimatedDays());
         payload.put("estimatedExitDate", entity.getEstimatedExitDate());
         payload.put("statusCode", entity.getStatusCode());
+        payload.put("followUpStatusCode", entity.getFollowUpStatusCode());
         payload.put("reentry", entity.getReentry());
         payload.put("userId", entity.getUserId());
         return payload;

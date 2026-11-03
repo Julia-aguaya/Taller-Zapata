@@ -81,6 +81,7 @@ public class TestDatabaseCleaner {
             "presupuestos",
             "presupuesto_trabajos_extras",
             "cotizaciones_repuesto",
+            "repuestos_caso_recepciones",
             "repuestos_caso_reconciliation_warnings",
             "repuestos_caso_canonical_backfill_audit",
             "repuestos_caso_deduplicacion_auditoria",

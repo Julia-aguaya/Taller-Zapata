@@ -5,7 +5,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
@@ -32,5 +34,28 @@ public class RepairPartController {
                                      @Valid @RequestBody RepairPartUpdateRequest request,
                                      HttpServletRequest httpRequest) {
         return repairPartService.update(caseId, partId, request, httpRequest);
+    }
+
+    @PostMapping("/api/v1/cases/{caseId}/repair-parts/{partId}/receipts")
+    @PreAuthorize("hasAuthority('turno.editar')")
+    public RepairPartResponse createReceipt(@PathVariable Long caseId, @PathVariable Long partId,
+                                            @Valid @RequestBody RepairPartReceiptRequest request,
+                                            HttpServletRequest httpRequest) {
+        return repairPartService.createReceipt(caseId, partId, request, httpRequest);
+    }
+
+    @PutMapping("/api/v1/cases/{caseId}/repair-parts/{partId}/receipts/{receiptId}")
+    @PreAuthorize("hasAuthority('turno.editar')")
+    public RepairPartResponse updateReceipt(@PathVariable Long caseId, @PathVariable Long partId, @PathVariable Long receiptId,
+                                            @Valid @RequestBody RepairPartReceiptRequest request,
+                                            HttpServletRequest httpRequest) {
+        return repairPartService.updateReceipt(caseId, partId, receiptId, request, httpRequest);
+    }
+
+    @DeleteMapping("/api/v1/cases/{caseId}/repair-parts/{partId}/receipts/{receiptId}")
+    @PreAuthorize("hasAuthority('turno.editar')")
+    public void deleteReceipt(@PathVariable Long caseId, @PathVariable Long partId, @PathVariable Long receiptId,
+                              HttpServletRequest httpRequest) {
+        repairPartService.deleteReceipt(caseId, partId, receiptId, httpRequest);
     }
 }

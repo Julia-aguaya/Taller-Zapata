@@ -39,14 +39,14 @@ class TodoRiesgoEffectiveStatePolicyTest {
     void derivesPartsAvailabilityFromRowsWithoutPersistedPartialAuthorization() {
         assertState("SIN_PRESENTAR", "EN_TRAMITE", facts(null, false, null, null, null, false, null, false, pendingParts()));
         assertState("ACORDADO", "FALTAN_REPUESTOS", facts(null, false, LocalDate.now(), null, null, false, null, false,
-                List.of(new TodoRiesgoEffectiveStateFacts.PartFact("AUTORIZADO", "PEDIDO"), new TodoRiesgoEffectiveStateFacts.PartFact("RECHAZADO", "RECIBIDO"))));
+                List.of(new TodoRiesgoEffectiveStateFacts.PartFact("AUTORIZADO", false), new TodoRiesgoEffectiveStateFacts.PartFact("RECHAZADO", true))));
         assertState("ACORDADO", "DAR_TURNO", facts(null, false, LocalDate.now(), null, null, false, null, false,
-                List.of(new TodoRiesgoEffectiveStateFacts.PartFact("AUTORIZADO", "RECIBIDO"), new TodoRiesgoEffectiveStateFacts.PartFact("RECHAZADO", "PEDIDO"))));
+                List.of(new TodoRiesgoEffectiveStateFacts.PartFact("AUTORIZADO", true), new TodoRiesgoEffectiveStateFacts.PartFact("RECHAZADO", false))));
         assertState("ACORDADO", "DAR_TURNO", facts(null, false, LocalDate.now(), null, null, false, null, false,
-                List.of(new TodoRiesgoEffectiveStateFacts.PartFact("AUTORIZADO", "INSTALADO"))));
+                List.of(new TodoRiesgoEffectiveStateFacts.PartFact("AUTORIZADO", true))));
     }
 
-    private List<TodoRiesgoEffectiveStateFacts.PartFact> pendingParts() { return List.of(new TodoRiesgoEffectiveStateFacts.PartFact(null, "PEDIDO")); }
+    private List<TodoRiesgoEffectiveStateFacts.PartFact> pendingParts() { return List.of(new TodoRiesgoEffectiveStateFacts.PartFact(null, false)); }
     private TodoRiesgoEffectiveStateFacts facts(LocalDate presented, boolean docsComplete, LocalDate agreement, LocalDate passedToPayments, LocalDate payment,
                                                 boolean noRepair, TodoRiesgoEffectiveStateFacts.OutcomeFact outcome, boolean appointment,
                                                 List<TodoRiesgoEffectiveStateFacts.PartFact> parts) {

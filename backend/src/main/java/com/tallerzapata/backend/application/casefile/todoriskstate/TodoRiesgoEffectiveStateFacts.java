@@ -31,7 +31,7 @@ public record TodoRiesgoEffectiveStateFacts(
         this(presentedAt, documentationComplete, false, agreementDate != null, agreementDate, passedToPaymentsDate, paymentDate, noRepairActive,
                 false, latestOutcome, hasValidNormalAppointment, parts);
     }
-    public record PartFact(String authorizationCode, String statusCode) { }
+    public record PartFact(String authorizationCode, boolean fullyReceived) { }
     public record OutcomeFact(Long id, boolean repaired, boolean mustReenter, boolean hasSatisfiedReentry) {
         public boolean hasUnsatisfiedReentry() { return mustReenter && !hasSatisfiedReentry; }
     }

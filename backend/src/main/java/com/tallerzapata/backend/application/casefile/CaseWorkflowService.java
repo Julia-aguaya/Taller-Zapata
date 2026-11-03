@@ -9,6 +9,7 @@ import com.tallerzapata.backend.api.casefile.CaseVisibleStateOverrideRequest;
 import com.tallerzapata.backend.api.casefile.CaseWorkflowTransitionRequest;
 import com.tallerzapata.backend.application.common.ConflictException;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
+import com.tallerzapata.backend.application.operation.RepairPartReceiptAvailabilityService;
 import com.tallerzapata.backend.application.security.CaseAccessControlService;
 import com.tallerzapata.backend.application.casefile.particular.ParticularEffectiveStateRecalculator;
 import com.tallerzapata.backend.application.casefile.todoriskstate.TodoRiesgoEffectiveStateRecalculator;
@@ -61,6 +62,7 @@ public class CaseWorkflowService {
     private final CasePartRepository casePartRepository;
     private final UserRoleRepository userRoleRepository;
     private final NotificationRepository notificationRepository;
+    private final RepairPartReceiptAvailabilityService receiptAvailabilityService;
 
     public CaseWorkflowService(
             CaseRepository caseRepository,
@@ -73,7 +75,8 @@ public class CaseWorkflowService {
             ObjectMapper objectMapper,
             CaseVisibleStateResolver caseVisibleStateResolver, ParticularEffectiveStateRecalculator particularEffectiveStateRecalculator,
             CaseTypeRepository caseTypeRepository, TodoRiesgoEffectiveStateRecalculator todoRiesgoEffectiveStateRecalculator, CleasEffectiveStateRecalculator cleasEffectiveStateRecalculator,
-            CasePartRepository casePartRepository, UserRoleRepository userRoleRepository, NotificationRepository notificationRepository
+            CasePartRepository casePartRepository, UserRoleRepository userRoleRepository, NotificationRepository notificationRepository,
+            RepairPartReceiptAvailabilityService receiptAvailabilityService
     ) {
         this.caseRepository = caseRepository;
         this.workflowTransitionRepository = workflowTransitionRepository;
@@ -91,6 +94,7 @@ public class CaseWorkflowService {
         this.casePartRepository = casePartRepository;
         this.userRoleRepository = userRoleRepository;
         this.notificationRepository = notificationRepository;
+        this.receiptAvailabilityService = receiptAvailabilityService;
     }
 
     @Transactional
@@ -181,6 +185,22 @@ public class CaseWorkflowService {
     }
 
     @Transactional
+    public void markNoRepair(Long caseId, String reason, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = caseRepository.findById(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
+        caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "caso.ver");
+        requireGlobalAdmin(currentUser);
+        requireNoRepairReason(reason);
+        requireNoRepairPartsEligible(caseId);
+        if (isParticular(caseEntity)) particularEffectiveStateRecalculator.override(caseId, "reparacion", "NO_DEBE_REPARARSE", currentUser.id(), reason);
+        else if (isInsuranceRepair(caseEntity)) todoRiesgoEffectiveStateRecalculator.markNoRepair(caseId, reason, currentUser.id());
+        else if (isCleas(caseEntity)) cleasEffectiveStateRecalculator.markNoRepair(caseId, reason, currentUser.id());
+        else { caseEntity.setVisibleRepairStateOverrideCode("NO_DEBE_REPARARSE"); caseRepository.save(caseEntity); }
+        registerNoRepairAudit(caseEntity, currentUser, reason, false, httpRequest);
+        notifyGlobalAdminsNoRepair(caseEntity, currentUser, reason);
+    }
+
+    @Transactional
     public void revertTodoRiesgoNoRepair(Long caseId, String reason) {
         AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = caseRepository.findById(caseId)
@@ -188,6 +208,20 @@ public class CaseWorkflowService {
         caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "caso.ver");
         requireGlobalAdmin(currentUser);
         if (isCleas(caseEntity)) cleasEffectiveStateRecalculator.revertNoRepair(caseId, reason, currentUser.id()); else todoRiesgoEffectiveStateRecalculator.revertNoRepair(caseId, reason, currentUser.id());
+    }
+
+    @Transactional
+    public void revertNoRepair(Long caseId, String reason, HttpServletRequest httpRequest) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        CaseEntity caseEntity = caseRepository.findById(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
+        caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "caso.ver");
+        requireGlobalAdmin(currentUser);
+        requireNoRepairReason(reason);
+        if (isParticular(caseEntity)) particularEffectiveStateRecalculator.override(caseId, "reparacion", null, currentUser.id(), reason);
+        else if (isInsuranceRepair(caseEntity)) todoRiesgoEffectiveStateRecalculator.revertNoRepair(caseId, reason, currentUser.id());
+        else if (isCleas(caseEntity)) cleasEffectiveStateRecalculator.revertNoRepair(caseId, reason, currentUser.id());
+        else { caseEntity.setVisibleRepairStateOverrideCode(null); caseRepository.save(caseEntity); }
+        registerNoRepairAudit(caseEntity, currentUser, reason, true, httpRequest);
     }
 
     @Transactional
@@ -213,20 +247,21 @@ public class CaseWorkflowService {
     private void requireNoRepairPartsEligible(Long caseId) {
         boolean pendingRequiredPart = casePartRepository.findByCaseIdOrderByIdAsc(caseId).stream()
                 .anyMatch(part -> !"RECHAZADO".equalsIgnoreCase(part.getAuthorizedCode())
-                        && !"RECIBIDO".equalsIgnoreCase(part.getStatusCode())
-                        && !"INSTALADO".equalsIgnoreCase(part.getStatusCode()));
+                        && !receiptAvailabilityService.isFullyReceived(part));
         if (pendingRequiredPart) {
             throw new ConflictException("No se puede marcar no debe repararse mientras existan repuestos requeridos sin recibir");
         }
     }
 
     private void notifyGlobalAdminsNoRepair(CaseEntity caseEntity, AuthenticatedUser actor, String reason) {
-        String notificationType = isCleas(caseEntity) ? "CLEAS_NO_REPARA" : "TODO_RIESGO_NO_REPARA";
+        String caseTypeCode = caseTypeCode(caseEntity);
+        String notificationType = isCleas(caseEntity) ? "CLEAS_NO_REPARA"
+                : isInsuranceRepair(caseEntity) ? "TODO_RIESGO_NO_REPARA" : "NO_REPARA";
         for (Long adminUserId : userRoleRepository.findActiveGlobalUserIdsByRoleCode("ROLE_ADMIN")) {
             NotificationEntity notification = new NotificationEntity();
             notification.setUserId(adminUserId); notification.setCaseId(caseEntity.getId()); notification.setTypeCode(notificationType);
             notification.setTitle("Caso marcado como no debe repararse");
-            notification.setMessage("Caso " + caseEntity.getFolderCode() + ". Actor: " + actor.displayName() + ". Motivo: " + reason.trim());
+            notification.setMessage("Carpeta " + caseEntity.getFolderCode() + " · Trámite " + caseTypeCode + ". Actor: " + actor.displayName() + ". Motivo: " + reason.trim());
             notification.setActionUrl("/cases/" + caseEntity.getId()); notification.setEntityType("caso"); notification.setEntityId(caseEntity.getId());
             notificationRepository.save(notification);
         }
@@ -670,6 +705,26 @@ public class CaseWorkflowService {
     private void requireReasonForTerminalOverride(String stateCode, String reason) {
         if (("RECHAZADO".equals(stateCode) || "DESISTIDO".equals(stateCode)) && (reason == null || reason.isBlank())) {
             throw new ConflictException("Debe indicar un motivo para Rechazado o Desistido");
+        }
+    }
+
+    private void registerNoRepairAudit(CaseEntity caseEntity, AuthenticatedUser actor, String reason, boolean reverted, HttpServletRequest httpRequest) {
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("domain", "reparacion");
+        after.put("stateCode", reverted ? null : "NO_DEBE_REPARARSE");
+        after.put("mode", reverted ? "automatic" : "manual");
+        caseAuditService.register(actor.id(), caseEntity.getId(), "casos", caseEntity.getId(),
+                reverted ? "revertir_no_debe_repararse" : "marcar_no_debe_repararse", null,
+                caseAuditService.toJson(after), caseAuditService.toJson(Map.of("reason", reason.trim())), httpRequest);
+    }
+
+    private String caseTypeCode(CaseEntity caseEntity) {
+        return caseTypeRepository.findById(caseEntity.getCaseTypeId()).map(type -> type.getCode()).orElse("SIN_TIPO");
+    }
+
+    private void requireNoRepairReason(String reason) {
+        if (reason == null || reason.isBlank()) {
+            throw new ConflictException("Debe indicar el motivo por el cual el vehículo no debe repararse");
         }
     }
 }

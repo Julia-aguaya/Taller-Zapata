@@ -2,6 +2,7 @@ package com.tallerzapata.backend.application.casefile;
 
 import com.tallerzapata.backend.api.casefile.CaseVisibleStateResponse;
 import com.tallerzapata.backend.application.common.ConflictException;
+import com.tallerzapata.backend.application.operation.RepairPartReceiptAvailabilityService;
 import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartEntity;
 import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartRepository;
 import com.tallerzapata.backend.infrastructure.persistence.budget.BudgetEntity;
@@ -43,6 +44,7 @@ import java.util.Set;
 public class CaseVisibleStateResolver {
 
     private final InsuranceRepairCasePolicy insuranceRepairCasePolicy = new InsuranceRepairCasePolicy();
+    private final RepairPartReceiptAvailabilityService receiptAvailabilityService;
 
     private static final Sort REPAIR_APPOINTMENT_SORT = Sort.by(Sort.Order.desc("appointmentDate"), Sort.Order.desc("appointmentTime"), Sort.Order.desc("id"));
     private static final Sort VEHICLE_INTAKE_SORT = Sort.by(Sort.Order.desc("intakeAt"), Sort.Order.desc("id"));
@@ -131,7 +133,8 @@ public class CaseVisibleStateResolver {
             ParticularEffectiveStateRepository particularEffectiveStateRepository,
             TodoRiesgoEffectiveStateRepository todoRiesgoEffectiveStateRepository,
             CleasEffectiveStateRepository cleasEffectiveStateRepository,
-            DocumentationWorkflowStateService documentationWorkflowStateService
+            DocumentationWorkflowStateService documentationWorkflowStateService,
+            RepairPartReceiptAvailabilityService receiptAvailabilityService
     ) {
         this.caseTypeRepository = caseTypeRepository;
         this.insuranceProcessingRepository = insuranceProcessingRepository;
@@ -149,6 +152,7 @@ public class CaseVisibleStateResolver {
         this.todoRiesgoEffectiveStateRepository = todoRiesgoEffectiveStateRepository;
         this.cleasEffectiveStateRepository = cleasEffectiveStateRepository;
         this.documentationWorkflowStateService = documentationWorkflowStateService;
+        this.receiptAvailabilityService = receiptAvailabilityService;
     }
 
     public Map<String, CaseVisibleStateResponse> resolveForCase(CaseEntity caseEntity) {
@@ -359,7 +363,7 @@ public class CaseVisibleStateResolver {
 
         boolean hasPendingAuthorizedParts = parts.stream().anyMatch(part ->
                 "AUTORIZADO".equals(normalizeCode(part.getAuthorizedCode()))
-                        && !"RECIBIDO".equals(normalizeCode(part.getStatusCode()))
+                        && !receiptAvailabilityService.isFullyReceived(part)
         );
         if (hasPendingAuthorizedParts) {
             return "FALTAN_REPUESTOS";
@@ -411,7 +415,7 @@ public class CaseVisibleStateResolver {
         if (budget != null && "CERRADO".equals(normalizeCode(budget.getReportStatusCode()))) {
             boolean hasPendingAuthorizedParts = parts.stream().anyMatch(part ->
                     "AUTORIZADO".equals(normalizeCode(part.getAuthorizedCode()))
-                            && !"RECIBIDO".equals(normalizeCode(part.getStatusCode()))
+                            && !receiptAvailabilityService.isFullyReceived(part)
             );
             if (hasPendingAuthorizedParts) {
                 return "FALTAN_REPUESTOS";
