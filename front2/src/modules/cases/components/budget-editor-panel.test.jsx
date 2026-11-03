@@ -4,18 +4,22 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BUDGET_GENERATION_TIMEOUT_MS, BudgetEditorPanel, withBudgetDocumentRelation } from './budget-editor-panel';
 
 const mockUpsertCaseBudget = vi.fn().mockResolvedValue({});
+const mockCreateBudgetActionType = vi.fn(() => {
+  budgetCatalogs.actionCodes = [...budgetCatalogs.actionCodes.filter((action) => action.code !== 'CUSTOM_PULIDO'), { code: 'CUSTOM_PULIDO', name: 'Pulido fino' }];
+  return Promise.resolve({ code: 'CUSTOM_PULIDO', name: 'Pulido fino' });
+});
 const mockCreateCaseBudgetItem = vi.fn().mockResolvedValue({});
 const mockGenerateCaseBudget = vi.fn().mockResolvedValue({ comparisonSnapshot: { importedPieceCount: 1 } });
 const mockSyncPartsFromBudget = vi.fn().mockResolvedValue([]);
 const mockSyncWorkshopReplacementParts = vi.fn().mockResolvedValue({ incorporated: 1, updated: 0, alreadyExisted: 0, unchanged: 0 });
 const mockInvalidateQueries = vi.fn().mockResolvedValue({});
 const requestJson = vi.fn().mockResolvedValue([]);
-const { toast } = vi.hoisted(() => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-const session = { user: { displayName: 'Taller' }, authorities: ['presupuesto.ver', 'proveedor.ver', 'documento.subir', 'documento.relacionar'] };
+const { toast } = vi.hoisted(() => ({ toast: { success: vi.fn(), error: vi.fn(), message: vi.fn() } }));
+const session = { user: { displayName: 'Taller' }, authorities: ['presupuesto.ver', 'presupuesto.catalogo.gestionar', 'proveedor.ver', 'documento.subir', 'documento.relacionar'] };
 const budgetCatalogs = {
   taskCodes: [{ code: 'CHAPA', name: 'Chapa' }],
   damageLevelCodes: [{ code: 'LEVE', name: 'Leve' }],
-  partDecisionCodes: [{ code: 'REPARAR', name: 'Reparar' }],
+  partDecisionCodes: [{ code: 'DEBE_REEMPLAZARSE', name: 'Debe reemplazarse' }, { code: 'PUEDE_REPARARSE', name: 'Puede repararse' }, { code: 'A_VERIFICAR', name: 'A verificar' }],
   actionCodes: [{ code: 'REPARAR', name: 'Reparar' }, { code: 'REEMPLAZAR_Y_PINTAR', name: 'Reemplazar y pintar' }],
 };
 let catalogsReady = true;
@@ -41,7 +45,7 @@ vi.mock('@tanstack/react-query', () => ({
       },
     };
   },
-  useQueryClient: () => ({ invalidateQueries: mockInvalidateQueries }),
+  useQueryClient: () => ({ invalidateQueries: mockInvalidateQueries, setQueryData: vi.fn() }),
 }));
 
 vi.mock('@/modules/cases/api/budget-api', () => ({
@@ -51,14 +55,14 @@ vi.mock('@/modules/cases/api/budget-api', () => ({
   closeCaseBudget: vi.fn(),
   generateCaseBudget: (...args) => mockGenerateCaseBudget(...args),
 }));
-vi.mock('@/modules/cases/api/budget-catalogs-api', () => ({ getBudgetCatalogs: vi.fn() }));
+vi.mock('@/modules/cases/api/budget-catalogs-api', () => ({ getBudgetCatalogs: vi.fn(), createBudgetActionType: (...args) => mockCreateBudgetActionType(...args) }));
 vi.mock('@/modules/cases/api/parts-api', () => ({ syncPartsFromBudget: (...args) => mockSyncPartsFromBudget(...args), syncWorkshopReplacementParts: (...args) => mockSyncWorkshopReplacementParts(...args) }));
 vi.mock('@/modules/cases/components/provider-selector', () => ({ ProviderSelector: () => <input />, providerPayload: vi.fn() }));
 vi.mock('@/modules/auth/providers/session-provider', () => ({ useSession: () => ({ session }) }));
 vi.mock('@/shared/api/http-client', () => ({ requestJson: (...args) => requestJson(...args) }));
 vi.mock('sonner', () => ({ toast }));
 
-const validBudget = { items: [{ id: 1, visualOrder: 1, affectedPiece: 'Puerta', taskCode: 'CHAPA', damageLevelCode: 'LEVE', partDecisionCode: 'REPARAR', actionCode: 'REPARAR', partValue: 0, laborAmount: 0, estimatedHours: 0, active: true }] };
+const validBudget = { items: [{ id: 1, visualOrder: 1, affectedPiece: 'Puerta', taskCode: 'CHAPA', damageLevelCode: 'LEVE', partDecisionCode: 'PUEDE_REPARARSE', actionCode: 'REPARAR', partValue: 0, laborAmount: 0, estimatedHours: 0, active: true }] };
 const threeItemBudget = { items: ['Puerta', 'Capot', 'Guardabarros'].map((affectedPiece, index) => ({ ...validBudget.items[0], id: index + 1, visualOrder: index + 1, affectedPiece })) };
 const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const controlFor = (label) => screen.getByText(label).parentElement.querySelector('input, select');
@@ -71,16 +75,92 @@ afterEach(() => {
   window.sessionStorage.clear();
     catalogsReady = true;
     budgetDocuments = [];
+  budgetCatalogs.actionCodes = [{ code: 'REPARAR', name: 'Reparar' }, { code: 'REEMPLAZAR_Y_PINTAR', name: 'Reemplazar y pintar' }];
   mockInvalidateQueries.mockClear();
+  mockCreateBudgetActionType.mockReset();
+  mockCreateBudgetActionType.mockImplementation(() => {
+    budgetCatalogs.actionCodes = [...budgetCatalogs.actionCodes.filter((action) => action.code !== 'CUSTOM_PULIDO'), { code: 'CUSTOM_PULIDO', name: 'Pulido fino' }];
+    return Promise.resolve({ code: 'CUSTOM_PULIDO', name: 'Pulido fino' });
+  });
   mockGenerateCaseBudget.mockReset();
   mockGenerateCaseBudget.mockResolvedValue({ comparisonSnapshot: { importedPieceCount: 1 } });
   toast.success.mockClear();
   toast.error.mockClear();
+  toast.message.mockClear();
   requestJson.mockReset();
   requestJson.mockResolvedValue([]);
 });
 
 describe('BudgetEditorPanel comparison tabs', () => {
+  it('creates an action type, selects it in the edited item, and keeps the remaining budget data', async () => {
+    render(<BudgetEditorPanel caseId="42" budget={validBudget} caseDetail={particularCaseDetail} workshopInfo={{}} />);
+    fireEvent.change(screen.getByPlaceholderText('Ej: Guardabarros del. der.'), { target: { value: 'Capot' } });
+    fireEvent.change(screen.getByRole('combobox', { name: /Acción para/ }), { target: { value: '__ADD_ACTION_TYPE__' } });
+    fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: '  Pulido fino  ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar tipo de acción' }));
+    await waitFor(() => expect(mockCreateBudgetActionType).toHaveBeenCalledWith('  Pulido fino  '));
+    expect(screen.getByRole('combobox', { name: /Acción para/ })).toHaveValue('CUSTOM_PULIDO');
+    expect(screen.getByPlaceholderText('Ej: Guardabarros del. der.')).toHaveValue('Capot');
+  });
+
+  it('selects the existing action after a duplicate response', async () => {
+    mockCreateBudgetActionType.mockRejectedValueOnce({ payload: { data: { budgetAction: { code: 'REPARAR', name: 'Reparar' } } } });
+    render(<BudgetEditorPanel caseId="42" budget={validBudget} caseDetail={particularCaseDetail} workshopInfo={{}} />);
+    fireEvent.change(screen.getByRole('combobox', { name: /Acción para/ }), { target: { value: '__ADD_ACTION_TYPE__' } });
+    fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'reparar' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar tipo de acción' }));
+    await waitFor(() => expect(screen.getByRole('combobox', { name: /Acción para/ })).toHaveValue('REPARAR'));
+    expect(toast.message).toHaveBeenCalledWith('El tipo de acción “Reparar” ya existía. Lo seleccionamos.');
+  });
+
+  it('retains the budget and action name when action creation fails', async () => {
+    mockCreateBudgetActionType.mockRejectedValueOnce(new Error('No hay conexión'));
+    render(<BudgetEditorPanel caseId="42" budget={validBudget} caseDetail={particularCaseDetail} workshopInfo={{}} />);
+    fireEvent.change(screen.getByPlaceholderText('Ej: Guardabarros del. der.'), { target: { value: 'Capot' } });
+    fireEvent.change(screen.getByRole('combobox', { name: /Acción para/ }), { target: { value: '__ADD_ACTION_TYPE__' } });
+    fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Pulido fino' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar tipo de acción' }));
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('No hay conexión'));
+    expect(screen.getByLabelText('Nombre')).toHaveValue('Pulido fino');
+    expect(screen.getByPlaceholderText('Ej: Guardabarros del. der.')).toHaveValue('Capot');
+  });
+
+  it('only exposes action creation with presupuesto.catalogo.gestionar', () => {
+    session.authorities = ['presupuesto.ver'];
+    render(<BudgetEditorPanel caseId="42" budget={validBudget} caseDetail={particularCaseDetail} workshopInfo={{}} />);
+    expect(screen.queryByRole('option', { name: 'Agregar tipo de acción' })).toBeNull();
+    session.authorities = ['presupuesto.ver', 'presupuesto.catalogo.gestionar', 'proveedor.ver', 'documento.subir', 'documento.relacionar'];
+  });
+  it('blocks generation and identifies replacement parts whose decision is pending without losing edits', async () => {
+    const pendingDecisionBudget = { items: [{ ...validBudget.items[0], affectedPiece: 'Óptica', actionCode: 'REEMPLAZAR_Y_PINTAR', partDecisionCode: 'A_VERIFICAR' }] };
+    render(<BudgetEditorPanel caseId="42" budget={pendingDecisionBudget} caseDetail={particularCaseDetail} workshopInfo={{}} />);
+
+    fireEvent.change(screen.getByPlaceholderText('Ej: Guardabarros del. der.'), { target: { value: 'Óptica delantera' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Generar presupuesto' }));
+
+    expect(mockGenerateCaseBudget).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith('Definí Reemplazar o No reemplazar para: Óptica delantera.');
+    expect(screen.getByRole('alert')).toHaveTextContent('Óptica delantera');
+    expect(screen.getByPlaceholderText('Ej: Guardabarros del. der.')).toHaveValue('Óptica delantera');
+  });
+
+  it('generates when all replacement parts have a binary decision', async () => {
+    const decidedReplacementBudget = { items: [{ ...validBudget.items[0], affectedPiece: 'Óptica', actionCode: 'REEMPLAZAR', partDecisionCode: 'DEBE_REEMPLAZARSE' }] };
+    render(<BudgetEditorPanel caseId="42" budget={decidedReplacementBudget} caseDetail={particularCaseDetail} workshopInfo={{}} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generar presupuesto' }));
+
+    await waitFor(() => expect(mockGenerateCaseBudget).toHaveBeenCalled());
+  });
+
+  it('allows generation for a budget without replacement parts', async () => {
+    render(<BudgetEditorPanel caseId="42" budget={validBudget} caseDetail={particularCaseDetail} workshopInfo={{}} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Generar presupuesto' }));
+
+    await waitFor(() => expect(mockGenerateCaseBudget).toHaveBeenCalled());
+  });
+
   it('shows and executes the workshop replacement-parts refresh with its result', async () => {
     render(<BudgetEditorPanel caseId="42" budget={validBudget} caseDetail={workshopCaseDetail} workshopInfo={{}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Forzar actualización de repuestos' }));

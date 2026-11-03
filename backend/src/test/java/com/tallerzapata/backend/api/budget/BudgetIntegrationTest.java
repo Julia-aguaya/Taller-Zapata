@@ -67,6 +67,29 @@ class BudgetIntegrationTest {
     }
 
     @Test
+    void createsReusableBudgetActionTypeAndAllowsItInBudgetItems() throws Exception {
+        var result = mockMvc.perform(post("/api/v1/budget/catalogs/actions").header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"  Pulido   fino  \"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.name").value("Pulido fino")).andReturn();
+        String code = objectMapper.readTree(result.getResponse().getContentAsByteArray()).get("code").asText();
+
+        mockMvc.perform(get("/api/v1/budget/catalogs").header("X-User-Id", "1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.actionCodes[?(@.code == '" + code + "' && @.name == 'Pulido fino')]").isNotEmpty());
+        mockMvc.perform(put("/api/v1/cases/100/budget").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"budgetDate\":\"2026-01-01\",\"reportStatusCode\":\"BORRADOR\",\"laborWithoutVat\":0,\"partsTotal\":0,\"estimatedDays\":1,\"items\":[{\"visualOrder\":1,\"affectedPiece\":\"Puerta\",\"taskCode\":\"CHAPA\",\"damageLevelCode\":\"LEVE\",\"partDecisionCode\":\"PUEDE_REPARARSE\",\"actionCode\":\"" + code + "\",\"requiresReplacement\":false,\"partValue\":0,\"estimatedHours\":0,\"laborAmount\":0,\"active\":true}]}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].actionCode").value(code));
+    }
+
+    @Test
+    void rejectsBlankOrDuplicateBudgetActionTypesAndRequiresCatalogManagementPermission() throws Exception {
+        mockMvc.perform(post("/api/v1/budget/catalogs/actions").header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"  \"}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.details[0]").value("name: El nombre del tipo de acción es obligatorio"));
+        mockMvc.perform(post("/api/v1/budget/catalogs/actions").header("X-User-Id", "1").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"  reparar  \"}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("BUDGET_ACTION_EXISTS")).andExpect(jsonPath("$.data.budgetAction.code").value("REPARAR"));
+        mockMvc.perform(post("/api/v1/budget/catalogs/actions").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Pulido fino\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void syncsWorkshopReplacementDecisionsWithoutDuplicatesAndPreservesSafeReconciliation() throws Exception {
         jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = 5 WHERE id = 100");
         saveBudget(List.of(comparisonItem(1, "Óptica", "DEBE_REEMPLAZARSE", "REEMPLAZAR", 250)));
@@ -263,6 +286,60 @@ class BudgetIntegrationTest {
                 "SELECT COUNT(*) FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'cerrar_presupuesto'",
                 Integer.class, 100L);
         assertThat(auditCount).isEqualTo(1);
+    }
+
+    @Test
+    void shouldBlockClosingWhenAnActiveReplacementItemHasNoBinaryDecisionAndPreserveTheDraft() throws Exception {
+        saveBudget(List.of(comparisonItem(1, "Óptica delantera", "A_VERIFICAR", "REEMPLAZAR", 250)));
+
+        mockMvc.perform(post("/api/v1/cases/100/budget/close")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new BudgetCloseRequest("CERRADO", "No debe persistirse"))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(containsString("Óptica delantera")));
+
+        mockMvc.perform(get("/api/v1/cases/100/budget").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reportStatusCode").value("BORRADOR"))
+                .andExpect(jsonPath("$.observations").doesNotExist())
+                .andExpect(jsonPath("$.items[0].affectedPiece").value("Óptica delantera"))
+                .andExpect(jsonPath("$.items[0].partDecisionCode").value("A_VERIFICAR"));
+    }
+
+    @Test
+    void shouldBlockGenerationFromAnotherRequestWhenAReplacementDecisionIsPending() throws Exception {
+        mockMvc.perform(post("/api/v1/cases/100/budget/generate")
+                        .header("X-User-Id", "3")
+                        .header("Idempotency-Key", "pending-decision")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new BudgetUpsertRequest(
+                                LocalDate.of(2026, 4, 20), "BORRADOR", new BigDecimal("1000.00"), new BigDecimal("21.00"),
+                                BigDecimal.ZERO, 5, null, null, null, null, null, null, null, null, null, null, null, null,
+                                null, null, null, null, null, null, null,
+                                List.of(comparisonItem(1, "Espejo derecho", "A_VERIFICAR", "REEMPLAZAR", 250)), null))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value(containsString("Espejo derecho")));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM presupuestos WHERE caso_id = 100", Integer.class)).isZero();
+    }
+
+    @Test
+    void shouldGenerateWhenEveryReplacementItemHasABinaryDecision() throws Exception {
+        String response = generateComparison("binary-replacement-decision", List.of(
+                comparisonItem(1, "Óptica", "DEBE_REEMPLAZARSE", "REEMPLAZAR", 250),
+                comparisonItem(2, "Paragolpes", "PUEDE_REPARARSE", "REEMPLAZAR_Y_PINTAR", 300)));
+
+        assertThat(objectMapper.readTree(response).path("budget").path("reportStatusCode").asText()).isEqualTo("CERRADO");
+        assertThat(objectMapper.readTree(response).path("comparisonSnapshot").path("updatedAt").isTextual()).isTrue();
+    }
+
+    @Test
+    void shouldGenerateWithoutReplacementItemsEvenWhenTheirDecisionDoesNotApply() throws Exception {
+        String response = generateComparison("no-replacement-items", List.of(
+                comparisonItem(1, "Puerta", "A_VERIFICAR", "REPARAR_Y_PINTAR", 0)));
+
+        assertThat(objectMapper.readTree(response).path("budget").path("reportStatusCode").asText()).isEqualTo("CERRADO");
     }
 
     @Test
@@ -594,9 +671,9 @@ class BudgetIntegrationTest {
                 comparisonItem(1, "Debe reemplazar", "REEMPLAZAR", "REEMPLAZAR", 100),
                 comparisonItem(2, "Debe cargar", "REEMPLAZAR", "REEMPLAZAR_Y_CARGAR", 200),
                 comparisonItem(3, "Debe pintar", "REEMPLAZAR", "REEMPLAZAR_Y_PINTAR", 300),
-                comparisonItem(4, "Verificar reemplazar", "A_VERIFICAR", "REEMPLAZAR", 400),
-                comparisonItem(5, "Verificar cargar", "A_VERIFICAR", "REEMPLAZAR_Y_CARGAR", 500),
-                comparisonItem(6, "Verificar pintar", "A_VERIFICAR", "REEMPLAZAR_Y_PINTAR", 600),
+                comparisonItem(4, "Debe reemplazar adicional", "DEBE_REEMPLAZARSE", "REEMPLAZAR", 400),
+                comparisonItem(5, "Debe cargar adicional", "DEBE_REEMPLAZARSE", "REEMPLAZAR_Y_CARGAR", 500),
+                comparisonItem(6, "Debe pintar adicional", "DEBE_REEMPLAZARSE", "REEMPLAZAR_Y_PINTAR", 600),
                 comparisonItem(7, "Accion verificar", "DEBE_REEMPLAZARSE", "A_VERIFICAR", 700),
                 comparisonItem(8, "Accion cargar", "DEBE_REEMPLAZARSE", "CARGAR", 800),
                 comparisonItem(9, "Puede repararse", "PUEDE_REPARARSE", "REEMPLAZAR", 900),
@@ -611,7 +688,7 @@ class BudgetIntegrationTest {
 
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM comparacion_presupuesto_snapshot WHERE caso_id = 100", Integer.class)).isEqualTo(1);
         assertThat(jdbcTemplate.queryForList("SELECT descripcion FROM comparacion_pieza WHERE snapshot_id = ? ORDER BY id", String.class, snapshotId))
-                .containsExactly("Debe reemplazar", "Debe cargar", "Debe pintar", "Verificar reemplazar", "Verificar cargar", "Verificar pintar");
+                .containsExactly("Debe reemplazar", "Debe cargar", "Debe pintar", "Debe reemplazar adicional", "Debe cargar adicional", "Debe pintar adicional");
         assertThat(jdbcTemplate.queryForObject("SELECT decision_repuesto_codigo FROM presupuesto_items WHERE pieza_afectada = 'Debe reemplazar'", String.class))
                 .isEqualTo("DEBE_REEMPLAZARSE");
         mockMvc.perform(get("/api/v1/cases/100/budget-comparisons").header("X-User-Id", "3"))

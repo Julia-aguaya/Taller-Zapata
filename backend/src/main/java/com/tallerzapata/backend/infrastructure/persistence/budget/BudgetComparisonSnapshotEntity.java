@@ -17,7 +17,11 @@ public class BudgetComparisonSnapshotEntity {
     @Column(name = "version_presupuesto", updatable = false) private Integer budgetVersion;
     @Column(name = "idempotency_key", nullable = false, updatable = false) private String idempotencyKey;
     @Column(name = "modo", nullable = false) private String mode;
-    @Column(name = "updated_at") private LocalDateTime updatedAt;
+    @Column(name = "updated_at", nullable = false) private LocalDateTime updatedAt;
+    @PrePersist
+    private void initializeUpdatedAt() {
+        if (updatedAt == null) updatedAt = LocalDateTime.now();
+    }
     public Long getId() { return id; } public Long getCaseId() { return caseId; } public void setCaseId(Long value) { caseId = value; }
     public String getContext() { return context; } public void setContext(String value) { context = value; }
     public Long getBudgetId() { return budgetId; } public void setBudgetId(Long value) { budgetId = value; }

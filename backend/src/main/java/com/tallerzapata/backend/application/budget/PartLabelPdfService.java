@@ -3,47 +3,47 @@ package com.tallerzapata.backend.application.budget;
 import com.lowagie.text.*;
 import com.lowagie.text.pdf.*;
 import com.tallerzapata.backend.application.common.ResourceNotFoundException;
+import com.tallerzapata.backend.application.security.CaseAccessControlService;
 import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartEntity;
 import com.tallerzapata.backend.infrastructure.persistence.budget.CasePartRepository;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseEntity;
 import com.tallerzapata.backend.infrastructure.persistence.casefile.CaseRepository;
-import com.tallerzapata.backend.infrastructure.persistence.person.PersonEntity;
-import com.tallerzapata.backend.infrastructure.persistence.person.PersonRepository;
-import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleEntity;
-import com.tallerzapata.backend.infrastructure.persistence.vehicle.VehicleRepository;
+import com.tallerzapata.backend.infrastructure.security.AuthenticatedUser;
+import com.tallerzapata.backend.infrastructure.security.CurrentUserService;
 import org.springframework.stereotype.Service;
 
 import java.awt.Color;
 import java.io.ByteArrayOutputStream;
-import java.time.format.DateTimeFormatter;
 
 @Service
 public class PartLabelPdfService {
 
     private final CasePartRepository casePartRepository;
     private final CaseRepository caseRepository;
-    private final PersonRepository personRepository;
-    private final VehicleRepository vehicleRepository;
+    private final CurrentUserService currentUserService;
+    private final CaseAccessControlService caseAccessControlService;
 
     public PartLabelPdfService(CasePartRepository casePartRepository, CaseRepository caseRepository,
-                                PersonRepository personRepository, VehicleRepository vehicleRepository) {
+                               CurrentUserService currentUserService,
+                               CaseAccessControlService caseAccessControlService) {
         this.casePartRepository = casePartRepository;
         this.caseRepository = caseRepository;
-        this.personRepository = personRepository;
-        this.vehicleRepository = vehicleRepository;
+        this.currentUserService = currentUserService;
+        this.caseAccessControlService = caseAccessControlService;
     }
 
     public byte[] generate(Long caseId, Long partId) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
         CaseEntity caseEntity = caseRepository.findById(caseId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
+        caseAccessControlService.requireCaseAccess(currentUser, caseEntity, "presupuesto.ver");
         CasePartEntity part = casePartRepository.findById(partId)
                 .orElseThrow(() -> new ResourceNotFoundException("No existe el repuesto " + partId));
         if (!part.getCaseId().equals(caseId)) throw new ResourceNotFoundException("El repuesto no pertenece al caso");
 
-        PersonEntity customer = caseEntity.getPrincipalCustomerPersonId() != null
-                ? personRepository.findById(caseEntity.getPrincipalCustomerPersonId()).orElse(null) : null;
-        VehicleEntity vehicle = caseEntity.getPrincipalVehicleId() != null
-                ? vehicleRepository.findById(caseEntity.getPrincipalVehicleId()).orElse(null) : null;
+        String folderIdentifier = caseEntity.getFolderCode();
+        String partIdentifier = "REP-" + part.getId();
+        int orderedQuantity = part.getOrderedQuantity() == null ? 1 : part.getOrderedQuantity();
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         Document document = new Document(new Rectangle(280, 200), 15, 15, 10, 10);
@@ -51,42 +51,24 @@ public class PartLabelPdfService {
             PdfWriter.getInstance(document, out);
             document.open();
 
-            Font titleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 12);
+            Font titleFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 11);
+            Font identifierFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 16);
             Font normalFont = FontFactory.getFont(FontFactory.HELVETICA, 9);
-            Font bigFont = FontFactory.getFont(FontFactory.HELVETICA_BOLD, 16);
-            Font smallFont = FontFactory.getFont(FontFactory.HELVETICA, 7, Color.GRAY);
+            Font smallFont = FontFactory.getFont(FontFactory.HELVETICA, 8, Color.DARK_GRAY);
 
-            // Cliente
-            document.add(new Paragraph(customer != null ? customer.getNombreMostrar() : "—", titleFont));
-            // Vehículo
-            document.add(new Paragraph(vehicle != null ? vehicle.getPlate() + " — " + (vehicle.getBrandText() != null ? vehicle.getBrandText() + " " : "") + (vehicle.getModelText() != null ? vehicle.getModelText() : "") : "—", normalFont));
-            document.add(new Paragraph(" "));
+            Paragraph title = new Paragraph("ETIQUETA DE REPUESTO", titleFont);
+            title.setAlignment(Element.ALIGN_CENTER);
+            document.add(title);
+            document.add(new Paragraph("Carpeta: " + folderIdentifier, normalFont));
 
-            // Nº Inventario
-            Paragraph inv = new Paragraph(part.getInventoryNumber() != null ? part.getInventoryNumber() : "S/N", bigFont);
-            inv.setAlignment(Element.ALIGN_CENTER);
-            document.add(inv);
-            document.add(new Paragraph(" "));
+            Paragraph identifier = new Paragraph(partIdentifier, identifierFont);
+            identifier.setAlignment(Element.ALIGN_CENTER);
+            document.add(identifier);
 
-            // Descripción
             document.add(new Paragraph(part.getDescription(), normalFont));
-            document.add(new Paragraph(" "));
+            document.add(new Paragraph("Cantidad del item: " + orderedQuantity + (orderedQuantity == 1 ? " unidad" : " unidades"), smallFont));
 
-            // Fecha recibido
-            PdfPTable table = new PdfPTable(2);
-            table.setWidthPercentage(100);
-            table.setWidths(new float[]{1, 2});
-            PdfPCell labelCell = new PdfPCell(new Phrase("Recibido:", smallFont));
-            labelCell.setBorder(Rectangle.NO_BORDER);
-            table.addCell(labelCell);
-            PdfPCell dateCell = new PdfPCell(new Phrase("___/___/_____", normalFont));
-            dateCell.setBorder(Rectangle.BOTTOM);
-            dateCell.setBorderColor(Color.LIGHT_GRAY);
-            table.addCell(dateCell);
-            document.add(table);
-
-            document.add(new Paragraph(" "));
-            Paragraph footer = new Paragraph("Taller Zapata — " + (caseEntity.getFolderCode() != null ? caseEntity.getFolderCode() : ""), smallFont);
+            Paragraph footer = new Paragraph("Taller Zapata", smallFont);
             footer.setAlignment(Element.ALIGN_CENTER);
             document.add(footer);
 

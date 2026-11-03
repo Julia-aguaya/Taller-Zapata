@@ -4,7 +4,7 @@ import { Eye, FileDown, ImagePlus, Plus, Save, ShieldCheck, Trash2, X } from 'lu
 import { toast } from 'sonner';
 import { closeCaseBudget, generateCaseBudget, upsertCaseBudget } from '@/modules/cases/api/budget-api';
 import { BudgetComparisonPanel } from '@/modules/cases/components/budget-comparison-panel';
-import { getBudgetCatalogs } from '@/modules/cases/api/budget-catalogs-api';
+import { createBudgetActionType, getBudgetCatalogs } from '@/modules/cases/api/budget-catalogs-api';
 import { requestJson } from '@/shared/api/http-client';
 import { uploadFileResumably } from '@/modules/cases/api/resumable-file-upload-api';
 import { randomUuid } from '@/shared/lib/uuid';
@@ -23,10 +23,20 @@ const yesNoAV = ['NO', 'SI', 'A/V'];
 const emptyOptions = [];
 export const BUDGET_GENERATION_TIMEOUT_MS = 30_000;
 const budgetGenerationStorageKey = (caseId) => `front2.budget-generation.v1.${caseId}`;
+const replacementDecisionCodes = new Set(['DEBE_REEMPLAZARSE', 'PUEDE_REPARARSE', 'REEMPLAZAR', 'REPARAR', 'PULIR']);
+const isReplacementAction = (actionCode) => actionCode?.trim().toUpperCase().startsWith('REEMPLAZAR');
+const hasReplacementDecision = (decisionCode) => replacementDecisionCodes.has(decisionCode?.trim().toUpperCase());
+const replacementDecisionLabel = (option) => {
+  const code = option.code?.trim().toUpperCase();
+  if (code === 'DEBE_REEMPLAZARSE' || code === 'REEMPLAZAR') return 'Reemplazar';
+  if (code === 'PUEDE_REPARARSE' || code === 'REPARAR' || code === 'PULIR') return 'No reemplazar';
+  if (code === 'A_VERIFICAR') return 'Pendiente: definí Reemplazar o No reemplazar';
+  return option.name;
+};
 
 const createEmptyItem = (visualOrder = 1, defaults = {}) => ({
   id: null, visualOrder, affectedPiece: '', taskCode: 'CHAPA',
-  damageLevelCode: defaults.damageLevelCode || '', partDecisionCode: defaults.partDecisionCode || '',
+  damageLevelCode: defaults.damageLevelCode || '', partDecisionCode: '',
   actionCode: defaults.actionCode || '', requiresReplacement: false,
   partValue: '0', estimatedHours: '0', laborAmount: '0', active: true, providerId: null, providerSnapshot: null,
 });
@@ -34,7 +44,7 @@ const createEmptyItem = (visualOrder = 1, defaults = {}) => ({
 const toItemState = (item) => ({
   id: item.id, visualOrder: item.visualOrder, affectedPiece: item.affectedPiece || '',
   taskCode: item.taskCode || 'CHAPA', damageLevelCode: item.damageLevelCode || 'LEVE',
-  partDecisionCode: item.partDecisionCode || 'A_VERIFICAR', actionCode: item.actionCode || 'REPARAR',
+  partDecisionCode: item.partDecisionCode || '', actionCode: item.actionCode || 'REPARAR',
   requiresReplacement: Boolean(item.requiresReplacement),
   partValue: item.partValue?.toString?.() || '0', estimatedHours: item.estimatedHours?.toString?.() || '0',
   laborAmount: item.laborAmount?.toString?.() || '0', active: item.active ?? true, providerId: item.providerId || null, providerSnapshot: item.providerSnapshot || null,
@@ -97,14 +107,19 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
 
   const [header, setHeader] = useState(() => toHeaderState(budget));
   const [items, setItems] = useState(() => (budget?.items?.some((item) => item.active !== false) ? budget.items.filter((item) => item.active !== false).map(toItemState) : [createEmptyItem(1, defaults)]));
+  const defaultsRef = useRef(defaults);
   const [activeTab, setActiveTab] = useState('content');
   const [comparisonAnnouncement, setComparisonAnnouncement] = useState('');
+  const [actionItemIndex, setActionItemIndex] = useState(null);
+  const [newActionName, setNewActionName] = useState('');
+  const [actionCreationError, setActionCreationError] = useState('');
   const comparisonHeadingRef = useRef(null);
   const saveSubmittingRef = useRef(false);
   const workshopPartsSubmittingRef = useRef(false);
   const generationAttemptRef = useRef(null);
   const generationTimeoutRef = useRef(null);
   const canViewComparison = session?.authorities?.includes('presupuesto.ver') ?? false;
+  const canManageActionCatalog = session?.authorities?.includes('presupuesto.catalogo.gestionar') ?? false;
   const canViewProviders = session?.authorities?.includes('proveedor.ver') ?? false;
   const canUploadBudgetDocuments = (session?.authorities?.includes('documento.subir') ?? false) && (session?.authorities?.includes('documento.relacionar') ?? false);
   const isThirdPartyWorkshop = caseDetail?.caseTypeCode === 'RECLAMO_TERCEROS';
@@ -114,10 +129,12 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
     window.setTimeout(() => document.getElementById(`budget-tab-${nextTab}`)?.focus(), 0);
   };
 
-  useEffect(() => { setHeader(toHeaderState(budget)); setItems(budget?.items?.some((item) => item.active !== false) ? budget.items.filter((item) => item.active !== false).map(toItemState) : [createEmptyItem(1, defaults)]); }, [budget, defaults, toHeaderState]);
+  useEffect(() => { defaultsRef.current = defaults; }, [defaults]);
+  useEffect(() => { setHeader(toHeaderState(budget)); setItems(budget?.items?.some((item) => item.active !== false) ? budget.items.filter((item) => item.active !== false).map(toItemState) : [createEmptyItem(1, defaultsRef.current)]); }, [budget, toHeaderState]);
 
   const normalizedItems = useMemo(() => items, [items]);
   const incompleteLines = useMemo(() => normalizedItems.filter((i) => !i.affectedPiece?.trim() || !i.actionCode?.trim() || !i.damageLevelCode?.trim()), [normalizedItems]);
+  const pendingReplacementItems = useMemo(() => normalizedItems.filter((item) => item.active !== false && isReplacementAction(item.actionCode) && !hasReplacementDecision(item.partDecisionCode)), [normalizedItems]);
   const hasIncompleteLines = incompleteLines.length > 0;
   const lastLineIncomplete = items.length > 0 && incompleteLines.some((i) => i.visualOrder === items.at(-1).visualOrder);
 
@@ -136,6 +153,42 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
       queryClient.invalidateQueries({ queryKey: ['panel'] }),
     ]);
     await onSaved?.();
+  };
+
+  const selectActionType = (action) => {
+    if (actionItemIndex != null) updateItem(setItems, actionItemIndex, 'actionCode', action.code);
+    setNewActionName('');
+    setActionCreationError('');
+    setActionItemIndex(null);
+    queryClient.setQueryData(['budget', 'catalogs'], (current) => {
+      if (!current) return current;
+      const actionCodes = [...(current.actionCodes ?? []).filter((item) => item.code !== action.code), action]
+        .sort((left, right) => left.name.localeCompare(right.name));
+      return { ...current, actionCodes };
+    });
+  };
+
+  const createActionTypeMutation = useMutation({
+    mutationFn: () => createBudgetActionType(newActionName),
+    onSuccess: (action) => {
+      selectActionType(action);
+      toast.success(`Tipo de acción “${action.name}” agregado y seleccionado.`);
+    },
+    onError: (error) => {
+      const existingAction = error.payload?.data?.budgetAction;
+      if (existingAction) {
+        selectActionType(existingAction);
+        toast.message(`El tipo de acción “${existingAction.name}” ya existía. Lo seleccionamos.`);
+        return;
+      }
+      setActionCreationError(error.message || 'No se pudo guardar el tipo de acción. Revisá tu conexión e intentá nuevamente.');
+    },
+  });
+
+  const openActionCreation = (index) => {
+    setActionItemIndex(index);
+    setNewActionName('');
+    setActionCreationError('');
   };
 
   const buildBudgetPayload = (itemsToSave, closeAfterSave) => {
@@ -209,6 +262,10 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
   const guardedSave = (closeAfterSave) => {
     if (saveMutation.isPending || saveSubmittingRef.current) return;
     if (hasIncompleteLines) { toast.error(`${incompleteLines.length} línea(s) incompleta(s).`); return; }
+    if (closeAfterSave && pendingReplacementItems.length > 0) {
+      toast.error(`Definí Reemplazar o No reemplazar para: ${pendingReplacementItems.map((item) => item.affectedPiece?.trim() || `línea ${item.visualOrder}`).join(', ')}.`);
+      return;
+    }
     if (closeAfterSave && caseDetail && !caseDetail.principalVehiclePlate?.trim()) { toast.error('Completá la patente en Ficha Técnica.'); return; }
     saveSubmittingRef.current = true;
     if (closeAfterSave && isThirdPartyWorkshop) {
@@ -299,11 +356,16 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
       <p className="sr-only" aria-live="polite">{comparisonAnnouncement}</p>
 
       <div id="budget-panel-content" role="tabpanel" aria-labelledby="budget-tab-content" hidden={activeTab !== 'content'}>
-      {hasIncompleteLines ? (
+       {hasIncompleteLines ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
           ⚠️ {incompleteLines.length} línea(s) sin pieza, acción o daño.
         </div>
-      ) : null}
+       ) : null}
+       {pendingReplacementItems.length > 0 ? (
+         <div role="alert" className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+           ⚠️ Antes de generar el presupuesto, definí <strong>Reemplazar</strong> o <strong>No reemplazar</strong> para: {pendingReplacementItems.map((item) => item.affectedPiece?.trim() || `línea ${item.visualOrder}`).join(', ')}.
+         </div>
+       ) : null}
 
       {/* Membrete */}
       <div className="rounded-2xl border border-border/60 bg-card p-5">
@@ -344,9 +406,9 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
               {normalizedItems.map((item, index) => (
                 <tr key={`${item.id || 'new'}-${index}`} className="border-t border-border/40 hover:bg-accent/20">
                   <td className="px-4 py-2"><Input className="h-10 rounded-xl text-sm" value={item.affectedPiece} onChange={(e) => updateItem(setItems, index, 'affectedPiece', e.target.value)} placeholder="Ej: Guardabarros del. der." /></td>
-                  <td className="px-4 py-2"><select className="h-10 w-full min-w-[130px] rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-primary" value={item.actionCode} onChange={(e) => updateItem(setItems, index, 'actionCode', e.target.value)}>{actionOptions.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}</select></td>
+                  <td className="px-4 py-2"><select aria-label={`Acción para ${item.affectedPiece || `línea ${index + 1}`}`} className="h-10 w-full min-w-[130px] rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-primary" value={item.actionCode} onChange={(e) => e.target.value === '__ADD_ACTION_TYPE__' ? openActionCreation(index) : updateItem(setItems, index, 'actionCode', e.target.value)}>{actionOptions.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}{canManageActionCatalog ? <option value="__ADD_ACTION_TYPE__">Agregar tipo de acción</option> : null}</select></td>
                   <td className="px-4 py-2"><select className="h-10 w-full min-w-[130px] rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-primary" value={item.damageLevelCode} onChange={(e) => updateItem(setItems, index, 'damageLevelCode', e.target.value)}>{damageOptions.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}</select></td>
-                  <td className="px-4 py-2"><select className="h-10 w-full min-w-[110px] rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-primary" value={item.partDecisionCode} onChange={(e) => updateItem(setItems, index, 'partDecisionCode', e.target.value)}>{decisionOptions.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}</select></td>
+                  <td className="px-4 py-2"><select aria-label={`Decisión para ${item.affectedPiece || `línea ${index + 1}`}`} className="h-10 w-full min-w-[110px] rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-primary" value={item.partDecisionCode} onChange={(e) => updateItem(setItems, index, 'partDecisionCode', e.target.value)}><option value="">Definí una decisión</option>{decisionOptions.map((o) => <option key={o.code} value={o.code} disabled={o.code === 'A_VERIFICAR'}>{replacementDecisionLabel(o)}</option>)}</select></td>
                   <td className="min-w-[220px] px-4 py-2"><ProviderSelector value={item.providerSnapshot || ''} providerId={item.providerId} canSearch={canViewProviders} allowManual={false} ariaLabel={`Proveedor para ${item.affectedPiece || `línea ${index + 1}`}`} onChange={({ providerId, snapshot }) => setItems((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, providerId, providerSnapshot: snapshot } : entry))} /></td>
                   <td className="px-4 py-2"><Input className="h-10 w-28 rounded-xl text-right text-sm" type="number" min="0" step="0.01" value={item.partValue} onChange={(e) => updateItem(setItems, index, 'partValue', e.target.value)} /></td>
                   <td className="px-2 py-2"><Button type="button" aria-label={`Eliminar tarea ${index + 1}`} variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive" onClick={() => removeItem(item.visualOrder)} disabled={saveMutation.isPending}><X className="h-3.5 w-3.5" /></Button></td>
@@ -459,6 +521,13 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
           </div>
         </div>
       ) : null}
+      <Dialog open={actionItemIndex != null} onClose={() => { if (!createActionTypeMutation.isPending) setActionItemIndex(null); }} title="Agregar tipo de acción" description="Quedará disponible en futuros presupuestos.">
+        <form className="space-y-4" onSubmit={(event) => { event.preventDefault(); if (!newActionName.trim()) { setActionCreationError('Ingresá un nombre para el tipo de acción.'); return; } setActionCreationError(''); createActionTypeMutation.mutate(); }}>
+          <div><Label htmlFor="budget-action-type-name">Nombre</Label><Input id="budget-action-type-name" data-dialog-initial-focus value={newActionName} onChange={(event) => setNewActionName(event.target.value)} maxLength={120} required /></div>
+          {actionCreationError ? <p role="alert" className="text-sm text-destructive">{actionCreationError}</p> : null}
+          <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setActionItemIndex(null)} disabled={createActionTypeMutation.isPending}>Cancelar</Button><Button type="submit" disabled={createActionTypeMutation.isPending}>{createActionTypeMutation.isPending ? 'Guardando...' : 'Guardar tipo de acción'}</Button></div>
+        </form>
+      </Dialog>
     </div>
   );
 };

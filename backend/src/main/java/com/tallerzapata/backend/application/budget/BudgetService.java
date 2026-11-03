@@ -3,6 +3,7 @@ package com.tallerzapata.backend.application.budget;
 import com.tallerzapata.backend.api.budget.*;
 import com.tallerzapata.backend.api.casefile.CodeCatalogResponse;
 import com.tallerzapata.backend.application.casefile.CaseAuditService;
+import com.tallerzapata.backend.application.common.DomainConflictException;
 import com.tallerzapata.backend.application.casefile.InsuranceRepairCasePolicy;
 import com.tallerzapata.backend.application.insurance.InsuranceService;
 import com.tallerzapata.backend.application.recovery.FranchiseRecoveryRepairGate;
@@ -34,6 +35,7 @@ import com.tallerzapata.backend.infrastructure.security.CurrentUserService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -43,6 +45,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.time.LocalDateTime;
+import java.util.Locale;
+import java.util.UUID;
 
 @Service
 public class BudgetService {
@@ -151,6 +155,29 @@ public class BudgetService {
         );
     }
 
+    @Transactional
+    public CodeCatalogResponse createActionType(BudgetActionCreateRequest request) {
+        AuthenticatedUser currentUser = currentUserService.requireCurrentUser();
+        accessControlService.requirePermission(currentUser, "presupuesto.catalogo.gestionar");
+        String name = request.name().trim().replaceAll("\\s+", " ");
+        String normalizedName = name.toLowerCase(Locale.ROOT);
+
+        budgetActionRepository.findByNormalizedName(normalizedName).ifPresent(this::throwBudgetActionAlreadyExists);
+
+        BudgetActionEntity action = new BudgetActionEntity();
+        action.setCode("CUSTOM_" + UUID.randomUUID().toString().replace("-", "").substring(0, 20).toUpperCase(Locale.ROOT));
+        action.setName(name);
+        action.setNormalizedName(normalizedName);
+        action.setActive(true);
+        try {
+            BudgetActionEntity saved = budgetActionRepository.saveAndFlush(action);
+            return new CodeCatalogResponse(saved.getCode(), saved.getName());
+        } catch (DataIntegrityViolationException exception) {
+            budgetActionRepository.findByNormalizedName(normalizedName).ifPresent(this::throwBudgetActionAlreadyExists);
+            throw exception;
+        }
+    }
+
     @Transactional(readOnly = true)
     public byte[] generatePdf(Long caseId) {
         var data = loadPdfData(caseId);
@@ -230,6 +257,9 @@ public class BudgetService {
         if (request.accessoryWorks() != null) {
             reconcileAccessoryWorks(entity.getId(), request.accessoryWorks());
         }
+        if ("CERRADO".equals(entity.getReportStatusCode())) {
+            requireReplacementDecisionsBeforeClosing(entity.getId());
+        }
         if (request.items() != null || request.accessoryWorks() != null) {
             canonicalPartReconciliationService.reconcile(caseId, currentUser, httpRequest);
         }
@@ -255,6 +285,9 @@ public class BudgetService {
         entity.setReportStatusCode(normalizedOptionalCode(request.reportStatusCode()));
         entity.setObservations(blankToNull(request.observations()));
         entity = budgetRepository.save(entity);
+        if ("CERRADO".equals(entity.getReportStatusCode())) {
+            requireReplacementDecisionsBeforeClosing(entity.getId());
+        }
         canonicalPartReconciliationService.reconcile(caseId, currentUser, httpRequest);
         caseAuditService.register(currentUser.id(), caseId, "presupuestos", entity.getId(), "cerrar_presupuesto", null, caseAuditService.toJson(Map.of("reportStatusCode", entity.getReportStatusCode())), caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
         particularCaseClosureService.syncClosure(caseId);
@@ -596,6 +629,29 @@ public class BudgetService {
             case "NO_APLICA" -> "A_VERIFICAR";
             default -> code;
         };
+    }
+
+    private void throwBudgetActionAlreadyExists(BudgetActionEntity action) {
+        throw new DomainConflictException(
+                "BUDGET_ACTION_EXISTS",
+                "Ya existe un tipo de acción con ese nombre",
+                Map.of("budgetAction", new CodeCatalogResponse(action.getCode(), action.getName()))
+        );
+    }
+    private void requireReplacementDecisionsBeforeClosing(Long budgetId) {
+        List<String> pendingParts = budgetItemRepository.findByBudgetIdOrderByVisualOrderAsc(budgetId).stream()
+                .filter(item -> Boolean.TRUE.equals(item.getActive()))
+                .filter(item -> item.getActionCode() != null && item.getActionCode().startsWith("REEMPLAZAR"))
+                .filter(item -> !hasReplacementDecision(item.getPartDecisionCode()))
+                .map(item -> item.getAffectedPiece() == null || item.getAffectedPiece().isBlank() ? "línea " + item.getVisualOrder() : item.getAffectedPiece().trim())
+                .toList();
+        if (!pendingParts.isEmpty()) {
+            throw new ConflictException("Definí Reemplazar o No reemplazar para: " + String.join(", ", pendingParts));
+        }
+    }
+    private boolean hasReplacementDecision(String decisionCode) {
+        String normalized = normalizePartDecisionCode(decisionCode);
+        return "DEBE_REEMPLAZARSE".equals(normalized) || "PUEDE_REPARARSE".equals(normalized);
     }
     private CaseEntity requireCaseForUpdate(Long caseId) {
         CaseEntity caseEntity = caseRepository.findByIdForUpdate(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));

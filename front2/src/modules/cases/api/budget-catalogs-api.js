@@ -12,3 +12,8 @@ export const getBudgetCatalogs = async () => {
     partDecisionCodes: entries(catalogs?.partDecisionCodes),
   };
 };
+
+export const createBudgetActionType = (name) => requestJson('/budget/catalogs/actions', {
+  method: 'POST',
+  body: JSON.stringify({ name }),
+});

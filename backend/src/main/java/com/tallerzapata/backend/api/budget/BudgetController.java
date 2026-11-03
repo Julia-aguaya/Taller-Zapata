@@ -2,6 +2,7 @@ package com.tallerzapata.backend.api.budget;
 
 import com.tallerzapata.backend.application.budget.BudgetService;
 import com.tallerzapata.backend.application.budget.PartLabelPdfService;
+import com.tallerzapata.backend.api.casefile.CodeCatalogResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -34,6 +35,14 @@ public class BudgetController {
     @GetMapping("/budget/catalogs")
     public BudgetCatalogsResponse listCatalogs() {
         return budgetService.listCatalogs();
+    }
+
+    @Operation(summary = "Agregar tipo de acción de presupuesto", description = "Agrega una acción reutilizable para los ítems de presupuesto")
+    @ApiResponse(responseCode = "200", description = "Tipo de acción creado")
+    @PreAuthorize("hasAuthority('presupuesto.catalogo.gestionar')")
+    @PostMapping("/budget/catalogs/actions")
+    public CodeCatalogResponse createActionType(@Valid @RequestBody BudgetActionCreateRequest request) {
+        return budgetService.createActionType(request);
     }
 
     @Operation(summary = "Listar catalogos de repuestos", description = "Devuelve los catalogos disponibles para repuestos (estados, provisto por, estado de pago, autorizaciones)")
@@ -169,13 +178,16 @@ public class BudgetController {
 
     @Operation(summary = "Descargar etiqueta de repuesto", description = "Genera y devuelve el PDF de la etiqueta del repuesto")
     @ApiResponse(responseCode = "200", description = "PDF generado")
+    @ApiResponse(responseCode = "403", description = "Sin permiso o alcance sobre la carpeta")
+    @ApiResponse(responseCode = "404", description = "Carpeta o repuesto inexistente, o el repuesto no pertenece a la carpeta")
     @PreAuthorize("hasAuthority('presupuesto.ver')")
     @GetMapping("/cases/{caseId}/parts/{partId}/label")
     public ResponseEntity<byte[]> downloadPartLabel(@PathVariable Long caseId, @PathVariable Long partId) {
         byte[] pdfBytes = partLabelPdfService.generate(caseId, partId);
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=etiqueta-" + partId + ".pdf")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=etiqueta-rep-" + partId + ".pdf")
                 .contentType(MediaType.APPLICATION_PDF)
+                .contentLength(pdfBytes.length)
                 .body(pdfBytes);
     }
 }
