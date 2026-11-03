@@ -26,7 +26,6 @@ vi.mock('@tanstack/react-query', () => ({
 vi.mock('@/shared/api/http-client', () => ({ requestJson: vi.fn() }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/modules/cases/components/documents-section', () => ({ DocumentsSection: (props) => <div aria-label="Documentación" data-module={props.moduleCode} data-origin={props.originCode}>Documentación</div> }));
-vi.mock('@/modules/cases/components/task-agenda', () => ({ TaskAgenda: ({ caseId, organizationId, branchId }) => <div data-testid="task-agenda" data-case-id={caseId} data-organization-id={organizationId} data-branch-id={branchId}>Agenda de tareas</div> }));
 
 describe('FranchiseRecoveryEditor associated folder', () => {
   beforeEach(() => {
@@ -157,17 +156,11 @@ describe('FranchiseRecoveryEditor associated folder', () => {
     expect(screen.getByText(/La reparación se gestiona desde la carpeta asociada/)).toBeInTheDocument();
   });
 
-  it('keeps the task agenda immediately after Tramitación when repair is disabled', () => {
+  it('delegates the task agenda to Resumen when repair is disabled', () => {
     recovery = { id: 7, enablesRepair: false };
     render(<FranchiseRecoveryEditor caseId="7" caseDetail={{ organizationId: 3, branchId: 5 }} />);
 
-    const procedure = screen.getByLabelText('Tramitación');
-    const agenda = screen.getByTestId('task-agenda');
-    expect(agenda).toBeVisible();
-    expect(procedure.compareDocumentPosition(agenda) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(agenda).toHaveAttribute('data-case-id', '7');
-    expect(agenda).toHaveAttribute('data-organization-id', '3');
-    expect(agenda).toHaveAttribute('data-branch-id', '5');
+    expect(screen.queryByText('Agenda de tareas')).toBeNull();
   });
 
   it('omits hidden Lleva repuestos instead of overwriting its saved value', async () => {

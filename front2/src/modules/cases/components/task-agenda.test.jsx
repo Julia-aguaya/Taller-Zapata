@@ -40,6 +40,22 @@ describe('TaskAgenda', () => {
     expect(screen.getByText('Tarea compatible')).toBeInTheDocument();
   });
 
+  it('creates a task for the current folder without duplicating its existing tasks', async () => {
+    const user = userEvent.setup();
+    taskPage = { items: [{ id: 10, title: 'Tarea histórica', resolved: false, dueDate: null }] };
+    requestJson.mockResolvedValue({ id: 11 });
+    render(<TaskAgenda caseId="100" organizationId={7} branchId={9} />);
+
+    await user.click(screen.getByRole('button', { name: 'Agregar item' }));
+    await user.type(screen.getByPlaceholderText('Describí la tarea...'), 'Confirmar retiro');
+    await user.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    expect(screen.getByText('Tarea histórica')).toBeInTheDocument();
+    const [, request] = requestJson.mock.calls.find(([path]) => path === '/tasks');
+    expect(request.method).toBe('POST');
+    expect(JSON.parse(request.body)).toEqual(expect.objectContaining({ caseId: '100', organizationId: 7, branchId: 9, title: 'Confirmar retiro' }));
+  });
+
   it('requires confirmation before deleting a task through the reusable API', async () => {
     const user = userEvent.setup();
     taskPage = { items: [{ id: 10, title: 'Tarea de recupero', resolved: false, dueDate: null }] };

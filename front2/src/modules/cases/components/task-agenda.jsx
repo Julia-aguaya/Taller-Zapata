@@ -31,19 +31,19 @@ export const TaskAgenda = ({ caseId, organizationId, branchId }) => {
 
   const createMutation = useMutation({
     mutationFn: (payload) => requestJson('/tasks', { method: 'POST', body: JSON.stringify(payload) }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tasks', String(caseId) ] }); toast.success('Tarea creada.'); setShowNew(false); setNewTitle(''); setNewDesc(''); setNewDueDate(''); setNewAssignedUserId(''); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tasks', String(caseId) ] }); queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'tasks'] }); toast.success('Tarea creada.'); setShowNew(false); setNewTitle(''); setNewDesc(''); setNewDueDate(''); setNewAssignedUserId(''); },
     onError: (e) => toast.error(e.message),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ taskId, payload }) => requestJson(`/tasks/${taskId}`, { method: 'PUT', body: JSON.stringify(payload) }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tasks', String(caseId) ] }); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tasks', String(caseId) ] }); queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'tasks'] }); },
     onError: (e) => toast.error(e.message),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (taskId) => requestJson(`/tasks/${taskId}`, { method: 'DELETE' }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tasks', String(caseId)] }); setTaskToDelete(null); toast.success('Tarea eliminada.'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tasks', String(caseId)] }); queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'tasks'] }); setTaskToDelete(null); toast.success('Tarea eliminada.'); },
     onError: (e) => toast.error(e.message),
   });
 

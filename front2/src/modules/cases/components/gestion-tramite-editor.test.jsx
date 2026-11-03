@@ -19,9 +19,6 @@ vi.mock('@/shared/auth/session-storage', () => ({ readStoredAuth: () => ({ userI
 vi.mock('@/modules/cases/components/documents-section', () => ({
   DocumentsSection: ({ caseId }) => <div data-testid="documents-section" data-case-id={caseId}><h4>Documentación</h4><button type="button">Agregar items</button></div>,
 }));
-vi.mock('@/modules/cases/components/task-agenda', () => ({
-  TaskAgenda: ({ caseId, organizationId, branchId }) => <div data-testid="task-agenda" data-case-id={caseId} data-organization-id={organizationId} data-branch-id={branchId}><h4>Agenda de tareas</h4><button type="button">Agregar item</button></div>,
-}));
 vi.mock('@/modules/cases/components/third-party-workshop-editor', () => ({
   ThirdPartyWorkshopEditor: ({ caseDetail }) => <div data-testid="third-party-flow" data-case-type={caseDetail.caseTypeCode}>Flujo específico de terceros</div>,
 }));
@@ -63,9 +60,9 @@ describe('GestionTramiteEditor', () => {
     expect(screen.getByText('Tramitacion')).toBeTruthy();
   });
 
-  it('renders agenda de tareas', () => {
+  it('delegates the agenda to Resumen', () => {
     mount();
-    expect(screen.getByText('Agenda de tareas')).toBeTruthy();
+    expect(screen.queryByText('Agenda de tareas')).toBeNull();
   });
 
   it('renders only the compact backend-owned incident fields for GRANIZO cases', () => {
@@ -93,22 +90,18 @@ describe('GestionTramiteEditor', () => {
     expect(screen.queryByText('Franquicia')).toBeNull();
   });
 
-  it('renders CLEAS sections in the required order and passes document and agenda context', () => {
+  it('renders CLEAS sections in the required order and passes document context', () => {
     mount({ caseTypeCode: 'CLEAS', organizationId: 7, branchId: 9 });
 
     expect(Array.from(screen.getByTestId('cleas-gestion-tramite-editor').querySelectorAll('h4')).map((heading) => heading.textContent)).toEqual([
       'Datos generales del trámite',
       'Definición del CLEAS',
-      'Datos del seguro',
-      'Datos del siniestro',
-      'Documentación',
-      'Tramitación',
-      'Agenda de tareas',
-    ]);
+        'Datos del seguro',
+        'Datos del siniestro',
+        'Documentación',
+        'Tramitación',
+      ]);
     expect(screen.getByTestId('documents-section')).toHaveAttribute('data-case-id', '42');
-    expect(screen.getByTestId('task-agenda')).toHaveAttribute('data-case-id', '42');
-    expect(screen.getByTestId('task-agenda')).toHaveAttribute('data-organization-id', '7');
-    expect(screen.getByTestId('task-agenda')).toHaveAttribute('data-branch-id', '9');
   });
 
   it('clamps a negative company requirement to zero without an insufficient-quotation alert', () => {
@@ -224,11 +217,6 @@ describe('GestionTramiteEditor', () => {
   it('shows Generar PDF button', () => {
     mount();
     expect(screen.getByText('Generar PDF')).toBeTruthy();
-  });
-
-  it('shows Agregar item button for tasks', () => {
-    mount();
-    expect(screen.getByText('Agregar item')).toBeTruthy();
   });
 
   it('shows Agregar items button for documents', () => {

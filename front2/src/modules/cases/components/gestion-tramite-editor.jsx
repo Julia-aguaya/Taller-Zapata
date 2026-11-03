@@ -6,7 +6,6 @@ import { ClaimDataSection } from '@/modules/cases/components/claim-data-section'
 import { DeductibleSection } from '@/modules/cases/components/deductible-section';
 import { DocumentsSection } from '@/modules/cases/components/documents-section';
 import { ProcedureSection } from '@/modules/cases/components/procedure-section';
-import { TaskAgenda } from '@/modules/cases/components/task-agenda';
 import { CleasGestionTramiteEditor } from '@/modules/cases/components/cleas/cleas-gestion-tramite-editor';
 import { ThirdPartyWorkshopEditor } from '@/modules/cases/components/third-party-workshop-editor';
 import { readStoredAuth } from '@/shared/auth/session-storage';
@@ -64,9 +63,6 @@ export const GestionTramiteEditor = ({ caseId, caseDetail, budget, nroCleas, set
 
       {/* 6. Tramitación */}
       <ProcedureSection caseId={caseId} budget={budget} />
-
-      {/* 7. Agenda de tareas */}
-      <TaskAgenda caseId={caseId} organizationId={caseDetail?.organizationId} branchId={caseDetail?.branchId} />
 
       {/* Floating PDF button */}
       <button onClick={generatePdf}

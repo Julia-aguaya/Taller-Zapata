@@ -21,7 +21,6 @@ let legalRecoverables = [];
 let legalInjured = [];
 let casePersons = [];
 let documentsProps;
-let agendaProps;
 
 vi.mock('@tanstack/react-query', () => ({
   useQuery: ({ queryKey }) => ({ data: queryKey.at(-1) === 'legal' ? legalCase : queryKey.at(-1) === 'legal-news' ? legalNews : queryKey.at(-1) === 'legal-expenses' ? legalExpenses : queryKey.at(-1) === 'legal-recoverables' ? legalRecoverables : queryKey.at(-1) === 'legal-injured' ? legalInjured : queryKey.at(-1) === 'persons' ? casePersons : queryKey.at(-1) === 'catalogs' ? { legalProcessorCodes: [], legalClaimantCodes: [{ code: 'DANIO_MATERIAL', name: 'Daño material' }, { code: 'DANIO_MATERIAL_LESIONES', name: 'Daño material y lesiones' }, { code: 'FRANQUICIA_LESIONES', name: 'Franquicia y lesiones' }], legalInstanceCodes: [{ code: 'ADMINISTRATIVA', name: 'Administrativa' }, { code: 'JUDICIAL', name: 'Judicial' }], legalClosureReasonCodes: [{ code: 'CONCILIACION', name: 'Conciliación' }], legalExpensePayerCodes: [{ code: 'TALLER', name: 'Taller' }], lesionadoEsCodes: [{ code: 'TITULAR_REGISTRAL', name: 'Titular registral' }, { code: 'CLIENTE', name: 'Cliente' }, { code: 'OTRO', name: 'Otro' }] } : [] }),
@@ -32,12 +31,11 @@ vi.mock('@/modules/cases/api/third-party-api', () => ({
   getLegalCase: vi.fn(), saveLegalCase: (...args) => saveLegalCase(...args), getCasePersons: vi.fn(), getLegalNews: vi.fn(), getLegalExpenses: vi.fn(), getLegalExpensesExportUrl: vi.fn(), getLegalInjuredParties: vi.fn(), getLegalRecoverables: vi.fn(), createLegalExpense: (...args) => createLegalExpense(...args), updateLegalExpense: (...args) => updateLegalExpense(...args), deleteLegalExpense: (...args) => deleteLegalExpense(...args), createLegalInjuredParty: (...args) => createLegalInjuredParty(...args), createLegalNews: vi.fn(), updateLegalNews: (...args) => updateLegalNews(...args), deleteLegalNews: (...args) => deleteLegalNews(...args), createLegalRecoverable: vi.fn(), updateLegalRecoverable: (...args) => updateLegalRecoverable(...args), deleteLegalRecoverable: (...args) => deleteLegalRecoverable(...args), deleteLegalInjuredParty: vi.fn(), updateLegalInjuredParty: vi.fn(), collectLegalRecoverable: (...args) => collectLegalRecoverable(...args),
 }));
 vi.mock('@/modules/cases/components/documents-section', () => ({ DocumentsSection: (props) => { documentsProps.push(props); return <div>{props.title}</div>; } }));
-vi.mock('@/modules/cases/components/task-agenda', () => ({ TaskAgenda: (props) => { agendaProps = props; return <div data-testid="task-agenda">Agenda de tareas</div>; } }));
 vi.mock('@/shared/api/http-client', () => ({ requestJson: (...args) => requestJson(...args) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 describe('ThirdPartyLawyerEditor', () => {
-  beforeEach(() => { legalCase = null; legalNews = []; legalExpenses = []; legalRecoverables = []; legalInjured = []; casePersons = []; documentsProps = []; agendaProps = null; requestJson.mockReset(); saveLegalCase.mockClear(); createLegalExpense.mockClear(); createLegalInjuredParty.mockClear(); updateLegalNews.mockClear(); deleteLegalNews.mockClear(); collectLegalRecoverable.mockClear(); setQueryData.mockClear(); });
+  beforeEach(() => { legalCase = null; legalNews = []; legalExpenses = []; legalRecoverables = []; legalInjured = []; casePersons = []; documentsProps = []; requestJson.mockReset(); saveLegalCase.mockClear(); createLegalExpense.mockClear(); createLegalInjuredParty.mockClear(); updateLegalNews.mockClear(); deleteLegalNews.mockClear(); collectLegalRecoverable.mockClear(); setQueryData.mockClear(); });
 
   it('shows and saves the four judicial fields, then restores them on reload', async () => {
     legalCase = { instanceCode: 'JUDICIAL', entryDate: '2026-01-15', cuij: 'CUIJ-1', court: 'Juzgado 1', caseNumber: 'Autos 1' };
@@ -67,7 +65,7 @@ describe('ThirdPartyLawyerEditor', () => {
     expect(screen.getByRole('button', { name: 'Guardar' })).toBeEnabled();
   });
 
-  it('forwards agenda context, includes closing documentation, and hydrates then saves closure fields', async () => {
+  it('includes closing documentation and hydrates then saves closure fields', async () => {
     legalCase = { instanceCode: 'ADMINISTRATIVA', closedByCode: 'CONCILIACION', legalCloseDate: '2026-03-10', totalProceedsAmount: 125000, closingNotes: 'Acuerdo homologado' };
     saveLegalCase.mockResolvedValue(legalCase);
     render(<ThirdPartyLawyerEditor caseId={42} caseDetail={{ organizationId: 9, branchId: 3 }} />);
@@ -82,9 +80,6 @@ describe('ThirdPartyLawyerEditor', () => {
     expect(documentsProps).toEqual(expect.arrayContaining([expect.objectContaining({ title: 'Documentación de cierre', categoryCodes: new Set(['CIERRE_LEGAL']) })]));
     expect(screen.getByText('Documentación Expediente')).toBeInTheDocument();
     expect(screen.getByText('Documentación de cierre')).toBeInTheDocument();
-    expect(agendaProps).toEqual({ caseId: 42, organizationId: 9, branchId: 3 });
-    expect(screen.getByText('Estado del expediente').compareDocumentPosition(screen.getByTestId('task-agenda')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByTestId('task-agenda').compareDocumentPosition(screen.getByText('Cierre, gastos y rubros')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Importe total'), { target: { value: '150000' } });
     fireEvent.change(screen.getByPlaceholderText('Anotaciones de cierre'), { target: { value: 'Cierre actualizado' } });

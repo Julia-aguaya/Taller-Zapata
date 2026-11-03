@@ -5,13 +5,15 @@ import { toast } from 'sonner';
 import { createLegalInjuredParty, createLegalNews, deleteLegalInjuredParty, deleteLegalNews, getCasePersons, getLegalCase, getLegalInjuredParties, getLegalNews, saveLegalCase, updateLegalInjuredParty, updateLegalNews } from '@/modules/cases/api/third-party-api';
 import { DocumentsSection } from '@/modules/cases/components/documents-section';
 import { LegalClosureSection } from '@/modules/cases/components/legal-closure-section';
-import { TaskAgenda } from '@/modules/cases/components/task-agenda';
 import { requestJson } from '@/shared/api/http-client';
 import { Button } from '@/shared/ui/button';
 import { Dialog } from '@/shared/ui/dialog';
 import { Input } from '@/shared/ui/input';
 import { ShadcnSelect, ShadcnSelectContent, ShadcnSelectItem, ShadcnSelectTrigger, ShadcnSelectValue } from '@/shared/ui/shadcn-select';
 import { Textarea } from '@/shared/ui/textarea';
+
+// La agenda se renderiza una única vez desde el Resumen de la carpeta.
+const TaskAgenda = () => null;
 
 const EMPTY_INJURED = { lesionadoEsCode: 'OTRO', personId: '', lastName: '', firstName: '', documentNumber: '', birthDate: '', address: '', civilStatusCode: 'NO_INFORMA', phone: '', email: '', profession: '', provesIncome: false, notes: '' };
 const CIVIL_STATUS_OPTIONS = ['SOLTERO', 'CASADO', 'VIUDO', 'DIVORCIADO', 'NO_INFORMA'];

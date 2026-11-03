@@ -53,6 +53,12 @@ vi.mock('@/modules/cases/components/budget-editor-panel', () => ({
 vi.mock('@/modules/cases/components/repair-editor-panel', () => ({
   RepairEditorPanel: () => <div>Repair panel</div>,
 }));
+vi.mock('@/modules/cases/components/task-agenda', () => ({
+  TaskAgenda: ({ caseId, organizationId, branchId }) => <div data-testid="task-agenda" data-case-id={caseId} data-organization-id={organizationId} data-branch-id={branchId}>Agenda de tareas</div>,
+}));
+vi.mock('@/modules/cases/components/documents-section', () => ({
+  DocumentsSection: ({ caseId, showCompleteAction = true }) => <div data-testid="documents-section" data-case-id={caseId} data-show-complete-action={showCompleteAction}>Documentación</div>,
+}));
 
 vi.mock('@/modules/cases/components/third-party-lawyer-editor', () => ({
   ThirdPartyLawyerEditor: ({ caseId, caseDetail }) => <output data-testid="lawyer-editor-context">{JSON.stringify({ caseId, caseDetail })}</output>,
@@ -270,6 +276,61 @@ describe('CaseWorkspacePage UI', () => {
     expect(screen.getByRole('tab', { name: /pagos/i })).toHaveAttribute('aria-disabled', 'false');
     expect(screen.getByRole('tab', { name: /gesti[oó]n reparaci[oó]n/i })).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByText('0 de 4 etapas completas')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['SIN_PRESENTAR', 'Sin presentar'],
+    ['PRESENTADO_PD', 'Presentado (PD)'],
+    ['EN_TRAMITE', 'En trámite'],
+    ['ACORDADO', 'Acordado'],
+    ['PASADO_A_PAGOS', 'Pasado a pagos'],
+    ['PAGADO', 'Pagado'],
+  ])('muestra el mismo estado de trámite Todo Riesgo en Resumen y el encabezado: %s', async (code, label) => {
+    await renderPage({
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'TODO_RIESGO', visibleTramiteState: { code, label } },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'TODO_RIESGO' },
+    });
+
+    const summaryCard = screen.getByText('Trámite', { selector: 'p' }).parentElement;
+    expect(summaryCard).toHaveTextContent(label);
+    expect(screen.getByRole('button', { name: `Trámite: ${label}` })).toBeInTheDocument();
+  });
+
+  it('actualiza Resumen y encabezado con el mismo estado luego de recargar el workspace', async () => {
+    const workspace = {
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'TODO_RIESGO', visibleTramiteState: { code: 'SIN_PRESENTAR', label: 'Sin presentar' } },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'TODO_RIESGO' },
+    };
+    const rendered = await renderPage(workspace);
+
+    workspace.caseDetail = { ...workspace.caseDetail, visibleTramiteState: { code: 'EN_TRAMITE', label: 'En trámite' } };
+    rendered.rerender(<CaseWorkspacePage />);
+
+    const summaryCard = screen.getByText('Trámite', { selector: 'p' }).parentElement;
+    expect(summaryCard).toHaveTextContent('En trámite');
+    expect(screen.getByRole('button', { name: 'Trámite: En trámite' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Trámite: Sin presentar' })).toBeNull();
+  });
+
+  it.each(['PARTICULAR', 'TODO_RIESGO', 'GRANIZO', 'CLEAS', 'RECLAMO_TERCEROS', 'RECLAMO_TERCEROS_ABOGADO', 'RECUPERO_FRANQUICIA'])('muestra la agenda en Resumen para %s', async (caseTypeCode) => {
+    await renderPage({
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode, organizationId: 7, branchId: 9 },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode },
+    });
+
+    expect(screen.getByTestId('task-agenda')).toHaveAttribute('data-case-id', '1');
+    expect(screen.getByTestId('task-agenda')).toHaveAttribute('data-organization-id', '7');
+    expect(screen.getByTestId('task-agenda')).toHaveAttribute('data-branch-id', '9');
+  });
+
+  it('muestra el estado documental global en Resumen para Particular', async () => {
+    await renderPage();
+
+    expect(screen.getByTestId('documents-section')).toHaveAttribute('data-case-id', '1');
+    expect(screen.getByTestId('documents-section')).toHaveAttribute('data-show-complete-action', 'true');
   });
 
   it('preserva el día del turno en el resumen', async () => {

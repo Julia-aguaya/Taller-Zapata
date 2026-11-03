@@ -4,8 +4,10 @@ import { CleasGeneralDataSection } from './cleas-general-data-section';
 import { CleasInsuranceDataSection } from './cleas-insurance-data-section';
 import { CleasProcedureSection } from './cleas-procedure-section';
 import { DocumentsSection } from '@/modules/cases/components/documents-section';
-import { TaskAgenda } from '@/modules/cases/components/task-agenda';
 import { Button } from '@/shared/ui/button';
+
+// La agenda se renderiza una única vez desde el Resumen de la carpeta.
+const TaskAgenda = () => null;
 
 export const CleasGestionTramiteEditor = ({ caseId, caseDetail, nroCleas, setNroCleas, insurance, onInsuranceChange, cleasAgreedAmount, setCleasAgreedAmount, cleasFranchiseDistribution, onCleasFranchiseDistributionChange, cleasOver = 'damage', opinion = 'favorable', onCleasOverChange, onOpinionChange, cleasClosedAt, onRequestClosure }) => {
   const isAdverseTotal = cleasOver === 'damage' && opinion === 'unfavorable';

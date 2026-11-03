@@ -19,6 +19,8 @@ import { PaymentsEditorPanel } from '@/modules/cases/components/payments-editor-
 import { ExtraBudgetEditorPanel } from '@/modules/cases/components/extra-budget-editor-panel';
 import { ExtraBudgetPaymentsPanel } from '@/modules/cases/components/extra-budget-payments-panel';
 import { GestionTramiteEditor } from '@/modules/cases/components/gestion-tramite-editor';
+import { TaskAgenda } from '@/modules/cases/components/task-agenda';
+import { DocumentsSection } from '@/modules/cases/components/documents-section';
 import { FranchiseRecoveryEditor } from '@/modules/cases/components/franchise-recovery-editor';
 import { FranchiseRecoveryPaymentsEditor } from '@/modules/cases/components/franchise-recovery-payments-editor';
 import { ThirdPartyLawyerEditor } from '@/modules/cases/components/third-party-lawyer-editor';
@@ -418,6 +420,7 @@ export const CaseWorkspacePage = () => {
               setOverrideReason={setOverrideReason}
               overrideMutation={overrideMutation}
               onOpenTab={openReadinessTab}
+              caseId={caseId}
             />
           ) : currentTab?.tabCode === 'FICHA_TECNICA' ? (
             <FichaTecnicaEditor
@@ -1248,7 +1251,7 @@ const DetallesTabButton = ({ selectedTab, setSelectedTab }) => {
   );
 };
 
-const CaseDetailsPanel = ({ caseDetail, budget, paymentSummary, widgets, latestAppointment, latestIntake, latestOutcome, taskSnapshot, nextStep, onOpenTab, overrideModal, setOverrideModal, overrideReason, setOverrideReason, overrideMutation }) => {
+const CaseDetailsPanel = ({ caseId, caseDetail, budget, paymentSummary, widgets, latestAppointment, latestIntake, latestOutcome, taskSnapshot, nextStep, onOpenTab, overrideModal, setOverrideModal, overrideReason, setOverrideReason, overrideMutation }) => {
   const isInsuranceCase = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
   const paymentsState = !widgets?.budget?.exists
     ? 'Pendiente de presupuesto'
@@ -1285,6 +1288,10 @@ const CaseDetailsPanel = ({ caseDetail, budget, paymentSummary, widgets, latestA
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
+        <MiniCard label="Trámite" value={caseDetail.visibleTramiteState?.label || 'Sin informar'} color="slate">
+          <WidgetRow label="Estado" value={caseDetail.visibleTramiteState?.label || 'Sin informar'} />
+        </MiniCard>
+
         <MiniCard label="Presupuesto" value={widgets?.budget?.exists ? (budget?.reportStatusCode || 'CARGADO') : 'Sin presupuesto'} color={widgets?.budget?.exists && budget?.reportStatusCode === 'CERRADO' ? 'emerald' : 'amber'}>
           <WidgetRow label="Estado" value={widgets?.budget?.exists ? (budget?.reportStatusCode || 'CARGADO') : 'Todavia no se cargo'} />
           <WidgetRow label="Total cotizado" value={widgets?.budget?.exists ? formatCurrency(widgets?.budget?.totalQuoted) : 'Todavia no se cargo'} />
@@ -1309,6 +1316,9 @@ const CaseDetailsPanel = ({ caseDetail, budget, paymentSummary, widgets, latestA
           <WidgetRow label="Proximo vencimiento" value={taskSnapshot.nextDueTask?.dueDate ? formatDate(taskSnapshot.nextDueTask.dueDate) : 'Sin tareas pendientes'} />
         </MiniCard>
       </div>
+
+      <TaskAgenda caseId={caseId} organizationId={caseDetail?.organizationId} branchId={caseDetail?.branchId} />
+      {caseDetail?.caseTypeCode === 'PARTICULAR' ? <DocumentsSection caseId={caseId} moduleCode="GESTION_TRAMITE" includeHistorical={false} title="Documentación" /> : null}
 
     </div>
   );
