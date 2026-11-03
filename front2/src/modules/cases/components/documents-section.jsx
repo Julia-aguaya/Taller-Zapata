@@ -107,9 +107,9 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
     onError: (error) => toast.error(error.message),
   });
 
-  const completeDocumentationMutation = useMutation({
-    mutationFn: () => requestJson(`/cases/${caseId}/workflow/transitions`, { method: 'POST', body: JSON.stringify({ domain: 'documentacion', actionCode: 'documentacion.completar', reason: 'Documentación revisada y completa', automatic: false }) }),
-    onSuccess: async () => { await invalidateCaseViews(); setDocumentationFeedback('Estado de documentación actualizado a Completa.'); },
+  const documentationStatusMutation = useMutation({
+    mutationFn: (status) => requestJson(`/cases/${caseId}/workflow/transitions`, { method: 'POST', body: JSON.stringify({ domain: 'documentacion', actionCode: status === 'COMPLETA' ? 'documentacion.completar' : 'documentacion.marcar_incompleta', reason: status === 'COMPLETA' ? 'Documentación revisada y completa' : 'Documentación marcada como incompleta', automatic: false }) }),
+    onSuccess: async (_, status) => { await invalidateCaseViews(); setDocumentationFeedback(`Estado de documentación actualizado a ${status === 'COMPLETA' ? 'Completa' : 'Incompleta'}.`); },
     onError: (error) => setDocumentationFeedback(error.message || 'No se pudo actualizar la documentación.'),
   });
 
@@ -179,14 +179,15 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
     toast.success('Descargando comprimido...');
   };
 
-  const documentationComplete = caseQuery.data?.currentDocumentationStateCode === 'COMPLETA';
+  const documentationStatus = caseQuery.data?.currentDocumentationStateCode === 'COMPLETA' ? 'COMPLETA' : 'INCOMPLETA';
   const canUpload = Boolean(uploadFiles.length > 0 && uploadCategory && (!requiresDate || uploadDate));
-  const documentationSelectDisabled = !canCompleteDocumentation || documentationComplete || caseQuery.isLoading || completeDocumentationMutation.isPending;
+  const documentationSelectDisabled = !canCompleteDocumentation || caseQuery.isLoading || documentationStatusMutation.isPending;
 
   const updateDocumentationStatus = (event) => {
-    if (event.target.value !== 'COMPLETA' || documentationComplete) return;
+    const nextStatus = event.target.value;
+    if (nextStatus === documentationStatus) return;
     setDocumentationFeedback('Actualizando estado de documentación...');
-    completeDocumentationMutation.mutate();
+    documentationStatusMutation.mutate(nextStatus);
   };
 
   const openMetadataEditor = (doc) => {
@@ -325,17 +326,17 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
         <label htmlFor={`documentation-status-${caseId}`} className="mb-1 block text-sm font-medium">Estado de documentación</label>
         <select
           id={`documentation-status-${caseId}`}
-          value={documentationComplete ? 'COMPLETA' : 'PENDIENTE'}
+          value={documentationStatus}
           onChange={updateDocumentationStatus}
           disabled={documentationSelectDisabled}
           aria-describedby={`documentation-status-help-${caseId} documentation-status-feedback-${caseId}`}
           className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <option value="PENDIENTE">Pendiente</option>
+          <option value="INCOMPLETA">Incompleta</option>
           <option value="COMPLETA">Completa</option>
         </select>
         <p id={`documentation-status-help-${caseId}`} className="mt-1 text-xs text-muted-foreground">
-          {documentationComplete ? 'La documentación ya fue marcada como completa.' : canCompleteDocumentation ? 'Al seleccionar Completa se registra la revisión manual de la carpeta.' : 'No tenés permiso para actualizar este estado.'}
+          {canCompleteDocumentation ? 'Seleccioná el resultado de la revisión documental de la carpeta.' : 'No tenés permiso para actualizar este estado.'}
         </p>
         <p id={`documentation-status-feedback-${caseId}`} className="mt-1 text-xs text-muted-foreground" aria-live="polite">
           {documentationFeedback}

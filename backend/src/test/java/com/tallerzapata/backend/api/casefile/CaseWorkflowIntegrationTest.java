@@ -144,11 +144,12 @@ class CaseWorkflowIntegrationTest {
     void shouldRejectTransitionWithoutFineGrainedPermission() throws Exception {
         Long permisoId = jdbcTemplate.queryForObject("SELECT id FROM permisos WHERE codigo = ?", Long.class, "workflow.documentacion.completar");
         jdbcTemplate.update("DELETE FROM rol_permisos WHERE rol_id = ? AND permiso_id = ?", 2L, permisoId);
+        jdbcTemplate.update("UPDATE casos SET estado_documentacion_actual_id = ? WHERE id = ?", 10L, 100L);
 
         CaseWorkflowTransitionRequest request = new CaseWorkflowTransitionRequest(
                 "documentacion",
-                "documentacion.completar",
-                "Completa legajo",
+                "documentacion.marcar_incompleta",
+                "Documentación incompleta",
                 false
         );
 
@@ -181,6 +182,20 @@ class CaseWorkflowIntegrationTest {
                 100L
         );
         assertThat(currentStateId).isEqualTo(10L);
+    }
+
+    @Test
+    void shouldAllowDocumentationToBeChangedBackToIncompleteWithTheExistingPermission() throws Exception {
+        CaseWorkflowTransitionRequest complete = new CaseWorkflowTransitionRequest("documentacion", "documentacion.completar", "Revisión completa", false);
+        CaseWorkflowTransitionRequest markIncomplete = new CaseWorkflowTransitionRequest("documentacion", "documentacion.marcar_incompleta", "Falta documentación", false);
+
+        mockMvc.perform(post("/api/v1/cases/100/workflow/transitions").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(complete)))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/v1/cases/100/workflow/transitions").header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsBytes(markIncomplete)))
+                .andExpect(status().isOk());
+
+        assertThat(jdbcTemplate.queryForObject("SELECT estado_documentacion_actual_id FROM casos WHERE id = ?", Long.class, 100L)).isEqualTo(9L);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM caso_estado_historial WHERE caso_id = ? AND dominio_estado = 'documentacion'", Integer.class, 100L)).isEqualTo(2);
     }
 
     @Test
@@ -299,6 +314,10 @@ class CaseWorkflowIntegrationTest {
         jdbcTemplate.update(
                 "INSERT INTO workflow_transiciones (id, dominio, tipo_tramite_id, estado_origen_id, estado_destino_id, accion_codigo, requiere_permiso_codigo, automatica, regla_json, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ? FORMAT JSON, ?)",
                 9004L, "legal", null, 11L, 12L, "legal.iniciar", "workflow.legal.iniciar", false, "{\"field\":\"referenced\",\"op\":\"EQ\",\"value\":\"true\"}", true
+        );
+        jdbcTemplate.update(
+                "INSERT INTO workflow_transiciones (id, dominio, tipo_tramite_id, estado_origen_id, estado_destino_id, accion_codigo, requiere_permiso_codigo, automatica, regla_json, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                9031L, "documentacion", null, 10L, 9L, "documentacion.marcar_incompleta", "workflow.documentacion.completar", false, null, true
         );
     }
 }

@@ -74,6 +74,25 @@ class TodoRiesgoEffectiveStateIntegrationTest {
     }
 
     @Test
+    void documentationChangesRecalculateTheTodoRiesgoProcedureStateInBothDirections() throws Exception {
+        long caseId = createCase("TODO_RIESGO");
+        upsertInsuranceProcessing(caseId, "2026-08-09", null, null, null, null);
+        assertProjection(caseId, "PRESENTADO_PD", "EN_TRAMITE");
+
+        mockMvc.perform(post("/api/v1/cases/{caseId}/workflow/transitions", caseId).header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"domain\":\"documentacion\",\"actionCode\":\"documentacion.completar\",\"reason\":\"Documentación completa\",\"automatic\":false}"))
+                .andExpect(status().isOk());
+        assertProjection(caseId, "EN_TRAMITE", "EN_TRAMITE");
+
+        mockMvc.perform(post("/api/v1/cases/{caseId}/workflow/transitions", caseId).header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"domain\":\"documentacion\",\"actionCode\":\"documentacion.marcar_incompleta\",\"reason\":\"Documentación pendiente\",\"automatic\":false}"))
+                .andExpect(status().isOk());
+        assertProjection(caseId, "PRESENTADO_PD", "EN_TRAMITE");
+    }
+
+    @Test
     void projectsTodoRiesgoStatesForThirdPartyWorkshopWithoutAParallelWorkflow() throws Exception {
         long repairCaseId = createCase("RECLAMO_TERCEROS");
         assertProjection(repairCaseId, "SIN_PRESENTAR", "EN_TRAMITE"); // estado inicial
@@ -317,6 +336,74 @@ class TodoRiesgoEffectiveStateIntegrationTest {
         recalculator.revertNoRepair(granizoId, "Reapertura autorizada", 1L);
         assertProjection(granizoId, "SIN_PRESENTAR", "EN_TRAMITE");
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM todo_riesgo_state_facts WHERE caso_id = ?", Integer.class, particularId)).isZero();
+    }
+
+    @Test
+    void appliesTheAuditedNoRepairActionToEveryCaseTypeWithoutChangingTheProcedureState() throws Exception {
+        for (String typeCode : java.util.List.of("PARTICULAR", "TODO_RIESGO", "GRANIZO", "CLEAS", "RECLAMO_TERCEROS", "RECLAMO_TERCEROS_ABOGADO", "RECUPERO_FRANQUICIA")) {
+            long caseId = createCase(typeCode);
+            mockMvc.perform(post("/api/v1/cases/{caseId}/repair/no-repair", caseId).header("X-User-Id", "1")
+                            .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Daño estructural " + typeCode + "\"}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.visibleRepairState.code").value("NO_DEBE_REPARARSE"));
+
+            String notificationType = "CLEAS".equals(typeCode) ? "CLEAS_NO_REPARA"
+                    : ("TODO_RIESGO".equals(typeCode) || "GRANIZO".equals(typeCode)) ? "TODO_RIESGO_NO_REPARA" : "NO_REPARA";
+            assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM notificaciones WHERE caso_id = ? AND usuario_id = 1 AND tipo_codigo = ?", Integer.class, caseId, notificationType)).isEqualTo(1);
+            assertThat(jdbcTemplate.queryForObject("SELECT mensaje FROM notificaciones WHERE caso_id = ? AND usuario_id = 1 AND tipo_codigo = ?", String.class, caseId, notificationType))
+                    .contains("Trámite " + typeCode).contains("Daño estructural " + typeCode);
+            assertThat(jdbcTemplate.queryForObject("SELECT metadata_json FROM auditoria_eventos WHERE caso_id = ? AND accion_codigo = 'marcar_no_debe_repararse'", String.class, caseId))
+                    .contains("Daño estructural " + typeCode);
+        }
+    }
+
+    @Test
+    void universalNoRepairRequiresReasonAndAffectsOnlyGlobalAdminsIncludingRevert() throws Exception {
+        long caseId = createCase("TODO_RIESGO");
+        mockMvc.perform(post("/api/v1/cases/{caseId}/repair/no-repair", caseId).header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\" \"}"))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post("/api/v1/cases/{caseId}/repair/no-repair", caseId).header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"No es seguro reparar\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.visibleRepairState.code").value("NO_DEBE_REPARARSE"));
+
+        jdbcTemplate.update("UPDATE usuario_roles SET organizacion_id = 1, sucursal_id = 1 WHERE usuario_id = 1 AND rol_id = 1");
+        try {
+            mockMvc.perform(post("/api/v1/cases/{caseId}/repair/no-repair/revert", caseId).header("X-User-Id", "1")
+                            .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Revisión pendiente\"}"))
+                    .andExpect(status().isForbidden());
+            mockMvc.perform(get("/api/v1/cases/{caseId}", caseId).header("X-User-Id", "1"))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.visibleRepairState.code").value("NO_DEBE_REPARARSE"));
+        } finally {
+            jdbcTemplate.update("UPDATE usuario_roles SET organizacion_id = NULL, sucursal_id = NULL WHERE usuario_id = 1 AND rol_id = 1");
+        }
+
+        mockMvc.perform(post("/api/v1/cases/{caseId}/repair/no-repair/revert", caseId).header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Reparación nuevamente autorizada\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.visibleRepairState.code").value("EN_TRAMITE"));
+    }
+
+    @Test
+    void universalNoRepairKeepsExistingRepairHistoryAndCompletesOnlyTheRepairStage() throws Exception {
+        long caseId = createCase("TODO_RIESGO");
+        createAppointment(caseId, "PENDIENTE", false);
+        long intakeId = createIntake(caseId);
+        createOutcome(caseId, intakeId, true, false);
+
+        mockMvc.perform(post("/api/v1/cases/{caseId}/repair/no-repair", caseId).header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"El cliente retiró el vehículo sin reparar\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.visibleTramiteState.code").value("SIN_PRESENTAR"))
+                .andExpect(jsonPath("$.visibleRepairState.code").value("NO_DEBE_REPARARSE"));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM turnos_reparacion WHERE caso_id = ?", Integer.class, caseId)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM ingresos_vehiculo WHERE caso_id = ?", Integer.class, caseId)).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM egresos_vehiculo WHERE caso_id = ?", Integer.class, caseId)).isEqualTo(1);
+        mockMvc.perform(get("/api/v1/cases/{caseId}/readiness", caseId).header("X-User-Id", "1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.tabs[3].tabCode").value("GESTION_REPARACION"))
+                .andExpect(jsonPath("$.tabs[3].completed").value(true));
     }
 
     private long createCase(String typeCode) throws Exception {

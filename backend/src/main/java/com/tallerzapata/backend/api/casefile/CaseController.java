@@ -230,6 +230,20 @@ public class CaseController {
         caseWorkflowService.overrideVisibleState(caseId, request, httpRequest);
     }
 
+    @Operation(summary = "Marcar un vehículo como no reparable", description = "Completa la gestión de reparación sin modificar el estado del trámite")
+    @PostMapping("/{caseId}/repair/no-repair")
+    public CaseResponse markNoRepair(@PathVariable Long caseId, @Valid @RequestBody TodoRiesgoNoRepairRequest request, HttpServletRequest httpRequest) {
+        caseWorkflowService.markNoRepair(caseId, request.reason(), httpRequest);
+        return caseService.getById(caseId);
+    }
+
+    @Operation(summary = "Revertir vehículo no reparable", description = "Restablece el seguimiento automático de la reparación")
+    @PostMapping("/{caseId}/repair/no-repair/revert")
+    public CaseResponse revertNoRepair(@PathVariable Long caseId, @Valid @RequestBody TodoRiesgoNoRepairRequest request, HttpServletRequest httpRequest) {
+        caseWorkflowService.revertNoRepair(caseId, request.reason(), httpRequest);
+        return caseService.getById(caseId);
+    }
+
     @Operation(summary = "Marcar TODO_RIESGO como no reparable")
     @ApiResponse(responseCode = "200", description = "OK")
     @PostMapping("/{caseId}/todo-riesgo/no-repair")

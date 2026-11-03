@@ -8,7 +8,6 @@ import { InsuranceDataSection as LawyerInsuranceDataSection } from '@/modules/ca
 import { LawyerProcessingSection } from '@/modules/cases/components/lawyer-processing-section';
 import { LawyerThirdPartyIncidentSection } from '@/modules/cases/components/lawyer-third-party-incident-section';
 import { ProcedureSection } from '@/modules/cases/components/procedure-section';
-import { TaskAgenda } from '@/modules/cases/components/task-agenda';
 import { addCasePerson, deleteCasePerson, getCasePersons, getThirdParty, getThirdPartyWorkshop, saveThirdParty, saveThirdPartyWorkshop, updateCasePerson } from '@/modules/cases/api/third-party-api';
 import { createPerson, createVehicle, listInsuranceCompanies, listInsuranceCompanyContacts, searchPersons, searchVehicles } from '@/modules/cases/api/new-case-api';
 import { requestJson } from '@/shared/api/http-client';
@@ -28,9 +27,8 @@ export const ThirdPartyWorkshopEditor = ({ caseId, caseDetail, budget, lawyerMan
     <LawyerProcessingSection caseId={caseId} />
     <LawyerInsuranceDataSection caseId={caseId} caseDetail={caseDetail} />
     <LawyerThirdPartyIncidentSection caseId={caseId} />
-    <DocumentsSection caseId={caseId} moduleCode="GESTION_TRAMITE" includeHistorical title="Documentación del trámite" showCompleteAction={false} />
+    <DocumentsSection caseId={caseId} moduleCode="GESTION_TRAMITE" includeHistorical title="Documentación del trámite" showCompleteAction />
     <ProcedureSection caseId={caseId} budget={budget} thirdPartyWorkshop hideGeneralData lawyerManaged />
-    <TaskAgenda caseId={caseId} organizationId={caseDetail?.organizationId} branchId={caseDetail?.branchId} />
   </div>;
 
   return <div className="mt-5 space-y-5 pb-20"><GeneralDataSection caseId={caseId} /><InsuranceDataSection caseId={caseId} /><ThirdPartyWorkshopIncidentSection caseId={caseId} /><DocumentsSection caseId={caseId} moduleCode="GESTION_TRAMITE" originCode="GESTION_TRAMITE" includeHistorical={false} title="Documentación" showCompleteAction showAllCategories editableMetadata /><ProcedureSection caseId={caseId} thirdPartyWorkshop hideGeneralData /><CoverageSection caseId={caseId} caseDetail={caseDetail} budget={budget} /></div>;

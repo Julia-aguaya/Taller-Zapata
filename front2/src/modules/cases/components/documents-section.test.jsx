@@ -434,12 +434,12 @@ describe('DocumentsSection', () => {
 
     renderSection();
 
-    expect(await screen.findByLabelText('Estado de documentación')).toHaveValue('PENDIENTE');
+    expect(await screen.findByLabelText('Estado de documentación')).toHaveValue('INCOMPLETA');
     expect(screen.getByLabelText('Estado de documentación')).toBeDisabled();
-    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['Pendiente', 'Completa']);
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual(['Incompleta', 'Completa']);
   });
 
-  it('allows an authorized user to complete documentation from the accessible select independent of files', async () => {
+  it('allows an authorized user to mark documentation complete from the accessible select independent of files', async () => {
     session = { authorities: ['workflow.documentacion.completar'], scopes: [{ organizationId: null, branchId: null }] };
     let resolveTransition;
     const fetchMock = vi.fn((url, options = {}) => {
@@ -462,5 +462,27 @@ describe('DocumentsSection', () => {
     expect(JSON.parse(options.body)).toMatchObject({ domain: 'documentacion', actionCode: 'documentacion.completar', automatic: false });
     resolveTransition();
     expect(await screen.findByText('Estado de documentación actualizado a Completa.')).toBeInTheDocument();
+  });
+
+  it('allows an authorized user to mark completed documentation incomplete', async () => {
+    session = { authorities: ['workflow.documentacion.completar'], scopes: [{ organizationId: null, branchId: null }] };
+    const fetchMock = vi.fn((url, options = {}) => {
+      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [] }));
+      if (url === '/api/v1/cases/42/documents') return Promise.resolve(jsonResponse([]));
+      if (url === '/api/v1/cases/42') return Promise.resolve(jsonResponse({ currentDocumentationStateCode: 'COMPLETA' }));
+      if (url === '/api/v1/cases/42/workflow/transitions' && options.method === 'POST') return Promise.resolve(jsonResponse({}));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderSection();
+
+    const select = await screen.findByLabelText('Estado de documentación');
+    expect(select).toHaveValue('COMPLETA');
+    fireEvent.change(select, { target: { value: 'INCOMPLETA' } });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/cases/42/workflow/transitions', expect.objectContaining({ method: 'POST' })));
+    const [, options] = fetchMock.mock.calls.find(([url]) => url === '/api/v1/cases/42/workflow/transitions');
+    expect(JSON.parse(options.body)).toMatchObject({ domain: 'documentacion', actionCode: 'documentacion.marcar_incompleta', automatic: false });
+    expect(await screen.findByText('Estado de documentación actualizado a Incompleta.')).toBeInTheDocument();
   });
 });

@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.util.Set;
 
 public final class ParticularEffectiveStatePolicy {
-    private static final Set<String> TERMINAL_CODES = Set.of("RECHAZADO", "DESISTIDO");
+    private static final Set<String> TERMINAL_CODES = Set.of("RECHAZADO", "DESISTIDO", "NO_DEBE_REPARARSE");
 
     public ParticularEffectiveState evaluate(ParticularEffectiveStateFacts facts) {
         String repair = repairCode(facts);
@@ -29,7 +29,7 @@ public final class ParticularEffectiveStatePolicy {
     private String procedureCode(ParticularEffectiveStateFacts facts, String repairCode) {
         if (isTerminal(facts.procedureTerminalOverrideCode())) return facts.procedureTerminalOverrideCode();
         if (facts.hasPersistedTotalCancellation() && hasNoOutstandingBalance(facts)) return "PAGADO";
-        if ("REPARADO".equals(repairCode) && hasPositiveOutstandingBalance(facts)) return "PASADO_A_PAGOS";
+        if (("REPARADO".equals(repairCode) || "NO_DEBE_REPARARSE".equals(repairCode)) && hasPositiveOutstandingBalance(facts)) return "PASADO_A_PAGOS";
         return "INGRESADO";
     }
 

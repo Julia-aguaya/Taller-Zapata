@@ -152,7 +152,7 @@ public class ParticularEffectiveStateRecalculator {
 
     private String terminalOverride(String value) {
         String normalized = normalize(value);
-        return "RECHAZADO".equals(normalized) || "DESISTIDO".equals(normalized) ? normalized : null;
+        return "RECHAZADO".equals(normalized) || "DESISTIDO".equals(normalized) || "NO_DEBE_REPARARSE".equals(normalized) ? normalized : null;
     }
 
     private boolean hasTerminalOverride(ParticularEffectiveStateEntity state) {
