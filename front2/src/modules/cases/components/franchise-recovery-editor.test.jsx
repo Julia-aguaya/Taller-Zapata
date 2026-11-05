@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FranchiseRecoveryEditor } from './franchise-recovery-editor';
@@ -180,6 +180,8 @@ describe('FranchiseRecoveryEditor associated folder', () => {
     expect(screen.getByDisplayValue('Reintegro a cliente')).toHaveAttribute('readonly');
     expect(screen.getByDisplayValue('75')).toHaveAttribute('readonly');
     expect(screen.getByLabelText('Importe a aplicar 8')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Paga el total' }));
+    expect(screen.getByLabelText('Importe a aplicar 8')).toHaveValue(75);
     expect(screen.getByText('Movimiento #91')).toBeInTheDocument();
     expect(screen.queryByLabelText(/Estado de cobro|Estado del reintegro/)).not.toBeInTheDocument();
   });

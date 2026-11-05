@@ -28,6 +28,7 @@ const mockDownloadCleasLiquidationPdf = vi.fn().mockResolvedValue(new Blob(['pdf
 const mockGetCleasFranchisePaymentSummary = vi.fn();
 const mockRegisterCleasCustomerFranchisePayment = vi.fn();
 const mockRegisterCleasCompanyFranchisePayment = vi.fn();
+const mockToastError = vi.fn();
 let useQueryData = {};
 let queryOptions = [];
 let session = {
@@ -95,7 +96,7 @@ vi.mock('@/modules/cases/api/extra-budget-api', () => ({
   annulExtraBudgetPayment: (...args) => mockAnnulExtraBudgetPayment(...args),
 }));
 
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: (...args) => mockToastError(...args) } }));
 
 const baseProps = {
   caseId: 42,
@@ -115,6 +116,7 @@ const CleasPaymentsHarness = (props) => {
   mockCreateReceipt.mockClear();
   mockRequestJson.mockClear();
   mockUploadFileResumably.mockClear();
+  mockToastError.mockClear();
   mockRegisterCleasCompanyPayment.mockClear();
   mockInvalidateQueries.mockClear();
   const props = { ...baseProps, ...overrides };
@@ -707,6 +709,48 @@ describe('PaymentsEditorPanel', () => {
     mount({ particularFinanceSummary: { ...baseProps.particularFinanceSummary, customerPaid: 50000 } });
 
     expect(screen.getByText('Pendiente').parentElement).toHaveTextContent('201.500');
+  });
+
+  it('fills the complete PARTICULAR quoted amount without registering a payment when there are no prior payments', () => {
+    mount();
+    openPaymentForm();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Paga el total' }));
+
+    expect(screen.getByLabelText('Monto')).toHaveValue(251500);
+    expect(mockCreateFinancialMovement).not.toHaveBeenCalled();
+  });
+
+  it('fills only the outstanding PARTICULAR balance after a partial payment without registering it', () => {
+    mount({ particularFinanceSummary: { ...baseProps.particularFinanceSummary, customerPaid: 50000 } });
+    openPaymentForm();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Paga el total' }));
+
+    expect(screen.getByLabelText('Monto')).toHaveValue(201500);
+    expect(mockCreateFinancialMovement).not.toHaveBeenCalled();
+  });
+
+  it('keeps the amount empty and explains that no balance remains when the PARTICULAR payment is cancelled', () => {
+    mount({ particularFinanceSummary: { ...baseProps.particularFinanceSummary, customerPaid: 251500, paidInFull: true } });
+    openPaymentForm();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Paga el total' }));
+
+    expect(screen.getByLabelText('Monto')).toHaveValue(null);
+    expect(mockToastError).toHaveBeenCalledWith('No hay saldo pendiente que completar.');
+    expect(mockCreateFinancialMovement).not.toHaveBeenCalled();
+  });
+
+  it('does not invent a total for a generic CLEAS payment without a canonical balance', () => {
+    mount({ caseDetail: { ...baseProps.caseDetail, caseTypeCode: 'CLEAS' } });
+    openPaymentForm();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Paga el total' }));
+
+    expect(screen.getByLabelText('Monto')).toHaveValue(null);
+    expect(mockToastError).toHaveBeenCalledWith('No se puede determinar el saldo pendiente para este pago.');
+    expect(mockCreateFinancialMovement).not.toHaveBeenCalled();
   });
 
   it('renders seña, cancela, modo, and factura selects', () => {

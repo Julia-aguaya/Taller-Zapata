@@ -183,6 +183,22 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
 
   const pagado = toAmount(particularFinanceSummary?.customerPaid || 0);
   const pendiente = Math.max(0, cotizadoConIva - pagado);
+  const clientPaymentPendingAmount = activeClientPaymentRequest?.amount != null
+    ? toAmount(activeClientPaymentRequest.amount)
+    : isParticular
+      ? pendiente
+      : null;
+  const fillClientPaymentWithPendingAmount = () => {
+    if (clientPaymentPendingAmount == null) {
+      toast.error('No se puede determinar el saldo pendiente para este pago.');
+      return;
+    }
+    if (clientPaymentPendingAmount <= 0) {
+      toast.error('No hay saldo pendiente que completar.');
+      return;
+    }
+    setForm((current) => ({ ...current, amount: String(clientPaymentPendingAmount) }));
+  };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -400,7 +416,8 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
               <Field label="Fecha"><Input type="datetime-local" value={ciaPayment.movementAt} onChange={(e) => setCiaPayment((c) => ({ ...c, movementAt: e.target.value }))} /></Field>
               <Field label="Neto depositado"><Input value={formatCurrency(companyNetAmount)} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" /></Field>
             </div>
-             {!isThirdPartyWorkshop ? <div className="mt-4 rounded-2xl border border-border/60 p-4">
+              <div className="mt-3"><Button type="button" variant="outline" onClick={() => { if (ciaPending <= 0) { toast.error('No hay saldo pendiente de la compañía para completar.'); return; } setCiaPayment((current) => ({ ...current, amount: String(ciaPending) })); }}>Paga el total</Button></div>
+              {!isThirdPartyWorkshop ? <div className="mt-4 rounded-2xl border border-border/60 p-4">
                <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-semibold">Retenciones</p></div></div>
                {ciaPayment.retentions.map((retention, index) => <div key={retention.retentionTypeCode} className="mt-3 grid gap-3 md:grid-cols-[1fr_150px_1fr]">
                  <Input value={COMPANY_RETENTIONS[index].label} readOnly className="cursor-not-allowed bg-muted/60 text-muted-foreground" />
@@ -509,6 +526,7 @@ export const PaymentsEditorPanel = ({ caseId, caseDetail, budget, particularFina
           <Field label="Modo"><Select value={form.paymentMethodCode} onChange={(e) => setForm((c) => ({ ...c, paymentMethodCode: e.target.value }))} options={PAYMENT_METHODS} /></Field>
           <Field label="Factura"><Select value={form.factura} onChange={(e) => setForm((c) => ({ ...c, factura: e.target.value }))} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
         </div>
+        <div className="mt-3"><Button type="button" variant="outline" size="sm" onClick={fillClientPaymentWithPendingAmount}>Paga el total</Button></div>
 
         {/* Condicional: Bonificación */}
         {form.cancelacionTipo === 'BONIFICACION' ? (
@@ -834,7 +852,8 @@ const CleasCompanyPaymentPanel = ({ caseId, receipts, onSaved }) => {
           <Field label="Referencia externa"><Input value={form.externalReference} onChange={(event) => setForm((current) => ({ ...current, externalReference: event.target.value }))} /></Field>
           <Field label="Notas"><Textarea rows={3} value={form.reason} onChange={(event) => setForm((current) => ({ ...current, reason: event.target.value }))} /></Field>
         </div>
-        <div className="mt-4 rounded-2xl border border-border/60 p-4">
+         <div className="mt-3"><Button type="button" variant="outline" onClick={() => setForm((current) => ({ ...current, amount: String(pendingGrossAmount) }))}>Paga el total</Button></div>
+         <div className="mt-4 rounded-2xl border border-border/60 p-4">
           <div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold">Retenciones</p><Button type="button" size="sm" variant="outline" onClick={() => setForm((current) => ({ ...current, retentions: [...current.retentions, { retentionTypeCode: retentionTypes[0]?.code ?? '', amount: '', detail: '' }] }))} disabled={!retentionTypes.length}>Agregar retención</Button></div>
           {form.retentions.map((retention, index) => <div key={index} className="mt-3 grid gap-3 md:grid-cols-[1fr_150px_1fr_auto]">
             <Select aria-label={`Tipo de retención ${index + 1}`} value={retention.retentionTypeCode} onChange={(event) => updateRetention(index, 'retentionTypeCode', event.target.value)} options={[{ value: '', label: 'Tipo de retención...' }, ...retentionTypes.map((type) => ({ value: type.code, label: type.name || type.code }))]} />
