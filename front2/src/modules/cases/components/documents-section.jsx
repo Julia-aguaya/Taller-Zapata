@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, Download, Eye, FileSearch, Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { requestJson } from '@/shared/api/http-client';
 import { uploadFileResumably } from '@/modules/cases/api/resumable-file-upload-api';
 import { readStoredAuth } from '@/shared/auth/session-storage';
@@ -10,6 +10,8 @@ import { hasGlobalAdminScope } from '@/modules/auth/lib/global-admin-scope';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Dialog } from '@/shared/ui/dialog';
+import { useBatchFileUpload } from '@/shared/hooks/use-batch-file-upload';
+import { BatchFileUploadStatus } from '@/shared/ui/batch-file-upload-status';
 
 const VISIBLE_DOCUMENT_CATEGORY_CODES = new Set(['PERSONAL', 'SEGURO', 'VEHICULO', 'OTRO']);
 import { Textarea } from '@/shared/ui/textarea';
@@ -122,21 +124,27 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
     onError: (error) => toast.error(error.message || 'No se pudo vincular la orden CLEAS.'),
   });
 
-  const uploadMutation = useMutation({
-    mutationFn: async () => {
-      const uploaded = [];
-      for (const file of uploadFiles) {
-        const document = await uploadFileResumably({
-          file,
-          metadata: { caseId, categoryId: uploadCategory, documentDate: requiresDate ? uploadDate : null, observations: uploadObservations.trim() || null, originCode },
-          relation: { caseId: Number(caseId), entityType: 'CASO', entityId: Number(caseId), moduleCode: moduleCode || 'OPERACION', principal: false, visibleToCustomer: false, visualOrder: 0 },
-        });
-        uploaded.push(document);
+  const uploadDocument = useCallback((file) => uploadFileResumably({
+    file,
+    metadata: { caseId, categoryId: uploadCategory, documentDate: requiresDate ? uploadDate : null, observations: uploadObservations.trim() || null, originCode },
+    relation: { caseId: Number(caseId), entityType: 'CASO', entityId: Number(caseId), moduleCode: moduleCode || 'OPERACION', principal: false, visibleToCustomer: false, visualOrder: 0 },
+  }), [caseId, moduleCode, originCode, requiresDate, uploadCategory, uploadDate, uploadObservations]);
+  const fileUpload = useBatchFileUpload({
+    uploadFile: uploadDocument,
+    onCompleted: async ({ uploaded, failed }) => {
+      if (uploaded.length) {
+        await invalidateDocumentViews();
+        toast.success(`${uploaded.length} documento(s) subido(s).`);
       }
-      return uploaded;
+      if (failed.length) {
+        setUploadFiles(failed.map(({ file }) => file));
+        return;
+      }
+      setShowUpload(false);
+      setUploadFiles([]);
+      setUploadDate('');
+      setUploadObservations('');
     },
-    onSuccess: async (uploaded) => { await invalidateDocumentViews(); toast.success(`${uploaded.length} documento(s) subido(s).`); setShowUpload(false); setUploadFiles([]); setUploadDate(''); setUploadObservations(''); },
-    onError: (e) => toast.error(e.message),
   });
 
   const fetchDocumentBlob = async (doc) => {
@@ -241,9 +249,10 @@ export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode 
                   <Textarea id="document-observations" value={uploadObservations} onChange={(e) => setUploadObservations(e.target.value)} className="min-h-[80px] resize-y" />
                 </div>
                <div className="flex gap-2">
-                <Button size="sm" onClick={() => uploadMutation.mutate()} disabled={!canUpload || uploadMutation.isPending}>Subir</Button>
-                <Button size="sm" variant="ghost" onClick={() => setShowUpload(false)}>Cancelar</Button>
-              </div>
+                <Button size="sm" onClick={() => fileUpload.upload(uploadFiles)} disabled={!canUpload || fileUpload.isUploading}>{fileUpload.isUploading ? 'Subiendo fotos…' : 'Subir'}</Button>
+                <Button size="sm" variant="ghost" onClick={() => setShowUpload(false)} disabled={fileUpload.isUploading}>Cancelar</Button>
+               </div>
+               <BatchFileUploadStatus upload={fileUpload} noun="fotos" />
             </div>
         </Dialog>
       ) : null}

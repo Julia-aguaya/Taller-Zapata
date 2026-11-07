@@ -478,7 +478,7 @@ describe('DocumentsSection', () => {
     renderSection();
 
     const select = await screen.findByLabelText('Estado de documentación');
-    expect(select).toHaveValue('COMPLETA');
+    await waitFor(() => expect(select).toHaveValue('COMPLETA'));
     fireEvent.change(select, { target: { value: 'INCOMPLETA' } });
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/cases/42/workflow/transitions', expect.objectContaining({ method: 'POST' })));
     const [, options] = fetchMock.mock.calls.find(([url]) => url === '/api/v1/cases/42/workflow/transitions');

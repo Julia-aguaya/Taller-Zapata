@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Eye, FileDown, ImagePlus, Plus, Save, ShieldCheck, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -16,6 +16,8 @@ import { Label } from '@/shared/ui/label';
 import { Textarea } from '@/shared/ui/textarea';
 import { ProviderSelector, providerPayload } from '@/modules/cases/components/provider-selector';
 import { syncPartsFromBudget, syncWorkshopReplacementParts } from '@/modules/cases/api/parts-api';
+import { useBatchFileUpload } from '@/shared/hooks/use-batch-file-upload';
+import { BatchFileUploadStatus } from '@/shared/ui/batch-file-upload-status';
 
 const currency = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 2 });
 const fmt = (v) => (v == null ? '-' : currency.format(v));
@@ -314,19 +316,23 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
       return docs.filter(Boolean);
     },
   });
-  const uploadMutation = useMutation({
-    mutationFn: async (files) => {
+  const uploadBudgetFile = useCallback(async (file) => {
       const catalogs = await requestJson('/documents/catalogs');
       const categoryId = catalogs.categories?.find((category) => category.code === 'OTRO')?.id;
       if (!categoryId) throw new Error('No está disponible la categoría documental Otro.');
-      return Promise.all(files.map((file) => uploadFileResumably({
+      return uploadFileResumably({
         file,
         metadata: { caseId, categoryId, originCode: 'TALLER', observations: file.name },
         relation: { caseId: Number(caseId), entityType: 'CASO', entityId: Number(caseId), moduleCode: 'PRESUPUESTO', principal: false, visibleToCustomer: false, visualOrder: 0 },
-      })));
+      });
+  }, [caseId]);
+  const budgetFileUpload = useBatchFileUpload({
+    uploadFile: uploadBudgetFile,
+    onCompleted: async ({ uploaded }) => {
+      if (!uploaded.length) return;
+      await queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'documents'] });
+      toast.success(`${uploaded.length} archivo(s) subido(s).`);
     },
-    onSuccess: async (uploaded) => { await queryClient.invalidateQueries({ queryKey: ['cases', caseId, 'documents'] }); toast.success(`${uploaded.length} archivo(s) subido(s).`); },
-    onError: (error) => toast.error(error.message),
   });
   const deleteDocMutation = useMutation({
     mutationFn: (relationId) => requestJson(`/document-relations/${requireRelationId(relationId)}`, { method: 'DELETE' }),
@@ -481,9 +487,10 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
       <div className="rounded-2xl border border-border/60 bg-card p-4">
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm font-semibold">Archivos del presupuesto</p>
-          <Button variant="outline" size="sm" onClick={() => photoInputRef.current?.click()} disabled={!canUploadBudgetDocuments || uploadMutation.isPending} title={!canUploadBudgetDocuments ? 'Requiere permisos para subir y relacionar documentos.' : undefined}><ImagePlus className="mr-1.5 h-4 w-4" />Agregar archivos</Button>
+          <Button variant="outline" size="sm" onClick={() => photoInputRef.current?.click()} disabled={!canUploadBudgetDocuments || budgetFileUpload.isUploading} title={!canUploadBudgetDocuments ? 'Requiere permisos para subir y relacionar documentos.' : undefined}><ImagePlus className="mr-1.5 h-4 w-4" />{budgetFileUpload.isUploading ? 'Subiendo fotos…' : 'Agregar archivos'}</Button>
         </div>
-        <input ref={photoInputRef} type="file" multiple className="hidden" onChange={(e) => { const files = Array.from(e.target.files ?? []); if (files.length) uploadMutation.mutate(files); e.target.value = ''; }} />
+        <input ref={photoInputRef} type="file" multiple className="hidden" onChange={(e) => { const files = Array.from(e.target.files ?? []); if (files.length) budgetFileUpload.upload(files); e.target.value = ''; }} />
+        <BatchFileUploadStatus upload={budgetFileUpload} noun="fotos" />
         {(docsQuery.data ?? []).length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border/70 py-6 text-center text-sm text-muted-foreground">Todavía no hay archivos.</p>
         ) : (

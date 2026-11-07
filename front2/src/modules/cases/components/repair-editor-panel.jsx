@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarPlus2, CarFront, Clock, Download, Flag, ImagePlus, Lock, PackagePlus, Pencil, Save, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -17,6 +17,8 @@ import { DocumentsSection } from '@/modules/cases/components/documents-section';
 import { uploadFileResumably } from '@/modules/cases/api/resumable-file-upload-api';
 import { Dialog } from '@/shared/ui/dialog';
 import { getThirdParty } from '@/modules/cases/api/third-party-api';
+import { useBatchFileUpload } from '@/shared/hooks/use-batch-file-upload';
+import { BatchFileUploadStatus } from '@/shared/ui/batch-file-upload-status';
 
 const addBusinessDays = (startDateStr, days) => {
   if (!startDateStr || !days || days <= 0) return startDateStr || '';
@@ -140,6 +142,9 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const [egresoModal, setEgresoModal] = useState(null);
   const [egresoForm, setEgresoForm] = useState({ outcomeAt: '', definitive: 'SI', shouldReenter: 'NO', expectedReentryDate: '', estimatedReentryDays: '0', reentryStatusCode: '', repairedPhotosUploaded: 'NO', notes: '' });
   const [outcomeFiles, setOutcomeFiles] = useState([]);
+  const [pendingOutcome, setPendingOutcome] = useState(null);
+  const pendingOutcomeIdRef = useRef(null);
+  const pendingOutcomeRef = useRef(null);
   const [schedulingConfirmation, setSchedulingConfirmation] = useState(null);
   const [appointmentToDelete, setAppointmentToDelete] = useState(null);
   const [appointmentToReschedule, setAppointmentToReschedule] = useState(null);
@@ -227,19 +232,39 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
     onError: (error) => toast.error(error.message || 'No pude registrar el ingreso.'),
   });
 
-  const uploadOutcomeFiles = async (outcomeId, files) => {
-    if (!files.length) return;
+  const uploadOutcomeFile = useCallback(async (file) => {
+    const outcomeId = pendingOutcomeIdRef.current;
+    if (!outcomeId) throw new Error('No se encontró el egreso para relacionar las fotos.');
     const catalogs = await requestJson('/documents/catalogs');
     const categoryId = catalogs.categories?.find((category) => category.code === 'OTRO')?.id;
     if (!categoryId) throw new Error('No está disponible la categoría documental Otro.');
-    for (const file of files) {
-      await uploadFileResumably({
-        file,
-        metadata: { caseId, categoryId, originCode: 'TALLER', observations: file.name },
-        relation: { caseId: Number(caseId), entityType: 'EGRESO', entityId: Number(outcomeId), moduleCode: 'EGRESO_DEFINITIVO', principal: false, visibleToCustomer: false, visualOrder: 0 },
-      });
-    }
-  };
+    return uploadFileResumably({
+      file,
+      metadata: { caseId, categoryId, originCode: 'TALLER', observations: file.name },
+      relation: { caseId: Number(caseId), entityType: 'EGRESO', entityId: Number(outcomeId), moduleCode: 'EGRESO_DEFINITIVO', principal: false, visibleToCustomer: false, visualOrder: 0 },
+    });
+  }, [caseId]);
+  const finishOutcome = useCallback(async () => {
+    const message = pendingOutcomeRef.current?.shouldReenter ? 'Egreso registrado. Turno de reingreso creado automáticamente.' : 'Egreso registrado.';
+    setEgresoModal(null);
+    setOutcomeFiles([]);
+    setPendingOutcome(null);
+    pendingOutcomeIdRef.current = null;
+    pendingOutcomeRef.current = null;
+    await refreshWorkspace(message);
+  }, [refreshWorkspace]);
+  const outcomeFileUpload = useBatchFileUpload({
+    uploadFile: uploadOutcomeFile,
+    onCompleted: async ({ uploaded, failed }) => {
+      if (uploaded.length) await queryClient.invalidateQueries({ queryKey: ['cases', String(caseId), 'documents'] });
+      if (failed.length) {
+        setOutcomeFiles(failed.map(({ file }) => file));
+        toast.error('Algunas fotos no se pudieron subir. Reintentá solo las fallidas.');
+        return;
+      }
+      await finishOutcome();
+    },
+  });
 
   const outcomeMutation = useMutation({
     mutationFn: async ({ intakeId, outcomeAt, definitive, shouldReenter, expectedReentryDate, estimatedReentryDays, reentryStatusCode, repairedPhotosUploaded, notes }) => {
@@ -251,14 +276,19 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
         reentryStatusCode: shouldReenter === 'SI' ? reentryStatusCode || null : null,
         repairedPhotosUploaded: outcomeFiles.length > 0 || repairedPhotosUploaded === 'SI', notes: notes || null,
       });
-      await uploadOutcomeFiles(outcome.id, outcomeFiles);
       return outcome;
     },
     onSuccess: async (data) => {
-      const message = data?.shouldReenter ? 'Egreso registrado. Turno de reingreso creado automáticamente.' : 'Egreso registrado.';
-      setEgresoModal(null);
-      setOutcomeFiles([]);
-      await refreshWorkspace(message);
+      if (!outcomeFiles.length) {
+        pendingOutcomeRef.current = data;
+        setPendingOutcome(data);
+        await finishOutcome();
+        return;
+      }
+      pendingOutcomeIdRef.current = data.id;
+      pendingOutcomeRef.current = data;
+      setPendingOutcome(data);
+      outcomeFileUpload.upload(outcomeFiles);
     },
     onError: (error) => toast.error(error.message || 'No pude registrar el egreso.'),
   });
@@ -938,7 +968,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                         ) : alreadyOutcome ? (
                           <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Egresado</span>
                         ) : (
-                          <Button size="sm" variant="outline" onClick={() => { setEgresoModal(i); setEgresoForm({ outcomeAt: new Date().toISOString().slice(0, 16), definitive: 'SI', shouldReenter: 'NO', expectedReentryDate: '', estimatedReentryDays: '0', reentryStatusCode: '', repairedPhotosUploaded: 'NO', notes: '' }); setOutcomeFiles([]); }}>Egresar</Button>
+                          <Button size="sm" variant="outline" onClick={() => { setEgresoModal(i); setEgresoForm({ outcomeAt: new Date().toISOString().slice(0, 16), definitive: 'SI', shouldReenter: 'NO', expectedReentryDate: '', estimatedReentryDays: '0', reentryStatusCode: '', repairedPhotosUploaded: 'NO', notes: '' }); setOutcomeFiles([]); setPendingOutcome(null); pendingOutcomeIdRef.current = null; pendingOutcomeRef.current = null; outcomeFileUpload.clear(); }}>Egresar</Button>
                         )}
                       </td>
                     </tr>
@@ -958,10 +988,10 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
                 <Field label="Definitivo"><Select value={egresoForm.definitive} onChange={(e) => setEgresoForm((f) => ({ ...f, definitive: e.target.value }))} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
                 <Field label="Debe reingresar"><Select value={egresoForm.shouldReenter} onChange={(e) => setEgresoForm((f) => ({ ...f, shouldReenter: e.target.value }))} options={[{ value: 'NO', label: 'No' }, { value: 'SI', label: 'Sí' }]} /></Field>
                 {egresoForm.shouldReenter === 'SI' ? (<><Field label="Fecha reingreso"><Input type="date" value={egresoForm.expectedReentryDate} onChange={(e) => setEgresoForm((f) => ({ ...f, expectedReentryDate: e.target.value }))} /></Field><Field label="Días reingreso"><Input type="number" min="0" value={egresoForm.estimatedReentryDays} onChange={(e) => setEgresoForm((f) => ({ ...f, estimatedReentryDays: e.target.value }))} /></Field><Field label="Estado reingreso"><Select value={egresoForm.reentryStatusCode} onChange={(e) => setEgresoForm((f) => ({ ...f, reentryStatusCode: e.target.value }))} options={reentryStatusOptions.length > 0 ? reentryStatusOptions : [{ value: '', label: 'Sin definir' }]} /></Field></>) : null}
-                <div className="space-y-1.5"><Label>Fotos o videos de reparado</Label><input ref={repairPhotoRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e) => { setOutcomeFiles(Array.from(e.target.files ?? [])); e.target.value = ''; }} /><Button variant="outline" size="sm" onClick={() => repairPhotoRef.current?.click()}><ImagePlus className="mr-1.5 h-4 w-4" />Seleccionar archivos</Button>{outcomeFiles.length > 0 ? <p className="text-xs text-muted-foreground">{outcomeFiles.length} archivo(s) se subirán al guardar el egreso.</p> : null}</div>
+                <div className="space-y-1.5"><Label>Fotos o videos de reparado</Label><input ref={repairPhotoRef} type="file" accept="image/*,video/*" multiple className="hidden" onChange={(e) => { setOutcomeFiles(Array.from(e.target.files ?? [])); e.target.value = ''; }} /><Button variant="outline" size="sm" onClick={() => repairPhotoRef.current?.click()} disabled={outcomeFileUpload.isUploading || Boolean(pendingOutcome)}><ImagePlus className="mr-1.5 h-4 w-4" />Seleccionar archivos</Button>{outcomeFiles.length > 0 ? <p className="text-xs text-muted-foreground">{outcomeFiles.length} archivo(s) se subirán al guardar el egreso.</p> : null}<BatchFileUploadStatus upload={outcomeFileUpload} noun="fotos" /></div>
                 <Field label="Notas"><Textarea rows={3} value={egresoForm.notes} onChange={(e) => setEgresoForm((f) => ({ ...f, notes: e.target.value }))} /></Field>
               </div>
-              <div className="mt-5 flex gap-3"><Button variant="outline" className="flex-1" onClick={() => { setEgresoModal(null); setOutcomeFiles([]); }}>Cancelar</Button><Button className="flex-1" onClick={() => outcomeMutation.mutate({ intakeId: egresoModal.id, outcomeAt: egresoForm.outcomeAt, definitive: egresoForm.definitive, shouldReenter: egresoForm.shouldReenter, expectedReentryDate: egresoForm.expectedReentryDate, estimatedReentryDays: egresoForm.estimatedReentryDays, reentryStatusCode: egresoForm.reentryStatusCode, repairedPhotosUploaded: egresoForm.repairedPhotosUploaded, notes: egresoForm.notes })} disabled={outcomeMutation.isPending}><Save className="mr-1.5 h-4 w-4" />Guardar</Button></div>
+              <div className="mt-5 flex gap-3"><Button variant="outline" className="flex-1" onClick={() => { setEgresoModal(null); setOutcomeFiles([]); }} disabled={outcomeFileUpload.isUploading}>Cancelar</Button><Button className="flex-1" onClick={() => outcomeMutation.mutate({ intakeId: egresoModal.id, outcomeAt: egresoForm.outcomeAt, definitive: egresoForm.definitive, shouldReenter: egresoForm.shouldReenter, expectedReentryDate: egresoForm.expectedReentryDate, estimatedReentryDays: egresoForm.estimatedReentryDays, reentryStatusCode: egresoForm.reentryStatusCode, repairedPhotosUploaded: egresoForm.repairedPhotosUploaded, notes: egresoForm.notes })} disabled={outcomeMutation.isPending || outcomeFileUpload.isUploading || Boolean(pendingOutcome)}><Save className="mr-1.5 h-4 w-4" />{outcomeFileUpload.isUploading ? 'Subiendo fotos…' : pendingOutcome ? 'Reintentá las fotos fallidas' : 'Guardar'}</Button></div>
             </div>
           </div>
         ) : null}
