@@ -18,9 +18,5 @@ jobs:
           script: |
             set -x
             cd ~/Taller-Zapata || exit 1
-            git status
-            git stash
-            git pull origin main || exit 1
-            git stash pop 2>/dev/null || true
-            chmod +x deploy.sh
+            git pull --ff-only || exit 1
             ./deploy.sh
