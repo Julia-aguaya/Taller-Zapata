@@ -109,7 +109,7 @@ public class CanonicalPartReconciliationService {
         part.setAccessoryWorkId(work.getId()); part.setSourceType(CasePartSourceType.ACCESSORY_WORK); part.setAccessory(true); return part;
     }
     private CasePartEntity basePart(Long caseId, String description, BigDecimal amount) {
-        CasePartEntity part = new CasePartEntity(); part.setCaseId(caseId); part.setDescription(description == null ? "Repuesto sin descripción" : description); part.setStatusCode("PENDIENTE"); part.setBudgetedPrice(amount); part.setFinalPrice(amount); part.setUsed(false); part.setReturned(false); part.setNonCanonical(false); part.setAccessory(false); return part;
+        CasePartEntity part = new CasePartEntity(); part.setCaseId(caseId); part.setDescription(description == null ? "Repuesto sin descripción" : description); part.setStatusCode("PENDIENTE"); part.setBudgetedPrice(amount); part.setFinalPrice(amount); part.setOrderedQuantity(1); part.setUsed(false); part.setReturned(false); part.setNonCanonical(false); part.setAccessory(false); return part;
     }
     private void refreshBudgetPart(CasePartEntity part, BudgetItemEntity item) {
         part.setDescription(item.getAffectedPiece() == null ? "Repuesto sin descripción" : item.getAffectedPiece()); part.setBudgetedPrice(item.getPartValue()); part.setAccessory(false); part.setNonCanonical(false); part.setSourceType(CasePartSourceType.BUDGET_ITEM);

@@ -595,7 +595,7 @@ public class ExtraBudgetService {
     private CasePartEntity newExtraBudgetPart(Long caseId, ExtraBudgetItemEntity item) {
         CasePartEntity part = new CasePartEntity();
         part.setCaseId(caseId); part.setExtraBudgetItemId(item.getId()); part.setSourceType(CasePartSourceType.EXTRA_BUDGET_ITEM);
-        part.setStatusCode("PENDIENTE"); part.setUsed(false); part.setReturned(false); part.setNonCanonical(false); part.setAccessory(true);
+        part.setStatusCode("PENDIENTE"); part.setOrderedQuantity(1); part.setUsed(false); part.setReturned(false); part.setNonCanonical(false); part.setAccessory(true);
         return part;
     }
 

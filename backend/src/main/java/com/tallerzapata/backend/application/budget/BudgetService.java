@@ -417,6 +417,7 @@ public class BudgetService {
         entity.setBudgetedPrice(scale(request.budgetedPrice()));
         entity.setFinalPrice(scale(request.finalPrice()));
         entity.setReceivedDate(request.receivedDate());
+        entity.setOrderedQuantity(1);
         entity.setUsed(Boolean.TRUE.equals(request.used()));
         entity.setReturned(Boolean.TRUE.equals(request.returned()));
         entity.setProviderAssignmentOrigin(ProviderAssignmentOrigin.MANUAL);
