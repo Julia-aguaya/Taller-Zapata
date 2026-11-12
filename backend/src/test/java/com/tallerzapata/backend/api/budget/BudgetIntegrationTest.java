@@ -106,6 +106,23 @@ class BudgetIntegrationTest {
     }
 
     @Test
+    void synchronizesEveryReplacementPartForThirdPartyLawyerClaimsInOneBudgetSave() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = 6 WHERE id = 100");
+
+        saveBudget(List.of(
+                comparisonItem(1, "Óptica", "REEMPLAZAR", 250),
+                comparisonItem(2, "Paragolpes", "REEMPLAZAR_Y_PINTAR", 300),
+                comparisonItem(3, "Guardabarros", "REEMPLAZAR_Y_CARGAR", 400),
+                comparisonItem(4, "Puerta", "REEMPLAZAR", 500),
+                comparisonItem(5, "Capot", "REEMPLAZAR", 600)
+        ));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM repuestos_caso WHERE caso_id = 100 AND source_type = 'BUDGET_ITEM' AND non_canonical = 0", Integer.class)).isEqualTo(5);
+        assertThat(jdbcTemplate.queryForList("SELECT descripcion FROM repuestos_caso WHERE caso_id = 100 ORDER BY presupuesto_item_id", String.class))
+                .containsExactly("Óptica", "Paragolpes", "Guardabarros", "Puerta", "Capot");
+    }
+
+    @Test
     void shouldUpsertBudget() throws Exception {
         mockMvc.perform(put("/api/v1/cases/100/budget")
                         .header("X-User-Id", "3")

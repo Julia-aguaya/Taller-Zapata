@@ -92,7 +92,10 @@ public class CanonicalPartReconciliationService {
 
     private boolean supportsCanonicalParts(String caseTypeCode) {
         return insuranceRepairCasePolicy.isInsuranceRepair(caseTypeCode)
-                || insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(caseTypeCode)
+                // Although its state workflow is legal, a third-party lawyer claim still
+                // exposes Gestión de reparación and must receive the physical parts from
+                // its replacement budget lines.
+                || insuranceRepairCasePolicy.isThirdPartyClaim(caseTypeCode)
                 || "PARTICULAR".equals(insuranceRepairCasePolicy.normalize(caseTypeCode));
     }
     private boolean isReplacementSource(CaseEntity caseEntity, BudgetItemEntity item) {

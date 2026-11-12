@@ -73,6 +73,7 @@ const createReceiptForm = (receipt) => ({
 });
 
 const hasRejectedAuthorization = (part) => part?.authorizationCode?.trim().toUpperCase() === 'RECHAZADO';
+const REPAIR_PART_SAVE_CONCURRENCY = 3;
 
 export const invalidateCaseProjection = async (queryClient, caseId) => {
   await Promise.all([
@@ -451,7 +452,7 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
   const saveAllChanges = async () => {
     setSaving(true);
     try {
-      const promises = [];
+      const updates = [];
       for (const draft of draftParts) {
         const original = parts.find(p => p.id === draft.id);
         if (!original) continue;
@@ -464,21 +465,39 @@ export const RepairEditorPanel = ({ caseId, caseDetail, latestAppointment, lates
         if ((draft.authorizationCode || null) !== (original.authorizationCode || null)) changes.authorizationCode = draft.authorizationCode || null;
         if (Number(draft.orderedQuantity || 1) !== Number(original.orderedQuantity || 1)) changes.orderedQuantity = Number(draft.orderedQuantity || 1);
         if (Object.keys(changes).length > 0) {
-          promises.push(updateRepairPart(caseId, draft.id, {
-            finalSupplier: draft.finalSupplier || null,
-            providerId: draft.providerId || null,
-            authorizationCode: draft.authorizationCode || null,
-            statusCode: draft.statusCode || original.statusCode,
-            purchasedByCode: draft.purchasedByCode || original.purchasedByCode,
-            paymentStatusCode: draft.paymentStatusCode || original.paymentStatusCode || null,
-            receivedDate: original.receivedDate || null,
-            used: Boolean(original.used),
-            returned: Boolean(original.returned),
-            orderedQuantity: Number(draft.orderedQuantity || 1),
-          }));
+          updates.push({
+            description: draft.description || `REP-${draft.id}`,
+            save: () => updateRepairPart(caseId, draft.id, {
+              finalSupplier: draft.finalSupplier || null,
+              providerId: draft.providerId || null,
+              authorizationCode: draft.authorizationCode || null,
+              statusCode: draft.statusCode || original.statusCode,
+              purchasedByCode: draft.purchasedByCode || original.purchasedByCode,
+              paymentStatusCode: draft.paymentStatusCode || original.paymentStatusCode || null,
+              receivedDate: original.receivedDate || null,
+              used: Boolean(original.used),
+              returned: Boolean(original.returned),
+              orderedQuantity: Number(draft.orderedQuantity || 1),
+            }),
+          });
         }
       }
-      await Promise.all(promises);
+      const failedParts = [];
+      let nextUpdate = 0;
+      const saveNext = async () => {
+        while (nextUpdate < updates.length) {
+          const update = updates[nextUpdate++];
+          try {
+            await update.save();
+          } catch (error) {
+            failedParts.push(`${update.description}${error.message ? ` (${error.message})` : ''}`);
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(REPAIR_PART_SAVE_CONCURRENCY, updates.length) }, saveNext));
+      if (failedParts.length > 0) {
+        throw new Error(`No se pudieron guardar ${failedParts.length} repuesto(s): ${failedParts.join(', ')}`);
+      }
       await refreshWorkspace('Cambios guardados.');
       setEditMode(false);
       setDraftParts([]);
