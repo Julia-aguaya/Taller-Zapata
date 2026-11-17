@@ -59,9 +59,16 @@ public class CasePartsInclusionPolicy {
         };
     }
 
-    private boolean isReplacementBudgetItem(BudgetItemEntity item) {
+    public boolean isReplacementBudgetItem(BudgetItemEntity item) {
         return Boolean.TRUE.equals(item.getActive())
-                && (Boolean.TRUE.equals(item.getRequiresReplacement()) || "REEMPLAZAR".equals(normalize(item.getPartDecisionCode())));
+                && item.getActionCode() != null
+                && item.getActionCode().startsWith("REEMPLAZAR")
+                && isReplacementDecision(item.getPartDecisionCode());
+    }
+
+    private boolean isReplacementDecision(String decisionCode) {
+        String normalized = normalize(decisionCode);
+        return "DEBE_REEMPLAZARSE".equals(normalized) || "REEMPLAZAR".equals(normalized);
     }
 
     private String normalize(String value) {

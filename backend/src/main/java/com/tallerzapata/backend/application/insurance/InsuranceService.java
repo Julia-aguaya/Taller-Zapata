@@ -687,8 +687,7 @@ public class InsuranceService {
     }
 
     private boolean isReplacementBudgetItem(BudgetItemEntity item) {
-        return Boolean.TRUE.equals(item.getActive())
-                && (Boolean.TRUE.equals(item.getRequiresReplacement()) || "REEMPLAZAR".equals(normalizeCode(item.getPartDecisionCode())));
+        return casePartsInclusionPolicy.isReplacementBudgetItem(item);
     }
 
     @Transactional(readOnly = true)
