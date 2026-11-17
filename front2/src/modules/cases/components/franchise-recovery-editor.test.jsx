@@ -173,6 +173,17 @@ describe('FranchiseRecoveryEditor associated folder', () => {
     expect(mutations[0].mutate).toHaveBeenCalledWith(expect.not.objectContaining({ includesParts: expect.anything() }));
   });
 
+  it('prevents native form submission so section saves do not reload the page', () => {
+    render(<FranchiseRecoveryEditor caseId="7" caseDetail={{}} />);
+
+    const form = document.getElementById('franchise-recovery-form');
+    const submitEvent = new Event('submit', { bubbles: true, cancelable: true });
+
+    form.dispatchEvent(submitEvent);
+
+    expect(submitEvent.defaultPrevented).toBe(true);
+  });
+
   it('renders obligation balances, application history, and the payment action without editable statuses', () => {
     recovery = { id: 7, enablesRepair: false };
     obligations = [{ id: 8, typeCode: 'REINTEGRO_A_CLIENTE', directionCode: 'PAGAR_A_CLIENTE', originalAmount: 100, outstandingAmount: 75, statusCode: 'ACTIVA', applications: [{ id: 12, movementId: 91, appliedAmount: 25, statusCode: 'APLICADA' }] }];

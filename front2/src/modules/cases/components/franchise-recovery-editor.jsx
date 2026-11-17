@@ -223,7 +223,7 @@ export const FranchiseRecoveryEditor = ({ caseId, caseDetail, onSaved }) => {
         </div>
       </div> : null}
 
-      <form id="franchise-recovery-form" key={recovery?.id ?? 'new'} className="mt-4 space-y-3">
+      <form id="franchise-recovery-form" key={recovery?.id ?? 'new'} className="mt-4 space-y-3" onSubmit={(event) => event.preventDefault()}>
         <section className="rounded-2xl border border-border/70 p-4" aria-label="Datos generales">
           <h5 className="text-sm font-semibold">Datos generales</h5>
           <p className="mt-1 text-xs text-muted-foreground">La prescripción y los días tramitando los calcula el sistema.</p>

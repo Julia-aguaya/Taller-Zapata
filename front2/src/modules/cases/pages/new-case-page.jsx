@@ -559,7 +559,7 @@ export const NewCasePage = () => {
               <div className="mb-4 rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm dark:bg-emerald-950">
                 <div className="flex items-center justify-between gap-3">
                   <span className="font-semibold text-emerald-800 dark:text-emerald-200">✓ Cliente existente seleccionado</span>
-                  <Button size="sm" variant="secondary" onClick={() => { setSelectedPersonId(null); setSelectedVehicleId(null); setForm((current) => ({ ...current, person: { nombre: '', apellido: '', telefonoPrincipal: '', emailPrincipal: '', numeroDocumento: '' } })); }}>
+                  <Button type="button" size="sm" variant="secondary" onClick={() => { setSelectedPersonId(null); setSelectedVehicleId(null); setForm((current) => ({ ...current, person: { nombre: '', apellido: '', telefonoPrincipal: '', emailPrincipal: '', numeroDocumento: '' } })); }}>
                     Cambiar
                   </Button>
                 </div>
@@ -697,7 +697,7 @@ export const NewCasePage = () => {
               <div className="mb-4 rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm dark:bg-emerald-950">
                 <div className="flex items-center justify-between gap-3">
                   <span className="font-semibold text-emerald-800 dark:text-emerald-200">✓ Vehículo existente seleccionado</span>
-                  <Button size="sm" variant="secondary" onClick={() => { setSelectedVehicleId(null); }}>
+                  <Button type="button" size="sm" variant="secondary" onClick={() => { setSelectedVehicleId(null); }}>
                     Cambiar
                   </Button>
                 </div>

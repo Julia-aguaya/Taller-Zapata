@@ -76,7 +76,7 @@ export const DeductibleSection = ({ caseId, caseDetail }) => {
         </div>
       ) : null}
 
-      <form id="franchise-form" key={franchise?.id ?? 'new'} className="mt-4 space-y-3">
+      <form id="franchise-form" key={franchise?.id ?? 'new'} className="mt-4 space-y-3" onSubmit={(event) => event.preventDefault()}>
         <div className="grid gap-x-6 gap-y-3 md:grid-cols-4">
           <Field label="Estado">
             <select name="franchiseStatusCode" defaultValue={franchise?.franchiseStatusCode ?? ''} className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20">

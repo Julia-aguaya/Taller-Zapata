@@ -53,7 +53,7 @@ export const ClaimDataSection = ({ caseId }) => {
         <Button size="sm" onClick={handleSave} disabled={mutation.isPending}><Save className="mr-1.5 h-3.5 w-3.5" />Guardar</Button>
       </div>
 
-      <form id="claim-form" key={incident?.location ?? 'new'} className="mt-4 space-y-3">
+      <form id="claim-form" key={incident?.location ?? 'new'} className="mt-4 space-y-3" onSubmit={(event) => event.preventDefault()}>
         <div className="grid gap-x-6 gap-y-3 md:grid-cols-2">
           <Field label="Fecha del siniestro"><Input type="date" name="incidentDate" defaultValue={incident?.incidentDate ?? ''} /></Field>
           <Field label="Lugar de ocurrencia">
