@@ -69,6 +69,7 @@ const controlFor = (label) => screen.getByText(label).parentElement.querySelecto
 const particularCaseDetail = { caseTypeCode: 'PARTICULAR', principalCustomerName: 'Juan', principalVehiclePlate: 'ABC123' };
 const insuranceCaseDetail = { caseTypeCode: 'TODO_RIESGO', principalCustomerName: 'Juan', principalVehiclePlate: 'ABC123' };
 const workshopCaseDetail = { caseTypeCode: 'RECLAMO_TERCEROS', principalCustomerName: 'Juan', principalVehiclePlate: 'ABC123' };
+const lawyerCaseDetail = { caseTypeCode: 'RECLAMO_TERCEROS_ABOGADO', principalCustomerName: 'Juan', principalVehiclePlate: 'ABC123' };
 
 afterEach(() => {
   vi.useRealTimers();
@@ -165,6 +166,11 @@ describe('BudgetEditorPanel comparison tabs', () => {
     render(<BudgetEditorPanel caseId="42" budget={validBudget} caseDetail={workshopCaseDetail} workshopInfo={{}} />);
     fireEvent.click(screen.getByRole('button', { name: 'Forzar actualización de repuestos' }));
     await waitFor(() => expect(mockSyncWorkshopReplacementParts).toHaveBeenCalledWith('42'));
+  });
+  it('allows lawyer-managed third-party claims to resynchronize existing budget parts', async () => {
+    render(<BudgetEditorPanel caseId="42" budget={validBudget} caseDetail={lawyerCaseDetail} workshopInfo={{}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sincronizar repuestos' }));
+    await waitFor(() => expect(mockSyncPartsFromBudget).toHaveBeenCalledWith('42'));
   });
   it('keeps hydration stable while catalog queries have no data and updates for a new budget', () => {
     catalogsReady = false;

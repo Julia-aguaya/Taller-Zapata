@@ -314,12 +314,9 @@ public class BudgetService {
         BudgetUpsertRequest closedRequest = new BudgetUpsertRequest(request.budgetDate(), "CERRADO", request.laborWithoutVat(), request.vatRate(), request.partsTotal(), request.estimatedDays(), request.minimumCloseAmount(), request.observations(), request.authorizedByName(), request.interestedName(), request.benchStraighteningApplies(), request.benchStraighteningDetail(), request.alignmentApplies(), request.alignmentDetail(), request.balancingApplies(), request.balancingDetail(), request.glassReplacementApplies(), request.glassReplacementDetail(), request.electricalWorkApplies(), request.electricalDetail(), request.mechanicalWorkApplies(), request.mechanicalWorkCode(), request.quotedPartsDate(), request.quotedPartsSupplier(), request.providerId(), request.items(), request.accessoryWorks());
         BudgetResponse budget = upsertBudget(caseId, closedRequest, httpRequest);
         BudgetEntity entity = budgetRepository.findByCaseId(caseId).orElseThrow();
-        boolean thirdPartyWorkshop = caseTypeRepository.findById(caseEntity.getCaseTypeId())
-                .map(type -> insuranceRepairCasePolicy.isThirdPartyWorkshopClaim(type.getCode()))
-                .orElse(false);
-        // Taller generation already reconciles the submitted items in upsertBudget.
-        // Preserve the second reconciliation for other workflows and legacy requests with no changes.
-        if (!thirdPartyWorkshop || (request.items() == null && request.accessoryWorks() == null)) {
+        // upsertBudget already reconciles submitted items. Legacy generation requests
+        // without collections still need a pass over the persisted budget.
+        if (request.items() == null && request.accessoryWorks() == null) {
             canonicalPartReconciliationService.reconcile(caseId, currentUser, httpRequest);
         }
         var snapshot = budgetComparisonService.createSnapshot(caseId, entity, budgetItemRepository.findByBudgetIdOrderByVisualOrderAsc(entity.getId()), key);
@@ -359,6 +356,10 @@ public class BudgetService {
         entity.setActive(true);
         entity = budgetItemRepository.save(entity);
         caseAuditService.register(currentUser.id(), caseId, "presupuesto_items", entity.getId(), "crear_presupuesto_item", null, caseAuditService.toJson(Map.of("affectedPiece", entity.getAffectedPiece(), "taskCode", entity.getTaskCode())), caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
+        canonicalPartReconciliationService.reconcile(caseId, currentUser, httpRequest);
+        particularEffectiveStateRecalculator.recalculate(caseId);
+        todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+        cleasEffectiveStateRecalculator.recalculate(caseId);
         return toBudgetItemResponse(entity);
     }
 
@@ -386,6 +387,10 @@ public class BudgetService {
         entity.setActive(request.active() == null || request.active());
         entity = budgetItemRepository.save(entity);
         caseAuditService.register(currentUser.id(), caseId, "presupuesto_items", entity.getId(), "actualizar_presupuesto_item", null, caseAuditService.toJson(Map.of("affectedPiece", entity.getAffectedPiece(), "taskCode", entity.getTaskCode())), caseAuditService.toJson(Map.of("domain", "presupuestos")), httpRequest);
+        canonicalPartReconciliationService.reconcile(caseId, currentUser, httpRequest);
+        particularEffectiveStateRecalculator.recalculate(caseId);
+        todoRiesgoEffectiveStateRecalculator.recalculate(caseId);
+        cleasEffectiveStateRecalculator.recalculate(caseId);
         return toBudgetItemResponse(entity);
     }
 

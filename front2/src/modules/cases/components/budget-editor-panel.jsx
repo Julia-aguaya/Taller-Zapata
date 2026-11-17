@@ -260,6 +260,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
     onSettled: () => { saveSubmittingRef.current = false; releaseGenerationAttempt(); },
   });
   const workshopPartsMutation = useMutation({ mutationFn: () => syncWorkshopReplacementParts(caseId), onSuccess: async (result) => { await invalidateWorkspace(); toast.success(`Repuestos: ${result.incorporated} incorporados, ${result.updated} actualizados, ${result.alreadyExisted} ya existentes, ${result.unchanged} sin cambios.`); }, onError: (error) => toast.error(error?.name === 'AbortError' ? 'La actualización fue cancelada. Podés intentarlo nuevamente.' : error.message || 'No pude actualizar los repuestos.'), onSettled: () => { workshopPartsSubmittingRef.current = false; } });
+  const partsSyncMutation = useMutation({ mutationFn: () => syncPartsFromBudget(caseId), onSuccess: async (result) => { await invalidateWorkspace(); toast.success(`${result.length} repuesto(s) sincronizado(s) desde el presupuesto.`); }, onError: (error) => toast.error(error.message || 'No pude sincronizar los repuestos.'), onSettled: () => { workshopPartsSubmittingRef.current = false; } });
 
   const guardedSave = (closeAfterSave) => {
     if (saveMutation.isPending || saveSubmittingRef.current) return;
@@ -282,9 +283,10 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
   };
 
   const guardedWorkshopPartsSync = () => {
-    if (workshopPartsMutation.isPending || workshopPartsSubmittingRef.current) return;
+    if (workshopPartsMutation.isPending || partsSyncMutation.isPending || workshopPartsSubmittingRef.current) return;
     workshopPartsSubmittingRef.current = true;
-    workshopPartsMutation.mutate();
+    if (isThirdPartyWorkshop) workshopPartsMutation.mutate();
+    else partsSyncMutation.mutate();
   };
 
   const removeItem = (visualOrder) => {
@@ -349,7 +351,7 @@ export const BudgetEditorPanel = ({ caseId, budget, caseDetail, workshopInfo, on
             <Button className="bg-emerald-600 hover:bg-emerald-700" size="sm" onClick={async () => { const stored = JSON.parse(window.localStorage.getItem('front2.session.v1') || '{}'); const r = await fetch(`/api/v1/cases/${caseId}/budget/pdf`, { headers: { Authorization: `Bearer ${stored.accessToken}` } }); if (!r.ok) return toast.error('No se pudo descargar.'); const b = await r.blob(); const u = URL.createObjectURL(b); const a = document.createElement('a'); a.href = u; a.download = `presupuesto-${caseId}.pdf`; a.click(); URL.revokeObjectURL(u); }}><FileDown className="mr-1.5 h-4 w-4" />Descargar PDF</Button>
         ) : null}
         <div className="ml-auto flex gap-2">
-          {isThirdPartyWorkshop ? <Button variant="outline" onClick={guardedWorkshopPartsSync} disabled={workshopPartsMutation.isPending}>{workshopPartsMutation.isPending ? 'Actualizando repuestos...' : 'Forzar actualización de repuestos'}</Button> : null}
+          <Button variant="outline" onClick={guardedWorkshopPartsSync} disabled={workshopPartsMutation.isPending || partsSyncMutation.isPending}>{workshopPartsMutation.isPending || partsSyncMutation.isPending ? 'Actualizando repuestos...' : isThirdPartyWorkshop ? 'Forzar actualización de repuestos' : 'Sincronizar repuestos'}</Button>
           <Button variant="outline" onClick={() => guardedSave(false)} disabled={saveMutation.isPending}><Save className="mr-1.5 h-4 w-4" />{saveMutation.isPending ? 'Guardando...' : 'Guardar cambios'}</Button>
           <Button onClick={() => guardedSave(true)} disabled={saveMutation.isPending}><ShieldCheck className="mr-1.5 h-4 w-4" />{saveMutation.isPending ? 'Generando presupuesto...' : 'Generar presupuesto'}</Button>
           {saveMutation.isPending && generationAttemptRef.current ? <Button variant="outline" onClick={() => cancelGeneration('Se canceló la espera. Podés reintentar: se recuperará sin duplicar el presupuesto.')}>Cancelar espera</Button> : null}

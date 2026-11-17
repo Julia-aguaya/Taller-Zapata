@@ -123,6 +123,37 @@ class BudgetIntegrationTest {
     }
 
     @Test
+    void synchronizesReplacementPartsForCleasRepairFlow() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = 4 WHERE id = 100");
+
+        saveBudget(List.of(comparisonItem(1, "Óptica", "REEMPLAZAR", 250)));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM repuestos_caso WHERE caso_id = 100 AND source_type = 'BUDGET_ITEM' AND non_canonical = 0", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void synchronizesReplacementPartsForRepairEnabledFranchiseRecovery() throws Exception {
+        jdbcTemplate.update("UPDATE casos SET tipo_tramite_id = 7 WHERE id = 100");
+        jdbcTemplate.update("INSERT INTO recuperos_franquicia (caso_id, habilita_reparacion) VALUES (?, ?)", 100L, true);
+
+        saveBudget(List.of(comparisonItem(1, "Óptica", "REEMPLAZAR", 250)));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM repuestos_caso WHERE caso_id = 100 AND source_type = 'BUDGET_ITEM' AND non_canonical = 0", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    void synchronizesPartsWhenAddingBudgetItemsIndividually() throws Exception {
+        saveBudget(List.of());
+
+        mockMvc.perform(post("/api/v1/cases/100/budget/items").header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"visualOrder\":1,\"affectedPiece\":\"Óptica\",\"taskCode\":\"CHAPA\",\"damageLevelCode\":\"MEDIO\",\"partDecisionCode\":\"DEBE_REEMPLAZARSE\",\"actionCode\":\"REEMPLAZAR\",\"requiresReplacement\":true,\"partValue\":250,\"estimatedHours\":0,\"laborAmount\":0}"))
+                .andExpect(status().isOk());
+
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM repuestos_caso WHERE caso_id = 100 AND source_type = 'BUDGET_ITEM' AND non_canonical = 0", Integer.class)).isEqualTo(1);
+    }
+
+    @Test
     void shouldUpsertBudget() throws Exception {
         mockMvc.perform(put("/api/v1/cases/100/budget")
                         .header("X-User-Id", "3")

@@ -96,6 +96,8 @@ public class CanonicalPartReconciliationService {
                 // exposes Gestión de reparación and must receive the physical parts from
                 // its replacement budget lines.
                 || insuranceRepairCasePolicy.isThirdPartyClaim(caseTypeCode)
+                || insuranceRepairCasePolicy.isCleasCase(caseTypeCode)
+                || "RECUPERO_FRANQUICIA".equals(insuranceRepairCasePolicy.normalize(caseTypeCode))
                 || "PARTICULAR".equals(insuranceRepairCasePolicy.normalize(caseTypeCode));
     }
     private boolean isReplacementSource(CaseEntity caseEntity, BudgetItemEntity item) {
