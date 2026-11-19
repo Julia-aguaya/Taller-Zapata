@@ -20,7 +20,6 @@ import { ExtraBudgetEditorPanel } from '@/modules/cases/components/extra-budget-
 import { ExtraBudgetPaymentsPanel } from '@/modules/cases/components/extra-budget-payments-panel';
 import { GestionTramiteEditor } from '@/modules/cases/components/gestion-tramite-editor';
 import { TaskAgenda } from '@/modules/cases/components/task-agenda';
-import { DocumentsSection } from '@/modules/cases/components/documents-section';
 import { FranchiseRecoveryEditor } from '@/modules/cases/components/franchise-recovery-editor';
 import { FranchiseRecoveryPaymentsEditor } from '@/modules/cases/components/franchise-recovery-payments-editor';
 import { ThirdPartyLawyerEditor } from '@/modules/cases/components/third-party-lawyer-editor';
@@ -119,18 +118,6 @@ const getHelpfulBlockingMessage = (message) => {
     return 'Completa el presupuesto para habilitar Gestion de reparacion.';
   }
   return message;
-};
-
-const getTaskSnapshot = (tasks = []) => {
-  const pending = tasks.filter((task) => task.statusCode === 'PENDIENTE' || task.statusCode === 'EN_PROCESO');
-  const nextDueTask = pending
-    .filter((task) => task.dueDate)
-    .sort((left, right) => left.dueDate.localeCompare(right.dueDate))[0] ?? null;
-
-  return {
-    pendingCount: pending.length,
-    nextDueTask,
-  };
 };
 
 export const getNextStepDescriptor = ({ tabs = [], budget, widgets, particularFinanceSummary, visibleTramiteState }) => {
@@ -245,12 +232,6 @@ export const CaseWorkspacePage = () => {
     }
   }, [effectiveTabs, selectedTab]);
 
-  const tasksQuery = useQuery({
-    queryKey: ['cases', caseId, 'tasks'],
-    queryFn: () => fetchCaseTasks(caseId),
-    enabled: Boolean(caseId),
-  });
-
   if (workspaceQuery.isLoading) return <FullScreenLoader label="Abriendo carpeta..." compact />;
   if (workspaceQuery.isError) return <EmptyState title="No pude abrir la carpeta" description={workspaceQuery.error.message} />;
 
@@ -277,10 +258,7 @@ export const CaseWorkspacePage = () => {
     : isInsuranceRepair ? TODO_RIESGO_OVERRIDE_OPTIONS : DEFAULT_OVERRIDE_OPTIONS;
   const stageTabs = getOperationalTabs(effectiveTabs);
   const completedStages = countCompletedStages(effectiveTabs);
-  const taskSnapshot = getTaskSnapshot(tasksQuery.data?.items ?? []);
   const navigationHint = getHelpfulBlockingMessage(stageTabs.find((tab) => !tab.allowed && tab.blockingReasons?.length)?.blockingReasons?.[0]);
-  const nextStep = getNextStepDescriptor({ tabs: effectiveTabs, budget, widgets, particularFinanceSummary: paymentSummary, visibleTramiteState: caseDetail?.visibleTramiteState });
-
   return (
     <div className="space-y-5">
       <Card className="border-white/50 bg-card/90 p-5 shadow-haze">
@@ -412,14 +390,11 @@ export const CaseWorkspacePage = () => {
               latestAppointment={latestAppointment}
               latestIntake={latestIntake}
               latestOutcome={latestOutcome}
-              taskSnapshot={taskSnapshot}
-              nextStep={nextStep}
               overrideModal={overrideModal}
               setOverrideModal={setOverrideModal}
               overrideReason={overrideReason}
               setOverrideReason={setOverrideReason}
               overrideMutation={overrideMutation}
-              onOpenTab={openReadinessTab}
               caseId={caseId}
             />
           ) : currentTab?.tabCode === 'FICHA_TECNICA' ? (
@@ -451,8 +426,6 @@ export const CaseWorkspacePage = () => {
           ) : null}
         </div>
       </Card>
-
-      <CaseHistorySection caseId={caseId} />
 
       <Dialog
         open={Boolean(selectedReadinessTab)}
@@ -533,14 +506,13 @@ export const CaseWorkspacePage = () => {
 };
 
 const fetchAuditEvents = (caseId) => requestJson(`/cases/${caseId}/audit/events?size=100`);
-const fetchCaseTasks = (caseId) => requestJson(`/tasks?caseId=${caseId}&size=200`);
 const addCaseNote = (caseId, text) => requestJson(`/cases/${caseId}/notes`, { method: 'POST', body: JSON.stringify({ text }) });
 
 const CaseHistorySection = ({ caseId }) => {
   const queryClient = useQueryClient();
-  const [sectionTab, setSectionTab] = useState('history');
   const [noteText, setNoteText] = useState('');
   const [showNoteModal, setShowNoteModal] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState('annotations');
 
   const auditQuery = useQuery({
     queryKey: ['cases', caseId, 'audit'],
@@ -559,7 +531,6 @@ const CaseHistorySection = ({ caseId }) => {
   });
 
   const events = auditQuery.data ?? [];
-  const [auditFilter, setAuditFilter] = useState('');
 
   const ACTION_LABELS = {
     nota_manual: 'Nota manual',
@@ -598,8 +569,9 @@ const CaseHistorySection = ({ caseId }) => {
   };
   const labelFor = (code) => ACTION_LABELS[code] || code?.replace(/_/g, ' ') || '';
   const domainLabel = (d) => DOMAIN_LABELS[d] || d || '';
-  const filteredEvents = auditFilter ? events.filter(e => e.domain === auditFilter) : events;
-  const uniqueDomains = [...new Set(events.map(e => e.domain).filter(Boolean))];
+  const filteredEvents = historyFilter === 'annotations'
+    ? events.filter((event) => event.actionCode === 'nota_manual')
+    : events;
 
   return (
     <Card className="border-white/50 bg-card/90 p-5 shadow-haze">
@@ -615,55 +587,47 @@ const CaseHistorySection = ({ caseId }) => {
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setSectionTab('history')}
-            className={`inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium transition ${
-              sectionTab === 'history' ? 'border border-primary/40 bg-primary/10 text-primary' : 'border border-transparent bg-background/70 text-foreground hover:border-border/60 hover:bg-accent/50'
-            }`}
-          >
+          <div className="inline-flex items-center gap-2 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-2 text-sm font-medium text-primary">
             <Clock className="h-4 w-4" />
             Historial
-          </button>
-          {uniqueDomains.length > 0 ? (
-            <select className="h-9 rounded-2xl border border-border/60 bg-background/70 px-3 text-xs" value={auditFilter} onChange={(e) => setAuditFilter(e.target.value)}>
-              <option value="">Todos los eventos</option>
-              {uniqueDomains.map((d) => (<option key={d} value={d}>{domainLabel(d)}</option>))}
-            </select>
-          ) : null}
+          </div>
+          <select aria-label="Vista del registro" className="h-9 rounded-2xl border border-border/60 bg-background/70 px-3 text-xs" value={historyFilter} onChange={(e) => setHistoryFilter(e.target.value)}>
+            <option value="annotations">Anotaciones</option>
+            <option value="all">Todos los movimientos</option>
+          </select>
         </div>
         <Button variant="outline" size="sm" onClick={() => setShowNoteModal(true)}>
           + Agregar nota
         </Button>
       </div>
 
-      {sectionTab === 'history' ? (
-        auditQuery.isLoading ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">Cargando historial...</p>
-        ) : events.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">Todavía no hay eventos registrados para esta carpeta.</p>
-        ) : (
-          <div className="max-h-96 space-y-2 overflow-y-auto">
-            {filteredEvents.map((event) => (
-              <div key={event.id} className={`rounded-2xl border px-4 py-3 text-sm ${event.actionCode === 'nota_manual' ? 'border-amber-200 bg-amber-50/60' : 'border-border/50 bg-background/60'}`}>
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">{event.actorDisplayName || 'Sistema'}</span>
-                    {event.actionCode === 'nota_manual' ? (
-                      <Badge variant="outline" className="border-amber-300 text-[10px] text-amber-700">Nota</Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-[10px]">{domainLabel(event.domain)}</Badge>
-                    )}
-                    <span className="text-[11px] text-muted-foreground">{labelFor(event.actionCode)}</span>
-                  </div>
-                  <span className="text-xs text-muted-foreground">{formatDateTime(event.createdAt)}</span>
+      {auditQuery.isLoading ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">Cargando historial...</p>
+      ) : events.length === 0 ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">Todavía no hay eventos registrados para esta carpeta.</p>
+      ) : filteredEvents.length === 0 ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">Todavía no hay anotaciones manuales para esta carpeta.</p>
+      ) : (
+        <div className="max-h-96 space-y-2 overflow-y-auto">
+          {filteredEvents.map((event) => (
+            <div key={event.id} className={`rounded-2xl border px-4 py-3 text-sm ${event.actionCode === 'nota_manual' ? 'border-amber-200 bg-amber-50/60' : 'border-border/50 bg-background/60'}`}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium">{event.actorDisplayName || 'Sistema'}</span>
+                  {event.actionCode === 'nota_manual' ? (
+                    <Badge variant="outline" className="border-amber-300 text-[10px] text-amber-700">Nota</Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px]">{domainLabel(event.domain)}</Badge>
+                  )}
+                  <span className="text-[11px] text-muted-foreground">{labelFor(event.actionCode)}</span>
                 </div>
-                {event.changeNote ? <p className="mt-1.5 leading-relaxed text-foreground">{event.changeNote}</p> : null}
+                <span className="text-xs text-muted-foreground">{formatDateTime(event.createdAt)}</span>
               </div>
-            ))}
-          </div>
-        )
-      ) : null}
+              {event.changeNote ? <p className="mt-1.5 leading-relaxed text-foreground">{event.changeNote}</p> : null}
+            </div>
+          ))}
+        </div>
+      )}
 
       <Dialog open={showNoteModal} onClose={() => setShowNoteModal(false)} title="Agregar nota" description="La nota queda registrada en el historial de la carpeta.">
         <div className="space-y-4">
@@ -1048,7 +1012,7 @@ const FichaTecnicaEditor = ({ caseId, caseDetail, readinessTab, budget, latestAp
             )}
           </div>
         </div>
-        {caseDetail.caseTypeCode === 'RECLAMO_TERCEROS' ? <RegistryOwnershipSection caseId={caseId} caseDetail={caseDetail} /> : null}
+        <RegistryOwnershipSection caseId={caseId} caseDetail={caseDetail} />
       </div>
       ) : null}
     </Card>
@@ -1251,8 +1215,10 @@ const DetallesTabButton = ({ selectedTab, setSelectedTab }) => {
   );
 };
 
-const CaseDetailsPanel = ({ caseId, caseDetail, budget, paymentSummary, widgets, latestAppointment, latestIntake, latestOutcome, taskSnapshot, nextStep, onOpenTab, overrideModal, setOverrideModal, overrideReason, setOverrideReason, overrideMutation }) => {
+const CaseDetailsPanel = ({ caseId, caseDetail, budget, paymentSummary, widgets, latestAppointment, latestIntake, latestOutcome, overrideModal, setOverrideModal, overrideReason, setOverrideReason, overrideMutation }) => {
   const isInsuranceCase = ['TODO_RIESGO', 'GRANIZO'].includes(caseDetail?.caseTypeCode);
+  const isParticularCase = caseDetail?.caseTypeCode === 'PARTICULAR';
+  const documentationComplete = caseDetail?.currentDocumentationStateCode === 'COMPLETA';
   const paymentsState = !widgets?.budget?.exists
     ? 'Pendiente de presupuesto'
     : paymentSummary?.paidInFull
@@ -1275,22 +1241,12 @@ const CaseDetailsPanel = ({ caseId, caseDetail, budget, paymentSummary, widgets,
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border border-primary/15 bg-primary/5 p-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary/80">Proximo paso</p>
-            <p className="mt-1 text-lg font-semibold text-foreground">{nextStep.label}</p>
-          </div>
-          {nextStep.targetTab && nextStep.actionable ? (
-            <Button type="button" onClick={() => onOpenTab(nextStep.targetTab)}>Ir a {nextStep.targetTab === 'PRESUPUESTO' ? 'Presupuesto' : 'Pagos'}</Button>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-2">
-        <MiniCard label="Trámite" value={caseDetail.visibleTramiteState?.label || 'Sin informar'} color="slate">
-          <WidgetRow label="Estado" value={caseDetail.visibleTramiteState?.label || 'Sin informar'} />
-        </MiniCard>
+      <div className={`grid gap-4 sm:grid-cols-2 ${isParticularCase ? 'xl:grid-cols-4' : 'xl:grid-cols-3'}`}>
+        {isParticularCase ? (
+          <MiniCard label="Documentación" value={documentationComplete ? 'Documentación completa' : 'Documentación pendiente'} color={documentationComplete ? 'emerald' : 'amber'}>
+            <WidgetRow label="Estado" value={documentationComplete ? 'Completa' : 'Pendiente'} />
+          </MiniCard>
+        ) : null}
 
         <MiniCard label="Presupuesto" value={widgets?.budget?.exists ? (budget?.reportStatusCode || 'CARGADO') : 'Sin presupuesto'} color={widgets?.budget?.exists && budget?.reportStatusCode === 'CERRADO' ? 'emerald' : 'amber'}>
           <WidgetRow label="Estado" value={widgets?.budget?.exists ? (budget?.reportStatusCode || 'CARGADO') : 'Todavia no se cargo'} />
@@ -1311,15 +1267,10 @@ const CaseDetailsPanel = ({ caseId, caseDetail, budget, paymentSummary, widgets,
           <WidgetRow label="Estado" value={paymentsState} />
         </MiniCard>
 
-        <MiniCard label="Tareas" value={taskSnapshot.pendingCount > 0 ? pluralize(taskSnapshot.pendingCount, 'pendiente', 'pendientes') : 'Sin tareas pendientes'} color={taskSnapshot.pendingCount > 0 ? 'red' : 'emerald'}>
-          <WidgetRow label="Pendientes" value={String(taskSnapshot.pendingCount)} />
-          <WidgetRow label="Proximo vencimiento" value={taskSnapshot.nextDueTask?.dueDate ? formatDate(taskSnapshot.nextDueTask.dueDate) : 'Sin tareas pendientes'} />
-        </MiniCard>
       </div>
 
       <TaskAgenda caseId={caseId} organizationId={caseDetail?.organizationId} branchId={caseDetail?.branchId} />
-      {caseDetail?.caseTypeCode === 'PARTICULAR' ? <DocumentsSection caseId={caseId} moduleCode="GESTION_TRAMITE" includeHistorical={false} title="Documentación" /> : null}
-
+      <CaseHistorySection caseId={caseId} />
     </div>
   );
 };

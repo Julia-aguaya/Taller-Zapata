@@ -56,10 +56,6 @@ vi.mock('@/modules/cases/components/repair-editor-panel', () => ({
 vi.mock('@/modules/cases/components/task-agenda', () => ({
   TaskAgenda: ({ caseId, organizationId, branchId }) => <div data-testid="task-agenda" data-case-id={caseId} data-organization-id={organizationId} data-branch-id={branchId}>Agenda de tareas</div>,
 }));
-vi.mock('@/modules/cases/components/documents-section', () => ({
-  DocumentsSection: ({ caseId, showCompleteAction = true }) => <div data-testid="documents-section" data-case-id={caseId} data-show-complete-action={showCompleteAction}>Documentación</div>,
-}));
-
 vi.mock('@/modules/cases/components/third-party-lawyer-editor', () => ({
   ThirdPartyLawyerEditor: ({ caseId, caseDetail }) => <output data-testid="lawyer-editor-context">{JSON.stringify({ caseId, caseDetail })}</output>,
 }));
@@ -175,7 +171,7 @@ const vehicleCatalogs = {
 
 let referenciadorSearchResults = [];
 
-const renderPage = async (workspace = baseWorkspace) => {
+const renderPage = async (workspace = baseWorkspace, auditEvents = []) => {
   mockGetCaseWorkspace.mockResolvedValue(workspace);
   mockUseQuery.mockImplementation(({ queryKey }) => {
     if (queryKey[2] === 'workspace') return { data: workspace, isLoading: false, isError: false };
@@ -184,7 +180,7 @@ const renderPage = async (workspace = baseWorkspace) => {
     if (queryKey[1] === 22 || queryKey[1] === '22') return { data: vehicleResponse, isLoading: false, isError: false };
     if (queryKey[0] === 'vehicles' && queryKey[1] === 'catalogs') return { data: vehicleCatalogs, isLoading: false, isError: false };
     if (queryKey[0] === 'referenciadores') return { data: referenciadorSearchResults, isLoading: false, isError: false, isFetching: false };
-    if (queryKey[2] === 'audit') return { data: [], isLoading: false, isError: false };
+    if (queryKey[2] === 'audit') return { data: auditEvents, isLoading: false, isError: false };
     return { data: undefined, isLoading: false, isError: false };
   });
   mockRequestJson.mockResolvedValue({ ok: true });
@@ -285,19 +281,17 @@ describe('CaseWorkspacePage UI', () => {
     ['ACORDADO', 'Acordado'],
     ['PASADO_A_PAGOS', 'Pasado a pagos'],
     ['PAGADO', 'Pagado'],
-  ])('muestra el mismo estado de trámite Todo Riesgo en Resumen y el encabezado: %s', async (code, label) => {
+  ])('muestra el estado de trámite Todo Riesgo en el encabezado: %s', async (code, label) => {
     await renderPage({
       ...baseWorkspace,
       caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'TODO_RIESGO', visibleTramiteState: { code, label } },
       readiness: { ...baseWorkspace.readiness, caseTypeCode: 'TODO_RIESGO' },
     });
 
-    const summaryCard = screen.getByText('Trámite', { selector: 'p' }).parentElement;
-    expect(summaryCard).toHaveTextContent(label);
     expect(screen.getByRole('button', { name: `Trámite: ${label}` })).toBeInTheDocument();
   });
 
-  it('actualiza Resumen y encabezado con el mismo estado luego de recargar el workspace', async () => {
+  it('actualiza el estado del encabezado luego de recargar el workspace', async () => {
     const workspace = {
       ...baseWorkspace,
       caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'TODO_RIESGO', visibleTramiteState: { code: 'SIN_PRESENTAR', label: 'Sin presentar' } },
@@ -308,8 +302,6 @@ describe('CaseWorkspacePage UI', () => {
     workspace.caseDetail = { ...workspace.caseDetail, visibleTramiteState: { code: 'EN_TRAMITE', label: 'En trámite' } };
     rendered.rerender(<CaseWorkspacePage />);
 
-    const summaryCard = screen.getByText('Trámite', { selector: 'p' }).parentElement;
-    expect(summaryCard).toHaveTextContent('En trámite');
     expect(screen.getByRole('button', { name: 'Trámite: En trámite' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Trámite: Sin presentar' })).toBeNull();
   });
@@ -326,11 +318,38 @@ describe('CaseWorkspacePage UI', () => {
     expect(screen.getByTestId('task-agenda')).toHaveAttribute('data-branch-id', '9');
   });
 
-  it('muestra el estado documental global en Resumen para Particular', async () => {
-    await renderPage();
+  it('muestra la tarjeta de documentación solo en Resumen Particular', async () => {
+    const particularPage = await renderPage({
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, currentDocumentationStateCode: 'COMPLETA' },
+    });
 
-    expect(screen.getByTestId('documents-section')).toHaveAttribute('data-case-id', '1');
-    expect(screen.getByTestId('documents-section')).toHaveAttribute('data-show-complete-action', 'true');
+    expect(screen.getByText('Documentación', { selector: 'p' }).parentElement).toHaveTextContent('Documentación completa');
+    particularPage.unmount();
+
+    await renderPage({
+      ...baseWorkspace,
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'TODO_RIESGO' },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'TODO_RIESGO' },
+    });
+
+    expect(screen.queryByText('Documentación', { selector: 'p' })).toBeNull();
+  });
+
+  it('muestra inicialmente solo anotaciones y permite ver todos los movimientos', async () => {
+    await renderPage(baseWorkspace, [
+      { id: 1, actionCode: 'nota_manual', actorDisplayName: 'Demo Admin', changeNote: 'Llamar al cliente', createdAt: '2026-06-23T10:00:00Z' },
+      { id: 2, actionCode: 'crear_presupuesto', domain: 'presupuestos', actorDisplayName: 'Sistema', createdAt: '2026-06-23T11:00:00Z' },
+    ]);
+
+    const historyFilter = screen.getByLabelText('Vista del registro');
+    expect(historyFilter).toHaveValue('annotations');
+    expect(screen.getByText('Llamar al cliente')).toBeInTheDocument();
+    expect(screen.queryByText('Creación de presupuesto')).toBeNull();
+
+    fireEvent.change(historyFilter, { target: { value: 'all' } });
+
+    expect(screen.getByText('Creación de presupuesto')).toBeInTheDocument();
   });
 
   it('preserva el día del turno en el resumen', async () => {
@@ -696,11 +715,11 @@ describe('CaseWorkspacePage UI', () => {
     expect(screen.getAllByText('Si').length).toBeGreaterThan(0);
   });
 
-  it('mantiene la titularidad registral en Ficha técnica de Reclamo de terceros Taller', async () => {
+  it.each(['PARTICULAR', 'TODO_RIESGO', 'GRANIZO', 'CLEAS', 'RECLAMO_TERCEROS', 'RECLAMO_TERCEROS_ABOGADO', 'RECUPERO_FRANQUICIA'])('muestra la titularidad registral en Ficha técnica de %s', async (caseTypeCode) => {
     await renderPage({
       ...baseWorkspace,
-      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode: 'RECLAMO_TERCEROS' },
-      readiness: { ...baseWorkspace.readiness, caseTypeCode: 'RECLAMO_TERCEROS' },
+      caseDetail: { ...baseWorkspace.caseDetail, caseTypeCode },
+      readiness: { ...baseWorkspace.readiness, caseTypeCode },
     });
 
     await userEvent.click(screen.getByRole('tab', { name: /ficha t[eé]cnica/i }));
