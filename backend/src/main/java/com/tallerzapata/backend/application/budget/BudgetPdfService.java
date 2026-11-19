@@ -21,6 +21,7 @@ import java.math.BigDecimal;
 import java.text.DecimalFormat;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class BudgetPdfService {
@@ -36,7 +37,7 @@ public class BudgetPdfService {
         this.documentStorageService = documentStorageService;
     }
 
-    public byte[] generate(BudgetEntity budget, List<BudgetItemEntity> items, String folderCode, OrganizationEntity org, BranchEntity branch, VehicleEntity vehicle) {
+    public byte[] generate(BudgetEntity budget, List<BudgetItemEntity> items, Map<String, String> actionNames, String folderCode, OrganizationEntity org, BranchEntity branch, VehicleEntity vehicle) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         Document document = new Document(PageSize.A4, 50, 50, 50, 50);
         try {
@@ -110,9 +111,9 @@ public class BudgetPdfService {
             headerBand.addCell(vehicleBar);
             document.add(headerBand);
 
-            PdfPTable vehicleData = new PdfPTable(8);
+            PdfPTable vehicleData = new PdfPTable(4);
             vehicleData.setWidthPercentage(100);
-            vehicleData.setWidths(new float[]{1.2f, 0.5f, 0.9f, 0.6f, 1.2f, 0.7f, 1.0f, 1.0f});
+            vehicleData.setWidths(new float[]{0.9f, 1.4f, 1.0f, 2.2f});
             vehicleData.setSpacingAfter(8);
             addMetaCell(vehicleData, "Dominio:", smallFont, Element.ALIGN_RIGHT, false); addMetaCell(vehicleData, vehicle == null ? "-" : nullToStr(vehicle.getPlate()), normalFont, Element.ALIGN_LEFT, false);
             addMetaCell(vehicleData, "Vehículo:", smallFont, Element.ALIGN_RIGHT, false); addMetaCell(vehicleData, vehicle == null ? "-" : nullToStr((vehicle.getBrandText() == null ? "" : vehicle.getBrandText()) + " " + (vehicle.getModelText() == null ? "" : vehicle.getModelText())).trim(), normalFont, Element.ALIGN_LEFT, false);
@@ -124,7 +125,7 @@ public class BudgetPdfService {
             chassisLabel.setPadding(4);
             vehicleData.addCell(chassisLabel);
             PdfPCell chassisValue = new PdfPCell(new Phrase(vehicle == null ? "-" : nullToStr(vehicle.getChasis()), normalFont));
-            chassisValue.setColspan(7);
+            chassisValue.setColspan(3);
             chassisValue.setVerticalAlignment(Element.ALIGN_MIDDLE);
             chassisValue.setPadding(4);
             vehicleData.addCell(chassisValue);
@@ -159,7 +160,7 @@ public class BudgetPdfService {
             for (BudgetItemEntity item : items) {
                 if (!Boolean.TRUE.equals(item.getActive())) continue;
                 hasActive = true;
-                String taskText = BudgetActionLabelFormatter.format(item.getActionCode());
+                String taskText = formatActionName(item.getActionCode(), actionNames);
                 itemsTable.addCell(createCell(nullToStr(item.getAffectedPiece()), normalFont));
                 itemsTable.addCell(createCell(taskText, normalFont));
                 itemsTable.addCell(createCell(nullToStr(item.getDamageLevelCode()), normalFont));
@@ -250,6 +251,10 @@ public class BudgetPdfService {
         valueCell.setBorder(Rectangle.NO_BORDER);
         valueCell.setPadding(3);
         table.addCell(valueCell);
+    }
+
+    static String formatActionName(String actionCode, Map<String, String> actionNames) {
+        return actionNames.getOrDefault(actionCode, BudgetActionLabelFormatter.format(actionCode));
     }
 
     private void addTotalRow(PdfPTable table, String label, String value, Font font) {

@@ -185,7 +185,13 @@ public class BudgetService {
         OrganizationEntity org = caseEntity.getOrganizationId() != null ? organizationRepository.findById(caseEntity.getOrganizationId()).orElse(null) : null;
         BranchEntity branch = caseEntity.getBranchId() != null ? branchRepository.findById(caseEntity.getBranchId()).orElse(null) : null;
         VehicleEntity vehicle = caseEntity.getPrincipalVehicleId() == null ? null : vehicleRepository.findById(caseEntity.getPrincipalVehicleId()).orElse(null);
-        return budgetPdfService.generate(data.budget(), data.items(), data.folderCode(), org, branch, vehicle);
+        Map<String, String> actionNames = new HashMap<>();
+        budgetActionRepository.findAllById(data.items().stream()
+                        .map(BudgetItemEntity::getActionCode)
+                        .filter(code -> code != null && !code.isBlank())
+                        .toList())
+                .forEach(action -> actionNames.put(action.getCode(), action.getName()));
+        return budgetPdfService.generate(data.budget(), data.items(), actionNames, data.folderCode(), org, branch, vehicle);
     }
 
     private PdfData loadPdfData(Long caseId) {

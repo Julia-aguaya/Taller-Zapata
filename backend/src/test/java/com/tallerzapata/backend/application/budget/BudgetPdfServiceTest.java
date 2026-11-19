@@ -4,9 +4,21 @@ import com.tallerzapata.backend.infrastructure.persistence.organization.BranchEn
 import com.tallerzapata.backend.infrastructure.persistence.organization.OrganizationEntity;
 import org.junit.jupiter.api.Test;
 
+import java.util.Map;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class BudgetPdfServiceTest {
+
+    @Test
+    void formatsCustomActionsUsingTheirCatalogName() {
+        String name = BudgetPdfService.formatActionName(
+                "CUSTOM_DD4427E955634884ACEE",
+                Map.of("CUSTOM_DD4427E955634884ACEE", "Pulido fino")
+        );
+
+        assertThat(name).isEqualTo("Pulido fino");
+    }
 
     @Test
     void buildsLegalTextFromBranchFiscalData() {
