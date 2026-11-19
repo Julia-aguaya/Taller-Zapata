@@ -65,6 +65,17 @@ describe('ThirdPartyLawyerEditor', () => {
     expect(screen.getByRole('button', { name: 'Guardar' })).toBeEnabled();
   });
 
+  it('saves the entry date for an administrative legal case', async () => {
+    legalCase = { instanceCode: 'ADMINISTRATIVA' };
+    saveLegalCase.mockResolvedValue({ ...legalCase, entryDate: '2026-11-17' });
+    render(<ThirdPartyLawyerEditor caseId={42} />);
+
+    fireEvent.change(await screen.findByLabelText('Fecha de ingreso'), { target: { value: '2026-11-17' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    await waitFor(() => expect(saveLegalCase).toHaveBeenCalledWith(42, expect.objectContaining({ instanceCode: 'ADMINISTRATIVA', entryDate: '2026-11-17' })));
+  });
+
   it('includes closing documentation and hydrates then saves closure fields', async () => {
     legalCase = { instanceCode: 'ADMINISTRATIVA', closedByCode: 'CONCILIACION', legalCloseDate: '2026-03-10', totalProceedsAmount: 125000, closingNotes: 'Acuerdo homologado' };
     saveLegalCase.mockResolvedValue(legalCase);

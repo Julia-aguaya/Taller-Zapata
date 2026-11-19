@@ -711,8 +711,8 @@ public class InsuranceService {
         entity.setProcessorCode(normalizedOptionalCode(request.processorCode()));
         entity.setClaimantCode(normalizedOptionalCode(request.claimantCode()));
         entity.setInstanceCode(normalizedOptionalCode(request.instanceCode()));
+        entity.setEntryDate(request.entryDate());
         if ("JUDICIAL".equals(normalizeCode(request.instanceCode()))) {
-            entity.setEntryDate(request.entryDate());
             entity.setCuij(blankToNull(request.cuij()));
             entity.setCourt(blankToNull(request.court()));
             entity.setCaseNumber(blankToNull(request.caseNumber()));

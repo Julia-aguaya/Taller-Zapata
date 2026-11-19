@@ -676,6 +676,22 @@ class InsuranceIntegrationTest {
     }
 
     @Test
+    void shouldPersistEntryDateForAdministrativeLegalCase() throws Exception {
+        setCaseType("RECLAMO_TERCEROS_ABOGADO");
+
+        mockMvc.perform(put("/api/v1/cases/100/legal")
+                        .header("X-User-Id", "3")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsBytes(new CaseLegalUpsertRequest("CON_PODER", "DANIO_MATERIAL", "ADMINISTRATIVA", LocalDate.of(2026, 11, 17), null, null, null, null, null, null, true, null, null, null, null, null))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entryDate").value("2026-11-17"));
+
+        mockMvc.perform(get("/api/v1/cases/100/legal").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.entryDate").value("2026-11-17"));
+    }
+
+    @Test
     void shouldCreateAndListLegalNews() throws Exception {
         setCaseType("RECLAMO_TERCEROS_ABOGADO");
 
