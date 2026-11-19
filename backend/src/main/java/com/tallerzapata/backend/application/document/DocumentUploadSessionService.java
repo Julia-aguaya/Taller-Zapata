@@ -1,6 +1,7 @@
 package com.tallerzapata.backend.application.document;
 
 import com.tallerzapata.backend.api.document.DocumentResponse;
+import com.tallerzapata.backend.api.document.DocumentRelationCreateRequest;
 import com.tallerzapata.backend.api.document.DocumentUploadSessionCreateRequest;
 import com.tallerzapata.backend.api.document.DocumentUploadSessionResponse;
 import com.tallerzapata.backend.application.common.ConflictException;
@@ -63,6 +64,7 @@ public class DocumentUploadSessionService {
         caseAccessControlService.requirePermission(user, "documento.subir");
         validateCreateRequest(request);
         requireOpenCaseAccess(user, request.caseId());
+        validateRelationRequest(user, request);
         DocumentCategoryEntity category = requireActiveCategory(request.categoryId());
         if (Boolean.TRUE.equals(category.getRequiresDate()) && request.documentDate() == null) throw new ConflictException("La categoria requiere fecha de documento");
         userRepository.findById(user.id()).orElseThrow(() -> new ResourceNotFoundException("No existe el usuario autenticado " + user.id()));
@@ -72,6 +74,14 @@ public class DocumentUploadSessionService {
         session.setChunkCount(request.chunkCount()); session.setNextChunk(0); session.setReceivedBytes(0L); session.setUploadedBy(user.id());
         session.setOriginCode(normalizeCode(request.originCode(), "TALLER")); session.setObservations(blankToNull(request.observations()));
         session.setDocumentDate(request.documentDate());
+        if (request.relation() != null) {
+            session.setRelationEntityType(normalizeCode(request.relation().entityType(), null));
+            session.setRelationEntityId(request.relation().entityId());
+            session.setRelationModuleCode(normalizeCode(request.relation().moduleCode(), null));
+            session.setRelationPrincipal(Boolean.TRUE.equals(request.relation().principal()));
+            session.setRelationVisibleToCustomer(Boolean.TRUE.equals(request.relation().visibleToCustomer()));
+            session.setRelationVisualOrder(request.relation().visualOrder() == null ? 0 : request.relation().visualOrder());
+        }
         session.setStatus(ACTIVE); session.setExpiresAt(LocalDateTime.now().plusHours(24));
         return response(sessionRepository.save(session), null);
     }
@@ -120,6 +130,7 @@ public class DocumentUploadSessionService {
             }
             session.setChecksumSha256(calculatedChecksum);
             DocumentEntity document = documentService.createStoredDocument(session.getFileName(), session.getMimeType(), calculatedChecksum, session.getCategoryId(), session.getUploadedBy(), session.getOriginCode(), session.getObservations(), session.getDocumentDate(), stored, session.getCaseId(), request);
+            createRequestedRelation(session, document, request);
             session.setStatus(COMPLETED); session.setDocumentId(document.getId()); sessionRepository.save(session); temporaryStorage.delete(uploadId);
             return documentService.toDocumentResponse(document);
         } catch (IOException exception) {
@@ -145,6 +156,18 @@ public class DocumentUploadSessionService {
         CaseEntity caseEntity = caseRepository.findById(caseId).orElseThrow(() -> new ResourceNotFoundException("No existe el caso " + caseId));
         caseAccessControlService.requireCaseAccess(user, caseEntity, "documento.subir");
         if (!caseAccessControlService.hasGlobalScope(user) && caseEntity.getClosedAt() != null) throw new ConflictException("El caso esta cerrado; debe ser reabierto por un administrador para modificar documentos");
+    }
+    private void validateRelationRequest(AuthenticatedUser user, DocumentUploadSessionCreateRequest request) {
+        DocumentRelationCreateRequest relation = request.relation();
+        if (relation == null) return;
+        if (request.caseId() == null || !request.caseId().equals(relation.caseId())) throw new ConflictException("La relacion documental debe pertenecer al caso de la carga");
+        caseAccessControlService.requirePermission(user, "documento.relacionar");
+    }
+    private void createRequestedRelation(DocumentUploadSessionEntity session, DocumentEntity document, HttpServletRequest request) {
+        if (session.getRelationEntityType() == null) return;
+        documentService.createRelation(document.getId(), new DocumentRelationCreateRequest(
+                session.getCaseId(), session.getRelationEntityType(), session.getRelationEntityId(), session.getRelationModuleCode(),
+                session.getRelationPrincipal(), session.getRelationVisibleToCustomer(), session.getRelationVisualOrder()), request);
     }
     private DocumentCategoryEntity requireActiveCategory(Long categoryId) { DocumentCategoryEntity category = categoryRepository.findById(categoryId).orElseThrow(() -> new ResourceNotFoundException("No existe la categoria documental " + categoryId)); if (!Boolean.TRUE.equals(category.getActive())) throw new ConflictException("La categoria documental esta inactiva"); return category; }
     private void validateCreateRequest(DocumentUploadSessionCreateRequest request) { if (request.sizeBytes() > MAX_FILE_SIZE || request.chunkCount() != Math.toIntExact((request.sizeBytes() + CHUNK_SIZE - 1) / CHUNK_SIZE)) throw new ConflictException("Metadatos de carga invalidos"); }

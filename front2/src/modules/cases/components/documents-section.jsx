@@ -34,7 +34,8 @@ const requireRelationId = (relationId) => {
 export const DocumentsSection = ({ caseId, cleasOrderPicker = false, moduleCode = null, originCode = 'SEED_LOCAL', includeHistorical = false, showCompleteAction = true, title = 'Documentación', categoryCodes = VISIBLE_DOCUMENT_CATEGORY_CODES, collapsible = false, showAllCategories = false, editableMetadata = false }) => {
   const queryClient = useQueryClient();
   const { session } = useSession();
-  const canUploadDocuments = session?.authorities?.includes('documento.subir') ?? false;
+  const canUploadDocuments = (session?.authorities?.includes('documento.subir') ?? false)
+    && (session?.authorities?.includes('documento.relacionar') ?? false);
   const hasDeletePermission = session?.authorities?.includes('documento.eliminar') ?? false;
   const canDeleteDocuments = hasDeletePermission && hasGlobalAdminScope(session);
   const lacksGlobalDeleteScope = hasDeletePermission && !hasGlobalAdminScope(session);

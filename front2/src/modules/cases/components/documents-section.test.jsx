@@ -25,7 +25,7 @@ vi.mock('@/modules/cases/api/resumable-file-upload-api', () => ({
 }));
 
 let session = {
-  authorities: ['documento.subir', 'documento.eliminar'],
+  authorities: ['documento.subir', 'documento.relacionar', 'documento.eliminar'],
   scopes: [{ organizationId: null, branchId: null }],
 };
 
@@ -53,7 +53,7 @@ const renderSection = (props = {}) => {
 describe('DocumentsSection', () => {
   afterEach(() => {
     session = {
-      authorities: ['documento.subir', 'documento.eliminar'],
+      authorities: ['documento.subir', 'documento.relacionar', 'documento.eliminar'],
       scopes: [{ organizationId: null, branchId: null }],
     };
     clearStoredAuth();
@@ -390,6 +390,21 @@ describe('DocumentsSection', () => {
     expect(await screen.findByRole('button', { name: /^visualizar$/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /agregar items/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^eliminar$/i })).not.toBeInTheDocument();
+  });
+
+  it('does not offer uploads when the user cannot relate the document to the case', async () => {
+    session = { authorities: ['documento.subir'], scopes: [{ organizationId: null, branchId: null }] };
+    const fetchMock = vi.fn((url) => {
+      if (url === '/api/v1/documents/catalogs') return Promise.resolve(jsonResponse({ categories: [] }));
+      if (url === '/api/v1/cases/42/documents') return Promise.resolve(jsonResponse([]));
+      return Promise.reject(new Error(`Unexpected request: ${url}`));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    renderSection();
+
+    await screen.findByText('No hay documentos cargados.');
+    expect(screen.queryByRole('button', { name: /agregar items/i })).not.toBeInTheDocument();
   });
 
   it('hides deletion for an administrator permission without global scope', async () => {

@@ -352,7 +352,7 @@ class DocumentIntegrationTest {
         Long categoryId = activeCategoryId("OTRO");
         String sessionResponse = mockMvc.perform(post("/api/v1/document-uploads")
                         .header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"caseId\":100,\"categoryId\":" + categoryId + ",\"fileName\":\"video.txt\",\"mimeType\":\"text/plain\",\"sizeBytes\":" + payload.length + ",\"chunkCount\":2}"))
+                        .content("{\"caseId\":100,\"categoryId\":" + categoryId + ",\"fileName\":\"video.txt\",\"mimeType\":\"text/plain\",\"sizeBytes\":" + payload.length + ",\"chunkCount\":2,\"relation\":{\"caseId\":100,\"entityType\":\"CASO\",\"entityId\":100,\"moduleCode\":\"PRESUPUESTO\",\"principal\":false,\"visibleToCustomer\":false,\"visualOrder\":0}}"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         String uploadId = objectMapper.readTree(sessionResponse).get("uploadId").asText();
         uploadChunk(uploadId, 0, first).andExpect(status().isOk()).andExpect(jsonPath("$.nextChunk").value(1));
@@ -361,9 +361,7 @@ class DocumentIntegrationTest {
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         Long documentId = objectMapper.readTree(completed).get("id").asLong();
         assertThat(objectMapper.readTree(completed).get("checksumSha256").asText()).isEqualTo(sha256(payload));
-        mockMvc.perform(post("/api/v1/documents/{documentId}/relations", documentId).header("X-User-Id", "3").contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsBytes(new DocumentRelationCreateRequest(100L, "CASO", 100L, "PRESUPUESTO", false, false, 0))))
-                .andExpect(status().isOk());
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM documento_relaciones WHERE documento_id = ? AND modulo_codigo = ?", Integer.class, documentId, "PRESUPUESTO")).isEqualTo(1);
         mockMvc.perform(get("/api/v1/cases/100/documents/{documentId}/download", documentId).header("X-User-Id", "3"))
                 .andExpect(status().isOk()).andExpect(content().bytes(payload));
     }

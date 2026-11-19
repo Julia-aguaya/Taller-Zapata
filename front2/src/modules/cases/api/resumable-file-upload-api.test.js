@@ -25,7 +25,7 @@ describe('uploadFileResumably', () => {
     expect(requestJson).toHaveBeenCalledWith('/document-uploads', expect.objectContaining({ method: 'POST' }));
   });
 
-  it('uploads chunks and creates its optional relation after completion', async () => {
+  it('persists its optional relation with the resumable upload session', async () => {
     requestJson.mockImplementation((path) => {
       if (path === '/document-uploads') return Promise.resolve({ uploadId: '00000000-0000-4000-8000-000000000001', chunkCount: 3, nextChunk: 0 });
       if (path.endsWith('/complete')) return Promise.resolve({ id: 44 });
@@ -37,6 +37,7 @@ describe('uploadFileResumably', () => {
       relation: { caseId: 12, entityType: 'CASO', entityId: 12, moduleCode: 'PRESUPUESTO' },
     });
     expect(JSON.parse(requestJson.mock.calls[0][1].body)).not.toHaveProperty('checksumSha256');
+    expect(JSON.parse(requestJson.mock.calls[0][1].body)).toMatchObject({ relation: { caseId: 12, entityType: 'CASO', entityId: 12, moduleCode: 'PRESUPUESTO' } });
     expect(requestJson.mock.calls.filter(([path]) => path.includes('/chunks/')).every(([, options]) => options.headers == null)).toBe(true);
     expect(requestJson.mock.calls.map(([path]) => path)).toEqual([
       '/document-uploads',
@@ -44,7 +45,6 @@ describe('uploadFileResumably', () => {
       '/document-uploads/00000000-0000-4000-8000-000000000001/chunks/1',
       '/document-uploads/00000000-0000-4000-8000-000000000001/chunks/2',
       '/document-uploads/00000000-0000-4000-8000-000000000001/complete',
-      '/documents/44/relations',
     ]);
   });
 
@@ -60,7 +60,7 @@ describe('uploadFileResumably', () => {
   it('resumes an active matching upload from its next chunk', async () => {
     const file = new File([new Uint8Array(FILE_UPLOAD_CHUNK_SIZE * 3)], 'video.mp4', { type: 'video/mp4', lastModified: 123 });
     const identity = JSON.stringify({ name: file.name, type: file.type, size: file.size, lastModified: file.lastModified, webkitRelativePath: '' });
-    const createRequest = { caseId: 12, categoryId: 7, originCode: 'TALLER', fileName: file.name, mimeType: file.type, sizeBytes: file.size, chunkCount: 3 };
+    const createRequest = { caseId: 12, categoryId: 7, originCode: 'TALLER', fileName: file.name, mimeType: file.type, sizeBytes: file.size, chunkCount: 3, relation: null };
     localStorage.setItem(RESUMABLE_UPLOAD_STORAGE_KEY, JSON.stringify({ sessions: { [identity]: { uploadId: '00000000-0000-4000-8000-000000000003', requestFingerprint: JSON.stringify({ createRequest, relation: null }) } } }));
     requestJson.mockImplementation((path) => {
       if (path === '/document-uploads/00000000-0000-4000-8000-000000000003') return Promise.resolve({ uploadId: '00000000-0000-4000-8000-000000000003', chunkCount: 3, nextChunk: 2, status: 'ACTIVA', expiresAt: '2099-01-01T00:00:00Z' });
@@ -81,7 +81,7 @@ describe('uploadFileResumably', () => {
   it('removes a stale mapping and creates a new upload session', async () => {
     const file = new File(['logo'], 'logo.png', { type: 'image/png' });
     const identity = JSON.stringify({ name: file.name, type: file.type, size: file.size, lastModified: file.lastModified, webkitRelativePath: '' });
-    const createRequest = { categoryId: 4, originCode: 'TALLER', caseId: null, fileName: file.name, mimeType: file.type, sizeBytes: file.size, chunkCount: 1 };
+    const createRequest = { categoryId: 4, originCode: 'TALLER', caseId: null, fileName: file.name, mimeType: file.type, sizeBytes: file.size, chunkCount: 1, relation: null };
     localStorage.setItem(RESUMABLE_UPLOAD_STORAGE_KEY, JSON.stringify({ sessions: { [identity]: { uploadId: 'stale-upload', requestFingerprint: JSON.stringify({ createRequest, relation: null }) } } }));
     requestJson.mockImplementation((path) => {
       if (path === '/document-uploads/stale-upload') return Promise.reject(Object.assign(new Error('[404] No existe la sesion de carga'), { httpStatus: 404 }));

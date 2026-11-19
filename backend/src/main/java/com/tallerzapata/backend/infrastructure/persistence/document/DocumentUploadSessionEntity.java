@@ -30,6 +30,12 @@ public class DocumentUploadSessionEntity {
     @Column(name = "origen_codigo", nullable = false) private String originCode;
     @Column(name = "observaciones") private String observations;
     @Column(name = "fecha_documento") private LocalDate documentDate;
+    @Column(name = "relacion_entidad_tipo") private String relationEntityType;
+    @Column(name = "relacion_entidad_id") private Long relationEntityId;
+    @Column(name = "relacion_modulo_codigo") private String relationModuleCode;
+    @Column(name = "relacion_principal") private Boolean relationPrincipal;
+    @Column(name = "relacion_visible_cliente") private Boolean relationVisibleToCustomer;
+    @Column(name = "relacion_orden_visual") private Integer relationVisualOrder;
     @Column(name = "estado", nullable = false) private String status;
     @Column(name = "documento_id") private Long documentId;
     @Column(name = "expira_at", nullable = false) private LocalDateTime expiresAt;
@@ -44,6 +50,12 @@ public class DocumentUploadSessionEntity {
     public Long getUploadedBy() { return uploadedBy; } public void setUploadedBy(Long v) { uploadedBy = v; } public String getOriginCode() { return originCode; } public void setOriginCode(String v) { originCode = v; }
     public String getObservations() { return observations; } public void setObservations(String v) { observations = v; } public String getStatus() { return status; } public void setStatus(String v) { status = v; }
     public LocalDate getDocumentDate() { return documentDate; } public void setDocumentDate(LocalDate v) { documentDate = v; }
+    public String getRelationEntityType() { return relationEntityType; } public void setRelationEntityType(String v) { relationEntityType = v; }
+    public Long getRelationEntityId() { return relationEntityId; } public void setRelationEntityId(Long v) { relationEntityId = v; }
+    public String getRelationModuleCode() { return relationModuleCode; } public void setRelationModuleCode(String v) { relationModuleCode = v; }
+    public Boolean getRelationPrincipal() { return relationPrincipal; } public void setRelationPrincipal(Boolean v) { relationPrincipal = v; }
+    public Boolean getRelationVisibleToCustomer() { return relationVisibleToCustomer; } public void setRelationVisibleToCustomer(Boolean v) { relationVisibleToCustomer = v; }
+    public Integer getRelationVisualOrder() { return relationVisualOrder; } public void setRelationVisualOrder(Integer v) { relationVisualOrder = v; }
     public LocalDateTime getExpiresAt() { return expiresAt; } public void setExpiresAt(LocalDateTime v) { expiresAt = v; } public LocalDateTime getCreatedAt() { return createdAt; } public LocalDateTime getUpdatedAt() { return updatedAt; }
     public Long getDocumentId() { return documentId; } public void setDocumentId(Long v) { documentId = v; }
 }

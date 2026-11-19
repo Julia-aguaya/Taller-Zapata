@@ -75,20 +75,6 @@ const hasValidSessionShape = (session, chunkCount) => (
 
 const isExpired = (expiresAt) => !expiresAt || Number.isNaN(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now();
 
-const isExistingRelationConflict = (error) => (
-  error?.httpStatus === 409 && /ya esta relacionado/i.test(error.message || '')
-);
-
-const createRelation = async (document, relation) => {
-  if (!relation) return;
-  try {
-    await requestJson(`/documents/${document.id}/relations`, { method: 'POST', body: JSON.stringify(relation) });
-  } catch (error) {
-    // A lost response can leave the relation created. The server only emits this conflict for the same document/entity pair.
-    if (!isExistingRelationConflict(error)) throw error;
-  }
-};
-
 export const uploadFileResumably = async ({ file, metadata, relation }) => {
   const chunkCount = Math.ceil(file.size / FILE_UPLOAD_CHUNK_SIZE);
   const createRequest = {
@@ -99,6 +85,7 @@ export const uploadFileResumably = async ({ file, metadata, relation }) => {
     mimeType: file.type || 'application/octet-stream',
     sizeBytes: file.size,
     chunkCount,
+    relation: relation ?? null,
   };
   const fileIdentity = JSON.stringify({ name: file.name, type: file.type || 'application/octet-stream', size: file.size, lastModified: file.lastModified, webkitRelativePath: file.webkitRelativePath || '' });
   const requestFingerprint = JSON.stringify({ createRequest, relation: relation ?? null });
@@ -124,7 +111,6 @@ export const uploadFileResumably = async ({ file, metadata, relation }) => {
   }
 
   if (completedDocument) {
-    await createRelation(completedDocument, relation);
     removeUploadMapping(fileIdentity);
     return completedDocument;
   }
@@ -139,7 +125,6 @@ export const uploadFileResumably = async ({ file, metadata, relation }) => {
     await uploadChunk(session.uploadId, index, file.slice(index * FILE_UPLOAD_CHUNK_SIZE, Math.min(file.size, (index + 1) * FILE_UPLOAD_CHUNK_SIZE)));
   }
   const document = await requestJson(`/document-uploads/${session.uploadId}/complete`, { method: 'POST' });
-  await createRelation(document, relation);
   removeUploadMapping(fileIdentity);
   return document;
 };
