@@ -29,6 +29,8 @@ import com.tallerzapata.backend.infrastructure.persistence.operation.VehicleOutc
 import com.tallerzapata.backend.infrastructure.persistence.particularstate.ParticularEffectiveStateRepository;
 import com.tallerzapata.backend.infrastructure.persistence.todoriskstate.TodoRiesgoEffectiveStateRepository;
 import com.tallerzapata.backend.infrastructure.persistence.cleasstate.CleasEffectiveStateRepository;
+import com.tallerzapata.backend.infrastructure.persistence.recovery.FranchiseRecoveryEntity;
+import com.tallerzapata.backend.infrastructure.persistence.recovery.FranchiseRecoveryRepository;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
@@ -115,6 +117,7 @@ public class CaseVisibleStateResolver {
     private final ParticularEffectiveStateRepository particularEffectiveStateRepository;
     private final TodoRiesgoEffectiveStateRepository todoRiesgoEffectiveStateRepository;
     private final CleasEffectiveStateRepository cleasEffectiveStateRepository;
+    private final FranchiseRecoveryRepository franchiseRecoveryRepository;
     private final DocumentationWorkflowStateService documentationWorkflowStateService;
 
     public CaseVisibleStateResolver(
@@ -133,6 +136,7 @@ public class CaseVisibleStateResolver {
             ParticularEffectiveStateRepository particularEffectiveStateRepository,
             TodoRiesgoEffectiveStateRepository todoRiesgoEffectiveStateRepository,
             CleasEffectiveStateRepository cleasEffectiveStateRepository,
+            FranchiseRecoveryRepository franchiseRecoveryRepository,
             DocumentationWorkflowStateService documentationWorkflowStateService,
             RepairPartReceiptAvailabilityService receiptAvailabilityService
     ) {
@@ -151,6 +155,7 @@ public class CaseVisibleStateResolver {
         this.particularEffectiveStateRepository = particularEffectiveStateRepository;
         this.todoRiesgoEffectiveStateRepository = todoRiesgoEffectiveStateRepository;
         this.cleasEffectiveStateRepository = cleasEffectiveStateRepository;
+        this.franchiseRecoveryRepository = franchiseRecoveryRepository;
         this.documentationWorkflowStateService = documentationWorkflowStateService;
         this.receiptAvailabilityService = receiptAvailabilityService;
     }
@@ -190,6 +195,7 @@ public class CaseVisibleStateResolver {
         }
 
         Optional<InsuranceProcessingEntity> insuranceProcessing = insuranceProcessingRepository.findByCaseId(caseEntity.getId());
+        Optional<FranchiseRecoveryEntity> franchiseRecovery = franchiseRecoveryRepository.findByCaseId(caseEntity.getId());
         Optional<CaseFranchiseEntity> franchise = caseFranchiseRepository.findByCaseId(caseEntity.getId());
         Optional<CaseThirdPartyEntity> thirdParty = caseThirdPartyRepository.findByCaseId(caseEntity.getId());
         Optional<CaseLegalEntity> legal = caseLegalRepository.findByCaseId(caseEntity.getId());
@@ -202,7 +208,7 @@ public class CaseVisibleStateResolver {
         boolean hasReceipts = !issuedReceiptRepository.findByCaseId(caseEntity.getId(), FINANCE_SORT).isEmpty();
 
         String automaticRepairCode = resolveAutomaticRepairCode(caseType, insuranceProcessing.orElse(null), budget, outcomes, intakes, appointments, parts);
-        String automaticTramiteCode = resolveAutomaticTramiteCode(caseType, insuranceProcessing.orElse(null), thirdParty.orElse(null), legal.orElse(null), budget, automaticRepairCode, hasFinancialMovements, hasReceipts, caseEntity.getId(), documentationWorkflowStateService.isComplete(caseEntity));
+        String automaticTramiteCode = resolveAutomaticTramiteCode(caseType, insuranceProcessing.orElse(null), franchiseRecovery.orElse(null), thirdParty.orElse(null), legal.orElse(null), budget, automaticRepairCode, hasFinancialMovements, hasReceipts, caseEntity.getId(), documentationWorkflowStateService.isComplete(caseEntity));
 
         Map<String, CaseVisibleStateResponse> result = new LinkedHashMap<>();
         result.put(DOMAIN_TRAMITE, buildVisibleState(DOMAIN_TRAMITE, automaticTramiteCode, normalizeCode(caseEntity.getVisibleCaseStateOverrideCode())));
@@ -261,6 +267,7 @@ public class CaseVisibleStateResolver {
     private String resolveAutomaticTramiteCode(
             CaseTypeEntity caseType,
             InsuranceProcessingEntity insuranceProcessing,
+            FranchiseRecoveryEntity franchiseRecovery,
             CaseThirdPartyEntity thirdParty,
             CaseLegalEntity legal,
             BudgetEntity budget,
@@ -292,6 +299,10 @@ public class CaseVisibleStateResolver {
 
         if (hasFinancialMovements) {
             return "PASADO_A_PAGOS";
+        }
+
+        if ("RECUPERO_FRANQUICIA".equals(normalizeCode(caseType.getCode())) && franchiseRecovery != null && franchiseRecovery.getPresentedAt() != null) {
+            return "EN_TRAMITE";
         }
 
         if (insuranceProcessing != null) {

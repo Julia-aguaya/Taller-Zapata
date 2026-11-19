@@ -402,6 +402,10 @@ class FranchiseRecoveryIntegrationTest {
                 .andExpect(jsonPath("$.prescriptionDate").value(presentedAt.plusYears(3).toString()))
                 .andExpect(jsonPath("$.daysInProcess").value(4));
 
+        mockMvc.perform(get("/api/v1/cases/100").header("X-User-Id", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.visibleTramiteState.code").value("EN_TRAMITE"));
+
         assertThat(jdbcTemplate.queryForObject("SELECT fotografia_carpeta_base FROM recuperos_franquicia WHERE caso_id = ?", String.class, 100L))
                 .contains("0101TZ");
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM caso_relaciones WHERE caso_origen_id = ? AND caso_destino_id = ? AND tipo_relacion_codigo = 'RECUPERO_DE'", Integer.class, 101L, 100L)).isEqualTo(1);

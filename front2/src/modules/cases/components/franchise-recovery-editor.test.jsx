@@ -98,6 +98,17 @@ describe('FranchiseRecoveryEditor associated folder', () => {
     expect(screen.queryByText('91')).not.toBeInTheDocument();
   });
 
+  it('allows saving third-party claim data without requiring the insurer company', async () => {
+    const user = userEvent.setup();
+    render(<FranchiseRecoveryEditor caseId="7" caseDetail={{}} />);
+
+    await user.type(screen.getByLabelText('N.º de reclamo / referencia'), 'REF-LOCAL');
+    await user.click(screen.getByRole('button', { name: 'Guardar datos tercero' }));
+
+    expect(mutations[mutations.length - 1].mutate).toHaveBeenCalledTimes(1);
+    expect(mutations[mutations.length - 2].mutate).not.toHaveBeenCalled();
+  });
+
   it('autocompletes an existing contact and exposes the creation fields', async () => {
     const user = userEvent.setup();
     companies = [{ id: 91, name: 'Aseguradora del Sur' }];
