@@ -65,6 +65,23 @@ describe('ThirdPartyLawyerEditor', () => {
     expect(screen.getByRole('button', { name: 'Guardar' })).toBeEnabled();
   });
 
+  it('explains the judicial fields required before enabling save', async () => {
+    legalCase = { instanceCode: 'JUDICIAL' };
+    render(<ThirdPartyLawyerEditor caseId={42} />);
+
+    const saveButton = await screen.findByRole('button', { name: 'Guardar' });
+    expect(saveButton).toBeDisabled();
+    expect(screen.getByText('Para la instancia judicial completá la fecha de ingreso, CUIJ, juzgado y autos para poder guardar.')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Fecha de ingreso'), { target: { value: '2026-11-19' } });
+    fireEvent.change(screen.getByLabelText('Nº CUIJ *'), { target: { value: 'CUIJ-123' } });
+    fireEvent.change(screen.getByLabelText('Juzgado *'), { target: { value: 'Juzgado 1' } });
+    fireEvent.change(screen.getByLabelText('Autos *'), { target: { value: 'Autos 123' } });
+
+    expect(saveButton).toBeEnabled();
+    expect(screen.queryByText('Para la instancia judicial completá la fecha de ingreso, CUIJ, juzgado y autos para poder guardar.')).toBeNull();
+  });
+
   it('saves the entry date for an administrative legal case', async () => {
     legalCase = { instanceCode: 'ADMINISTRATIVA' };
     saveLegalCase.mockResolvedValue({ ...legalCase, entryDate: '2026-11-17' });
